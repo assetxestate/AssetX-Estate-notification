@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "hhttps://script.google.com/macros/s/AKfycby2mbNPG5_kXRrc5t6bL5QJlCO8WLCqW1CAFV7LfvnJMmNXLzf7J24lnimfw3J4BjbuZw/exec";
+  "https://script.google.com/macros/s/AKfycbxfqpIqh8tCeINB0acryUf1AXuqfubRAd2xjiVB2NMPOGgwQeovwBtjMvoCJRLMr3yN/exec";
 
 // 🖼️ โลโก้บริษัท: ใส่ Base64 หรือ URL ของโลโก้ตรงนี้
 // วิธีที่ 1: ใช้ Base64 (แนะนำ) - แปลงรูปที่ https://www.base64-image.de/
