@@ -369,16 +369,17 @@ function useLineNotification(targetUserId) {
     setSending(true);
     addLog("info", `กำลังส่งข้อความ${targetName ? " ถึง " + targetName : ""}...`);
     try {
+      const payload = {
+        action: "sendLine",
+        message,
+        type,
+        ...(currentId && currentId.trim() ? { destinationId: currentId.trim() } : {}),
+      };
       await fetch(APPS_SCRIPT_URL, {
         method: "POST",
         mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "sendLine",
-          message,
-          type,
-          ...(currentId && currentId.trim() ? { destinationId: currentId.trim() } : {}),
-        }),
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(payload),
       });
       addLog("success", `✅ ส่งสำเร็จ${targetName ? " → " + targetName : ""}${currentId ? " [" + currentId.substring(0,8) + "...]" : ""}`);
       setSending(false);
@@ -440,16 +441,17 @@ function LineButton({
     e.stopPropagation();
     setSending(true);
     try {
+      const payload = {
+        action: "sendLine",
+        message,
+        type,
+        ...(destinationId && destinationId.trim() ? { destinationId: destinationId.trim() } : {}),
+      };
       await fetch(APPS_SCRIPT_URL, {
         method: "POST",
         mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "sendLine",
-          message,
-          type,
-          ...(destinationId && destinationId.trim() ? { destinationId: destinationId.trim() } : {}),
-        }),
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(payload),
       });
       setResult("success");
       if (onSend) onSend(true);
@@ -558,16 +560,17 @@ function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUserId, onS
     if (!customMessage.trim()) return;
     addLog("info", "กำลังส่งข้อความ Manual...");
     try {
+      const payload = {
+        action: "sendLine",
+        message: customMessage,
+        type: "manual",
+        ...(targetUserId && targetUserId.trim() ? { destinationId: targetUserId.trim() } : {}),
+      };
       await fetch(APPS_SCRIPT_URL, {
         method: "POST",
         mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "sendLine",
-          message: customMessage,
-          type: "manual",
-          ...(targetUserId && targetUserId.trim() ? { destinationId: targetUserId.trim() } : {}),
-        }),
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(payload),
       });
       addLog("success", "✅ ส่งข้อความ Manual สำเร็จ");
       setCustomMessage("");
