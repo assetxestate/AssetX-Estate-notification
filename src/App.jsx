@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycby2mbNPG5_kXRrc5t6bL5QJlCO8WLCqW1CAFV7LfvnJMmNXLzf7J24lnimfw3J4BjbuZw/exec";
+  "hhttps://script.google.com/macros/s/AKfycby2mbNPG5_kXRrc5t6bL5QJlCO8WLCqW1CAFV7LfvnJMmNXLzf7J24lnimfw3J4BjbuZw/exec";
 
 // 🖼️ โลโก้บริษัท: ใส่ Base64 หรือ URL ของโลโก้ตรงนี้
 // วิธีที่ 1: ใช้ Base64 (แนะนำ) - แปลงรูปที่ https://www.base64-image.de/
@@ -369,17 +369,13 @@ function useLineNotification(targetUserId) {
     setSending(true);
     addLog("info", `กำลังส่งข้อความ${targetName ? " ถึง " + targetName : ""}...`);
     try {
-      const payload = {
-        action: "sendLine",
-        message,
-        type,
-        ...(currentId && currentId.trim() ? { destinationId: currentId.trim() } : {}),
-      };
-      await fetch(APPS_SCRIPT_URL, {
+      const did = currentId && currentId.trim() ? currentId.trim() : "";
+      const url = did ? `${APPS_SCRIPT_URL}?dest=${encodeURIComponent(did)}` : APPS_SCRIPT_URL;
+      await fetch(url, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ action: "sendLine", message, type }),
       });
       addLog("success", `✅ ส่งสำเร็จ${targetName ? " → " + targetName : ""}${currentId ? " [" + currentId.substring(0,8) + "...]" : ""}`);
       setSending(false);
@@ -441,17 +437,13 @@ function LineButton({
     e.stopPropagation();
     setSending(true);
     try {
-      const payload = {
-        action: "sendLine",
-        message,
-        type,
-        ...(destinationId && destinationId.trim() ? { destinationId: destinationId.trim() } : {}),
-      };
-      await fetch(APPS_SCRIPT_URL, {
+      const did = destinationId && destinationId.trim() ? destinationId.trim() : "";
+      const url = did ? `${APPS_SCRIPT_URL}?dest=${encodeURIComponent(did)}` : APPS_SCRIPT_URL;
+      await fetch(url, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ action: "sendLine", message, type }),
       });
       setResult("success");
       if (onSend) onSend(true);
@@ -560,17 +552,13 @@ function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUserId, onS
     if (!customMessage.trim()) return;
     addLog("info", "กำลังส่งข้อความ Manual...");
     try {
-      const payload = {
-        action: "sendLine",
-        message: customMessage,
-        type: "manual",
-        ...(targetUserId && targetUserId.trim() ? { destinationId: targetUserId.trim() } : {}),
-      };
-      await fetch(APPS_SCRIPT_URL, {
+      const did = targetUserId && targetUserId.trim() ? targetUserId.trim() : "";
+      const url = did ? `${APPS_SCRIPT_URL}?dest=${encodeURIComponent(did)}` : APPS_SCRIPT_URL;
+      await fetch(url, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ action: "sendLine", message: customMessage, type: "manual" }),
       });
       addLog("success", "✅ ส่งข้อความ Manual สำเร็จ");
       setCustomMessage("");
