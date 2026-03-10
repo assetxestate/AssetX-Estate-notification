@@ -353,12 +353,19 @@ function useLineNotification(targetUserId) {
   const [sending, setSending] = useState(false);
   const [logs, setLogs] = useState([]);
 
+  // useRef เพื่อให้จับ targetUserId ล่าสุดเสมอ ป้องกัน stale closure
+  const targetUserIdRef = React.useRef(targetUserId);
+  React.useEffect(() => {
+    targetUserIdRef.current = targetUserId;
+  }, [targetUserId]);
+
   const addLog = useCallback((type, message) => {
     const now = new Date().toLocaleTimeString("th-TH");
     setLogs(prev => [...prev.slice(-19), { type, message, time: now }]);
   }, []);
 
   const sendNotification = useCallback(async (message, type = "payment", targetName = "") => {
+    const currentId = targetUserIdRef.current;
     setSending(true);
     addLog("info", `กำลังส่งข้อความ${targetName ? " ถึง " + targetName : ""}...`);
     try {
@@ -370,10 +377,10 @@ function useLineNotification(targetUserId) {
           action: "sendLine",
           message,
           type,
-          ...(targetUserId && targetUserId.trim() ? { destinationId: targetUserId.trim() } : {}),
+          ...(currentId && currentId.trim() ? { destinationId: currentId.trim() } : {}),
         }),
       });
-      addLog("success", `✅ ส่งสำเร็จ${targetName ? " → " + targetName : ""}${targetUserId ? " [" + targetUserId.substring(0,8) + "...]" : ""}`);
+      addLog("success", `✅ ส่งสำเร็จ${targetName ? " → " + targetName : ""}${currentId ? " [" + currentId.substring(0,8) + "...]" : ""}`);
       setSending(false);
       return { success: true };
     } catch (error) {
@@ -381,7 +388,7 @@ function useLineNotification(targetUserId) {
       setSending(false);
       return { success: false, error: error.message };
     }
-  }, [addLog, targetUserId]);
+  }, [addLog]);
 
   const testConnection = useCallback(async () => {
     setSending(true);
