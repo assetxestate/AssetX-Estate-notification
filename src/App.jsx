@@ -1098,7 +1098,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [lastFetch, setLastFetch] = useState(null);
   const [filter, setFilter] = useState("all");
-  const [mainTab, setMainTab] = useState("status");
+  const [mainTab, setMainTab] = useState("customers");
   const [expandedId, setExpandedId] = useState(null);
   const [expandedDeeds, setExpandedDeeds] = useState({});
   const [toast, setToast] = useState(null);
@@ -1456,10 +1456,10 @@ export default function App() {
             }}
           >
             <button
-              className={`tab ${mainTab === "status" ? "active" : ""}`}
-              onClick={() => setMainTab("status")}
+              className={`tab ${mainTab === "customers" ? "active" : ""}`}
+              onClick={() => setMainTab("customers")}
             >
-              ⚙️ สถานะระบบ
+              👥 ลูกค้า ({enriched.length})
             </button>
             <button
               className={`tab ${mainTab === "payment" ? "active" : ""}`}
@@ -1475,10 +1475,10 @@ export default function App() {
               📜 สัญญา ({contractAlerts.length})
             </button>
             <button
-              className={`tab ${mainTab === "customers" ? "active" : ""}`}
-              onClick={() => setMainTab("customers")}
+              className={`tab ${mainTab === "status" ? "active" : ""}`}
+              onClick={() => setMainTab("status")}
             >
-              👥 ลูกค้า ({enriched.length})
+              ⚙️ สถานะระบบ
             </button>
           </div>
 
