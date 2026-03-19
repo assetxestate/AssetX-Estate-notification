@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment variables (API Keys - ห้าม commit)
+.env
+.env.local
+.env.production
+
+# Excel files (ข้อมูลลูกค้า - ข้อมูลส่วนตัว)
+*.xlsx
+*.xls
+~$*.xlsx
+
+# Build output
+dist/
+build/
+
+# Misc
+.DS_Store
+files.zip
+*.txt

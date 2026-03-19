@@ -1,0 +1,405 @@
+{
+  "templates": [
+    {
+      "id": "notice_salefak_redemption",
+      "name": "หนังสือแจ้งกำหนดเวลาไถ่จากขายฝาก",
+      "name_en": "Sale with Right of Redemption Notice",
+      "legal_reference": "พ.ร.บ. คุ้มครองประชาชนในการทำสัญญาขายฝากที่ดินเพื่อเกษตรกรรมหรือที่อยู่อาศัย พ.ศ. 2562 มาตรา 17",
+      "notice_period": {
+        "min_days": 90,
+        "max_days": 180,
+        "description": "ก่อนครบกำหนดไถ่ ไม่น้อยกว่า 3 เดือน แต่ไม่เกิน 6 เดือน"
+      },
+      "penalty_if_not_sent": "ผู้ขายฝากมีสิทธิขยายเวลาไถ่ออกไปอีก 6 เดือน",
+      "delivery_method": "ไปรษณีย์ลงทะเบียนตอบรับ",
+      "required_attachments": ["สำเนาสัญญาขายฝาก"],
+      "fields": {
+        "document_number": {
+          "label": "เลขที่หนังสือ",
+          "type": "string",
+          "required": true
+        },
+        "document_date": {
+          "label": "วันที่ออกหนังสือ",
+          "type": "date",
+          "required": true
+        },
+        "seller_name": {
+          "label": "ชื่อผู้ขายฝาก",
+          "type": "string",
+          "required": true
+        },
+        "seller_address": {
+          "label": "ที่อยู่ผู้ขายฝาก",
+          "type": "string",
+          "required": true
+        },
+        "contract_number": {
+          "label": "เลขที่สัญญาขายฝาก",
+          "type": "string",
+          "required": true
+        },
+        "contract_date": {
+          "label": "วันที่ทำสัญญาขายฝาก",
+          "type": "date",
+          "required": true
+        },
+        "land_office": {
+          "label": "สำนักงานที่ดินที่จดทะเบียน",
+          "type": "string",
+          "required": true
+        },
+        "title_deed_number": {
+          "label": "เลขที่โฉนด",
+          "type": "string",
+          "required": true
+        },
+        "land_number": {
+          "label": "เลขที่ดิน",
+          "type": "string",
+          "required": true
+        },
+        "subdistrict": {
+          "label": "ตำบล",
+          "type": "string",
+          "required": true
+        },
+        "district": {
+          "label": "อำเภอ",
+          "type": "string",
+          "required": true
+        },
+        "province": {
+          "label": "จังหวัด",
+          "type": "string",
+          "required": true
+        },
+        "land_area_rai": {
+          "label": "เนื้อที่ (ไร่)",
+          "type": "number",
+          "required": false
+        },
+        "land_area_ngan": {
+          "label": "เนื้อที่ (งาน)",
+          "type": "number",
+          "required": false
+        },
+        "land_area_sqwa": {
+          "label": "เนื้อที่ (ตารางวา)",
+          "type": "number",
+          "required": false
+        },
+        "redemption_due_date": {
+          "label": "วันครบกำหนดไถ่",
+          "type": "date",
+          "required": true
+        },
+        "principal_amount": {
+          "label": "เงินต้น (ราคาขายฝาก)",
+          "type": "number",
+          "required": true
+        },
+        "interest_amount": {
+          "label": "ผลประโยชน์ตอบแทน",
+          "type": "number",
+          "required": true
+        },
+        "total_redemption_amount": {
+          "label": "จำนวนสินไถ่รวม",
+          "type": "number",
+          "required": true
+        },
+        "payment_location": {
+          "label": "สถานที่ชำระสินไถ่",
+          "type": "string",
+          "required": true
+        },
+        "payee_name": {
+          "label": "ผู้รับชำระสินไถ่ (กรณีไม่ใช่ผู้ซื้อฝากเดิม)",
+          "type": "string",
+          "required": false
+        },
+        "buyer_name": {
+          "label": "ชื่อผู้ซื้อฝาก",
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "notice_mortgage_reminder",
+      "name": "หนังสือแจ้งเตือนครบกำหนดชำระหนี้จำนอง",
+      "name_en": "Mortgage Payment Reminder Notice",
+      "legal_reference": "ไม่มีกฎหมายบังคับ (แจ้งเพื่อความสะดวก)",
+      "notice_period": {
+        "recommended_days": 30,
+        "description": "แนะนำ 30 วันก่อนครบกำหนด (ไม่บังคับ)"
+      },
+      "delivery_method": "ไปรษณีย์ลงทะเบียนตอบรับ หรือช่องทางอื่นตามตกลง",
+      "required_attachments": [],
+      "fields": {
+        "document_number": {
+          "label": "เลขที่หนังสือ",
+          "type": "string",
+          "required": true
+        },
+        "document_date": {
+          "label": "วันที่ออกหนังสือ",
+          "type": "date",
+          "required": true
+        },
+        "debtor_name": {
+          "label": "ชื่อผู้จำนอง/ลูกหนี้",
+          "type": "string",
+          "required": true
+        },
+        "debtor_address": {
+          "label": "ที่อยู่ผู้จำนอง/ลูกหนี้",
+          "type": "string",
+          "required": true
+        },
+        "contract_number": {
+          "label": "เลขที่สัญญาจำนอง",
+          "type": "string",
+          "required": true
+        },
+        "contract_date": {
+          "label": "วันที่ทำสัญญาจำนอง",
+          "type": "date",
+          "required": true
+        },
+        "land_office": {
+          "label": "สำนักงานที่ดินที่จดทะเบียน",
+          "type": "string",
+          "required": true
+        },
+        "title_deed_number": {
+          "label": "เลขที่โฉนด",
+          "type": "string",
+          "required": true
+        },
+        "land_number": {
+          "label": "เลขที่ดิน",
+          "type": "string",
+          "required": true
+        },
+        "subdistrict": {
+          "label": "ตำบล",
+          "type": "string",
+          "required": true
+        },
+        "district": {
+          "label": "อำเภอ",
+          "type": "string",
+          "required": true
+        },
+        "province": {
+          "label": "จังหวัด",
+          "type": "string",
+          "required": true
+        },
+        "payment_due_date": {
+          "label": "วันครบกำหนดชำระ",
+          "type": "date",
+          "required": true
+        },
+        "principal_amount": {
+          "label": "เงินต้นคงค้าง",
+          "type": "number",
+          "required": true
+        },
+        "interest_amount": {
+          "label": "ดอกเบี้ยค้างชำระ",
+          "type": "number",
+          "required": true
+        },
+        "total_amount": {
+          "label": "จำนวนเงินที่ต้องชำระรวม",
+          "type": "number",
+          "required": true
+        },
+        "payment_location": {
+          "label": "สถานที่ชำระ",
+          "type": "string",
+          "required": true
+        },
+        "payment_channels": {
+          "label": "ช่องทางการชำระ",
+          "type": "string",
+          "required": false
+        },
+        "creditor_name": {
+          "label": "ชื่อผู้รับจำนอง",
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "notice_mortgage_enforcement",
+      "name": "หนังสือบอกกล่าวบังคับจำนอง",
+      "name_en": "Mortgage Enforcement Notice",
+      "legal_reference": "ประมวลกฎหมายแพ่งและพาณิชย์ มาตรา 728",
+      "notice_period": {
+        "min_days": 60,
+        "description": "ให้เวลาลูกหนี้ชำระหนี้ไม่น้อยกว่า 60 วัน นับแต่วันที่ได้รับหนังสือ"
+      },
+      "penalty_if_not_sent": "ไม่มีอำนาจฟ้องบังคับจำนอง",
+      "delivery_method": "ไปรษณีย์ลงทะเบียนตอบรับ",
+      "required_attachments": [],
+      "additional_notice_required": {
+        "condition": "กรณีผู้จำนองเป็นบุคคลภายนอก (ไม่ใช่ลูกหนี้)",
+        "notice_period_days": 15,
+        "description": "ต้องแจ้งผู้จำนองภายใน 15 วัน นับแต่วันที่ส่งหนังสือแจ้งลูกหนี้"
+      },
+      "fields": {
+        "document_number": {
+          "label": "เลขที่หนังสือ",
+          "type": "string",
+          "required": true
+        },
+        "document_date": {
+          "label": "วันที่ออกหนังสือ",
+          "type": "date",
+          "required": true
+        },
+        "debtor_name": {
+          "label": "ชื่อลูกหนี้/ผู้จำนอง",
+          "type": "string",
+          "required": true
+        },
+        "debtor_address": {
+          "label": "ที่อยู่ลูกหนี้/ผู้จำนอง",
+          "type": "string",
+          "required": true
+        },
+        "loan_contract_number": {
+          "label": "เลขที่สัญญากู้ยืมเงิน",
+          "type": "string",
+          "required": true
+        },
+        "loan_contract_date": {
+          "label": "วันที่ทำสัญญากู้ยืมเงิน",
+          "type": "date",
+          "required": true
+        },
+        "mortgage_contract_number": {
+          "label": "เลขที่สัญญาจำนอง",
+          "type": "string",
+          "required": true
+        },
+        "mortgage_contract_date": {
+          "label": "วันที่ทำสัญญาจำนอง",
+          "type": "date",
+          "required": true
+        },
+        "title_deed_number": {
+          "label": "เลขที่โฉนด",
+          "type": "string",
+          "required": true
+        },
+        "land_number": {
+          "label": "เลขที่ดิน",
+          "type": "string",
+          "required": true
+        },
+        "subdistrict": {
+          "label": "ตำบล",
+          "type": "string",
+          "required": true
+        },
+        "district": {
+          "label": "อำเภอ",
+          "type": "string",
+          "required": true
+        },
+        "province": {
+          "label": "จังหวัด",
+          "type": "string",
+          "required": true
+        },
+        "original_loan_amount": {
+          "label": "จำนวนเงินกู้ยืมเดิม",
+          "type": "number",
+          "required": true
+        },
+        "principal_outstanding": {
+          "label": "เงินต้นค้างชำระ",
+          "type": "number",
+          "required": true
+        },
+        "interest_outstanding": {
+          "label": "ดอกเบี้ยค้างชำระ",
+          "type": "number",
+          "required": true
+        },
+        "total_debt": {
+          "label": "รวมหนี้ค้างชำระทั้งสิ้น",
+          "type": "number",
+          "required": true
+        },
+        "payment_deadline_days": {
+          "label": "ระยะเวลาให้ชำระ (วัน)",
+          "type": "number",
+          "default": 60,
+          "required": true
+        },
+        "creditor_name": {
+          "label": "ชื่อผู้รับจำนอง",
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  ],
+  "legal_summary": {
+    "salefak": {
+      "name": "ขายฝาก",
+      "governing_law": "พ.ร.บ. คุ้มครองประชาชนในการทำสัญญาขายฝากที่ดินเพื่อเกษตรกรรมหรือที่อยู่อาศัย พ.ศ. 2562",
+      "notice_requirement": {
+        "who_sends": "ผู้ซื้อฝาก",
+        "who_receives": "ผู้ขายฝาก",
+        "timing": "ก่อนครบกำหนดไถ่ 3-6 เดือน",
+        "method": "ไปรษณีย์ลงทะเบียนตอบรับ",
+        "attachments": ["สำเนาสัญญาขายฝาก"],
+        "penalty_for_non_compliance": "ผู้ขายฝากมีสิทธิไถ่ได้ภายใน 6 เดือนหลังครบกำหนด"
+      },
+      "interest_rate_cap": "15% ต่อปี",
+      "contract_term": {
+        "min_years": 1,
+        "max_years": 10
+      }
+    },
+    "mortgage": {
+      "name": "จำนอง",
+      "governing_law": "ประมวลกฎหมายแพ่งและพาณิชย์ มาตรา 702-746",
+      "notice_requirement": {
+        "pre_due_reminder": {
+          "required": false,
+          "recommended_days": 30,
+          "description": "ไม่บังคับตามกฎหมาย แต่แนะนำเพื่อความสะดวก"
+        },
+        "enforcement_notice": {
+          "required": true,
+          "who_sends": "ผู้รับจำนอง",
+          "who_receives": "ลูกหนี้",
+          "timing": "หลังผิดนัด ก่อนฟ้องบังคับจำนอง",
+          "grace_period_days": 60,
+          "method": "หนังสือบอกกล่าว",
+          "third_party_mortgagor": {
+            "required": true,
+            "timing_days": 15,
+            "description": "ต้องแจ้งผู้จำนองบุคคลภายนอกภายใน 15 วันหลังแจ้งลูกหนี้"
+          }
+        }
+      }
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "created_date": "2026-03-19",
+    "author": "AssetX Estate",
+    "description": "Template data for generating legal notice documents for Thai real estate transactions (Sale with Right of Redemption and Mortgage)",
+    "language": "th"
+  }
+}

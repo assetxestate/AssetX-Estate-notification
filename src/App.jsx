@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import ChatPanel from "./ChatPanel.jsx";
 
 // ============================================================
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycby22les-RVnx4jOK9mejcIZbHl8FwAX5I87ZUvjogU4PkP_o4JG7rPL_1MsT1VezsJpsw/exec";
+
+// ============================================================
+// 📦 ข้อมูลจริงจาก Google Sheet (ใช้ระหว่างทดสอบ UI)
+// ============================================================
+const MOCK_DATA = [{"id":"1","name":"นภาพร","fullLabel":"จำนอง คุณ นภาพร","type":"จำนอง","color":"#60A5FA","icon":"🏠","principal":3500000,"amount":280000,"freq":"ปีละครั้ง","location":"13.45453042,99.99354528","contractEndDate":"2027-11-20","deeds":"[{\"no\": \"1377\", \"area\": \"0-0-60 ไร่\", \"tambon\": \"ท่าคา\", \"amphoe\": \"อัมพวา\", \"province\": \"สมุทรสงคราม\", \"surveyPage\": \"2101\", \"landNo\": \"28656\", \"mapRef\": \"4935 I 0686\"}]","payments":[{"installment":1,"dateStr":"2026-11-20"}]},{"id":"2","name":"กนกพร","fullLabel":"จำนอง คุณ กนกพร","type":"จำนอง","color":"#A78BFA","icon":"🏠","principal":1500000,"amount":120000,"freq":"ปีละครั้ง","location":"13.48983163,100.03190800","contractEndDate":"2029-11-17","deeds":"[{\"no\": \"20285\", \"area\": \"3-3-45 ไร่\", \"tambon\": \"นางตะเคียน\", \"amphoe\": \"เมืองสุมุรสงคราม\", \"province\": \"สมุทรสงคราม\", \"surveyPage\": \"1418\", \"landNo\": \"96\", \"mapRef\": \"5035 IV 1290\"}, {\"no\": \"40821\", \"area\": \"5-2-95 ไร่\", \"tambon\": \"นางตะเคียน\", \"amphoe\": \"เมืองสุมุรสงคราม\", \"province\": \"สมุทรสงคราม\", \"surveyPage\": \"2633\", \"landNo\": \"254\", \"mapRef\": \"5035 IV 1090\"}]","payments":[{"installment":1,"dateStr":"2026-11-17"}]},{"id":"3","name":"อธิภัทร","fullLabel":"จำนองโกดัง คุณอธิภัทร","type":"จำนอง","color":"#34D399","icon":"🏭","principal":1600000,"amount":20000,"freq":"รายเดือน","location":"13.53996711,99.81356944","contractEndDate":"2027-01-09","deeds":"[{\"no\": \"20031\", \"area\": \"0-0-27.7 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7522\", \"landNo\": \"246\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"420032\", \"area\": \"0-0-5.9 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7523\", \"landNo\": \"251\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"39726\", \"area\": \"0-0-16.9 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7529\", \"landNo\": \"250\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"39727\", \"area\": \"0-0-22.8 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7530\", \"landNo\": \"249\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"39728\", \"area\": \"0-0-22.8 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7532\", \"landNo\": \"248\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"39729\", \"area\": \"0-0-22.9 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7533\", \"landNo\": \"247\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"39730\", \"area\": \"0-0-7.9 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7534\", \"landNo\": \"256\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"39731\", \"area\": \"0-0-22.6 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7535\", \"landNo\": \"255\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"39732\", \"area\": \"0-0-22.6 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7536\", \"landNo\": \"254\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"39733\", \"area\": \"0-0-22.7 ไร่\", \"tambon\": \"\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7538\", \"landNo\": \"253\", \"mapRef\": \"4936 II 8896-09\"}, {\"no\": \"39734\", \"area\": \"0-0-22.7 ไร่\", \"tambon\": \"หน้าเมือง\", \"amphoe\": \"เมืองราชบุรี\", \"province\": \"ราชบุรี\", \"surveyPage\": \"7539\", \"landNo\": \"252\", \"mapRef\": \"4936 II 8896-09\"}]","payments":[{"installment":1,"dateStr":"2026-04-09"},{"installment":2,"dateStr":"2026-05-09"},{"installment":3,"dateStr":"2026-06-09"},{"installment":4,"dateStr":"2026-07-09"},{"installment":5,"dateStr":"2026-08-09"},{"installment":6,"dateStr":"2026-09-09"},{"installment":7,"dateStr":"2026-10-09"},{"installment":8,"dateStr":"2026-11-09"},{"installment":9,"dateStr":"2026-12-09"},{"installment":10,"dateStr":"2027-01-09"}]},{"id":"4","name":"บังอร","fullLabel":"ขายฝาก คุณบังอร (นนทบุรี)","type":"ขายฝาก","color":"#F59E0B","icon":"📋","principal":8000000,"amount":50000,"freq":"ทุก 2 สัปดาห์","location":"13.85946452,100.42959685","contractEndDate":"2027-01-19","deeds":"[{\"no\": \"133153\", \"area\": \"0-1-75.4 ไร่\", \"tambon\": \"บางเลน\", \"amphoe\": \"บางใหญ่\", \"province\": \"นนทบุรี\", \"surveyPage\": \"521\", \"landNo\": \"20\", \"mapRef\": \"5036 I 5432-14\"}, {\"no\": \"133154\", \"area\": \"0-1-34 ไร่\", \"tambon\": \"บางเลน\", \"amphoe\": \"บางใหญ่\", \"province\": \"นนทบุรี\", \"surveyPage\": \"2220\", \"landNo\": \"19\", \"mapRef\": \"5036 I 5432-14\"}, {\"no\": \"133155\", \"area\": \"0-3-85.6 ไร่\", \"tambon\": \"บางเลน\", \"amphoe\": \"บางใหญ่\", \"province\": \"นนทบุรี\", \"surveyPage\": \"1658\", \"landNo\": \"21\", \"mapRef\": \"5036 I 5432-14\"}]","payments":[{"installment":1,"dateStr":"2026-05-03"},{"installment":2,"dateStr":"2026-05-19"},{"installment":3,"dateStr":"2026-06-03"},{"installment":4,"dateStr":"2026-06-19"},{"installment":5,"dateStr":"2026-07-03"},{"installment":6,"dateStr":"2026-07-19"},{"installment":7,"dateStr":"2026-08-03"},{"installment":8,"dateStr":"2026-08-19"},{"installment":9,"dateStr":"2026-09-03"},{"installment":10,"dateStr":"2026-09-19"},{"installment":11,"dateStr":"2026-10-03"},{"installment":12,"dateStr":"2026-10-19"},{"installment":13,"dateStr":"2026-11-03"},{"installment":14,"dateStr":"2026-11-19"},{"installment":15,"dateStr":"2026-12-03"},{"installment":16,"dateStr":"2026-12-19"},{"installment":17,"dateStr":"2027-01-03"},{"installment":18,"dateStr":"2027-01-19"}]},{"id":"5","name":"กิตติ์","fullLabel":"ขายฝาก คุณกิตติ์หทัย (Centro นนทบุรี)","type":"ขายฝาก","color":"#F97316","icon":"🏘️","principal":6000000,"amount":75000,"freq":"รายเดือน","location":"13.68942957,100.35247480","contractEndDate":"2027-02-06","deeds":"[{\"no\": \"43603\", \"area\": \"0-0-60.2 ไร่\", \"tambon\": \"หนองแขม\", \"amphoe\": \"หนองแขม\", \"province\": \"กรุงเทพมหานคร\", \"surveyPage\": \"41013\", \"landNo\": \"835\", \"mapRef\": \"5036 II 4612-06\"}]","payments":[{"installment":1,"dateStr":"2026-05-06"},{"installment":2,"dateStr":"2026-06-06"},{"installment":3,"dateStr":"2026-07-06"},{"installment":4,"dateStr":"2026-08-06"},{"installment":5,"dateStr":"2026-09-06"},{"installment":6,"dateStr":"2026-10-06"},{"installment":7,"dateStr":"2026-11-06"},{"installment":8,"dateStr":"2026-12-06"},{"installment":9,"dateStr":"2027-01-06"},{"installment":10,"dateStr":"2027-02-06"}]},{"id":"6","name":"สริตา","fullLabel":"ขายฝาก คุณสริตา (ที่ดินชะอำ)","type":"ขายฝาก","color":"#EC4899","icon":"🌾","principal":1000000,"amount":12500,"freq":"รายเดือน","location":"12.84285321,99.99868405","contractEndDate":"2027-02-25","deeds":"[{\"no\": \"16379\", \"area\": \"0-1-45 ไร่\", \"tambon\": \"บางเก่า\", \"amphoe\": \"ชะอำ\", \"province\": \"เพชรบุรี\", \"surveyPage\": \"801\", \"landNo\": \"118\", \"mapRef\": \"4934 I 0818-02\"}]","payments":[{"installment":1,"dateStr":"2026-05-25"},{"installment":2,"dateStr":"2026-06-25"},{"installment":3,"dateStr":"2026-07-25"},{"installment":4,"dateStr":"2026-08-25"},{"installment":5,"dateStr":"2026-09-25"},{"installment":6,"dateStr":"2026-10-25"},{"installment":7,"dateStr":"2026-11-25"},{"installment":8,"dateStr":"2026-12-25"},{"installment":9,"dateStr":"2027-01-25"},{"installment":10,"dateStr":"2027-02-25"}]},{"id":"7","name":"ชลากร","fullLabel":"ขายฝาก คุณชลากร (ที่ดินประจวบ)","type":"ขายฝาก","color":"#14B8A6","icon":"🌴","principal":2000000,"amount":25000,"freq":"รายเดือน","location":"11.82645488,99.78887798","contractEndDate":"2027-03-06","deeds":"[{\"no\": \"66384\", \"area\": \"2-1-40.9 ไร่\", \"tambon\": \"เกาะหลัก\", \"amphoe\": \"เมือง\", \"province\": \"ประจวบคีรีขันธ์\", \"surveyPage\": \"22489\", \"landNo\": \"613\", \"mapRef\": \"4932 I 8606-00\"}]","payments":[{"installment":1,"dateStr":"2026-06-06"},{"installment":2,"dateStr":"2026-07-06"},{"installment":3,"dateStr":"2026-08-06"},{"installment":4,"dateStr":"2026-09-06"},{"installment":5,"dateStr":"2026-10-06"},{"installment":6,"dateStr":"2026-11-06"},{"installment":7,"dateStr":"2026-12-06"},{"installment":8,"dateStr":"2027-01-06"},{"installment":9,"dateStr":"2027-02-06"},{"installment":10,"dateStr":"2027-03-06"}]}];
 
 // 🖼️ โลโก้บริษัท: ใส่ Base64 หรือ URL ของโลโก้ตรงนี้
 // วิธีที่ 1: ใช้ Base64 (แนะนำ) - แปลงรูปที่ https://www.base64-image.de/
@@ -184,7 +190,13 @@ const P_STATUS = {
     bg: "rgba(34,197,94,.08)",
     border: "#16A34A",
     text: "#4ADE80",
-    label: "ชำระแล้ว",
+    label: "เลยกำหนด",
+  },
+  paid: {
+    bg: "rgba(34,197,94,.12)",
+    border: "#22C55E",
+    text: "#86EFAC",
+    label: "ชำระแล้ว ✓",
   },
 };
 const C_STATUS = {
@@ -1079,6 +1091,568 @@ function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUserId, onS
   );
 }
 
+// ── ข้อมูลผู้ส่ง (เจ้าของระบบ) ────────────────────────────────
+const SENDER_INFO = {
+  name: "จักรพันธ์ ศรีสว่าง",
+  position: "ผู้จัดการ",
+  company: "บริษัท แอสเสท เอ็กซ์ เอสเตท จำกัด",
+  address: "345/34 หมู่บ้านแกรนดิโอ2 - พระราม2 หมู่ที่ 5 ตำบลพันท้ายนรสิงห์ อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000",
+};
+
+// ── แปลงตัวเลขเป็นภาษาไทย ──────────────────────────────────────
+function numberToThaiText(amount) {
+  if (amount === 0) return "ศูนย์บาทถ้วน";
+  const DIGITS = ["ศูนย์","หนึ่ง","สอง","สาม","สี่","ห้า","หก","เจ็ด","แปด","เก้า"];
+  const POSITIONS = ["","สิบ","ร้อย","พัน","หมื่น","แสน","ล้าน"];
+  const baht = Math.floor(amount);
+  const satang = Math.round((amount - baht) * 100);
+  let result = "";
+  if (baht > 0) {
+    const s = String(baht);
+    const len = s.length;
+    for (let i = 0; i < len; i++) {
+      const d = parseInt(s[i]);
+      const pos = len - i - 1;
+      if (d === 0) continue;
+      if (pos === 1 && d === 1) result += "สิบ";
+      else if (pos === 1 && d === 2) result += "ยี่สิบ";
+      else if (pos === 0 && d === 1 && len > 1) result += "เอ็ด";
+      else result += DIGITS[d] + POSITIONS[pos % 6] + (pos === 6 ? "ล้าน" : "");
+    }
+    result += "บาท";
+  }
+  if (satang > 0) {
+    const ss = String(satang).padStart(2, "0");
+    for (let i = 0; i < 2; i++) {
+      const d = parseInt(ss[i]);
+      const pos = 1 - i;
+      if (d === 0) continue;
+      if (pos === 1 && d === 1) result += "สิบ";
+      else if (pos === 1 && d === 2) result += "ยี่สิบ";
+      else if (pos === 0 && d === 1 && satang >= 10) result += "เอ็ด";
+      else result += DIGITS[d] + POSITIONS[pos];
+    }
+    result += "สตางค์";
+  } else {
+    result += "ถ้วน";
+  }
+  return result;
+}
+
+// ── แปลงวันที่เป็นรูปแบบไทย ────────────────────────────────────
+function formatThaiDateFull(dateStr) {
+  const MONTHS = ["","มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
+    "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+  const d = new Date(dateStr);
+  const day = d.getDate();
+  const month = MONTHS[d.getMonth() + 1];
+  const year = d.getFullYear() + 543;
+  return `${day} ${month} พ.ศ. ${year}`;
+}
+
+// ── จัดรูปแบบเนื้อที่ดิน ────────────────────────────────────────
+function formatLandArea(areaStr) {
+  // แปลง "0-1-75.4 ไร่" → "1 งาน 75.4 ตารางวา"
+  if (!areaStr) return "-";
+  const m = areaStr.match(/^(\d+)-(\d+)-([\d.]+)/);
+  if (!m) return areaStr;
+  const parts = [];
+  if (parseInt(m[1]) > 0) parts.push(`${m[1]} ไร่`);
+  if (parseInt(m[2]) > 0) parts.push(`${m[2]} งาน`);
+  if (parseFloat(m[3]) > 0) parts.push(`${m[3]} ตารางวา`);
+  return parts.join(" ") || "-";
+}
+
+// ── สร้างและพิมพ์ Notice ────────────────────────────────────────
+function printNotice(customer, extraInfo, docNumber) {
+  const deed = customer.deeds?.[0] || {};
+  const allDeeds = customer.deeds || [];
+  const today = new Date();
+  const todayStr = formatThaiDateFull(today.toISOString().split("T")[0]);
+  const contractEndStr = formatThaiDateFull(customer.contractEndDate);
+  const contractDateStr = extraInfo.contractDate
+    ? formatThaiDateFull(extraInfo.contractDate) : "-";
+
+  // คำนวณสินไถ่รวม (เงินต้น + ดอกเบี้ยที่เหลือ)
+  const remaining = customer.payments?.filter(p => p.diff >= 0).length || 0;
+  const totalInterest = (customer.amount || 0) * remaining;
+  const totalRedemption = (customer.principal || 0) + totalInterest;
+
+  // รายการโฉนดทั้งหมด
+  const deedList = allDeeds.map((d, i) =>
+    `โฉนดเลขที่ ${d.no || "-"} เลขที่ดิน ${d.landNo || "-"} ต.${d.tambon || "-"} อ.${d.amphoe || "-"} จ.${d.province || "-"} เนื้อที่ ${formatLandArea(d.area)}`
+  ).join("\n           ");
+
+  // land office จาก deed แรก
+  const landOffice = extraInfo.landOffice || `สำนักงานที่ดินจังหวัด${deed.province || "-"}`;
+
+  const html = `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>หนังสือแจ้งกำหนดเวลาไถ่จากขายฝาก - ${customer.name}</title>
+<style>
+  @page { size: A4; margin: 2.5cm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'TH Sarabun New', 'Sarabun', serif;
+    font-size: 16pt;
+    line-height: 1.8;
+    color: #000;
+    background: #fff;
+  }
+  .center { text-align: center; }
+  .right { text-align: right; }
+  .bold { font-weight: bold; }
+  .title { font-size: 18pt; font-weight: bold; text-align: center; margin-bottom: 8px; }
+  .doc-info { text-align: right; margin-bottom: 16px; }
+  .section { margin-bottom: 12px; }
+  .indent { padding-left: 60px; }
+  .indent2 { padding-left: 80px; }
+  .sign-area { text-align: center; margin-top: 40px; }
+  .dotline { display: inline-block; width: 220px; border-bottom: 1px dotted #000; }
+  .remark { margin-top: 20px; font-size: 13pt; border-top: 1px solid #000; padding-top: 8px; }
+  .no-print { display: none; }
+  @media print { .no-print { display: none; } body { -webkit-print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+<div class="no-print" style="display:block; text-align:center; margin-bottom:20px; font-family:sans-serif;">
+  <button onclick="window.print()" style="padding:10px 30px;font-size:16px;background:#2DD4BF;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">
+    🖨️ พิมพ์ / บันทึก PDF
+  </button>
+</div>
+
+<div class="title">หนังสือแจ้งกำหนดเวลาไถ่จากขายฝาก</div>
+
+<div class="doc-info">
+  ที่ ${docNumber}<br>
+  วันที่ ${todayStr}
+</div>
+
+<div class="section">
+  <span class="bold">เรื่อง</span>&nbsp;&nbsp;&nbsp;แจ้งกำหนดเวลาไถ่และจำนวนสินไถ่จากการขายฝาก
+</div>
+
+<div class="section">
+  <span class="bold">เรียน</span>&nbsp;&nbsp;&nbsp;${extraInfo.fullName || customer.name} (ผู้ขายฝาก)<br>
+  <span class="indent">${extraInfo.address || "-"}</span>
+</div>
+
+<div class="section">
+  <span class="bold">อ้างถึง</span>&nbsp;&nbsp;สัญญาขายฝากที่ดิน เลขที่ ${extraInfo.contractNumber || "-"} ลงวันที่ ${contractDateStr}<br>
+  <span class="indent2">จดทะเบียน ณ ${landOffice}</span>
+</div>
+
+<div class="section">
+  <span class="bold">สิ่งที่ส่งมาด้วย</span>&nbsp;&nbsp;สำเนาสัญญาขายฝาก จำนวน 1 ชุด
+</div>
+
+<div class="section indent" style="margin-top:16px;">
+  ตามที่ท่านได้ทำสัญญาขายฝากที่ดิน ${deedList}
+  ไว้กับข้าพเจ้า ตามสัญญาขายฝากอ้างถึงนั้น
+</div>
+
+<div class="section indent">
+  บัดนี้ ใกล้จะครบกำหนดเวลาไถ่ตามสัญญาแล้ว ข้าพเจ้าจึงขอแจ้งรายละเอียด ดังนี้
+</div>
+
+<div class="section indent2">
+  1. กำหนดวันครบกำหนดไถ่&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${contractEndStr}<br>
+  2. จำนวนสินไถ่&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${totalRedemption.toLocaleString("th-TH", {minimumFractionDigits:2})} บาท<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;(${numberToThaiText(totalRedemption)})<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;ประกอบด้วย<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;- เงินต้น (ราคาขายฝาก)&nbsp;&nbsp;:&nbsp;&nbsp;${(customer.principal||0).toLocaleString("th-TH", {minimumFractionDigits:2})} บาท<br>
+  &nbsp;&nbsp;&nbsp;&nbsp;- ผลประโยชน์ตอบแทน&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${totalInterest.toLocaleString("th-TH", {minimumFractionDigits:2})} บาท<br>
+  3. สถานที่ชำระสินไถ่&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${SENDER_INFO.company} ${SENDER_INFO.address}
+</div>
+
+<div class="section indent" style="margin-top:16px;">
+  จึงเรียนมาเพื่อทราบและดำเนินการไถ่ถอนภายในกำหนดเวลาข้างต้น
+</div>
+
+<div class="sign-area">
+  ขอแสดงความนับถือ<br><br><br>
+  <span class="dotline"></span><br>
+  (${SENDER_INFO.name})<br>
+  ${SENDER_INFO.position}<br>
+  ${SENDER_INFO.company}
+</div>
+
+<div class="remark">
+  <span class="bold">หมายเหตุ:</span> หนังสือฉบับนี้ส่งทางไปรษณีย์ลงทะเบียนตอบรับ
+  ตามมาตรา 17 แห่ง พ.ร.บ. คุ้มครองประชาชนในการทำสัญญาขายฝากที่ดินเพื่อเกษตรกรรม
+  หรือที่อยู่อาศัย พ.ศ. 2562
+</div>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=900,height=700");
+  win.document.write(html);
+  win.document.close();
+}
+
+// ── Modal บันทึกสลิปการชำระเงิน ────────────────────────────────
+function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
+  const today = new Date().toISOString().split("T")[0];
+  const [form, setForm] = React.useState({
+    paidDate: existing?.paidDate || today,
+    amount: existing?.amount || customer.amount || "",
+    note: existing?.note || "",
+    slipImage: existing?.slipImage || null,
+  });
+  const [imgPreview, setImgPreview] = React.useState(existing?.slipImage || null);
+  const [saving, setSaving] = React.useState(false);
+
+  const handleImage = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      // ย่อขนาดรูปก่อนบันทึก
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX = 800;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL("image/jpeg", 0.7);
+        setImgPreview(compressed);
+        setForm(prev => ({ ...prev, slipImage: compressed }));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = () => {
+    if (!form.paidDate || !form.amount) return;
+    setSaving(true);
+    onSave({
+      paidDate: form.paidDate,
+      amount: parseFloat(form.amount),
+      note: form.note,
+      slipImage: form.slipImage,
+      savedAt: new Date().toISOString(),
+    });
+    onClose();
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,.75)", display: "flex",
+      alignItems: "center", justifyContent: "center", padding: 16,
+    }} onClick={onClose}>
+      <div style={{
+        background: "#080F1E", border: "1px solid rgba(45,212,191,.25)",
+        borderRadius: 16, padding: 24, width: "100%", maxWidth: 420,
+        maxHeight: "90vh", overflowY: "auto",
+      }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontWeight: 700, color: BRAND.textPri, fontSize: 16 }}>บันทึกการชำระเงิน</div>
+            <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
+              {customer.name} — งวดที่ {payment.installment} ({formatThai(payment.dateStr)})
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: BRAND.textSec, fontSize: 20, cursor: "pointer" }}>✕</button>
+        </div>
+
+        {/* Form */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* วันที่ชำระ */}
+          <div>
+            <label style={{ fontSize: 12, color: BRAND.textSec, display: "block", marginBottom: 5 }}>วันที่ชำระเงิน *</label>
+            <input type="date" value={form.paidDate}
+              onChange={e => setForm(p => ({ ...p, paidDate: e.target.value }))}
+              style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(45,212,191,.25)", borderRadius: 8, color: BRAND.textPri, fontSize: 14, padding: "9px 12px", outline: "none" }}
+            />
+          </div>
+
+          {/* จำนวนเงิน */}
+          <div>
+            <label style={{ fontSize: 12, color: BRAND.textSec, display: "block", marginBottom: 5 }}>จำนวนเงินที่ชำระ (บาท) *</label>
+            <input type="number" value={form.amount}
+              onChange={e => setForm(p => ({ ...p, amount: e.target.value }))}
+              placeholder="0.00"
+              style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(45,212,191,.25)", borderRadius: 8, color: BRAND.textPri, fontSize: 14, padding: "9px 12px", outline: "none" }}
+            />
+            <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>
+              ยอดที่ต้องชำระ: {(customer.amount || 0).toLocaleString("th-TH")} บาท
+            </div>
+          </div>
+
+          {/* หมายเหตุ */}
+          <div>
+            <label style={{ fontSize: 12, color: BRAND.textSec, display: "block", marginBottom: 5 }}>หมายเหตุ / เลขอ้างอิง</label>
+            <input type="text" value={form.note}
+              onChange={e => setForm(p => ({ ...p, note: e.target.value }))}
+              placeholder="เช่น โอนผ่าน SCB เลขที่ 123456"
+              style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(45,212,191,.25)", borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: "9px 12px", outline: "none" }}
+            />
+          </div>
+
+          {/* อัปโหลดสลิป */}
+          <div>
+            <label style={{ fontSize: 12, color: BRAND.textSec, display: "block", marginBottom: 5 }}>แนบสลิปการโอนเงิน</label>
+            <label style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "10px 0", borderRadius: 8, cursor: "pointer",
+              border: "1px dashed rgba(45,212,191,.35)", background: "rgba(45,212,191,.04)",
+              color: BRAND.teal, fontSize: 13, fontWeight: 600,
+            }}>
+              📎 {imgPreview ? "เปลี่ยนรูปสลิป" : "เลือกไฟล์รูปภาพ"}
+              <input type="file" accept="image/*" onChange={handleImage} style={{ display: "none" }} />
+            </label>
+            {imgPreview && (
+              <div style={{ marginTop: 10, position: "relative" }}>
+                <img src={imgPreview} alt="slip" style={{ width: "100%", borderRadius: 8, border: "1px solid rgba(45,212,191,.2)" }} />
+                <button onClick={() => { setImgPreview(null); setForm(p => ({ ...p, slipImage: null })); }}
+                  style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,.7)", border: "none", borderRadius: "50%", color: "#fff", width: 24, height: 24, cursor: "pointer", fontSize: 12 }}>✕</button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+          {existing && (
+            <button onClick={() => { onDelete(); onClose(); }} style={{
+              flex: "0 0 auto", padding: "10px 16px", borderRadius: 8,
+              background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.3)",
+              color: "#FCA5A5", fontSize: 13, cursor: "pointer",
+            }}>
+              🗑️ ลบ
+            </button>
+          )}
+          <button onClick={onClose} style={{
+            flex: 1, padding: "10px 0", borderRadius: 8,
+            background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)",
+            color: BRAND.textSec, fontSize: 13, cursor: "pointer",
+          }}>ยกเลิก</button>
+          <button onClick={handleSave} disabled={!form.paidDate || !form.amount}
+            style={{
+              flex: 2, padding: "10px 0", borderRadius: 8,
+              background: form.paidDate && form.amount
+                ? "linear-gradient(135deg,#22C55E,#16A34A)"
+                : "rgba(34,197,94,.15)",
+              border: "none", color: form.paidDate && form.amount ? "#000" : BRAND.textSec,
+              fontWeight: 700, fontSize: 14, cursor: form.paidDate && form.amount ? "pointer" : "not-allowed",
+            }}>
+            ✓ บันทึกการชำระ
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ข้อมูลเพิ่มเติมลูกค้า (ที่อยู่, เลขสัญญา ฯลฯ) ──────────────
+function CustomerExtraInfoSection({ customer, extraInfoMap, onUpdate }) {
+  const info = extraInfoMap[customer.id] || {};
+  const [editing, setEditing] = React.useState(false);
+  const [form, setForm] = React.useState(info);
+
+  React.useEffect(() => {
+    setForm(extraInfoMap[customer.id] || {});
+  }, [extraInfoMap, customer.id]);
+
+  const handleSave = () => {
+    onUpdate(customer.id, form);
+    setEditing(false);
+  };
+
+  const field = (key, label, placeholder = "") => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <label style={{ fontSize: 10, color: BRAND.textSec }}>{label}</label>
+      <input
+        value={form[key] || ""}
+        onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
+        placeholder={placeholder}
+        style={{
+          background: "rgba(255,255,255,.05)", border: "1px solid rgba(45,212,191,.2)",
+          borderRadius: 7, color: BRAND.textPri, fontSize: 12, padding: "6px 10px", outline: "none",
+        }}
+      />
+    </div>
+  );
+
+  const isComplete = info.fullName && info.address && info.contractNumber;
+
+  return (
+    <div style={{
+      marginBottom: 16, padding: "12px 14px",
+      background: isComplete ? "rgba(45,212,191,.04)" : "rgba(245,158,11,.04)",
+      border: `1px solid ${isComplete ? "rgba(45,212,191,.2)" : "rgba(245,158,11,.2)"}`,
+      borderRadius: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 14 }}>📋</span>
+          <span style={{ fontWeight: 600, color: BRAND.textPri, fontSize: 13 }}>ข้อมูลสำหรับจดหมาย Notice</span>
+          {!isComplete && <span style={{ fontSize: 10, color: "#F59E0B", background: "rgba(245,158,11,.15)", padding: "2px 8px", borderRadius: 20 }}>ยังไม่ครบ</span>}
+        </div>
+        <button onClick={() => setEditing(v => !v)} style={{
+          background: "rgba(45,212,191,.1)", border: "1px solid rgba(45,212,191,.3)",
+          borderRadius: 6, color: BRAND.teal, fontSize: 11, padding: "3px 10px", cursor: "pointer",
+        }}>
+          {editing ? "ยกเลิก" : isComplete ? "แก้ไข" : "+ กรอกข้อมูล"}
+        </button>
+      </div>
+
+      {!editing && isComplete && (
+        <div style={{ fontSize: 12, color: BRAND.textSec, display: "flex", flexDirection: "column", gap: 3 }}>
+          <div><span style={{ color: BRAND.textPri }}>ชื่อ:</span> {info.fullName}</div>
+          <div><span style={{ color: BRAND.textPri }}>ที่อยู่:</span> {info.address}</div>
+          <div><span style={{ color: BRAND.textPri }}>เลขที่สัญญา:</span> {info.contractNumber} | <span style={{ color: BRAND.textPri }}>วันที่:</span> {info.contractDate || "-"}</div>
+          {info.landOffice && <div><span style={{ color: BRAND.textPri }}>สำนักงานที่ดิน:</span> {info.landOffice}</div>}
+        </div>
+      )}
+      {!editing && !isComplete && (
+        <div style={{ fontSize: 12, color: BRAND.textSec }}>กรอกข้อมูลเพื่อใช้สร้างจดหมาย Notice</div>
+      )}
+
+      {editing && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {field("fullName", "ชื่อ-นามสกุลเต็ม (ผู้ขายฝาก)", "เช่น นายสมชาย ใจดี")}
+          {field("address", "ที่อยู่สำหรับจ่าหน้าซอง", "เช่น 123 ถ.สุขุมวิท กรุงเทพฯ 10110")}
+          {field("contractNumber", "เลขที่สัญญาขายฝาก", "เช่น ขฝ.2568/001")}
+          {field("contractDate", "วันที่ทำสัญญา (YYYY-MM-DD)", "เช่น 2025-03-19")}
+          {field("landOffice", "สำนักงานที่ดิน (ไม่บังคับ — ระบบใช้จากโฉนดอัตโนมัติ)", "เช่น สำนักงานที่ดินจังหวัดสมุทรสาคร")}
+          <button onClick={handleSave} style={{
+            padding: "8px 0", borderRadius: 8, marginTop: 4,
+            background: "linear-gradient(135deg,#2DD4BF,#0E7490)",
+            border: "none", color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer",
+          }}>
+            บันทึก
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── LINE User ID Section per Customer ──────────────────────────
+function CustomerLineIdSection({ customer, customerLineIds, savedUserIds, onUpdate }) {
+  const currentId = customerLineIds[customer.id] || "";
+  const [input, setInput] = React.useState(currentId);
+  const [editing, setEditing] = React.useState(false);
+
+  React.useEffect(() => {
+    setInput(customerLineIds[customer.id] || "");
+  }, [customerLineIds, customer.id]);
+
+  const handleSave = () => {
+    onUpdate(customer.id, input.trim());
+    setEditing(false);
+  };
+
+  const handleSelect = (id) => {
+    setInput(id);
+    onUpdate(customer.id, id);
+    setEditing(false);
+  };
+
+  return (
+    <div style={{
+      marginBottom: 16,
+      padding: "12px 14px",
+      background: currentId ? "rgba(45,212,191,.06)" : "rgba(239,68,68,.05)",
+      border: `1px solid ${currentId ? "rgba(45,212,191,.2)" : "rgba(239,68,68,.2)"}`,
+      borderRadius: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 14 }}>💬</span>
+          <span style={{ fontWeight: 600, color: BRAND.textPri, fontSize: 13 }}>LINE User ID ลูกค้า</span>
+        </div>
+        <button
+          onClick={() => setEditing(v => !v)}
+          style={{
+            background: "rgba(45,212,191,.1)", border: "1px solid rgba(45,212,191,.3)",
+            borderRadius: 6, color: BRAND.teal, fontSize: 11, padding: "3px 10px", cursor: "pointer",
+          }}
+        >
+          {editing ? "ยกเลิก" : currentId ? "แก้ไข" : "+ ตั้งค่า"}
+        </button>
+      </div>
+
+      {!editing && (
+        <div style={{ fontSize: 12, color: currentId ? BRAND.teal : BRAND.textSec, fontFamily: currentId ? "monospace" : "inherit" }}>
+          {currentId
+            ? <>
+                <span style={{ fontSize: 10, color: BRAND.textSec, fontFamily: "inherit", marginRight: 6 }}>
+                  {savedUserIds.find(u => u.id === currentId)?.label || ""}
+                </span>
+                {currentId}
+              </>
+            : "ยังไม่ได้ตั้งค่า — ปุ่ม LINE จะใช้ User ID หลักแทน"}
+        </div>
+      )}
+
+      {editing && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {/* เลือกจากรายการที่บันทึกไว้ */}
+          {savedUserIds.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 10, color: BRAND.textSec }}>เลือกจาก ID ที่บันทึกไว้</div>
+              {savedUserIds.map(u => (
+                <button
+                  key={u.id}
+                  onClick={() => handleSelect(u.id)}
+                  style={{
+                    textAlign: "left", padding: "6px 10px",
+                    background: input === u.id ? "rgba(45,212,191,.15)" : "rgba(255,255,255,.04)",
+                    border: `1px solid ${input === u.id ? "rgba(45,212,191,.4)" : BRAND.border}`,
+                    borderRadius: 7, cursor: "pointer", color: BRAND.textPri, fontSize: 12,
+                  }}
+                >
+                  <span style={{ color: BRAND.teal, fontWeight: 600 }}>{u.label || "ไม่มีชื่อ"}</span>
+                  <span style={{ color: BRAND.textSec, marginLeft: 8, fontFamily: "monospace", fontSize: 11 }}>
+                    {u.id.substring(0, 20)}...
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {/* กรอก ID เอง */}
+          <div style={{ fontSize: 10, color: BRAND.textSec }}>หรือกรอก User ID เอง</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              style={{
+                flex: 1, background: "rgba(255,255,255,.05)",
+                border: "1px solid rgba(45,212,191,.2)", borderRadius: 8,
+                color: BRAND.textPri, fontSize: 12, padding: "7px 10px",
+                outline: "none", fontFamily: "monospace",
+              }}
+            />
+            <button
+              onClick={handleSave}
+              disabled={!input.trim()}
+              style={{
+                padding: "7px 14px", borderRadius: 8,
+                background: input.trim() ? "linear-gradient(135deg,#2DD4BF,#0E7490)" : "rgba(45,212,191,.1)",
+                border: "none", color: input.trim() ? "#000" : BRAND.textSec,
+                fontWeight: 600, fontSize: 12, cursor: input.trim() ? "pointer" : "not-allowed",
+              }}
+            >
+              บันทึก
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Main App Component
 export default function App() {
   const [customers, setCustomers] = useState([]);
@@ -1089,6 +1663,7 @@ export default function App() {
   const [mainTab, setMainTab] = useState("customers");
   const [expandedId, setExpandedId] = useState(null);
   const [expandedDeeds, setExpandedDeeds] = useState({});
+  const [slipModal, setSlipModal] = React.useState(null); // { customer, payment }
   const [toast, setToast] = useState(null);
   const [apiConnected, setApiConnected] = useState(false);
   const [triggerActive, setTriggerActive] = useState(false);
@@ -1102,6 +1677,69 @@ export default function App() {
     catch { return []; }
   });
   const [syncStatus, setSyncStatus] = useState("idle"); // idle | syncing | synced | error
+
+  // ── ข้อมูลเพิ่มเติมลูกค้า (สำหรับจดหมาย Notice) ────────────────
+  const [customerExtraInfo, setCustomerExtraInfo] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem("assetx_customer_extra_info") || "{}"); }
+    catch { return {}; }
+  });
+  const updateCustomerExtraInfo = React.useCallback((customerId, info) => {
+    setCustomerExtraInfo(prev => {
+      const updated = { ...prev, [customerId]: { ...prev[customerId], ...info } };
+      localStorage.setItem("assetx_customer_extra_info", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  // ── counter เลขที่หนังสือ ────────────────────────────────────────
+  const [noticeCounter, setNoticeCounter] = React.useState(() => {
+    return parseInt(localStorage.getItem("assetx_notice_counter") || "0");
+  });
+  const getDocNumber = React.useCallback(() => {
+    const next = noticeCounter + 1;
+    setNoticeCounter(next);
+    localStorage.setItem("assetx_notice_counter", String(next));
+    const year = new Date().getFullYear() + 543;
+    return `ขฝ.${String(next).padStart(3,"0")}/${year}`;
+  }, [noticeCounter]);
+
+  // ── บันทึกการชำระเงิน (สลิป) ────────────────────────────────────
+  const [paymentRecords, setPaymentRecords] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem("assetx_payment_records") || "{}"); }
+    catch { return {}; }
+  });
+  const savePaymentRecord = React.useCallback((customerId, installment, record) => {
+    setPaymentRecords(prev => {
+      const updated = {
+        ...prev,
+        [customerId]: { ...prev[customerId], [installment]: record },
+      };
+      localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+  const deletePaymentRecord = React.useCallback((customerId, installment) => {
+    setPaymentRecords(prev => {
+      const cust = { ...prev[customerId] };
+      delete cust[installment];
+      const updated = { ...prev, [customerId]: cust };
+      localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  // ── LINE User ID รายลูกค้า ──────────────────────────────────
+  const [customerLineIds, setCustomerLineIds] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("assetx_customer_line_ids") || "{}"); }
+    catch { return {}; }
+  });
+  const updateCustomerLineId = useCallback((customerId, lineUserId) => {
+    setCustomerLineIds(prev => {
+      const updated = { ...prev, [customerId]: lineUserId };
+      localStorage.setItem("assetx_customer_line_ids", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
 
   // sync savedUserIds → Apps Script PropertiesService
   const syncToScript = useCallback(async (ids) => {
@@ -1202,47 +1840,21 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(APPS_SCRIPT_URL);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setCustomers(data);
+      // ใช้ข้อมูลจริงจาก Excel แทนการ fetch จาก Google Sheet
+      setCustomers(MOCK_DATA);
       setLastFetch(new Date().toLocaleTimeString("th-TH"));
       setApiConnected(true);
-      lineHook.addLog("success", "✅ โหลดข้อมูลลูกค้าสำเร็จ " + data.length + " ราย");
-      // เช็คสถานะ Trigger จาก Apps Script
-      try {
-        await fetch(APPS_SCRIPT_URL, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "getStatus" }),
-        });
-        // no-cors ไม่สามารถอ่าน response ได้ — ใช้ GET แทน
-        const statusRes = await fetch(`${APPS_SCRIPT_URL}?action=getStatus`);
-        if (statusRes.ok) {
-          const statusData = await statusRes.json();
-          if (statusData.hasTrigger !== undefined) setTriggerActive(statusData.hasTrigger);
-        }
-      } catch (_) {}
+      lineHook.addLog("success", "✅ โหลดข้อมูลลูกค้าสำเร็จ " + MOCK_DATA.length + " ราย");
     } catch (e) {
       setError(e.message);
       setApiConnected(false);
-      lineHook.addLog("error", "❌ โหลดข้อมูลล้มเหลว: " + e.message);
     } finally {
       setLoading(false);
     }
   }, [lineHook]);
 
   useEffect(() => {
-    if (APPS_SCRIPT_URL.includes("YOUR_")) {
-      setError("⚙️ กรุณาตั้งค่า APPS_SCRIPT_URL");
-      setLoading(false);
-      return;
-    }
     fetchData();
-    const iv = setInterval(fetchData, 5 * 60 * 1000);
-    return () => clearInterval(iv);
   }, []);
 
   const enriched = useMemo(
@@ -1252,13 +1864,15 @@ export default function App() {
         deeds: parseDeeds(c.deeds),
         payments: (c.payments || []).map((p) => {
           const diff = getDiff(p.dateStr, today);
-          return { ...p, diff, status: payStatus(diff) };
+          const record = paymentRecords[c.id]?.[p.installment];
+          const status = record ? "paid" : payStatus(diff);
+          return { ...p, diff, status, record: record || null };
         }),
         contractDiff: c.contractEndDate
           ? getDiff(c.contractEndDate, today)
           : null,
       })),
-    [customers, today]
+    [customers, today, paymentRecords]
   );
 
   const payAlerts = useMemo(() => {
@@ -2128,6 +2742,63 @@ export default function App() {
                                 </div>
                               )}
 
+                              {/* ── ข้อมูล Notice (เฉพาะขายฝาก) ── */}
+                              {c.type === "ขายฝาก" && (() => {
+                                const daysLeft = Math.ceil((new Date(c.contractEndDate) - new Date()) / 86400000);
+                                const showNotice = daysLeft <= 180 && daysLeft >= 0;
+                                const urgent = daysLeft <= 90;
+                                return (
+                                  <div style={{ marginBottom: 16 }}>
+                                    <CustomerExtraInfoSection
+                                      customer={c}
+                                      extraInfoMap={customerExtraInfo}
+                                      onUpdate={updateCustomerExtraInfo}
+                                    />
+                                    {showNotice && (
+                                      <div style={{
+                                        padding: "12px 14px", borderRadius: 10, marginBottom: 8,
+                                        background: urgent ? "rgba(239,68,68,.06)" : "rgba(245,158,11,.06)",
+                                        border: `1px solid ${urgent ? "rgba(239,68,68,.3)" : "rgba(245,158,11,.3)"}`,
+                                      }}>
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                                          <div>
+                                            <div style={{ fontWeight: 700, color: urgent ? "#FCA5A5" : "#FDE68A", fontSize: 13 }}>
+                                              {urgent ? "🚨" : "⚠️"} ครบกำหนดไถ่ใน {daysLeft} วัน
+                                            </div>
+                                            <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>
+                                              ต้องส่ง Notice ตาม พ.ร.บ. ขายฝาก มาตรา 17
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() => {
+                                              const extra = customerExtraInfo[c.id] || {};
+                                              const docNo = getDocNumber();
+                                              printNotice(c, extra, docNo);
+                                            }}
+                                            style={{
+                                              padding: "8px 16px", borderRadius: 8, cursor: "pointer",
+                                              background: "linear-gradient(135deg,#2DD4BF,#0E7490)",
+                                              border: "none", color: "#000", fontWeight: 700, fontSize: 12,
+                                              whiteSpace: "nowrap",
+                                            }}
+                                          >
+                                            📄 สร้าง Notice PDF
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+
+                              {/* ── LINE User ID รายลูกค้า ── */}
+                              <CustomerLineIdSection
+                                customer={c}
+                                customerLineIds={customerLineIds}
+                                savedUserIds={savedUserIds}
+                                onUpdate={updateCustomerLineId}
+                              />
+
                               <div
                                 style={{
                                   marginBottom: 12,
@@ -2228,6 +2899,26 @@ export default function App() {
                                         >
                                           {pSt.label}
                                         </span>
+                                        {/* ปุ่มบันทึกสลิป */}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSlipModal({ customer: c, payment: p });
+                                          }}
+                                          className="btn"
+                                          style={{
+                                            padding: "3px 8px", borderRadius: 7, fontSize: 10,
+                                            border: p.status === "paid"
+                                              ? "1px solid rgba(34,197,94,.4)"
+                                              : "1px solid rgba(45,212,191,.3)",
+                                            background: p.status === "paid"
+                                              ? "rgba(34,197,94,.12)"
+                                              : "rgba(45,212,191,.08)",
+                                            color: p.status === "paid" ? "#86EFAC" : BRAND.teal,
+                                          }}
+                                        >
+                                          {p.status === "paid" ? "🧾 ดูสลิป" : "💳 บันทึก"}
+                                        </button>
                                         {(p.status === "today" ||
                                           p.status === "soon") && (
                                           <LineButton
@@ -2237,7 +2928,7 @@ export default function App() {
                                             onSend={(ok) =>
                                               handleLineSend(ok, c.name)
                                             }
-                                            destinationId={targetUserId}
+                                            destinationId={customerLineIds[c.id] || targetUserId}
                                           />
                                         )}
                                         <button
@@ -2249,8 +2940,7 @@ export default function App() {
                                           style={{
                                             padding: "3px 8px",
                                             borderRadius: 7,
-                                            border:
-                                              "1px solid rgba(245,158,11,.3)",
+                                            border: "1px solid rgba(245,158,11,.3)",
                                             background: "rgba(245,158,11,.08)",
                                             color: "#F59E0B",
                                             fontSize: 10,
@@ -2265,8 +2955,7 @@ export default function App() {
                                           style={{
                                             padding: "3px 8px",
                                             borderRadius: 7,
-                                            border:
-                                              "1px solid rgba(56,189,248,.3)",
+                                            border: "1px solid rgba(56,189,248,.3)",
                                             background: "rgba(56,189,248,.08)",
                                             color: "#38BDF8",
                                             fontSize: 10,
@@ -2277,6 +2966,26 @@ export default function App() {
                                           📅
                                         </a>
                                       </div>
+                                      {/* แสดงข้อมูลสลิปถ้าชำระแล้ว */}
+                                      {p.record && (
+                                        <div style={{
+                                          marginTop: 6, padding: "6px 10px",
+                                          background: "rgba(34,197,94,.06)",
+                                          border: "1px solid rgba(34,197,94,.2)",
+                                          borderRadius: 7, fontSize: 11,
+                                          display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
+                                        }}>
+                                          <span style={{ color: "#86EFAC" }}>✓ ชำระ {(p.record.amount||0).toLocaleString("th-TH")} บาท</span>
+                                          <span style={{ color: BRAND.textSec }}>วันที่ {formatThai(p.record.paidDate)}</span>
+                                          {p.record.note && <span style={{ color: BRAND.textSec }}>| {p.record.note}</span>}
+                                          {p.record.slipImage && (
+                                            <button onClick={() => window.open(p.record.slipImage, "_blank")}
+                                              style={{ background: "none", border: "none", color: BRAND.teal, fontSize: 11, cursor: "pointer", padding: 0 }}>
+                                              🖼️ ดูสลิป
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -2312,6 +3021,21 @@ export default function App() {
         <div className={`toast ${toast.success ? "" : "error"}`}>
           {toast.success ? "✅" : "❌"} {toast.message}
         </div>
+      )}
+
+      {/* Claude AI Chat */}
+      <ChatPanel customerData={customers} />
+
+      {/* Slip Modal */}
+      {slipModal && (
+        <SlipModal
+          customer={slipModal.customer}
+          payment={slipModal.payment}
+          existing={paymentRecords[slipModal.customer.id]?.[slipModal.payment.installment]}
+          onSave={(record) => savePaymentRecord(slipModal.customer.id, slipModal.payment.installment, record)}
+          onDelete={() => deletePaymentRecord(slipModal.customer.id, slipModal.payment.installment)}
+          onClose={() => setSlipModal(null)}
+        />
       )}
     </>
   );

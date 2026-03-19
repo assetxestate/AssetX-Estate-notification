@@ -1,0 +1,123 @@
+{
+  "sample_data": {
+    "salefak_redemption_notice": {
+      "description": "ตัวอย่างข้อมูลสำหรับหนังสือแจ้งกำหนดเวลาไถ่จากขายฝาก",
+      "template_id": "notice_salefak_redemption",
+      "data": {
+        "document_number": "ขฝ.001/2569",
+        "document_date": "2569-03-19",
+        "seller_name": "นายสมชาย ใจดี",
+        "seller_address": "123 หมู่ 4 ตำบลบางพลี อำเภอบางพลี จังหวัดสมุทรปราการ 10540",
+        "contract_number": "ขฝ.2568/00123",
+        "contract_date": "2568-03-19",
+        "land_office": "สำนักงานที่ดินจังหวัดสมุทรปราการ สาขาบางพลี",
+        "title_deed_number": "12345",
+        "land_number": "678",
+        "subdistrict": "บางพลี",
+        "district": "บางพลี",
+        "province": "สมุทรปราการ",
+        "land_area_rai": 1,
+        "land_area_ngan": 2,
+        "land_area_sqwa": 50,
+        "redemption_due_date": "2569-09-19",
+        "principal_amount": 2000000,
+        "interest_amount": 300000,
+        "total_redemption_amount": 2300000,
+        "payment_location": "บริษัท แอสเซท เอ็กซ์ เอสเตท จำกัด เลขที่ 99/1 ถนนรัชดาภิเษก แขวงดินแดง เขตดินแดง กรุงเทพมหานคร 10400",
+        "payee_name": null,
+        "buyer_name": "บริษัท แอสเซท เอ็กซ์ เอสเตท จำกัด"
+      }
+    },
+    "mortgage_reminder_notice": {
+      "description": "ตัวอย่างข้อมูลสำหรับหนังสือแจ้งเตือนครบกำหนดชำระหนี้จำนอง",
+      "template_id": "notice_mortgage_reminder",
+      "data": {
+        "document_number": "จน.001/2569",
+        "document_date": "2569-03-19",
+        "debtor_name": "นางสาวสมหญิง รักดี",
+        "debtor_address": "456 ซอยลาดพร้าว 71 แขวงลาดพร้าว เขตลาดพร้าว กรุงเทพมหานคร 10230",
+        "contract_number": "จน.2567/00456",
+        "contract_date": "2567-04-15",
+        "land_office": "สำนักงานที่ดินกรุงเทพมหานคร สาขาลาดพร้าว",
+        "title_deed_number": "54321",
+        "land_number": "987",
+        "subdistrict": "ลาดพร้าว",
+        "district": "ลาดพร้าว",
+        "province": "กรุงเทพมหานคร",
+        "payment_due_date": "2569-04-15",
+        "principal_amount": 1500000,
+        "interest_amount": 75000,
+        "total_amount": 1575000,
+        "payment_location": "บริษัท แอสเซท เอ็กซ์ เอสเตท จำกัด เลขที่ 99/1 ถนนรัชดาภิเษก แขวงดินแดง เขตดินแดง กรุงเทพมหานคร 10400",
+        "payment_channels": "โอนเงินเข้าบัญชีธนาคารกสิกรไทย เลขที่ 123-4-56789-0 ชื่อบัญชี บริษัท แอสเซท เอ็กซ์ เอสเตท จำกัด",
+        "creditor_name": "บริษัท แอสเซท เอ็กซ์ เอสเตท จำกัด"
+      }
+    },
+    "mortgage_enforcement_notice": {
+      "description": "ตัวอย่างข้อมูลสำหรับหนังสือบอกกล่าวบังคับจำนอง",
+      "template_id": "notice_mortgage_enforcement",
+      "data": {
+        "document_number": "บจน.001/2569",
+        "document_date": "2569-03-19",
+        "debtor_name": "นายวิชัย มีหนี้",
+        "debtor_address": "789 หมู่ 5 ตำบลบางบัวทอง อำเภอบางบัวทอง จังหวัดนนทบุรี 11110",
+        "loan_contract_number": "กย.2566/00789",
+        "loan_contract_date": "2566-06-01",
+        "mortgage_contract_number": "จน.2566/00789",
+        "mortgage_contract_date": "2566-06-01",
+        "title_deed_number": "11111",
+        "land_number": "222",
+        "subdistrict": "บางบัวทอง",
+        "district": "บางบัวทอง",
+        "province": "นนทบุรี",
+        "original_loan_amount": 3000000,
+        "principal_outstanding": 2500000,
+        "interest_outstanding": 375000,
+        "total_debt": 2875000,
+        "payment_deadline_days": 60,
+        "creditor_name": "บริษัท แอสเซท เอ็กซ์ เอสเตท จำกัด"
+      }
+    }
+  },
+  "notification_schedule": {
+    "description": "ตารางเวลาแจ้งเตือนสำหรับระบบอัตโนมัติ",
+    "salefak": {
+      "notice_windows": [
+        {
+          "days_before_due": 180,
+          "action": "first_reminder",
+          "description": "เริ่มต้นช่วงเวลาที่สามารถส่งหนังสือแจ้งได้"
+        },
+        {
+          "days_before_due": 120,
+          "action": "send_notice",
+          "description": "เวลาที่แนะนำในการส่งหนังสือ (4 เดือนก่อน)"
+        },
+        {
+          "days_before_due": 90,
+          "action": "final_deadline",
+          "description": "วันสุดท้ายที่สามารถส่งหนังสือได้ตามกฎหมาย"
+        }
+      ]
+    },
+    "mortgage_reminder": {
+      "notice_windows": [
+        {
+          "days_before_due": 30,
+          "action": "first_reminder",
+          "description": "แจ้งเตือนครั้งแรก"
+        },
+        {
+          "days_before_due": 7,
+          "action": "second_reminder",
+          "description": "แจ้งเตือนครั้งที่สอง"
+        },
+        {
+          "days_before_due": 1,
+          "action": "final_reminder",
+          "description": "แจ้งเตือนสุดท้าย"
+        }
+      ]
+    }
+  }
+}
