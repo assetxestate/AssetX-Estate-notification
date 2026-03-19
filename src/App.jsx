@@ -521,7 +521,7 @@ function TypeBadge({ type }) {
 }
 
 // System Status Page Component
-function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUserId, onSetTargetUserId, savedUserIds = [], onSaveNewUserId, onDeleteSavedUserId, syncStatus = "idle", triggerActive = false }) {
+function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUserId, onSetTargetUserId, savedUserIds = [], onSaveNewUserId, onDeleteSavedUserId, syncStatus = "idle", triggerActive = false, onSetTriggerActive }) {
   const { sending, logs, testConnection, sendTestMessage, addLog } = lineHook;
   const [customMessage, setCustomMessage] = useState("");
   const [editingUserId, setEditingUserId] = useState(false);
@@ -918,9 +918,38 @@ function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUserId, onS
               {triggerActive ? "✅ Trigger ทำงานอยู่ (8–9 AM)" : "รอตั้ง Trigger"}
             </span>
           </div>
-          <div style={{ fontSize: 10, color: BRAND.textMut }}>
+          <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 10 }}>
             {triggerActive ? "ระบบจะส่งแจ้งเตือนอัตโนมัติทุกวัน" : "ตั้งค่าใน Apps Script → Triggers"}
           </div>
+          {!triggerActive ? (
+            <button
+              onClick={() => {
+                localStorage.setItem("assetx_trigger_active", "true")
+                onSetTriggerActive && onSetTriggerActive(true)
+              }}
+              style={{
+                background: "#10B981", color: "#fff", border: "none",
+                borderRadius: 8, padding: "7px 14px", fontSize: 12,
+                fontWeight: 600, cursor: "pointer", width: "100%"
+              }}
+            >
+              ✅ ฉันตั้ง Trigger แล้ว
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                localStorage.setItem("assetx_trigger_active", "false")
+                onSetTriggerActive && onSetTriggerActive(false)
+              }}
+              style={{
+                background: "transparent", color: "#9CA3AF", border: "1px solid #E5E7EB",
+                borderRadius: 8, padding: "6px 14px", fontSize: 11,
+                cursor: "pointer", width: "100%"
+              }}
+            >
+              รีเซ็ตสถานะ
+            </button>
+          )}
         </div>
       </div>
 
@@ -1666,7 +1695,9 @@ export default function App() {
   const [slipModal, setSlipModal] = React.useState(null); // { customer, payment }
   const [toast, setToast] = useState(null);
   const [apiConnected, setApiConnected] = useState(false);
-  const [triggerActive, setTriggerActive] = useState(false);
+  const [triggerActive, setTriggerActive] = useState(
+    () => localStorage.getItem("assetx_trigger_active") === "true"
+  );
 
   // ── User ID Management + Real-time Sync ────────────────────
   const [targetUserId, setTargetUserId] = useState(
@@ -2097,6 +2128,7 @@ export default function App() {
               onDeleteSavedUserId={handleDeleteSavedUserId}
               syncStatus={syncStatus}
               triggerActive={triggerActive}
+              onSetTriggerActive={setTriggerActive}
             />
           )}
 
