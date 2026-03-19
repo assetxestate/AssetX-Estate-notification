@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import ChatPanel from "./ChatPanel.jsx";
+import ValuationPage from "./ValuationPage.jsx";
 
 // ============================================================
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
@@ -1695,6 +1696,7 @@ export default function App() {
   const [slipModal, setSlipModal] = React.useState(null); // { customer, payment }
   const [toast, setToast] = useState(null);
   const [apiConnected, setApiConnected] = useState(false);
+  const [currentView, setCurrentView] = useState("main");
   const [triggerActive, setTriggerActive] = useState(
     () => localStorage.getItem("assetx_trigger_active") === "true"
   );
@@ -2060,6 +2062,21 @@ export default function App() {
                 </span>
               </div>
               <button
+                onClick={() => setCurrentView(v => v === "valuation" ? "main" : "valuation")}
+                style={{
+                  background: currentView === "valuation" ? "rgba(45,212,191,0.15)" : "rgba(245,158,11,0.12)",
+                  border: `1px solid ${currentView === "valuation" ? BRAND.teal : BRAND.gold}`,
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  color: currentView === "valuation" ? BRAND.teal : BRAND.gold,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                🏠 ประเมิน
+              </button>
+              <button
                 onClick={fetchData}
                 className="btn"
                 style={{
@@ -2077,8 +2094,16 @@ export default function App() {
           </div>
         </nav>
 
+        {/* Valuation Page */}
+        {currentView === "valuation" && (
+          <ValuationPage
+            onBack={() => setCurrentView("main")}
+            appsScriptUrl={APPS_SCRIPT_URL}
+          />
+        )}
+
         {/* Content */}
-        <div style={{ maxWidth: 1040, margin: "0 auto", padding: "20px 16px" }}>
+        {currentView === "main" && <div style={{ maxWidth: 1040, margin: "0 auto", padding: "20px 16px" }}>
           {/* Main Tabs */}
           <div
             style={{
@@ -3046,7 +3071,7 @@ export default function App() {
             </>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* Toast */}
       {toast && (
