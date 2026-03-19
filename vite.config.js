@@ -9,8 +9,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       {
-        name: 'gemini-api',
+        name: 'gemini-api-dev',
         configureServer(server) {
+          // Dev server middleware เท่านั้น — Production ใช้ api/chat.js (Vercel)
           server.middlewares.use('/api/chat', async (req, res) => {
             if (req.method !== 'POST') {
               res.statusCode = 405
@@ -56,7 +57,6 @@ ${JSON.stringify(customerData, null, 2)}
 - ใช้ตัวเลขที่คำนวณได้จริงจากข้อมูล
 - จัดรูปแบบด้วย markdown เมื่อมีหลายรายการ`
 
-                // แปลง messages format จาก Anthropic → Gemini
                 const userMessage = messages[messages.length - 1].content
                 const history = messages.slice(0, -1).map(m => ({
                   role: m.role === 'assistant' ? 'model' : 'user',
