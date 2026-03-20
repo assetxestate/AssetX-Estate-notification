@@ -6,7 +6,7 @@ import ValuationPage from "./ValuationPage.jsx";
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbzEm_Rod-O1wujImB4cEnuj2zDOTHD6Z8w0Y4oiUHybEdLwo_vCl6tuGbdfnaDQTQf1KQ/exec";
+  "https://script.google.com/macros/s/AKfycbwRokV5S9ZaJebzwITON-QOSjfY6GHSrXXTPEBzwsTteVqXjAHN9rDtWTOvf2yKiqitJQ/exec";
 
 // ============================================================
 // 📦 ข้อมูลจริงจาก Google Sheet (ใช้ระหว่างทดสอบ UI)
