@@ -2099,6 +2099,7 @@ export default function App() {
           <ValuationPage
             onBack={() => setCurrentView("main")}
             appsScriptUrl={APPS_SCRIPT_URL}
+            customers={enriched}
           />
         )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 
 const BRAND = {
   teal: '#2DD4BF', gold: '#F59E0B', bg: '#050B18', bgCard: '#0D1B2E',
@@ -16,12 +16,9 @@ const ASSESSMENT_TYPES = [
 ]
 
 const PROPERTY_TYPES = [
-  { value: 'ที่ดิน', icon: '🗺️' },
-  { value: 'ที่อยู่อาศัย', icon: '🏠' },
-  { value: 'อาคารชุด / คอนโด', icon: '🏢' },
-  { value: 'พาณิชยกรรม', icon: '🏪' },
-  { value: 'อุตสาหกรรม / โลจิสติกส์', icon: '🏭' },
-  { value: 'โรงแรม / รีสอร์ท', icon: '🏨' },
+  { value: 'ที่ดิน', icon: '🗺️' }, { value: 'ที่อยู่อาศัย', icon: '🏠' },
+  { value: 'อาคารชุด / คอนโด', icon: '🏢' }, { value: 'พาณิชยกรรม', icon: '🏪' },
+  { value: 'อุตสาหกรรม / โลจิสติกส์', icon: '🏭' }, { value: 'โรงแรม / รีสอร์ท', icon: '🏨' },
   { value: 'อื่นๆ', icon: '📋' },
 ]
 
@@ -57,18 +54,13 @@ const ROAD_TYPE_OPTIONS = [
   { value: 'ทางลัด / ตรอกแคบ', factor: 0.65 },
 ]
 const ROAD_WIDTH_OPTIONS = [
-  { value: '≥ 20 ม.', factor: 1.05 },
-  { value: '12–19 ม.', factor: 1.00 },
-  { value: '8–11 ม.', factor: 0.95 },
-  { value: '6–7 ม. (คสล.)', factor: 0.90 },
-  { value: '4–5 ม.', factor: 0.85 },
-  { value: '< 4 ม. / ทางเท้า', factor: 0.75 },
+  { value: '≥ 20 ม.', factor: 1.05 }, { value: '12–19 ม.', factor: 1.00 },
+  { value: '8–11 ม.', factor: 0.95 }, { value: '6–7 ม. (คสล.)', factor: 0.90 },
+  { value: '4–5 ม.', factor: 0.85 }, { value: '< 4 ม. / ทางเท้า', factor: 0.75 },
 ]
 const FRONTAGE_OPTIONS = [
-  { value: '≥ 20 ม.', factor: 1.05 },
-  { value: '12–19 ม.', factor: 1.00 },
-  { value: '8–11 ม.', factor: 0.95 },
-  { value: '5–7 ม.', factor: 0.90 },
+  { value: '≥ 20 ม.', factor: 1.05 }, { value: '12–19 ม.', factor: 1.00 },
+  { value: '8–11 ม.', factor: 0.95 }, { value: '5–7 ม.', factor: 0.90 },
   { value: '< 5 ม.', factor: 0.85 },
 ]
 const ZONE_OPTIONS = [
@@ -81,10 +73,8 @@ const ZONE_OPTIONS = [
   { value: 'ก.1–3 (เขียวอ่อน) — เกษตรกรรม', factor: 0.70 },
 ]
 const SOIL_OPTIONS = [
-  { value: 'ถมเรียบร้อย / ใช้ได้เลย', factor: 1.00 },
-  { value: 'ถมบางส่วน', factor: 0.95 },
-  { value: 'ยังไม่ถม', factor: 0.90 },
-  { value: 'ต่ำกว่าถนน / มีน้ำขัง', factor: 0.80 },
+  { value: 'ถมเรียบร้อย / ใช้ได้เลย', factor: 1.00 }, { value: 'ถมบางส่วน', factor: 0.95 },
+  { value: 'ยังไม่ถม', factor: 0.90 }, { value: 'ต่ำกว่าถนน / มีน้ำขัง', factor: 0.80 },
 ]
 const RISK_FACTORS = [
   { key: 'flood', label: 'เสี่ยงน้ำท่วม', penalty: -15 },
@@ -108,13 +98,14 @@ const INITIAL_FORM = {
   roadType: '', roadWidth: '', landFrontage: '', distanceFromMain: '',
   zoneColor: '', soilCondition: '', compPrice: '', compSource: '', locationNote: '',
   risks: { flood: false, hardAccess: false, irregularShape: false, encumbrance: false, dispute: false, noUtilities: false, nuisance: false, incompleteDeed: false },
-  ltvRate: 50,
+  ltvRate: 50, linkedCustomer: '',
 }
 
+// ── UI Components ──────────────────────────────────────
 function Stepper({ step }) {
   const steps = ['ประเภท & โฉนด', 'ปัจจัยทำเล', 'ความเสี่ยง', 'ผลประเมิน']
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 28, flexWrap: 'wrap', gap: 4 }}>
+    <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 28, flexWrap: 'wrap', gap: 4 }}>
       {steps.map((s, i) => {
         const num = i + 1; const done = step > num; const active = step === num
         return (
@@ -141,9 +132,76 @@ const inputBase = { width: '100%', background: '#050B18', border: `1px solid ${B
 const Inp = (props) => <input {...props} style={{ ...inputBase, ...props.style }} />
 const Sel = ({ children, ...props }) => <select {...props} style={{ ...inputBase, ...props.style }}>{children}</select>
 
-// ── STEP 1 ──────────────────────────────────────────────
-function Step1({ form, update }) {
+// ── History View ───────────────────────────────────────
+function HistoryView({ appsScriptUrl }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    fetch(`${appsScriptUrl}?action=getValuations`)
+      .then(r => r.json())
+      .then(r => { setRows(r.data || []); setLoading(false) })
+      .catch(() => { setError('ไม่สามารถโหลดข้อมูลได้'); setLoading(false) })
+  }, [appsScriptUrl])
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 40, color: BRAND.textSec }}>กำลังโหลด...</div>
+  if (error) return <div style={{ textAlign: 'center', padding: 40, color: '#FCA5A5' }}>⚠️ {error}</div>
+  if (rows.length === 0) return <div style={{ textAlign: 'center', padding: 40, color: BRAND.textSec }}>ยังไม่มีข้อมูลการประเมิน</div>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 16, color: BRAND.textPri, marginBottom: 4 }}>
+        📋 ประวัติการประเมิน ({rows.length} รายการ)
+      </div>
+      {[...rows].reverse().map((row, i) => (
+        <Card key={i} style={{ padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 700, color: BRAND.textPri, fontSize: 15 }}>{row['รหัส/ชื่อทรัพย์'] || '—'}</div>
+              <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
+                {row['ประเภทการประเมิน']} • {row['ประเภทย่อย']} • {row['จังหวัด']}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: BRAND.textMut }}>{row['วันที่บันทึก']}</div>
+              <span style={{ background: row['สถานะ'] === 'รอดำเนินการ' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)', border: `1px solid ${row['สถานะ'] === 'รอดำเนินการ' ? 'rgba(245,158,11,0.4)' : 'rgba(16,185,129,0.4)'}`, borderRadius: 20, padding: '2px 10px', fontSize: 11, color: row['สถานะ'] === 'รอดำเนินการ' ? BRAND.gold : BRAND.success }}>
+                {row['สถานะ']}
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+            {[
+              ['มูลค่าตลาด', `฿${fmt(row['มูลค่าตลาดรวม'])}`],
+              ['FSV (80%)', `฿${fmt(row['FSV (80%)'])}`],
+              ['วงเงินแนะนำ', `฿${fmt(row['วงเงินแนะนำ'])}`],
+              ['Score', `${row['Property Score']}/100`],
+            ].map(([k, v]) => (
+              <div key={k} style={{ background: BRAND.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: BRAND.textMut }}>{k}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginTop: 2 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+// ── Step 1 ─────────────────────────────────────────────
+function Step1({ form, update, customers }) {
   const subtypes = PROPERTY_SUBTYPES[form.propertyType] || ['อื่นๆ']
+
+  const handleCustomerSelect = (val) => {
+    update('linkedCustomer', val)
+    if (!val) return
+    const cust = customers.find(c => String(c.id || c.name) === val)
+    if (!cust) return
+    if (cust.type === 'ขายฝาก' || cust.type === 'จำนอง') update('assessmentType', cust.type)
+    if (cust.name) update('projectName', cust.name)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
@@ -151,6 +209,26 @@ function Step1({ form, update }) {
         <div style={{ fontSize: 12, color: BRAND.textSec }}>เลือกประเภทและกรอกข้อมูลทรัพย์สิน</div>
       </div>
 
+      {/* Customer Link */}
+      {customers.length > 0 && (
+        <Card style={{ borderColor: 'rgba(45,212,191,0.3)' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 12 }}>👤 เชื่อมข้อมูลลูกค้า <span style={{ fontSize: 11, fontWeight: 400, color: BRAND.textMut }}>(ไม่บังคับ)</span></div>
+          <Label>เลือกลูกค้าจากระบบ</Label>
+          <Sel value={form.linkedCustomer} onChange={e => handleCustomerSelect(e.target.value)}>
+            <option value="">— ไม่เลือก / กรอกเอง —</option>
+            {customers.map(c => (
+              <option key={c.id || c.name} value={String(c.id || c.name)}>
+                {c.name} ({c.type})
+              </option>
+            ))}
+          </Sel>
+          {form.linkedCustomer && (
+            <div style={{ marginTop: 8, fontSize: 12, color: BRAND.teal }}>✅ เชื่อมกับลูกค้าแล้ว — ระบบเติมข้อมูลบางส่วนให้อัตโนมัติ</div>
+          )}
+        </Card>
+      )}
+
+      {/* Assessment type */}
       <Card>
         <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>⚡ ประเภทการประเมิน</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
@@ -164,6 +242,7 @@ function Step1({ form, update }) {
         </div>
       </Card>
 
+      {/* Property type */}
       <Card>
         <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>🏗️ ประเภทอสังหาริมทรัพย์</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 12 }}>
@@ -232,7 +311,7 @@ function Step1({ form, update }) {
   )
 }
 
-// ── STEP 2 ──────────────────────────────────────────────
+// ── Step 2 ─────────────────────────────────────────────
 function Step2({ form, update, calc }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -279,7 +358,6 @@ function Step2({ form, update, calc }) {
           <Inp value={form.compSource} onChange={e => update('compSource', e.target.value)} placeholder="เช่น ซ.20 ถนนแล้ว" />
         </Card>
       </div>
-
       <Card style={{ borderColor: 'rgba(45,212,191,0.3)' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 12 }}>🧮 ผลคำนวณราคาตลาดเบื้องต้น</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
@@ -297,7 +375,6 @@ function Step2({ form, update, calc }) {
           ))}
         </div>
       </Card>
-
       <Card>
         <Label>หมายเหตุทำเล / สภาพพื้นที่</Label>
         <textarea value={form.locationNote} onChange={e => update('locationNote', e.target.value)} placeholder="บันทึกเพิ่มเติม เช่น สภาพพื้นที่ ทิศทาง สิ่งแวดล้อม..." style={{ width: '100%', background: BRAND.bg, border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '10px 12px', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box' }} />
@@ -306,7 +383,7 @@ function Step2({ form, update, calc }) {
   )
 }
 
-// ── STEP 3 ──────────────────────────────────────────────
+// ── Step 3 ─────────────────────────────────────────────
 function Step3({ form, update, calc }) {
   const score = calc.propertyScore
   const scoreColor = score >= 80 ? BRAND.success : score >= 60 ? BRAND.gold : '#EF4444'
@@ -355,10 +432,10 @@ function Step3({ form, update, calc }) {
   )
 }
 
-// ── STEP 4 ──────────────────────────────────────────────
+// ── Step 4 ─────────────────────────────────────────────
 function Step4({ form, calc }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div id="print-area" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 48, height: 48, background: BRAND.teal, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: '#000' }}>X</div>
@@ -406,10 +483,8 @@ function Step4({ form, calc }) {
             ['ประเภทอสังหาริมทรัพย์', `${form.propertyType} — ${form.propertySubtype}`],
             ['เนื้อที่', `${form.areaRai} ไร่ ${form.areaNgan} งาน ${form.areaSqw} ตร.ว. (${fmt(calc.totalSqw)} ตร.ว.)`],
             ['ราคาประเมินกรมธนารักษ์', `${fmt(form.govPrice)} บาท/ตร.ว.`],
-            ['ทำเล', form.roadType || '—'],
-            ['ถนนหน้าที่ดิน', form.roadWidth || '—'],
-            ['หน้ากว้าง', form.landFrontage || '—'],
-            ['ผังเมือง', form.zoneColor || '—'],
+            ['ทำเล', form.roadType || '—'], ['ถนนหน้าที่ดิน', form.roadWidth || '—'],
+            ['หน้ากว้าง', form.landFrontage || '—'], ['ผังเมือง', form.zoneColor || '—'],
             ['สภาพดิน', form.soilCondition || '—'],
           ].map(([k, v]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${BRAND.border}`, fontSize: 12 }}>
@@ -418,7 +493,6 @@ function Step4({ form, calc }) {
             </div>
           ))}
         </Card>
-
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card>
             <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>⚠️ ความเสี่ยงและ SCORE</div>
@@ -444,12 +518,16 @@ function Step4({ form, calc }) {
           </Card>
         </div>
       </div>
+      <div style={{ fontSize: 11, color: BRAND.textMut, textAlign: 'center', marginTop: 8 }}>
+        AssetX Estate Co., Ltd. — Generated: {new Date().toLocaleString('th-TH')}
+      </div>
     </div>
   )
 }
 
-// ── MAIN ──────────────────────────────────────────────
-export default function ValuationPage({ onBack, appsScriptUrl }) {
+// ── Main ───────────────────────────────────────────────
+export default function ValuationPage({ onBack, appsScriptUrl, customers = [] }) {
+  const [view, setView] = useState('form')
   const [step, setStep] = useState(1)
   const [form, setForm] = useState(INITIAL_FORM)
   const [saving, setSaving] = useState(false)
@@ -480,8 +558,7 @@ export default function ValuationPage({ onBack, appsScriptUrl }) {
     setSaving(true)
     try {
       await fetch(appsScriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
+        method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'saveValuation', data: { ...form, ...calc, savedAt: new Date().toISOString() } }),
       })
@@ -493,43 +570,78 @@ export default function ValuationPage({ onBack, appsScriptUrl }) {
     }
   }
 
+  const handlePrint = () => {
+    window.print()
+  }
+
   const handleReset = () => { setForm(INITIAL_FORM); setStep(1); setSaved(false) }
 
-  const btn = (primary, danger) => ({
-    padding: '12px 20px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-    background: primary ? BRAND.gold : danger ? 'rgba(239,68,68,0.15)' : BRAND.border,
-    color: primary ? '#000' : danger ? '#FCA5A5' : BRAND.textSec,
+  const btn = (primary, ghost) => ({
+    padding: '12px 20px', borderRadius: 10, border: ghost ? `1px solid ${BRAND.border}` : 'none',
+    fontWeight: 700, fontSize: 13, cursor: 'pointer',
+    background: primary ? BRAND.gold : ghost ? 'transparent' : BRAND.border,
+    color: primary ? '#000' : ghost ? BRAND.textSec : BRAND.textSec,
   })
 
   return (
-    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px' }}>
-      <Stepper step={step} />
-      {step === 1 && <Step1 form={form} update={update} />}
-      {step === 2 && <Step2 form={form} update={update} calc={calc} />}
-      {step === 3 && <Step3 form={form} update={update} calc={calc} />}
-      {step === 4 && <Step4 form={form} calc={calc} />}
+    <>
+      {/* Print Styles */}
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; color: black !important; }
+          #print-area { color: black !important; }
+          #print-area * { color: black !important; background: white !important; border-color: #ccc !important; }
+          #print-area .card, #print-area > div > div { border: 1px solid #ccc !important; }
+        }
+      `}</style>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24, gap: 10, flexWrap: 'wrap' }}>
-        <button onClick={step === 1 ? onBack : () => setStep(s => s - 1)} style={btn(false)}>
-          ← {step === 1 ? 'กลับหน้าหลัก' : 'ย้อนกลับ'}
-        </button>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {step === 4 && (
-            <>
-              <button onClick={handleReset} style={btn(false)}>+ ทรัพย์ใหม่</button>
-              <button onClick={() => window.print()} style={{ ...btn(false), color: BRAND.gold }}>📄 PDF</button>
-              <button onClick={handleSave} disabled={saving || saved} style={{ ...btn(true), opacity: saved ? 0.7 : 1 }}>
-                {saving ? 'กำลังบันทึก...' : saved ? '✅ บันทึกแล้ว' : '💾 บันทึกข้อมูล'}
-              </button>
-            </>
-          )}
-          {step < 4 && (
-            <button onClick={() => setStep(s => s + 1)} style={btn(true)}>
-              {step === 3 ? 'ดูผลประเมิน →' : 'ถัดไป →'}
-            </button>
-          )}
+      <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px' }}>
+        {/* Top Nav */}
+        <div className="no-print" style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <button onClick={() => setView('form')} style={{ ...btn(view === 'form'), background: view === 'form' ? BRAND.gold : BRAND.border, color: view === 'form' ? '#000' : BRAND.textSec }}>
+            📋 ประเมินใหม่
+          </button>
+          <button onClick={() => setView('history')} style={{ ...btn(false), background: view === 'history' ? 'rgba(45,212,191,0.15)' : BRAND.border, color: view === 'history' ? BRAND.teal : BRAND.textSec, border: view === 'history' ? `1px solid ${BRAND.teal}` : 'none' }}>
+            📂 ประวัติการประเมิน
+          </button>
+          <button onClick={onBack} style={{ ...btn(false), marginLeft: 'auto' }}>← กลับหน้าหลัก</button>
         </div>
+
+        {/* History View */}
+        {view === 'history' && <HistoryView appsScriptUrl={appsScriptUrl} />}
+
+        {/* Form View */}
+        {view === 'form' && (
+          <>
+            <Stepper step={step} />
+            {step === 1 && <Step1 form={form} update={update} customers={customers} />}
+            {step === 2 && <Step2 form={form} update={update} calc={calc} />}
+            {step === 3 && <Step3 form={form} update={update} calc={calc} />}
+            {step === 4 && <Step4 form={form} calc={calc} />}
+
+            <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24, gap: 10, flexWrap: 'wrap' }}>
+              <button onClick={() => setStep(s => s - 1)} disabled={step === 1} style={{ ...btn(false), opacity: step === 1 ? 0.4 : 1 }}>← ย้อนกลับ</button>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {step === 4 && (
+                  <>
+                    <button onClick={handleReset} style={btn(false)}>+ ทรัพย์ใหม่</button>
+                    <button onClick={handlePrint} style={{ ...btn(false), color: BRAND.gold }}>📄 PDF</button>
+                    <button onClick={handleSave} disabled={saving || saved} style={{ ...btn(true), opacity: saved ? 0.7 : 1 }}>
+                      {saving ? 'กำลังบันทึก...' : saved ? '✅ บันทึกแล้ว' : '💾 บันทึกข้อมูล'}
+                    </button>
+                  </>
+                )}
+                {step < 4 && (
+                  <button onClick={() => setStep(s => s + 1)} style={btn(true)}>
+                    {step === 3 ? 'ดูผลประเมิน →' : 'ถัดไป →'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
-    </div>
+    </>
   )
 }
