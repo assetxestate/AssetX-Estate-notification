@@ -7,7 +7,7 @@ import MapView from "./MapView.jsx";
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbzxNO9dHLbSRr3yxpPnV03hGNvQQWiSW-MaYj9BE86-xP1wurG0AbqbxTZVVBBJ-VNUQg/exec";
+  "https://script.google.com/macros/s/AKfycbzPgG2BcytGp3YvZI1Ur6IIE4ms9z3woH8VTzJ9yP_KQ96dxDkr1YzCGa3wi1kz2500Cg/exec";
 
 // ============================================================
 // 📦 ข้อมูลจริงจาก Google Sheet (ใช้ระหว่างทดสอบ UI)

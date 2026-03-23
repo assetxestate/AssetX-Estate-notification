@@ -340,6 +340,14 @@ function doPost(e) {
       result = saveValuation(body.data);
     } else if (action === "deleteValuation") {
       result = deleteValuation(body.rowIndex);
+    } else if (action === "sendLine") {
+      const userId = e.parameter.dest || body.to;
+      if (!userId) {
+        result = { success: false, error: 'ไม่มี LINE User ID' };
+      } else {
+        sendLine(userId, body.message || '');
+        result = { success: true };
+      }
     }
 
     return ContentService
