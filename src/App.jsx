@@ -1938,14 +1938,27 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      // ใช้ข้อมูลจริงจาก Excel แทนการ fetch จาก Google Sheet
-      setCustomers(MOCK_DATA);
+      const res = await fetch(`${APPS_SCRIPT_URL}?action=getCustomers`);
+      const json = await res.json();
+      if (json.success && json.data?.length > 0) {
+        // Merge ข้อมูลสดจาก Sheet กับ MOCK_DATA (สำหรับ field ที่ไม่มีใน Sheet เช่น deeds, location, color, icon)
+        const merged = json.data.map(sheetC => {
+          const mock = MOCK_DATA.find(m => m.id === sheetC.id || m.name === sheetC.name) || {};
+          return { ...mock, ...sheetC };
+        });
+        setCustomers(merged);
+        lineHook.addLog("success", "✅ โหลดข้อมูลลูกค้าสำเร็จ " + merged.length + " ราย");
+      } else {
+        setCustomers(MOCK_DATA);
+        lineHook.addLog("info", "ℹ️ ใช้ข้อมูล fallback");
+      }
       setLastFetch(new Date().toLocaleTimeString("th-TH"));
       setApiConnected(true);
-      lineHook.addLog("success", "✅ โหลดข้อมูลลูกค้าสำเร็จ " + MOCK_DATA.length + " ราย");
     } catch (e) {
+      setCustomers(MOCK_DATA);
       setError(e.message);
       setApiConnected(false);
+      lineHook.addLog("error", "❌ โหลดข้อมูลไม่สำเร็จ: " + e.message);
     } finally {
       setLoading(false);
     }

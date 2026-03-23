@@ -380,6 +380,8 @@ function doGet(e) {
       result = getValuations();
     } else if (action === "getPaymentRecords") {
       result = getPaymentRecords();
+    } else if (action === "getCustomers") {
+      result = getCustomers();
     }
 
     return ContentService
@@ -436,6 +438,54 @@ function deleteValuation(rowIndex) {
 
   sheet.deleteRow(rowIndex);
   return { success: true, deletedRow: rowIndex };
+}
+
+// ============================================================
+// ดึงข้อมูลลูกค้าจาก Sheet DATA
+// ============================================================
+function getCustomers() {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  if (!sheet) return { success: false, error: 'ไม่พบ Sheet DATA' };
+
+  const data = sheet.getDataRange().getValues();
+  const customerMap = {};
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (!row[COL.name - 1]) continue;
+
+    var id = String(row[COL.customer_id - 1] || i);
+
+    if (!customerMap[id]) {
+      var contractRaw = row[COL.contract_end_date - 1];
+      var contractStr = '';
+      if (contractRaw) {
+        try { contractStr = Utilities.formatDate(new Date(contractRaw), 'Asia/Bangkok', 'yyyy-MM-dd'); } catch(e) {}
+      }
+      customerMap[id] = {
+        id: id,
+        name: String(row[COL.name - 1] || ''),
+        fullLabel: String(row[COL.full_label - 1] || ''),
+        type: String(row[COL.type - 1] || ''),
+        principal: Number(row[COL.principal - 1]) || 0,
+        amount: Number(row[COL.amount - 1]) || 0,
+        freq: String(row[COL.freq - 1] || ''),
+        contractEndDate: contractStr,
+        lineUserId: String(row[COL.line_user_id - 1] || ''),
+        payments: []
+      };
+    }
+
+    var installNum = row[COL.installment - 1];
+    var dateRaw = row[COL.date - 1];
+    if (installNum && dateRaw) {
+      var dateStr = '';
+      try { dateStr = Utilities.formatDate(new Date(dateRaw), 'Asia/Bangkok', 'yyyy-MM-dd'); } catch(e) {}
+      customerMap[id].payments.push({ installment: Number(installNum), dateStr: dateStr });
+    }
+  }
+
+  return { success: true, data: Object.values(customerMap) };
 }
 
 // ============================================================
