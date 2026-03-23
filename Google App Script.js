@@ -355,7 +355,7 @@ function doPost(e) {
     } else if (action === "updateValuation") {
       result = updateValuation(body.rowIndex, body.data);
     } else if (action === "deleteImgbbImage") {
-      result = deleteImgbbImage(body.deleteUrl);
+      result = deleteImgbbImage(body.imageId);
     }
 
     return ContentService
@@ -441,11 +441,17 @@ function deleteValuation(rowIndex) {
 // ============================================================
 // ลบรูปภาพจาก ImgBB (ผ่าน server เพื่อหลีก CORS)
 // ============================================================
-function deleteImgbbImage(deleteUrl) {
-  if (!deleteUrl) return { success: false, error: 'ไม่มี delete URL' };
+function deleteImgbbImage(imageId) {
+  const IMGBB_API_KEY = 'c83de7744f238eb8f1d0e87efb8bc639';
+  if (!imageId) return { success: false, error: 'ไม่มี image ID' };
   try {
-    UrlFetchApp.fetch(deleteUrl, { method: 'GET', muteHttpExceptions: true, followRedirects: true });
-    return { success: true };
+    const res = UrlFetchApp.fetch(
+      'https://api.imgbb.com/1/image/' + imageId + '?api_key=' + IMGBB_API_KEY,
+      { method: 'DELETE', muteHttpExceptions: true }
+    );
+    const code = res.getResponseCode();
+    Logger.log('ImgBB delete ' + imageId + ' → ' + code + ' ' + res.getContentText());
+    return { success: code === 200 };
   } catch (e) {
     return { success: false, error: e.message };
   }

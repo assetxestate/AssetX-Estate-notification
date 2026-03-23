@@ -1357,11 +1357,17 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
     if (!file) return;
     setUploading(true);
     try {
+      // แปลงเป็น base64 ก่อนส่ง (รองรับ album parameter ได้ดีกว่า)
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target.result.split(",")[1]);
+        reader.readAsDataURL(file);
+      });
       const now = new Date();
       const albumKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
       const albumId = IMGBB_ALBUMS[albumKey];
       const fd = new FormData();
-      fd.append("image", file);
+      fd.append("image", base64);
       if (albumId) fd.append("album", albumId);
       const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body: fd });
       const data = await res.json();
@@ -1374,10 +1380,10 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
           slipDeleteUrl: data.data.delete_url,
         }));
       } else {
-        alert("อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่");
+        alert("อัปโหลดรูปไม่สำเร็จ: " + (data.error?.message || "กรุณาลองใหม่"));
       }
-    } catch {
-      alert("เกิดข้อผิดพลาดในการอัปโหลดรูป");
+    } catch (err) {
+      alert("เกิดข้อผิดพลาด: " + err.message);
     } finally {
       setUploading(false);
     }
@@ -1800,11 +1806,11 @@ export default function App() {
     // ลบรูปจาก ImgBB ถ้ามี slipId
     setPaymentRecords(prev => {
       const record = prev[customerId]?.[installment];
-      if (record?.slipDeleteUrl) {
+      if (record?.slipId) {
         fetch(APPS_SCRIPT_URL, {
           method: "POST", mode: "no-cors",
           headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({ action: "deleteImgbbImage", deleteUrl: record.slipDeleteUrl }),
+          body: JSON.stringify({ action: "deleteImgbbImage", imageId: record.slipId }),
         }).catch(() => {});
       }
       const cust = { ...prev[customerId] };
