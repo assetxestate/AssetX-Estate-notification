@@ -1800,8 +1800,12 @@ export default function App() {
     // ลบรูปจาก ImgBB ถ้ามี slipId
     setPaymentRecords(prev => {
       const record = prev[customerId]?.[installment];
-      if (record?.slipId) {
-        fetch(`https://api.imgbb.com/1/image/${record.slipId}?api_key=${IMGBB_KEY}`, { method: "DELETE" }).catch(() => {});
+      if (record?.slipDeleteUrl) {
+        fetch(APPS_SCRIPT_URL, {
+          method: "POST", mode: "no-cors",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ action: "deleteImgbbImage", deleteUrl: record.slipDeleteUrl }),
+        }).catch(() => {});
       }
       const cust = { ...prev[customerId] };
       delete cust[installment];
