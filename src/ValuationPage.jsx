@@ -137,12 +137,81 @@ const Inp = (props) => <input {...props} style={{ ...inputBase, ...props.style }
 const Sel = ({ children, ...props }) => <select {...props} style={{ ...inputBase, ...props.style }}>{children}</select>
 
 // ── History View ───────────────────────────────────────
+function printHistoryRow(row) {
+  const now = new Date()
+  const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+  const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+  const f = (v) => Number(v) ? Number(v).toLocaleString('th-TH') : (v || '—')
+  const win = window.open('', '_blank')
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>
+  <style>
+    @page { size: A4 portrait; margin: 0; }
+    * { box-sizing: border-box; font-family: 'Sarabun','Segoe UI',sans-serif; }
+    body { margin: 6mm; padding: 0; background: white; color: black; font-size: 12px; }
+    .top-bar { display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:#1a3a5c; color:white; border-radius:8px; margin-bottom:10px; font-size:11px; }
+    .top-bar .l { font-weight:700; font-size:13px; }
+    .top-bar .r { text-align:right; line-height:1.6; }
+    h2 { font-size:18px; margin:0 0 4px; }
+    .sub { color:#555; font-size:12px; margin-bottom:12px; }
+    .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
+    .stat { border:1px solid #ccc; border-radius:8px; padding:10px; text-align:center; }
+    .stat .lbl { font-size:10px; color:#666; margin-bottom:4px; }
+    .stat .val { font-size:15px; font-weight:800; color:#1a3a5c; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .box { border:1px solid #ccc; border-radius:8px; padding:10px; }
+    .box h3 { font-size:12px; font-weight:700; margin:0 0 8px; color:#b45309; }
+    .row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee; font-size:11px; }
+    .row .k { color:#555; } .row .v { font-weight:600; text-align:right; max-width:55%; }
+    .badge { display:inline-block; border:1px solid #ccc; border-radius:20px; padding:2px 10px; font-size:11px; margin-right:6px; margin-bottom:6px; }
+    .footer { text-align:center; font-size:10px; color:#888; margin-top:10px; }
+    .zoom { zoom: 0.68; }
+  </style></head><body><div class="zoom">
+  <div class="top-bar">
+    <div class="l">AssetX Estate Co., Ltd.<br><span style="font-size:10px;font-weight:400;">รายงานประเมินมูลค่าอสังหาริมทรัพย์</span></div>
+    <div class="r">📅 ${dateStr} &nbsp; 🕐 ${timeStr}<br>ผู้ประเมิน: ${row['ผู้ประเมิน'] || '—'} &nbsp;|&nbsp; วันที่ประเมิน: ${row['วันที่ประเมิน'] || '—'}</div>
+  </div>
+  <div class="badge">${row['ประเภทการประเมิน'] || ''}</div>
+  <div class="badge">${row['ประเภทย่อย'] || ''}</div>
+  <h2>${row['รหัส/ชื่อทรัพย์'] || '—'}</h2>
+  <div class="sub">โฉนดเลขที่ ${row['เลขโฉนด'] || '—'} | ${row['ตำบล/แขวง'] ? 'ต.' + row['ตำบล/แขวง'] + ' ' : ''}${row['อำเภอ/เขต'] ? 'อ.' + row['อำเภอ/เขต'] + ' ' : ''}${row['จังหวัด'] || ''}</div>
+  <div class="grid4">
+    <div class="stat"><div class="lbl">ราคาประเมินรัฐ</div><div class="val">฿${f(row['ราคาประเมินรัฐ (บ./ตร.ว.)'])}/ตร.ว.</div></div>
+    <div class="stat"><div class="lbl">ราคาตลาดโดยประมาณ</div><div class="val">฿${f(row['มูลค่าตลาดรวม'])}</div></div>
+    <div class="stat"><div class="lbl">FORCED SALE VALUE</div><div class="val">฿${f(row['FSV (80%)'])}</div></div>
+    <div class="stat"><div class="lbl">วงเงินแนะนำ</div><div class="val" style="color:#0d9488;">฿${f(row['วงเงินแนะนำ'])}</div></div>
+  </div>
+  <div class="grid2">
+    <div class="box">
+      <h3>📋 รายละเอียดทรัพย์</h3>
+      ${[['ประเภทการประเมิน', row['ประเภทการประเมิน']], ['ประเภทอสังหาฯ', (row['ประเภทอสังหาฯ'] || '') + ' — ' + (row['ประเภทย่อย'] || '')], ['เนื้อที่', (row['ไร่'] || 0) + ' ไร่ ' + (row['งาน'] || 0) + ' งาน ' + (row['ตร.ว.'] || 0) + ' ตร.ว.'], ['ราคาประเมินกรมธนารักษ์', f(row['ราคาประเมินรัฐ (บ./ตร.ว.)']) + ' บาท/ตร.ว.'], ['ทำเล', row['ทำเล']], ['ถนนหน้าที่ดิน', row['ความกว้างถนน']], ['ผังเมือง', row['ผังเมือง']], ['สภาพดิน', row['สภาพดิน']]].map(([k,v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v || '—'}</span></div>`).join('')}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="box">
+        <h3>⚠️ ความเสี่ยงและ SCORE</h3>
+        <div style="font-size:28px;font-weight:800;">${row['Property Score'] || 100}</div>
+        <div style="font-size:11px;color:#555;">/100</div>
+        <div style="font-size:11px;margin-top:6px;color:#666;">${row['ปัจจัยเสี่ยง'] || 'ไม่มี'}</div>
+      </div>
+      <div class="box">
+        <h3>💰 สรุปวงเงิน</h3>
+        ${[['มูลค่าตลาด', row['มูลค่าตลาดรวม']], ['FSV (80%)', row['FSV (80%)']], ['วงเงินแนะนำ (LTV ' + (row['LTV Rate (%)'] || '') + '%)', row['วงเงินแนะนำ']], ['วงเงินที่ลูกค้าขอ', row['วงเงินที่ลูกค้าขอ']], ['LTV ลูกค้า (%)', row['LTV ลูกค้า (% ต่อตลาด)'] + '%']].map(([k,v]) => `<div class="row"><span class="k">${k}</span><span class="v">฿${f(v)}</span></div>`).join('')}
+      </div>
+    </div>
+  </div>
+  <div class="footer">AssetX Estate Co., Ltd. — พิมพ์: ${now.toLocaleString('th-TH')}</div>
+  </div>
+  <script>window.onload = () => { window.print(); window.close(); }<\/script>
+  </body></html>`)
+  win.document.close()
+}
+
 function HistoryView({ appsScriptUrl }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [deletingIdx, setDeletingIdx] = useState(null)
-  const [confirmRow, setConfirmRow] = useState(null) // row ที่รอยืนยันลบ
+  const [confirmRow, setConfirmRow] = useState(null)
+  const [detailRow, setDetailRow] = useState(null) // row ที่กำลังดูรายละเอียด
 
   useEffect(() => {
     fetch(`${appsScriptUrl}?action=getValuations`)
@@ -207,6 +276,44 @@ function HistoryView({ appsScriptUrl }) {
         </div>
       )}
 
+      {/* Detail Modal */}
+      {detailRow && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: 24, maxWidth: 640, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: BRAND.textPri }}>📋 รายละเอียดการประเมิน</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => printHistoryRow(detailRow)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: BRAND.gold, color: '#000', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>📄 PDF</button>
+                <button onClick={() => setDetailRow(null)} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}>✕ ปิด</button>
+              </div>
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 17, color: BRAND.textPri, marginBottom: 4 }}>{detailRow['รหัส/ชื่อทรัพย์'] || '—'}</div>
+            <div style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 16 }}>
+              {detailRow['ประเภทการประเมิน']} • {detailRow['ประเภทย่อย']} • {detailRow['จังหวัด']} • วันที่บันทึก: {detailRow['วันที่บันทึก']}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 16 }}>
+              {[['มูลค่าตลาด', `฿${fmt(detailRow['มูลค่าตลาดรวม'])}`], ['FSV (80%)', `฿${fmt(detailRow['FSV (80%)'])}`], ['วงเงินแนะนำ', `฿${fmt(detailRow['วงเงินแนะนำ'])}`], ['Property Score', `${detailRow['Property Score']}/100`], ['วงเงินที่ลูกค้าขอ', `฿${fmt(detailRow['วงเงินที่ลูกค้าขอ'])}`], ['LTV ลูกค้า (%)', `${detailRow['LTV ลูกค้า (% ต่อตลาด)'] || '—'}%`]].map(([k, v]) => (
+                <div key={k} style={{ background: BRAND.bg, borderRadius: 8, padding: '8px 12px' }}>
+                  <div style={{ fontSize: 10, color: BRAND.textMut }}>{k}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.teal }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {[['📋 รายละเอียดทรัพย์', [['ประเภทอสังหาฯ', detailRow['ประเภทอสังหาฯ']], ['ประเภทย่อย', detailRow['ประเภทย่อย']], ['เลขโฉนด', detailRow['เลขโฉนด']], ['เนื้อที่', `${detailRow['ไร่'] || 0} ไร่ ${detailRow['งาน'] || 0} งาน ${detailRow['ตร.ว.'] || 0} ตร.ว.`], ['ทำเล', detailRow['ทำเล']], ['ผังเมือง', detailRow['ผังเมือง']], ['สภาพดิน', detailRow['สภาพดิน']], ['ผู้ประเมิน', detailRow['ผู้ประเมิน']]]], ['⚠️ ปัจจัยเสี่ยงและหมายเหตุ', [['ปัจจัยเสี่ยง', detailRow['ปัจจัยเสี่ยง']], ['หมายเหตุ', detailRow['หมายเหตุ']], ['Comp ราคา', detailRow['Comp (บ./ตร.ว.)']], ['แหล่ง Comp', detailRow['แหล่ง Comp']]]]].map(([title, fields]) => (
+              <div key={title} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.gold, marginBottom: 6 }}>{title}</div>
+                {fields.map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${BRAND.border}`, fontSize: 12 }}>
+                    <span style={{ color: BRAND.textSec }}>{k}</span>
+                    <span style={{ color: BRAND.textPri, textAlign: 'right', maxWidth: '55%' }}>{v || '—'}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ fontWeight: 700, fontSize: 16, color: BRAND.textPri, marginBottom: 4 }}>
         📋 ประวัติการประเมิน ({rows.length} รายการ)
       </div>
@@ -226,6 +333,20 @@ function HistoryView({ appsScriptUrl }) {
                   {row['สถานะ']}
                 </span>
               </div>
+              <button
+                onClick={() => setDetailRow(row)}
+                title="ดูรายละเอียด"
+                style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(45,212,191,0.3)`, background: 'rgba(45,212,191,0.08)', color: BRAND.teal, fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
+              >
+                👁️
+              </button>
+              <button
+                onClick={() => printHistoryRow(row)}
+                title="โหลด PDF"
+                style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(245,158,11,0.3)`, background: 'rgba(245,158,11,0.08)', color: BRAND.gold, fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
+              >
+                📄
+              </button>
               <button
                 onClick={() => setConfirmRow(row)}
                 title="ลบรายการนี้"
