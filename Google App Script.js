@@ -348,6 +348,10 @@ function doPost(e) {
         sendLine(userId, body.message || '');
         result = { success: true };
       }
+    } else if (action === "savePaymentRecord") {
+      result = savePaymentRecord(body.data);
+    } else if (action === "deletePaymentRecord") {
+      result = deletePaymentRecord(body.customerId, body.installment);
     }
 
     return ContentService
@@ -370,6 +374,8 @@ function doGet(e) {
 
     if (action === "getValuations") {
       result = getValuations();
+    } else if (action === "getPaymentRecords") {
+      result = getPaymentRecords();
     }
 
     return ContentService
@@ -426,4 +432,74 @@ function deleteValuation(rowIndex) {
 
   sheet.deleteRow(rowIndex);
   return { success: true, deletedRow: rowIndex };
+}
+
+// ============================================================
+// บันทึกการชำระเงิน (sync ข้ามอุปกรณ์)
+// ============================================================
+function savePaymentRecord(data) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName("การชำระเงิน");
+  if (!sheet) {
+    sheet = ss.insertSheet("การชำระเงิน");
+    const headers = ["customerId", "installment", "paidDate", "amount", "note", "slipUrl", "savedAt"];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setBackground("#1a3a5c").setFontColor("#ffffff").setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+  const rows = sheet.getDataRange().getValues();
+  const newRow = [
+    String(data.customerId || ""),
+    String(data.installment || ""),
+    data.paidDate || "",
+    data.amount || 0,
+    data.note || "",
+    data.slipUrl || "",
+    data.savedAt || new Date().toISOString()
+  ];
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(data.customerId) && String(rows[i][1]) === String(data.installment)) {
+      sheet.getRange(i + 1, 1, 1, newRow.length).setValues([newRow]);
+      return { success: true };
+    }
+  }
+  sheet.appendRow(newRow);
+  return { success: true };
+}
+
+// ============================================================
+// ดึงข้อมูลการชำระเงินทั้งหมด
+// ============================================================
+function getPaymentRecords() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName("การชำระเงิน");
+  if (!sheet) return { success: true, data: {} };
+  const rows = sheet.getDataRange().getValues();
+  const result = {};
+  for (let i = 1; i < rows.length; i++) {
+    const [customerId, installment, paidDate, amount, note, slipUrl, savedAt] = rows[i];
+    if (!customerId) continue;
+    const cid = String(customerId);
+    const inst = String(installment);
+    if (!result[cid]) result[cid] = {};
+    result[cid][inst] = { paidDate: String(paidDate || ""), amount: amount || 0, note: String(note || ""), slipUrl: String(slipUrl || ""), savedAt: String(savedAt || "") };
+  }
+  return { success: true, data: result };
+}
+
+// ============================================================
+// ลบรายการชำระเงิน
+// ============================================================
+function deletePaymentRecord(customerId, installment) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName("การชำระเงิน");
+  if (!sheet) return { success: false, error: 'ไม่พบ Sheet' };
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(customerId) && String(rows[i][1]) === String(installment)) {
+      sheet.deleteRow(i + 1);
+      return { success: true };
+    }
+  }
+  return { success: false, error: 'ไม่พบรายการ' };
 }

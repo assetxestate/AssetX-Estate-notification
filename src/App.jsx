@@ -8,6 +8,7 @@ import MapView from "./MapView.jsx";
 // ============================================================
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbzPgG2BcytGp3YvZI1Ur6IIE4ms9z3woH8VTzJ9yP_KQ96dxDkr1YzCGa3wi1kz2500Cg/exec";
+const IMGBB_KEY = "c83de7744f238eb8f1d0e87efb8bc639";
 
 // ============================================================
 // 📦 ข้อมูลจริงจาก Google Sheet (ใช้ระหว่างทดสอบ UI)
@@ -1330,32 +1331,34 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
     paidDate: existing?.paidDate || today,
     amount: existing?.amount || customer.amount || "",
     note: existing?.note || "",
-    slipImage: existing?.slipImage || null,
+    slipUrl: existing?.slipUrl || existing?.slipImage || null,
   });
-  const [imgPreview, setImgPreview] = React.useState(existing?.slipImage || null);
+  const [imgPreview, setImgPreview] = React.useState(existing?.slipUrl || existing?.slipImage || null);
   const [saving, setSaving] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
 
-  const handleImage = (e) => {
+  const handleImage = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      // ย่อขนาดรูปก่อนบันทึก
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const MAX = 800;
-        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
-        canvas.width = img.width * ratio;
-        canvas.height = img.height * ratio;
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-        const compressed = canvas.toDataURL("image/jpeg", 0.7);
-        setImgPreview(compressed);
-        setForm(prev => ({ ...prev, slipImage: compressed }));
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
+        method: "POST", body: fd,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setImgPreview(data.data.url);
+        setForm(prev => ({ ...prev, slipUrl: data.data.url }));
+      } else {
+        alert("อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่");
+      }
+    } catch {
+      alert("เกิดข้อผิดพลาดในการอัปโหลดรูป");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSave = () => {
@@ -1365,7 +1368,7 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
       paidDate: form.paidDate,
       amount: parseFloat(form.amount),
       note: form.note,
-      slipImage: form.slipImage,
+      slipUrl: form.slipUrl,
       savedAt: new Date().toISOString(),
     });
     onClose();
@@ -1437,13 +1440,13 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
               border: "1px dashed rgba(45,212,191,.35)", background: "rgba(45,212,191,.04)",
               color: BRAND.teal, fontSize: 13, fontWeight: 600,
             }}>
-              📎 {imgPreview ? "เปลี่ยนรูปสลิป" : "เลือกไฟล์รูปภาพ"}
-              <input type="file" accept="image/*" onChange={handleImage} style={{ display: "none" }} />
+              {uploading ? "⏳ กำลังอัปโหลด..." : imgPreview ? "เปลี่ยนรูปสลิป" : "📎 เลือกไฟล์รูปภาพ"}
+              <input type="file" accept="image/*" onChange={handleImage} style={{ display: "none" }} disabled={uploading} />
             </label>
             {imgPreview && (
               <div style={{ marginTop: 10, position: "relative" }}>
                 <img src={imgPreview} alt="slip" style={{ width: "100%", borderRadius: 8, border: "1px solid rgba(45,212,191,.2)" }} />
-                <button onClick={() => { setImgPreview(null); setForm(p => ({ ...p, slipImage: null })); }}
+                <button onClick={() => { setImgPreview(null); setForm(p => ({ ...p, slipUrl: null })); }}
                   style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,.7)", border: "none", borderRadius: "50%", color: "#fff", width: 24, height: 24, cursor: "pointer", fontSize: 12 }}>✕</button>
               </div>
             )}
@@ -1742,16 +1745,33 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("assetx_payment_records") || "{}"); }
     catch { return {}; }
   });
+
+  // โหลดข้อมูลจาก Apps Script เพื่อ sync ข้ามอุปกรณ์
+  React.useEffect(() => {
+    fetch(`${APPS_SCRIPT_URL}?action=getPaymentRecords`)
+      .then(r => r.json())
+      .then(r => {
+        if (r.success && r.data && Object.keys(r.data).length > 0) {
+          setPaymentRecords(r.data);
+          localStorage.setItem("assetx_payment_records", JSON.stringify(r.data));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const savePaymentRecord = React.useCallback((customerId, installment, record) => {
     setPaymentRecords(prev => {
-      const updated = {
-        ...prev,
-        [customerId]: { ...prev[customerId], [installment]: record },
-      };
+      const updated = { ...prev, [customerId]: { ...prev[customerId], [installment]: record } };
       localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
       return updated;
     });
+    fetch(APPS_SCRIPT_URL, {
+      method: "POST", mode: "no-cors",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ action: "savePaymentRecord", data: { customerId, installment, ...record } }),
+    }).catch(() => {});
   }, []);
+
   const deletePaymentRecord = React.useCallback((customerId, installment) => {
     setPaymentRecords(prev => {
       const cust = { ...prev[customerId] };
@@ -1760,6 +1780,11 @@ export default function App() {
       localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
       return updated;
     });
+    fetch(APPS_SCRIPT_URL, {
+      method: "POST", mode: "no-cors",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ action: "deletePaymentRecord", customerId, installment }),
+    }).catch(() => {});
   }, []);
 
   // ── LINE User ID รายลูกค้า ──────────────────────────────────
@@ -3049,11 +3074,16 @@ export default function App() {
                                           <span style={{ color: "#86EFAC" }}>✓ ชำระ {(p.record.amount||0).toLocaleString("th-TH")} บาท</span>
                                           <span style={{ color: BRAND.textSec }}>วันที่ {formatThai(p.record.paidDate)}</span>
                                           {p.record.note && <span style={{ color: BRAND.textSec }}>| {p.record.note}</span>}
-                                          {p.record.slipImage && (
+                                          {(p.record.slipUrl || p.record.slipImage) && (
                                             <button onClick={() => {
-                                              const win = window.open('', '_blank', 'width=500,height=700');
-                                              win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>สลิปการโอนเงิน</title><style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;}img{max-width:100%;max-height:100vh;border-radius:8px;}</style></head><body><img src="${p.record.slipImage}" alt="slip"/></body></html>`);
-                                              win.document.close();
+                                              const src = p.record.slipUrl || p.record.slipImage;
+                                              if (p.record.slipUrl) {
+                                                window.open(src, "_blank");
+                                              } else {
+                                                const win = window.open('', '_blank', 'width=500,height=700');
+                                                win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>สลิป</title><style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;}img{max-width:100%;max-height:100vh;border-radius:8px;}</style></head><body><img src="${src}" alt="slip"/></body></html>`);
+                                                win.document.close();
+                                              }
                                             }}
                                               style={{ background: "none", border: "none", color: BRAND.teal, fontSize: 11, cursor: "pointer", padding: 0 }}>
                                               🖼️ ดูสลิป
