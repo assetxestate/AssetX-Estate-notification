@@ -913,7 +913,33 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   }
 
   const handlePrint = () => {
-    window.print()
+    const printArea = document.getElementById('print-area')
+    if (!printArea) return
+    const win = window.open('', '_blank')
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>รายงานประเมิน — ${form.projectName || form.province || 'AssetX'}</title>
+        <style>
+          @page { size: A4 portrait; margin: 6mm; }
+          * { box-sizing: border-box; font-family: 'Sarabun', 'Segoe UI', sans-serif; }
+          body { margin: 0; padding: 0; background: white; color: black; }
+          #wrap { zoom: 0.62; display: flex; flex-direction: column; gap: 8px; }
+          #wrap * { color: black !important; background: white !important; border-color: #ccc !important; box-shadow: none !important; }
+          #wrap input, #wrap button, .no-print { display: none !important; }
+          .card, [class*="card"] { border: 1px solid #ccc !important; padding: 8px !important; border-radius: 8px; }
+          img { max-width: 100%; }
+        </style>
+      </head>
+      <body>
+        <div id="wrap">${printArea.innerHTML}</div>
+        <script>window.onload = () => { window.print(); window.close(); }<\/script>
+      </body>
+      </html>
+    `)
+    win.document.close()
   }
 
   const handleReset = () => { setForm(INITIAL_FORM); setStep(1); setSaved(false) }
@@ -928,15 +954,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   return (
     <>
       {/* Print Styles */}
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          body { background: white !important; color: black !important; }
-          #print-area { color: black !important; }
-          #print-area * { color: black !important; background: white !important; border-color: #ccc !important; }
-          #print-area .card, #print-area > div > div { border: 1px solid #ccc !important; }
-        }
-      `}</style>
+      <style>{``}</style>
 
       <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px' }}>
         {/* Top Nav */}
