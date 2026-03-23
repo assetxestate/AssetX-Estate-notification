@@ -1360,12 +1360,10 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
       const now = new Date();
       const albumKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
       const albumId = IMGBB_ALBUMS[albumKey];
-      const apiUrl = albumId
-        ? `https://api.imgbb.com/1/upload?key=${IMGBB_KEY}&album=${albumId}`
-        : `https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`;
       const fd = new FormData();
       fd.append("image", file);
-      const res = await fetch(apiUrl, { method: "POST", body: fd });
+      if (albumId) fd.append("album", albumId);
+      const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body: fd });
       const data = await res.json();
       if (data.success) {
         setImgPreview(data.data.url);
