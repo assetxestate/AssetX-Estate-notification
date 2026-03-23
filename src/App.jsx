@@ -7,7 +7,7 @@ import MapView from "./MapView.jsx";
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbxItv4yUrazbBgUi4azPav8DGz636Fz2uYal2Vg26BrE-RLg9Heqv7gioWXzQX0hzCiDg/exec";
+  "https://script.google.com/macros/s/AKfycbzupCQr4uapN6Bls_WovxI7lpF0JkD0ltsczfqWfnPK0fpye-7QkeVsE_1_NLB9CZNb1Q/exec";
 const IMGBB_KEY = "c83de7744f238eb8f1d0e87efb8bc639";
 // Album ID ตามเดือน (CE year-month → album ID)
 const IMGBB_ALBUMS = {
