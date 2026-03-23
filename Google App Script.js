@@ -352,6 +352,8 @@ function doPost(e) {
       result = savePaymentRecord(body.data);
     } else if (action === "deletePaymentRecord") {
       result = deletePaymentRecord(body.customerId, body.installment);
+    } else if (action === "updateValuation") {
+      result = updateValuation(body.rowIndex, body.data);
     }
 
     return ContentService
@@ -432,6 +434,24 @@ function deleteValuation(rowIndex) {
 
   sheet.deleteRow(rowIndex);
   return { success: true, deletedRow: rowIndex };
+}
+
+// ============================================================
+// อัปเดตรายการประเมิน
+// ============================================================
+function updateValuation(rowIndex, data) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName("ประเมิน");
+  if (!sheet) return { success: false, error: 'ไม่พบ Sheet ประเมิน' };
+  const lastRow = sheet.getLastRow();
+  if (rowIndex < 2 || rowIndex > lastRow) return { success: false, error: 'rowIndex ไม่ถูกต้อง' };
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  Object.keys(data).forEach(function(key) {
+    const colIdx = headers.indexOf(key);
+    if (colIdx !== -1) sheet.getRange(rowIndex, colIdx + 1).setValue(data[key]);
+  });
+  return { success: true };
 }
 
 // ============================================================

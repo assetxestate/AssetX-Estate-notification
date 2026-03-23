@@ -211,7 +211,10 @@ function HistoryView({ appsScriptUrl }) {
   const [error, setError] = useState(null)
   const [deletingIdx, setDeletingIdx] = useState(null)
   const [confirmRow, setConfirmRow] = useState(null)
-  const [detailRow, setDetailRow] = useState(null) // row ที่กำลังดูรายละเอียด
+  const [detailRow, setDetailRow] = useState(null)
+  const [editRow, setEditRow] = useState(null)
+  const [editForm, setEditForm] = useState({})
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetch(`${appsScriptUrl}?action=getValuations`)
@@ -219,6 +222,45 @@ function HistoryView({ appsScriptUrl }) {
       .then(r => { setRows(r.data || []); setLoading(false) })
       .catch(() => { setError('ไม่สามารถโหลดข้อมูลได้'); setLoading(false) })
   }, [appsScriptUrl])
+
+  const openEdit = (row) => {
+    setEditForm({
+      'รหัส/ชื่อทรัพย์': row['รหัส/ชื่อทรัพย์'] || '',
+      'วันที่ประเมิน': row['วันที่ประเมิน'] || '',
+      'ผู้ประเมิน': row['ผู้ประเมิน'] || '',
+      'ประเภทการประเมิน': row['ประเภทการประเมิน'] || '',
+      'มูลค่าตลาดรวม': row['มูลค่าตลาดรวม'] || '',
+      'FSV (80%)': row['FSV (80%)'] || '',
+      'วงเงินแนะนำ': row['วงเงินแนะนำ'] || '',
+      'Property Score': row['Property Score'] || '',
+      'LTV Rate (%)': row['LTV Rate (%)'] || '',
+      'วงเงินที่ลูกค้าขอ': row['วงเงินที่ลูกค้าขอ'] || '',
+      'ปัจจัยเสี่ยง': row['ปัจจัยเสี่ยง'] || '',
+      'หมายเหตุ': row['หมายเหตุ'] || '',
+      'สถานะ': row['สถานะ'] || 'รอดำเนินการ',
+    })
+    setEditRow(row)
+  }
+
+  const handleUpdate = async () => {
+    if (!editRow) return
+    setSaving(true)
+    try {
+      await fetch(appsScriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'updateValuation', rowIndex: editRow['_rowIndex'], data: editForm }),
+      })
+      setRows(prev => prev.map(r =>
+        r['_rowIndex'] === editRow['_rowIndex'] ? { ...r, ...editForm } : r
+      ))
+      setEditRow(null)
+    } catch (e) {
+      alert('เกิดข้อผิดพลาด: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const handleDelete = async (row) => {
     const rowIndex = row['_rowIndex']
@@ -275,6 +317,68 @@ function HistoryView({ appsScriptUrl }) {
           </div>
         </div>
       )}
+
+      {/* Edit Modal */}
+      {editRow && (() => {
+        const inp = { width: '100%', background: 'rgba(255,255,255,0.06)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', marginTop: 4 }
+        const lbl = { fontSize: 11, color: BRAND.textSec, display: 'block', marginBottom: 2 }
+        const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }))
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+            <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: 24, maxWidth: 580, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: BRAND.textPri }}>✏️ แก้ไขรายการประเมิน</div>
+                <button onClick={() => setEditRow(null)} style={{ background: 'none', border: 'none', color: BRAND.textSec, fontSize: 18, cursor: 'pointer' }}>✕</button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {[['รหัส/ชื่อทรัพย์','text'],['วันที่ประเมิน','date'],['ผู้ประเมิน','text'],['ประเภทการประเมิน','text']].map(([k, t]) => (
+                  <div key={k}>
+                    <label style={lbl}>{k}</label>
+                    <input type={t} value={editForm[k]} onChange={e => ef(k, e.target.value)} style={inp} />
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ margin: '14px 0 8px', fontSize: 12, fontWeight: 700, color: BRAND.gold }}>💰 ผลการประเมิน</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {[['มูลค่าตลาดรวม','number'],['FSV (80%)','number'],['วงเงินแนะนำ','number'],['วงเงินที่ลูกค้าขอ','number'],['Property Score','number'],['LTV Rate (%)','number']].map(([k, t]) => (
+                  <div key={k}>
+                    <label style={lbl}>{k}</label>
+                    <input type={t} value={editForm[k]} onChange={e => ef(k, e.target.value)} style={inp} />
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ margin: '14px 0 8px', fontSize: 12, fontWeight: 700, color: BRAND.gold }}>📋 อื่นๆ</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={lbl}>สถานะ</label>
+                  <select value={editForm['สถานะ']} onChange={e => ef('สถานะ', e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+                    {['รอดำเนินการ','อนุมัติแล้ว','ปฏิเสธ','ยกเลิก'].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>ปัจจัยเสี่ยง</label>
+                  <input type="text" value={editForm['ปัจจัยเสี่ยง']} onChange={e => ef('ปัจจัยเสี่ยง', e.target.value)} style={inp} />
+                </div>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <label style={lbl}>หมายเหตุ</label>
+                <textarea value={editForm['หมายเหตุ']} onChange={e => ef('หมายเหตุ', e.target.value)}
+                  rows={3} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                <button onClick={() => setEditRow(null)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+                <button onClick={handleUpdate} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: BRAND.teal, color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {saving ? '⏳ กำลังบันทึก...' : '💾 บันทึกการแก้ไข'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Detail Modal */}
       {detailRow && (
@@ -333,6 +437,13 @@ function HistoryView({ appsScriptUrl }) {
                   {row['สถานะ']}
                 </span>
               </div>
+              <button
+                onClick={() => openEdit(row)}
+                title="แก้ไขข้อมูล"
+                style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(99,102,241,0.3)`, background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
+              >
+                ✏️
+              </button>
               <button
                 onClick={() => setDetailRow(row)}
                 title="ดูรายละเอียด"
