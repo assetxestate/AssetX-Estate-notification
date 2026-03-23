@@ -9,6 +9,19 @@ import MapView from "./MapView.jsx";
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbxItv4yUrazbBgUi4azPav8DGz636Fz2uYal2Vg26BrE-RLg9Heqv7gioWXzQX0hzCiDg/exec";
 const IMGBB_KEY = "c83de7744f238eb8f1d0e87efb8bc639";
+// Album ID ตามเดือน (CE year-month → album ID)
+const IMGBB_ALBUMS = {
+  "2026-3":  "k5zwF3",
+  "2026-4":  "FHR9kk",
+  "2026-5":  "wBhbzx",
+  "2026-6":  "tqx66x",
+  "2026-7":  "BqqfBk",
+  "2026-8":  "jP0hTG",
+  "2026-9":  "31WZ3s",
+  "2026-10": "xmZXwy",
+  "2026-11": "KxKbwv",
+  "2026-12": "r20fDp",
+};
 
 // ============================================================
 // 📦 ข้อมูลจริงจาก Google Sheet (ใช้ระหว่างทดสอบ UI)
@@ -1332,6 +1345,8 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
     amount: existing?.amount || customer.amount || "",
     note: existing?.note || "",
     slipUrl: existing?.slipUrl || existing?.slipImage || null,
+    slipId: existing?.slipId || null,
+    slipDeleteUrl: existing?.slipDeleteUrl || null,
   });
   const [imgPreview, setImgPreview] = React.useState(existing?.slipUrl || existing?.slipImage || null);
   const [saving, setSaving] = React.useState(false);
@@ -1342,15 +1357,24 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
     if (!file) return;
     setUploading(true);
     try {
+      const now = new Date();
+      const albumKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+      const albumId = IMGBB_ALBUMS[albumKey];
+      const apiUrl = albumId
+        ? `https://api.imgbb.com/1/upload?key=${IMGBB_KEY}&album=${albumId}`
+        : `https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`;
       const fd = new FormData();
       fd.append("image", file);
-      const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
-        method: "POST", body: fd,
-      });
+      const res = await fetch(apiUrl, { method: "POST", body: fd });
       const data = await res.json();
       if (data.success) {
         setImgPreview(data.data.url);
-        setForm(prev => ({ ...prev, slipUrl: data.data.url }));
+        setForm(prev => ({
+          ...prev,
+          slipUrl: data.data.url,
+          slipId: data.data.id,
+          slipDeleteUrl: data.data.delete_url,
+        }));
       } else {
         alert("อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่");
       }
@@ -1369,6 +1393,8 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
       amount: parseFloat(form.amount),
       note: form.note,
       slipUrl: form.slipUrl,
+      slipId: form.slipId,
+      slipDeleteUrl: form.slipDeleteUrl,
       savedAt: new Date().toISOString(),
     });
     onClose();
@@ -1446,7 +1472,7 @@ function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
             {imgPreview && (
               <div style={{ marginTop: 10, position: "relative" }}>
                 <img src={imgPreview} alt="slip" style={{ width: "100%", borderRadius: 8, border: "1px solid rgba(45,212,191,.2)" }} />
-                <button onClick={() => { setImgPreview(null); setForm(p => ({ ...p, slipUrl: null })); }}
+                <button onClick={() => { setImgPreview(null); setForm(p => ({ ...p, slipUrl: null, slipId: null, slipDeleteUrl: null })); }}
                   style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,.7)", border: "none", borderRadius: "50%", color: "#fff", width: 24, height: 24, cursor: "pointer", fontSize: 12 }}>✕</button>
               </div>
             )}
@@ -1773,7 +1799,12 @@ export default function App() {
   }, []);
 
   const deletePaymentRecord = React.useCallback((customerId, installment) => {
+    // ลบรูปจาก ImgBB ถ้ามี slipId
     setPaymentRecords(prev => {
+      const record = prev[customerId]?.[installment];
+      if (record?.slipId) {
+        fetch(`https://api.imgbb.com/1/image/${record.slipId}?api_key=${IMGBB_KEY}`, { method: "DELETE" }).catch(() => {});
+      }
       const cust = { ...prev[customerId] };
       delete cust[installment];
       const updated = { ...prev, [customerId]: cust };

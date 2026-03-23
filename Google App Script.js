@@ -462,7 +462,7 @@ function savePaymentRecord(data) {
   let sheet = ss.getSheetByName("การชำระเงิน");
   if (!sheet) {
     sheet = ss.insertSheet("การชำระเงิน");
-    const headers = ["customerId", "installment", "paidDate", "amount", "note", "slipUrl", "savedAt"];
+    const headers = ["customerId", "installment", "paidDate", "amount", "note", "slipUrl", "slipId", "slipDeleteUrl", "savedAt"];
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setBackground("#1a3a5c").setFontColor("#ffffff").setFontWeight("bold");
     sheet.setFrozenRows(1);
@@ -475,6 +475,8 @@ function savePaymentRecord(data) {
     data.amount || 0,
     data.note || "",
     data.slipUrl || "",
+    data.slipId || "",
+    data.slipDeleteUrl || "",
     data.savedAt || new Date().toISOString()
   ];
   for (let i = 1; i < rows.length; i++) {
@@ -497,12 +499,12 @@ function getPaymentRecords() {
   const rows = sheet.getDataRange().getValues();
   const result = {};
   for (let i = 1; i < rows.length; i++) {
-    const [customerId, installment, paidDate, amount, note, slipUrl, savedAt] = rows[i];
+    const [customerId, installment, paidDate, amount, note, slipUrl, slipId, slipDeleteUrl, savedAt] = rows[i];
     if (!customerId) continue;
     const cid = String(customerId);
     const inst = String(installment);
     if (!result[cid]) result[cid] = {};
-    result[cid][inst] = { paidDate: String(paidDate || ""), amount: amount || 0, note: String(note || ""), slipUrl: String(slipUrl || ""), savedAt: String(savedAt || "") };
+    result[cid][inst] = { paidDate: String(paidDate || ""), amount: amount || 0, note: String(note || ""), slipUrl: String(slipUrl || ""), slipId: String(slipId || ""), slipDeleteUrl: String(slipDeleteUrl || ""), savedAt: String(savedAt || "") };
   }
   return { success: true, data: result };
 }
