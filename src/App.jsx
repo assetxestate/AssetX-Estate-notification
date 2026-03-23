@@ -3050,7 +3050,11 @@ export default function App() {
                                           <span style={{ color: BRAND.textSec }}>วันที่ {formatThai(p.record.paidDate)}</span>
                                           {p.record.note && <span style={{ color: BRAND.textSec }}>| {p.record.note}</span>}
                                           {p.record.slipImage && (
-                                            <button onClick={() => window.open(p.record.slipImage, "_blank")}
+                                            <button onClick={() => {
+                                              const win = window.open('', '_blank', 'width=500,height=700');
+                                              win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>สลิปการโอนเงิน</title><style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;}img{max-width:100%;max-height:100vh;border-radius:8px;}</style></head><body><img src="${p.record.slipImage}" alt="slip"/></body></html>`);
+                                              win.document.close();
+                                            }}
                                               style={{ background: "none", border: "none", color: BRAND.teal, fontSize: 11, cursor: "pointer", padding: 0 }}>
                                               🖼️ ดูสลิป
                                             </button>
