@@ -915,18 +915,29 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   const handlePrint = () => {
     const printArea = document.getElementById('print-area')
     if (!printArea) return
+    const now = new Date()
+    const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+    const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
     const win = window.open('', '_blank')
     win.document.write(`
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
-        <title>รายงานประเมิน — ${form.projectName || form.province || 'AssetX'}</title>
+        <title></title>
         <style>
-          @page { size: A4 portrait; margin: 6mm; }
+          @page { size: A4 portrait; margin: 0; }
           * { box-sizing: border-box; font-family: 'Sarabun', 'Segoe UI', sans-serif; }
-          body { margin: 0; padding: 0; background: white; color: black; }
+          body { margin: 6mm; padding: 0; background: white; color: black; }
+          #pdf-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 6px 10px; background: #1a3a5c; color: white;
+            border-radius: 8px; margin-bottom: 8px; font-size: 11px;
+          }
+          #pdf-header .left { font-weight: 700; font-size: 13px; }
+          #pdf-header .right { text-align: right; line-height: 1.6; }
           #wrap { zoom: 0.62; display: flex; flex-direction: column; gap: 8px; }
+          #wrap > div:first-child { display: none !important; }
           #wrap * { color: black !important; background: white !important; border-color: #ccc !important; box-shadow: none !important; }
           #wrap input, #wrap button, .no-print { display: none !important; }
           .card, [class*="card"] { border: 1px solid #ccc !important; padding: 8px !important; border-radius: 8px; }
@@ -934,6 +945,13 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
         </style>
       </head>
       <body>
+        <div id="pdf-header">
+          <div class="left">AssetX Estate Co., Ltd.<br><span style="font-size:10px;font-weight:400;">รายงานประเมินมูลค่าอสังหาริมทรัพย์</span></div>
+          <div class="right">
+            <span>📅 ${dateStr} &nbsp; 🕐 ${timeStr}</span><br>
+            <span>ผู้ประเมิน: ${form.assessorName || '—'} &nbsp;|&nbsp; วันที่ประเมิน: ${form.assessmentDate || '—'}</span>
+          </div>
+        </div>
         <div id="wrap">${printArea.innerHTML}</div>
         <script>window.onload = () => { window.print(); window.close(); }<\/script>
       </body>
