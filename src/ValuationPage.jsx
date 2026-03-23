@@ -1,4 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 const BRAND = {
   teal: '#2DD4BF', gold: '#F59E0B', bg: '#050B18', bgCard: '#0D1B2E',
@@ -99,6 +101,8 @@ const INITIAL_FORM = {
   zoneColor: '', soilCondition: '', compPrice: '', compSource: '', locationNote: '',
   risks: { flood: false, hardAccess: false, irregularShape: false, encumbrance: false, dispute: false, noUtilities: false, nuisance: false, incompleteDeed: false },
   ltvRate: 50, linkedCustomer: '',
+  lat: null, lng: null,
+  requestedLoan: '',
 }
 
 // ── UI Components ──────────────────────────────────────
@@ -137,6 +141,8 @@ function HistoryView({ appsScriptUrl }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [deletingIdx, setDeletingIdx] = useState(null)
+  const [confirmRow, setConfirmRow] = useState(null) // row ที่รอยืนยันลบ
 
   useEffect(() => {
     fetch(`${appsScriptUrl}?action=getValuations`)
@@ -145,29 +151,88 @@ function HistoryView({ appsScriptUrl }) {
       .catch(() => { setError('ไม่สามารถโหลดข้อมูลได้'); setLoading(false) })
   }, [appsScriptUrl])
 
+  const handleDelete = async (row) => {
+    const rowIndex = row['_rowIndex']
+    if (!rowIndex) { alert('ไม่พบ index ของรายการ — กรุณา reload แล้วลองใหม่'); return }
+    setDeletingIdx(rowIndex)
+    try {
+      await fetch(appsScriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deleteValuation', rowIndex }),
+      })
+      setRows(prev => prev.filter(r => r['_rowIndex'] !== rowIndex))
+    } catch (e) {
+      alert('เกิดข้อผิดพลาด: ' + e.message)
+    } finally {
+      setDeletingIdx(null)
+      setConfirmRow(null)
+    }
+  }
+
   if (loading) return <div style={{ textAlign: 'center', padding: 40, color: BRAND.textSec }}>กำลังโหลด...</div>
   if (error) return <div style={{ textAlign: 'center', padding: 40, color: '#FCA5A5' }}>⚠️ {error}</div>
   if (rows.length === 0) return <div style={{ textAlign: 'center', padding: 40, color: BRAND.textSec }}>ยังไม่มีข้อมูลการประเมิน</div>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Confirm Dialog */}
+      {confirmRow && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: BRAND.bgCard, border: `1px solid rgba(239,68,68,0.4)`, borderRadius: 16, padding: 24, maxWidth: 360, width: '100%' }}>
+            <div style={{ fontSize: 28, marginBottom: 8, textAlign: 'center' }}>🗑️</div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: BRAND.textPri, marginBottom: 6, textAlign: 'center' }}>ยืนยันการลบ</div>
+            <div style={{ fontSize: 13, color: BRAND.textSec, marginBottom: 4, textAlign: 'center' }}>
+              {confirmRow['รหัส/ชื่อทรัพย์'] || '—'}
+            </div>
+            <div style={{ fontSize: 12, color: BRAND.textMut, marginBottom: 20, textAlign: 'center' }}>
+              รายการนี้จะถูกลบออกจากระบบและ Google Sheet ถาวร
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setConfirmRow(null)}
+                style={{ flex: 1, padding: '10px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => handleDelete(confirmRow)}
+                disabled={deletingIdx !== null}
+                style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: '#EF4444', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
+              >
+                {deletingIdx !== null ? '⏳ กำลังลบ...' : '🗑️ ลบถาวร'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ fontWeight: 700, fontSize: 16, color: BRAND.textPri, marginBottom: 4 }}>
         📋 ประวัติการประเมิน ({rows.length} รายการ)
       </div>
       {[...rows].reverse().map((row, i) => (
-        <Card key={i} style={{ padding: 16 }}>
+        <Card key={row['_rowIndex'] || i} style={{ padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, color: BRAND.textPri, fontSize: 15 }}>{row['รหัส/ชื่อทรัพย์'] || '—'}</div>
               <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
                 {row['ประเภทการประเมิน']} • {row['ประเภทย่อย']} • {row['จังหวัด']}
               </div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 11, color: BRAND.textMut }}>{row['วันที่บันทึก']}</div>
-              <span style={{ background: row['สถานะ'] === 'รอดำเนินการ' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)', border: `1px solid ${row['สถานะ'] === 'รอดำเนินการ' ? 'rgba(245,158,11,0.4)' : 'rgba(16,185,129,0.4)'}`, borderRadius: 20, padding: '2px 10px', fontSize: 11, color: row['สถานะ'] === 'รอดำเนินการ' ? BRAND.gold : BRAND.success }}>
-                {row['สถานะ']}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: BRAND.textMut }}>{row['วันที่บันทึก']}</div>
+                <span style={{ background: row['สถานะ'] === 'รอดำเนินการ' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)', border: `1px solid ${row['สถานะ'] === 'รอดำเนินการ' ? 'rgba(245,158,11,0.4)' : 'rgba(16,185,129,0.4)'}`, borderRadius: 20, padding: '2px 10px', fontSize: 11, color: row['สถานะ'] === 'รอดำเนินการ' ? BRAND.gold : BRAND.success }}>
+                  {row['สถานะ']}
+                </span>
+              </div>
+              <button
+                onClick={() => setConfirmRow(row)}
+                title="ลบรายการนี้"
+                style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(239,68,68,0.3)`, background: 'rgba(239,68,68,0.08)', color: '#F87171', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
+              >
+                🗑️
+              </button>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
@@ -311,6 +376,176 @@ function Step1({ form, update, customers }) {
   )
 }
 
+// ── Map Picker ─────────────────────────────────────────
+function MapPicker({ form, update }) {
+  const mapRef = useRef(null)
+  const mapInstanceRef = useRef(null)
+  const markerRef = useRef(null)
+  const [searching, setSearching] = useState(false)
+  const [latInput, setLatInput] = useState(form.lat != null ? String(form.lat) : '')
+  const [lngInput, setLngInput] = useState(form.lng != null ? String(form.lng) : '')
+  const mapHeight = typeof window !== 'undefined' && window.innerWidth < 640 ? 260 : 320
+
+  useEffect(() => {
+    if (mapInstanceRef.current || !mapRef.current) return
+    fixLeafletIcons()
+
+    const map = L.map(mapRef.current, {
+      dragging: true,
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      touchZoom: true,
+    }).setView([13.0, 101.5], 6)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map)
+
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng
+      update('lat', lat)
+      update('lng', lng)
+      setLatInput(lat.toFixed(6))
+      setLngInput(lng.toFixed(6))
+      if (markerRef.current) {
+        markerRef.current.setLatLng([lat, lng])
+      } else {
+        markerRef.current = L.marker([lat, lng]).addTo(map)
+        markerRef.current.bindPopup('📍 ตำแหน่งทรัพย์สิน').openPopup()
+      }
+    })
+
+    mapInstanceRef.current = map
+
+    if (form.lat && form.lng) {
+      markerRef.current = L.marker([form.lat, form.lng]).addTo(map)
+      map.setView([form.lat, form.lng], 14)
+    }
+
+    return () => {
+      map.remove()
+      mapInstanceRef.current = null
+      markerRef.current = null
+    }
+  }, [])
+
+  const handleSearch = async () => {
+    const parts = [form.subdistrict, form.district, form.province].filter(Boolean)
+    if (parts.length === 0) {
+      alert('กรุณากรอก จังหวัด/อำเภอ/ตำบล ใน Step 1 ก่อน')
+      return
+    }
+    setSearching(true)
+    try {
+      const q = encodeURIComponent(parts.join(' ') + ' ประเทศไทย')
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`)
+      const data = await res.json()
+      if (data.length > 0) {
+        placeMarker(parseFloat(data[0].lat), parseFloat(data[0].lon))
+      } else {
+        alert('ไม่พบตำแหน่ง กรุณาคลิกบนแผนที่แทน')
+      }
+    } catch {
+      alert('เกิดข้อผิดพลาดในการค้นหาตำแหน่ง')
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const placeMarker = (lat, lng) => {
+    if (!mapInstanceRef.current) return
+    update('lat', lat)
+    update('lng', lng)
+    setLatInput(String(lat))
+    setLngInput(String(lng))
+    mapInstanceRef.current.setView([lat, lng], 15)
+    if (markerRef.current) {
+      markerRef.current.setLatLng([lat, lng])
+    } else {
+      markerRef.current = L.marker([lat, lng]).addTo(mapInstanceRef.current)
+      markerRef.current.bindPopup('📍 ตำแหน่งทรัพย์สิน').openPopup()
+    }
+  }
+
+  const handleCoordConfirm = () => {
+    const lat = parseFloat(latInput)
+    const lng = parseFloat(lngInput)
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      alert('พิกัดไม่ถูกต้อง\nละติจูด: -90 ถึง 90\nลองจิจูด: -180 ถึง 180')
+      return
+    }
+    placeMarker(lat, lng)
+  }
+
+  const handleClear = () => {
+    update('lat', null)
+    update('lng', null)
+    setLatInput('')
+    setLngInput('')
+    if (markerRef.current) {
+      markerRef.current.remove()
+      markerRef.current = null
+    }
+  }
+
+  return (
+    <Card style={{ borderColor: 'rgba(45,212,191,0.3)' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 12 }}>🗺️ ปักหมุดสถานที่ทรัพย์สิน</div>
+
+      {/* ช่องกรอกพิกัดด้วยมือ */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
+        <div>
+          <Label>ละติจูด (Latitude)</Label>
+          <Inp
+            type="number" step="any"
+            value={latInput}
+            onChange={e => setLatInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleCoordConfirm()}
+            placeholder="เช่น 13.75398"
+          />
+        </div>
+        <div>
+          <Label>ลองจิจูด (Longitude)</Label>
+          <Inp
+            type="number" step="any"
+            value={lngInput}
+            onChange={e => setLngInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleCoordConfirm()}
+            placeholder="เช่น 100.50144"
+          />
+        </div>
+        <button onClick={handleCoordConfirm} style={{ padding: '9px 14px', borderRadius: 8, border: `1px solid ${BRAND.teal}`, background: 'rgba(45,212,191,0.12)', color: BRAND.teal, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          📍 ยืนยัน
+        </button>
+      </div>
+
+      {/* ปุ่มค้นหา + สถานะ */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button onClick={handleSearch} disabled={searching} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: BRAND.bg, color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}>
+          {searching ? '⏳ กำลังค้นหา...' : '🔍 ค้นหาจากที่อยู่ (Step 1)'}
+        </button>
+        {form.lat && form.lng && (
+          <>
+            <div style={{ padding: '6px 10px', borderRadius: 8, background: 'rgba(45,212,191,0.08)', border: `1px solid rgba(45,212,191,0.3)`, fontSize: 11, color: BRAND.teal }}>
+              ✅ บันทึกแล้ว: {Number(form.lat).toFixed(5)}, {Number(form.lng).toFixed(5)}
+            </div>
+            <button onClick={handleClear} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 11, cursor: 'pointer' }}>
+              ✕ ล้าง
+            </button>
+          </>
+        )}
+      </div>
+
+      <div style={{ borderRadius: 10, overflow: 'hidden', border: `1px solid ${BRAND.border}` }}>
+        <div ref={mapRef} style={{ width: '100%', height: mapHeight }} />
+      </div>
+      <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 6 }}>
+        💡 กรอกพิกัดในช่องด้านบน / คลิกบนแผนที่ / หรือกด "ค้นหาจากที่อยู่" — พิกัดจะถูกบันทึกลง Sheet อัตโนมัติ
+      </div>
+    </Card>
+  )
+}
+
 // ── Step 2 ─────────────────────────────────────────────
 function Step2({ form, update, calc }) {
   return (
@@ -379,6 +614,7 @@ function Step2({ form, update, calc }) {
         <Label>หมายเหตุทำเล / สภาพพื้นที่</Label>
         <textarea value={form.locationNote} onChange={e => update('locationNote', e.target.value)} placeholder="บันทึกเพิ่มเติม เช่น สภาพพื้นที่ ทิศทาง สิ่งแวดล้อม..." style={{ width: '100%', background: BRAND.bg, border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '10px 12px', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box' }} />
       </Card>
+      <MapPicker form={form} update={update} />
     </div>
   )
 }
@@ -433,7 +669,12 @@ function Step3({ form, update, calc }) {
 }
 
 // ── Step 4 ─────────────────────────────────────────────
-function Step4({ form, calc }) {
+function Step4({ form, calc, update }) {
+  const reqLoan = parseFloat(form.requestedLoan) || 0
+  const reqLtv = calc.marketValue > 0 ? (reqLoan / calc.marketValue) * 100 : 0
+  const reqLtvVsFsv = calc.fsv > 0 ? (reqLoan / calc.fsv) * 100 : 0
+  const isOverLimit = reqLoan > calc.recommendedLoan
+  const reqColor = reqLoan === 0 ? BRAND.textSec : isOverLimit ? '#EF4444' : BRAND.success
   return (
     <div id="print-area" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
@@ -505,7 +746,7 @@ function Step4({ form, calc }) {
           </Card>
           <Card>
             <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>💰 สรุปวงเงิน</div>
-            {[['มูลค่าตลาด', calc.marketValue], ['FSV (80%)', calc.fsv], [`วงเงิน (LTV ${form.ltvRate}%)`, calc.recommendedLoan]].map(([k, v]) => (
+            {[['มูลค่าตลาด', calc.marketValue], ['FSV (80%)', calc.fsv], [`วงเงินแนะนำ (LTV ${form.ltvRate}%)`, calc.recommendedLoan]].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${BRAND.border}`, fontSize: 12 }}>
                 <span style={{ color: BRAND.textSec }}>{k}</span>
                 <span style={{ color: BRAND.textPri, fontWeight: 600 }}>฿{fmt(v)}</span>
@@ -516,13 +757,114 @@ function Step4({ form, calc }) {
               <div style={{ fontSize: 22, fontWeight: 800, color: BRAND.teal }}>฿{fmt(calc.recommendedLoan)}</div>
             </div>
           </Card>
+
+          {/* วงเงินที่ลูกค้าเสนอขอ */}
+          <Card style={{ borderColor: reqLoan > 0 ? `${reqColor}50` : BRAND.border }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>🙋 วงเงินที่ลูกค้าเสนอขอ</div>
+            <Label>ระบุวงเงินที่ลูกค้าต้องการ (บาท)</Label>
+            <input
+              type="number" min="0" step="10000"
+              value={form.requestedLoan}
+              onChange={e => update('requestedLoan', e.target.value)}
+              placeholder="เช่น 1500000"
+              style={{ ...inputBase, marginBottom: 14, fontSize: 15, fontWeight: 600 }}
+            />
+
+            {reqLoan > 0 && (
+              <>
+                {/* ตารางเปรียบเทียบ */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                  {[
+                    { label: 'LTV ต่อราคาตลาด', value: `${reqLtv.toFixed(2)}%`, sub: `฿${fmt(reqLoan)} ÷ ฿${fmt(calc.marketValue)}` },
+                    { label: 'LTV ต่อ FSV (80%)', value: `${reqLtvVsFsv.toFixed(2)}%`, sub: `฿${fmt(reqLoan)} ÷ ฿${fmt(calc.fsv)}` },
+                  ].map(item => (
+                    <div key={item.label} style={{ padding: 12, borderRadius: 10, background: BRAND.bg, border: `1px solid ${BRAND.border}`, textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: BRAND.textSec, marginBottom: 4 }}>{item.label}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: reqColor }}>{item.value}</div>
+                      <div style={{ fontSize: 10, color: BRAND.textMut, marginTop: 3 }}>{item.sub}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ผลเทียบวงเงินแนะนำ */}
+                <div style={{ padding: '10px 14px', borderRadius: 10, background: isOverLimit ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', border: `1px solid ${isOverLimit ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: BRAND.textSec }}>เทียบกับวงเงินแนะนำ (฿{fmt(calc.recommendedLoan)})</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: reqColor, marginTop: 2 }}>
+                      {isOverLimit
+                        ? `⚠️ เกินวงเงิน ฿${fmt(reqLoan - calc.recommendedLoan)}`
+                        : `✅ อยู่ในวงเงิน เหลือ ฿${fmt(calc.recommendedLoan - reqLoan)}`}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 10, color: BRAND.textSec }}>ส่วนต่าง LTV</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: reqColor }}>
+                      {isOverLimit ? '+' : '-'}{Math.abs(reqLtv - form.ltvRate).toFixed(2)}%
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </Card>
         </div>
       </div>
+      {form.lat && form.lng && (
+        <MiniMap lat={form.lat} lng={form.lng} label={form.projectName || form.province} />
+      )}
       <div style={{ fontSize: 11, color: BRAND.textMut, textAlign: 'center', marginTop: 8 }}>
         AssetX Estate Co., Ltd. — Generated: {new Date().toLocaleString('th-TH')}
       </div>
     </div>
   )
+}
+
+// ── Mini Map (Step 4) ───────────────────────────────────
+function MiniMap({ lat, lng, label }) {
+  const mapRef = useRef(null)
+  const mapInstanceRef = useRef(null)
+
+  useEffect(() => {
+    if (mapInstanceRef.current || !mapRef.current) return
+    fixLeafletIcons()
+
+    const map = L.map(mapRef.current, { zoomControl: false, dragging: false, scrollWheelZoom: false })
+      .setView([lat, lng], 15)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
+    const marker = L.marker([lat, lng]).addTo(map)
+    marker.bindPopup(`📍 ${label || 'ทรัพย์สิน'}`).openPopup()
+    mapInstanceRef.current = map
+
+    return () => { map.remove(); mapInstanceRef.current = null }
+  }, [])
+
+  return (
+    <Card style={{ borderColor: 'rgba(45,212,191,0.3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal }}>🗺️ ตำแหน่งทรัพย์สิน</div>
+        <a
+          href={`https://www.google.com/maps?q=${lat},${lng}`}
+          target="_blank" rel="noopener noreferrer"
+          style={{ fontSize: 11, color: BRAND.gold, textDecoration: 'none' }}
+        >
+          เปิด Google Maps ↗
+        </a>
+      </div>
+      <div ref={mapRef} style={{ width: '100%', height: 200, borderRadius: 10, border: `1px solid ${BRAND.border}` }} />
+      <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 6 }}>
+        พิกัด: {lat.toFixed(5)}, {lng.toFixed(5)}
+      </div>
+    </Card>
+  )
+}
+
+// ── fix icons helper ────────────────────────────────────
+function fixLeafletIcons() {
+  delete L.Icon.Default.prototype._getIconUrl
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  })
 }
 
 // ── Main ───────────────────────────────────────────────
@@ -618,7 +960,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
             {step === 1 && <Step1 form={form} update={update} customers={customers} />}
             {step === 2 && <Step2 form={form} update={update} calc={calc} />}
             {step === 3 && <Step3 form={form} update={update} calc={calc} />}
-            {step === 4 && <Step4 form={form} calc={calc} />}
+            {step === 4 && <Step4 form={form} calc={calc} update={update} />}
 
             <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24, gap: 10, flexWrap: 'wrap' }}>
               <button onClick={() => setStep(s => s - 1)} disabled={step === 1} style={{ ...btn(false), opacity: step === 1 ? 0.4 : 1 }}>← ย้อนกลับ</button>

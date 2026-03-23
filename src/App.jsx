@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import ChatPanel from "./ChatPanel.jsx";
 import ValuationPage from "./ValuationPage.jsx";
+import MapView from "./MapView.jsx";
 
 // ============================================================
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbwRokV5S9ZaJebzwITON-QOSjfY6GHSrXXTPEBzwsTteVqXjAHN9rDtWTOvf2yKiqitJQ/exec";
+  "https://script.google.com/macros/s/AKfycbzxNO9dHLbSRr3yxpPnV03hGNvQQWiSW-MaYj9BE86-xP1wurG0AbqbxTZVVBBJ-VNUQg/exec";
 
 // ============================================================
 // 📦 ข้อมูลจริงจาก Google Sheet (ใช้ระหว่างทดสอบ UI)
@@ -2139,6 +2140,13 @@ export default function App() {
             >
               ⚙️ สถานะระบบ
             </button>
+            <button
+              className={`tab ${mainTab === "map" ? "active" : ""}`}
+              onClick={() => setMainTab("map")}
+              style={mainTab === "map" ? { borderColor: '#2DD4BF', background: 'rgba(45,212,191,0.1)', color: '#2DD4BF' } : {}}
+            >
+              🗺️ แผนที่ทรัพย์
+            </button>
           </div>
 
           {/* System Status Tab */}
@@ -2156,6 +2164,11 @@ export default function App() {
               triggerActive={triggerActive}
               onSetTriggerActive={setTriggerActive}
             />
+          )}
+
+          {/* Map Tab */}
+          {mainTab === "map" && (
+            <MapView appsScriptUrl={APPS_SCRIPT_URL} customers={enriched} />
           )}
 
           {/* Payment Tab */}
