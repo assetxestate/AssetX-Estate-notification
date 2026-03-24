@@ -7,7 +7,7 @@ const SPREADSHEET_ID = '1gzLzNATVHVPVcFTnIGfOIMmRFGXzQnTfqa54NHIprKo';
 const SHEET_NAME = 'DATA';
 
 // LINE User ID ของนายทุน — ใส่ ID จริงตรงนี้
-const INVESTOR_LINE_USER_ID = 'INVESTOR_LINE_ID_HERE';
+const INVESTOR_LINE_USER_ID = 'U90a5c8f66cb2c879a48ba36a46b300a3';
 
 // ── คอลัมน์ใน Sheet DATA ────────────────────────────────────
 const COL = {
