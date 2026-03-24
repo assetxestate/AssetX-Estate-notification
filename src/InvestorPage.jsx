@@ -395,12 +395,21 @@ export default function InvestorPage({ appsScriptUrl }) {
                   </div>
                 )}
                 {activeTab === 'อนุมัติ' && (
-                  <button
-                    onClick={() => setContractModal(row)}
-                    style={{ width: '100%', padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#2DD4BF,#0E7490)', color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
-                  >
-                    📋 สร้างสัญญาลูกค้า
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => updateStatus(row, 'รอการตัดสินใจ')}
+                      disabled={isProcessing}
+                      style={{ flex: 1, padding: '9px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}
+                    >
+                      ↩️ ยกเลิกอนุมัติ
+                    </button>
+                    <button
+                      onClick={() => setContractModal(row)}
+                      style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#2DD4BF,#0E7490)', color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                    >
+                      📋 สร้างสัญญาลูกค้า
+                    </button>
+                  </div>
                 )}
                 {activeTab === 'ปฏิเสธ' && (
                   <button
