@@ -472,7 +472,7 @@ function HistoryView({ appsScriptUrl }) {
                 })()}
               </div>
               {/* ปุ่มส่งนายทุน — แสดงเมื่อยังไม่ส่ง หรือถูกส่งกลับมาแก้ไข */}
-              {(!row['สถานะ'] || row['สถานะ'] === 'รอดำเนินการ') && (
+              {(!row['สถานะ'] || row['สถานะ'] === 'รอดำเนินการ' || row['สถานะ'] === 'รอการตัดสินใจ') && (
                 <button
                   onClick={() => sendToInvestor(row)}
                   disabled={sendingRow === row['_rowIndex']}
