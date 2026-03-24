@@ -6,6 +6,9 @@ const LINE_TOKEN = 'QXRCBb+4ZwejMcdd/+3Tkn5o1wJBzwRxR2nBswV+gGWqSYXA5cXr93uxzet9
 const SPREADSHEET_ID = '1gzLzNATVHVPVcFTnIGfOIMmRFGXzQnTfqa54NHIprKo';
 const SHEET_NAME = 'DATA';
 
+// LINE User ID ของนายทุน — ใส่ ID จริงตรงนี้
+const INVESTOR_LINE_USER_ID = 'INVESTOR_LINE_ID_HERE';
+
 // ── คอลัมน์ใน Sheet DATA ────────────────────────────────────
 const COL = {
   customer_id:       1,
@@ -367,6 +370,12 @@ function doPost(e) {
       result = closeContract(body.customerId, body.customerName);
     } else if (action === "reopenContract") {
       result = reopenContract(body.customerId);
+    } else if (action === "updateValuationStatus") {
+      result = updateValuationStatus(body.rowIndex, body.status);
+    } else if (action === "createCustomerFromValuation") {
+      result = createCustomerFromValuation(body.data);
+    } else if (action === "notifyInvestor") {
+      result = notifyInvestorNewValuation(body.valuationData);
     }
 
     return ContentService
@@ -397,6 +406,8 @@ function doGet(e) {
       result = getCustomers();
     } else if (action === "getContractStatuses") {
       result = getContractStatuses();
+    } else if (action === "getPendingValuations") {
+      result = getPendingValuations();
     }
 
     return ContentService
@@ -794,4 +805,137 @@ function deletePaymentRecord(customerId, installment) {
     }
   }
   return { success: false, error: 'ไม่พบรายการ' };
+}
+
+// ============================================================
+// ระบบนายทุน: อัพเดทสถานะการประเมิน
+// ============================================================
+function updateValuationStatus(rowIndex, status) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName("ประเมิน");
+  if (!sheet) return { success: false, error: 'ไม่พบ Sheet ประเมิน' };
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const statusCol = headers.indexOf('สถานะ') + 1;
+  if (statusCol === 0) return { success: false, error: 'ไม่พบ column สถานะ' };
+  sheet.getRange(rowIndex, statusCol).setValue(status);
+  return { success: true };
+}
+
+// ============================================================
+// ระบบนายทุน: ดึงรายการประเมินทั้งหมด (พร้อม rowIndex)
+// ============================================================
+function getPendingValuations() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName("ประเมิน");
+  if (!sheet) return { success: false, data: [] };
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = {};
+    headers.forEach((h, j) => { row[h] = data[i][j]; });
+    row['_rowIndex'] = i + 1;
+    rows.push(row);
+  }
+  return { success: true, data: rows };
+}
+
+// ============================================================
+// ระบบนายทุน: สร้างลูกค้าใหม่จากข้อมูลการประเมิน
+// ============================================================
+function createCustomerFromValuation(d) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) return { success: false, error: 'ไม่พบ Sheet DATA' };
+
+  // สร้าง customer_id อัตโนมัติ
+  const customerId = 'CID' + Date.now();
+  // คำนวณวันสิ้นสุดสัญญา
+  const startDate = new Date(d.contractStartDate);
+  const endDate = new Date(startDate);
+  if (d.freq === 'ราย 2 สัปดาห์') {
+    endDate.setDate(endDate.getDate() + (d.installmentCount * 14));
+  } else {
+    endDate.setMonth(endDate.getMonth() + parseInt(d.installmentCount));
+  }
+  const endDateStr = endDate.toISOString().split('T')[0];
+
+  // สร้าง location string
+  const location = [d.subdistrict ? 'ต.' + d.subdistrict : '', d.district ? 'อ.' + d.district : '', d.province || ''].filter(Boolean).join(' ');
+  // สร้าง full_label
+  const typeLabel = d.contractType === 'ขายฝาก' ? 'ขายฝาก' : 'จำนอง';
+  const fullLabel = typeLabel + ' คุณ' + d.customerName + ' (' + (d.province || '') + ')';
+  // คำนวณ amount (ดอกเบี้ยต่องวด)
+  const amount = Math.round((parseFloat(d.principal) * parseFloat(d.interestRate)) / 100);
+  // color/icon ตาม type
+  const color = d.contractType === 'ขายฝาก' ? '#F97316' : '#3B82F6';
+  const icon = d.contractType === 'ขายฝาก' ? '🏡' : '🏦';
+
+  // สร้าง installment string (วันที่ทุกงวด)
+  const installments = [];
+  const payDate = new Date(startDate);
+  for (let i = 0; i < parseInt(d.installmentCount); i++) {
+    if (d.freq === 'ราย 2 สัปดาห์') {
+      payDate.setDate(payDate.getDate() + (i === 0 ? 0 : 14));
+    } else {
+      if (i > 0) payDate.setMonth(payDate.getMonth() + 1);
+      payDate.setDate(parseInt(d.payDay));
+    }
+    installments.push(payDate.toISOString().split('T')[0]);
+  }
+
+  // เพิ่มแถวใน Sheet DATA ตาม column order
+  const row = [
+    customerId,           // customer_id
+    d.customerName,       // name
+    fullLabel,            // full_label
+    d.contractType,       // type
+    color,                // color
+    icon,                 // icon
+    parseFloat(d.principal),  // principal
+    amount,               // amount
+    d.freq,               // freq
+    location,             // location
+    d.propertyType,       // property_type
+    endDateStr,           // contract_end_date
+    installments.join(','),   // installment
+    parseInt(d.payDay),   // date
+    d.titleDeedNo || '',  // deeds
+    d.lineUserId || '',   // line_user_id
+  ];
+  sheet.appendRow(row);
+
+  // อัพเดทสถานะใน Sheet ประเมิน
+  if (d.valuationRowIndex) {
+    updateValuationStatus(d.valuationRowIndex, 'สร้างสัญญาแล้ว');
+  }
+
+  return { success: true, customerId: customerId };
+}
+
+// ============================================================
+// ระบบนายทุน: ส่ง LINE แจ้งนายทุนเมื่อมีการประเมินใหม่
+// ============================================================
+function notifyInvestorNewValuation(v) {
+  if (!INVESTOR_LINE_USER_ID || INVESTOR_LINE_USER_ID === 'INVESTOR_LINE_ID_HERE') {
+    return { success: false, error: 'ยังไม่ได้ตั้งค่า INVESTOR_LINE_USER_ID' };
+  }
+  const loc = [v['ตำบล/แขวง'] ? 'ต.' + v['ตำบล/แขวง'] : '', v['อำเภอ/เขต'] ? 'อ.' + v['อำเภอ/เขต'] : '', v['จังหวัด'] || ''].filter(Boolean).join(' ');
+  const fmtNum = (n) => n ? Number(n).toLocaleString('th-TH') : '—';
+  const msg = [
+    '🏠 มีการประเมินทรัพย์ใหม่',
+    '─────────────────',
+    '📋 ' + (v['รหัส/ชื่อทรัพย์'] || '—'),
+    '📌 ประเภท: ' + (v['ประเภทการประเมิน'] || '—') + ' • ' + (v['ประเภทย่อย'] || ''),
+    '📍 ที่ตั้ง: ' + (loc || v['จังหวัด'] || '—'),
+    '💰 มูลค่าตลาด: ฿' + fmtNum(v['มูลค่าตลาดรวม']),
+    '🏦 วงเงินที่ขอ: ฿' + fmtNum(v['วงเงินที่ลูกค้าขอ']),
+    '✅ วงเงินแนะนำ: ฿' + fmtNum(v['วงเงินแนะนำ']),
+    '👤 ผู้ประเมิน: ' + (v['ผู้ประเมิน'] || '—'),
+    '─────────────────',
+    '⏳ รอการตัดสินใจจากท่าน',
+    'AssetX Estate Co., Ltd. 🏠'
+  ].join('\n');
+  sendLine(INVESTOR_LINE_USER_ID, msg);
+  return { success: true };
 }

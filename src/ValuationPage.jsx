@@ -205,6 +205,13 @@ function printHistoryRow(row) {
   win.document.close()
 }
 
+const INVESTOR_STATUS_COLORS = {
+  'รอการตัดสินใจ': { bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.4)', text: '#F59E0B' },
+  'อนุมัติ':        { bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.4)', text: '#10B981' },
+  'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.15)',  border: 'rgba(239,68,68,0.4)',  text: '#F87171' },
+  'สร้างสัญญาแล้ว': { bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.4)', text: '#A5B4FC' },
+}
+
 function HistoryView({ appsScriptUrl }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -215,6 +222,28 @@ function HistoryView({ appsScriptUrl }) {
   const [editRow, setEditRow] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
+  const [sendingRow, setSendingRow] = useState(null)
+
+  const sendToInvestor = async (row) => {
+    setSendingRow(row['_rowIndex'])
+    try {
+      await fetch(appsScriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updateValuationStatus', rowIndex: row['_rowIndex'], status: 'รอการตัดสินใจ' }),
+      })
+      await fetch(appsScriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'notifyInvestor', valuationData: row }),
+      })
+      setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': 'รอการตัดสินใจ' } : r))
+    } catch (e) {
+      alert('เกิดข้อผิดพลาด: ' + e.message)
+    } finally {
+      setSendingRow(null)
+    }
+  }
 
   useEffect(() => {
     fetch(`${appsScriptUrl}?action=getValuations`)
@@ -433,10 +462,26 @@ function HistoryView({ appsScriptUrl }) {
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 11, color: BRAND.textMut }}>{row['วันที่บันทึก']}</div>
-                <span style={{ background: row['สถานะ'] === 'รอดำเนินการ' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)', border: `1px solid ${row['สถานะ'] === 'รอดำเนินการ' ? 'rgba(245,158,11,0.4)' : 'rgba(16,185,129,0.4)'}`, borderRadius: 20, padding: '2px 10px', fontSize: 11, color: row['สถานะ'] === 'รอดำเนินการ' ? BRAND.gold : BRAND.success }}>
-                  {row['สถานะ']}
-                </span>
+                {(() => {
+                  const st = INVESTOR_STATUS_COLORS[row['สถานะ']]
+                  return st ? (
+                    <span style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 20, padding: '2px 10px', fontSize: 11, color: st.text }}>{row['สถานะ']}</span>
+                  ) : (
+                    <span style={{ background: 'rgba(100,116,139,0.15)', border: '1px solid rgba(100,116,139,0.4)', borderRadius: 20, padding: '2px 10px', fontSize: 11, color: BRAND.textSec }}>{row['สถานะ'] || 'รอดำเนินการ'}</span>
+                  )
+                })()}
               </div>
+              {/* ปุ่มส่งนายทุน — แสดงเฉพาะสถานะที่ยังไม่ส่ง */}
+              {(!row['สถานะ'] || row['สถานะ'] === 'รอดำเนินการ') && (
+                <button
+                  onClick={() => sendToInvestor(row)}
+                  disabled={sendingRow === row['_rowIndex']}
+                  title="ส่งให้นายทุนตัดสินใจ"
+                  style={{ padding: '5px 9px', borderRadius: 8, border: '1px solid rgba(45,212,191,0.4)', background: 'rgba(45,212,191,0.1)', color: BRAND.teal, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600 }}
+                >
+                  {sendingRow === row['_rowIndex'] ? '⏳' : '📤 ส่งนายทุน'}
+                </button>
+              )}
               <button
                 onClick={() => openEdit(row)}
                 title="แก้ไขข้อมูล"

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import ChatPanel from "./ChatPanel.jsx";
 import ValuationPage from "./ValuationPage.jsx";
 import MapView from "./MapView.jsx";
+import InvestorPage from "./InvestorPage.jsx";
 
 // ============================================================
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
@@ -2246,6 +2247,13 @@ export default function App() {
             >
               🗺️ แผนที่ทรัพย์
             </button>
+            <button
+              className={`tab ${mainTab === "investor" ? "active" : ""}`}
+              onClick={() => setMainTab("investor")}
+              style={mainTab === "investor" ? { borderColor: '#F59E0B', background: 'rgba(245,158,11,0.1)', color: '#F59E0B' } : {}}
+            >
+              💼 นายทุน
+            </button>
           </div>
 
           {/* System Status Tab */}
@@ -2268,6 +2276,11 @@ export default function App() {
           {/* Map Tab */}
           {mainTab === "map" && (
             <MapView appsScriptUrl={APPS_SCRIPT_URL} customers={enriched} />
+          )}
+
+          {/* Investor Tab */}
+          {mainTab === "investor" && (
+            <InvestorPage appsScriptUrl={APPS_SCRIPT_URL} />
           )}
 
           {/* Payment Tab */}
