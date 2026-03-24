@@ -413,11 +413,11 @@ export default function InvestorPage({ appsScriptUrl }) {
                 )}
                 {activeTab === 'ปฏิเสธ' && (
                   <button
-                    onClick={() => updateStatus(row, 'รอการตัดสินใจ')}
+                    onClick={() => updateStatus(row, 'รอดำเนินการ')}
                     disabled={isProcessing}
                     style={{ width: '100%', padding: '9px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}
                   >
-                    ↩️ ส่งกลับรอตัดสินใจ
+                    ↩️ ส่งกลับแก้ไขประเมินใหม่
                   </button>
                 )}
                 {activeTab === 'สร้างสัญญาแล้ว' && (
