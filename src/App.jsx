@@ -7,7 +7,7 @@ import MapView from "./MapView.jsx";
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbwp6vYfXZao6BshJFMoIAxhDVoB3IMua4OnHWSbtGAsyMMZciLYC0KDVUeg9QFhwDWvhQ/exec";
+  "https://script.google.com/macros/s/AKfycbwvMPdSPchzOv3knn1Fu4Pr081BRLctNU-CA9siYXVUbHFYGervPN1b3EUHehLJLG_5JQ/exec";
 const IMGBB_KEY = "c83de7744f238eb8f1d0e87efb8bc639";
 // Album ID ตามเดือน (CE year-month → album ID)
 const IMGBB_ALBUMS = {
@@ -1770,6 +1770,36 @@ export default function App() {
     return `ขฝ.${String(next).padStart(3,"0")}/${year}`;
   }, [noticeCounter]);
 
+  // ── สถานะสัญญา (ปิดแล้ว) ────────────────────────────────────────
+  const [contractStatuses, setContractStatuses] = React.useState({});
+
+  React.useEffect(() => {
+    fetch(`${APPS_SCRIPT_URL}?action=getContractStatuses`)
+      .then(r => r.json())
+      .then(r => { if (r.success) setContractStatuses(r.data || {}); })
+      .catch(() => {});
+  }, []);
+
+  const closeContract = React.useCallback(async (customer) => {
+    if (!window.confirm(`ยืนยันปิดสัญญาของ คุณ${customer.name}?\n\nระบบจะหยุดแจ้งเตือนสัญญานี้ทั้งหมด`)) return;
+    setContractStatuses(prev => ({ ...prev, [customer.id]: { status: 'ปิดแล้ว', customerName: customer.name } }));
+    await fetch(APPS_SCRIPT_URL, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'closeContract', customerId: customer.id, customerName: customer.name }),
+    });
+  }, []);
+
+  const reopenContract = React.useCallback(async (customer) => {
+    if (!window.confirm(`ยืนยันเปิดสัญญาคุณ${customer.name} ใหม่?\n\nระบบจะกลับมาแจ้งเตือนตามปกติ`)) return;
+    setContractStatuses(prev => { const n = { ...prev }; delete n[customer.id]; return n; });
+    await fetch(APPS_SCRIPT_URL, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'reopenContract', customerId: customer.id }),
+    });
+  }, []);
+
   // ── บันทึกการชำระเงิน (สลิป) ────────────────────────────────────
   const [paymentRecords, setPaymentRecords] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem("assetx_payment_records") || "{}"); }
@@ -1973,6 +2003,7 @@ export default function App() {
       customers.map((c) => ({
         ...c,
         deeds: parseDeeds(c.deeds),
+        isClosed: contractStatuses[c.id]?.status === 'ปิดแล้ว',
         payments: (c.payments || []).map((p) => {
           const diff = getDiff(p.dateStr, today);
           const record = paymentRecords[c.id]?.[p.installment];
@@ -1983,23 +2014,24 @@ export default function App() {
           ? getDiff(c.contractEndDate, today)
           : null,
       })),
-    [customers, today, paymentRecords]
+    [customers, today, paymentRecords, contractStatuses]
   );
 
   const payAlerts = useMemo(() => {
     const r = [];
-    enriched.forEach((c) =>
+    enriched.forEach((c) => {
+      if (c.isClosed) return;
       c.payments.forEach((p) => {
         if (p.status === "today" || p.status === "soon") r.push({ c, p });
-      })
-    );
+      });
+    });
     return r.sort((a, b) => a.p.diff - b.p.diff);
   }, [enriched]);
 
   const contractAlerts = useMemo(
     () =>
       enriched
-        .filter((c) => c.contractDiff !== null && c.contractDiff <= 180)
+        .filter((c) => !c.isClosed && c.contractDiff !== null && c.contractDiff <= 180)
         .sort((a, b) => a.contractDiff - b.contractDiff),
     [enriched]
   );
@@ -2677,7 +2709,7 @@ export default function App() {
                         <div
                           key={c.id}
                           className="card"
-                          style={{ overflow: "hidden" }}
+                          style={{ overflow: "hidden", opacity: c.isClosed ? 0.6 : 1 }}
                         >
                           <div
                             style={{
@@ -2702,7 +2734,7 @@ export default function App() {
                                   width: 44,
                                   height: 44,
                                   borderRadius: 12,
-                                  background: c.color || BRAND.teal,
+                                  background: c.isClosed ? '#334155' : (c.color || BRAND.teal),
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -2710,14 +2742,15 @@ export default function App() {
                                   flexShrink: 0,
                                 }}
                               >
-                                {c.icon || "🏠"}
+                                {c.isClosed ? "🔒" : (c.icon || "🏠")}
                               </div>
                               <div>
                                 <div
                                   style={{
                                     fontWeight: 700,
-                                    color: BRAND.textPri,
+                                    color: c.isClosed ? BRAND.textMut : BRAND.textPri,
                                     fontSize: 15,
+                                    textDecoration: c.isClosed ? 'line-through' : 'none',
                                   }}
                                 >
                                   {c.name}
@@ -2727,7 +2760,14 @@ export default function App() {
                                 >
                                   {c.fullLabel}
                                 </div>
-                                <TypeBadge type={c.type} />
+                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                                  <TypeBadge type={c.type} />
+                                  {c.isClosed && (
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(100,116,139,0.2)', color: '#94A3B8', border: '1px solid rgba(100,116,139,0.4)' }}>
+                                      🔒 ปิดแล้ว
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
@@ -2783,6 +2823,33 @@ export default function App() {
                                 background: "rgba(0,0,0,.2)",
                               }}
                             >
+                              {/* ── ปุ่มปิด/เปิดสัญญา ── */}
+                              <div style={{ marginBottom: 16 }}>
+                                {c.isClosed ? (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); reopenContract(c); }}
+                                    style={{
+                                      width: '100%', padding: '11px 16px', borderRadius: 10,
+                                      background: 'rgba(45,212,191,0.15)', border: '1px solid rgba(45,212,191,0.5)',
+                                      color: '#2DD4BF', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                                    }}
+                                  >
+                                    🔓 เปิดสัญญาใหม่ (กลับมาแจ้งเตือนตามปกติ)
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); closeContract(c); }}
+                                    style={{
+                                      width: '100%', padding: '11px 16px', borderRadius: 10,
+                                      background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)',
+                                      color: '#FCA5A5', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                                    }}
+                                  >
+                                    🔒 ปิดสัญญา (หยุดแจ้งเตือนทั้งหมด)
+                                  </button>
+                                )}
+                              </div>
+
                               {/* ── โฉนดที่ดิน ── */}
                               {c.deeds && c.deeds.length > 0 && (
                                 <div style={{ marginBottom: 20 }}>
@@ -3147,6 +3214,7 @@ export default function App() {
                                   );
                                 })}
                               </div>
+
                             </div>
                           )}
                         </div>
@@ -3181,7 +3249,7 @@ export default function App() {
       )}
 
       {/* Claude AI Chat */}
-      <ChatPanel customerData={customers} />
+      {/* <ChatPanel customerData={customers} /> */}
 
       {/* Slip Modal */}
       {slipModal && (

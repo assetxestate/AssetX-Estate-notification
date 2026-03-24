@@ -69,19 +69,24 @@ function formatThaiDate(dateStr) {
 export default function MapView({ appsScriptUrl, customers = [] }) {
   const [valuations, setValuations] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filterMode, setFilterMode] = useState('ทั้งหมด') // ทั้งหมด | ลูกค้า | ประเมิน
+  const [refreshing, setRefreshing] = useState(false)
+  const [filterMode, setFilterMode] = useState('ทั้งหมด')
   const [filterType, setFilterType] = useState('ทั้งหมด')
+  const [mapReady, setMapReady] = useState(false)
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const markersRef = useRef([])
 
   // โหลดข้อมูลการประเมิน
-  useEffect(() => {
+  const loadValuations = (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
     fetch(`${appsScriptUrl}?action=getValuations`)
       .then(r => r.json())
-      .then(r => { setValuations(r.data || []); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [appsScriptUrl])
+      .then(r => { setValuations(r.data || []); setLoading(false); setRefreshing(false) })
+      .catch(() => { setLoading(false); setRefreshing(false) })
+  }
+
+  useEffect(() => { loadValuations() }, [appsScriptUrl])
 
   // สร้างแผนที่
   useEffect(() => {
@@ -102,12 +107,14 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
     }).addTo(map)
 
     mapInstanceRef.current = map
+    setMapReady(true)
     setTimeout(() => map.invalidateSize(), 150)
 
     return () => {
       map.remove()
       mapInstanceRef.current = null
       markersRef.current = []
+      setMapReady(false)
     }
   }, [loading])
 
@@ -208,7 +215,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
         markersRef.current.push(marker)
       })
     }
-  }, [customers, valuations, filterMode, filterType, mapInstanceRef.current])
+  }, [customers, valuations, filterMode, filterType, mapReady])
 
   // ── stats ────────────────────────────────────────────────
   const custWithLoc = customers.filter(c => {
@@ -216,7 +223,9 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
     const p = String(c.location).split(',')
     return !isNaN(parseFloat(p[0])) && !isNaN(parseFloat(p[1]))
   }).length
-  const valWithLoc = valuations.filter(r => r['lat'] && r['lng']).length
+  const valWithLoc = valuations.filter(r => !isNaN(parseFloat(r['lat'])) && !isNaN(parseFloat(r['lng']))).length
+  const valTotal = valuations.length
+  const valsNoLoc = valuations.filter(r => isNaN(parseFloat(r['lat'])) || isNaN(parseFloat(r['lng'])))
   const mapHeight = typeof window !== 'undefined' && window.innerWidth < 640 ? 380 : 540
 
   const TYPES = ['ทั้งหมด', 'จำนอง', 'ขายฝาก', 'ซื้อขาย', 'ประเมินเพื่อสินเชื่อ', 'ประเมินมูลค่าทรัพย์สิน']
@@ -241,18 +250,26 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
           <div style={{ fontWeight: 700, fontSize: 18, color: BRAND.textPri }}>🗺️ แผนที่ทรัพย์สิน</div>
           <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>ตำแหน่งลูกค้าและทรัพย์สินในระบบ</div>
         </div>
-        {/* Stats */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* Stats */}
           {[
             { label: 'ลูกค้า', value: custWithLoc, color: BRAND.teal, icon: '👤' },
-            { label: 'การประเมิน', value: valWithLoc, color: BRAND.gold, icon: '📍' },
-            { label: 'รวม', value: custWithLoc + valWithLoc, color: '#A78BFA', icon: '🗺️' },
+            { label: `ประเมิน (${valWithLoc}/${valTotal})`, value: valWithLoc, color: BRAND.gold, icon: '📍' },
+            { label: 'รวมบนแผนที่', value: custWithLoc + valWithLoc, color: '#A78BFA', icon: '🗺️' },
           ].map(s => (
             <div key={s.label} style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 10, padding: '7px 12px', textAlign: 'center', minWidth: 64 }}>
               <div style={{ fontSize: 10, color: BRAND.textMut }}>{s.icon} {s.label}</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: s.color }}>{s.value}</div>
             </div>
           ))}
+          {/* Refresh */}
+          <button onClick={() => loadValuations(true)} disabled={refreshing} style={{
+            background: 'transparent', border: `1px solid ${BRAND.border}`, borderRadius: 8,
+            color: refreshing ? BRAND.textMut : BRAND.teal, cursor: refreshing ? 'default' : 'pointer',
+            padding: '6px 12px', fontSize: 12, fontWeight: 600,
+          }}>
+            {refreshing ? '⏳' : '🔄'} {refreshing ? 'กำลังโหลด...' : 'รีเฟรช'}
+          </button>
         </div>
       </div>
 
@@ -331,6 +348,47 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* รายชื่อการประเมินทั้งหมด */}
+      {valTotal > 0 && (
+        <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 10, padding: '12px 14px' }}>
+          <div style={{ fontSize: 12, color: BRAND.textPri, fontWeight: 700, marginBottom: 10 }}>
+            📋 รายการประเมินทั้งหมด ({valTotal} รายการ — {valWithLoc} มีพิกัดบนแผนที่)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+            {valuations.map((r, i) => {
+              const hasLoc = !isNaN(parseFloat(r['lat'])) && !isNaN(parseFloat(r['lng']))
+              const color = TYPE_COLOR[r['ประเภทการประเมิน']] || '#64748B'
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: BRAND.bg, borderRadius: 7, padding: '7px 10px',
+                  border: `1px solid ${hasLoc ? 'rgba(45,212,191,0.2)' : BRAND.border}`,
+                }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r['รหัส/ชื่อทรัพย์'] || '—'}
+                    </div>
+                    <div style={{ fontSize: 10, color: BRAND.textSec }}>
+                      {r['ประเภทการประเมิน']} • {r['จังหวัด'] || '—'} • {r['วันที่บันทึก'] ? String(r['วันที่บันทึก']).slice(0, 10) : '—'}
+                    </div>
+                  </div>
+                  {hasLoc
+                    ? <span style={{ fontSize: 10, color: BRAND.teal, background: 'rgba(45,212,191,0.1)', border: '1px solid rgba(45,212,191,0.3)', borderRadius: 10, padding: '2px 7px', whiteSpace: 'nowrap' }}>📍 มีพิกัด</span>
+                    : <span style={{ fontSize: 10, color: BRAND.gold, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '2px 7px', whiteSpace: 'nowrap' }}>⚠️ ไม่มีพิกัด</span>
+                  }
+                </div>
+              )
+            })}
+          </div>
+          {valsNoLoc.length > 0 && (
+            <div style={{ fontSize: 10, color: BRAND.textMut, marginTop: 8 }}>
+              💡 รายการ "ไม่มีพิกัด" ไม่แสดงบนแผนที่ — เพิ่มพิกัดได้จากหน้าประเมินทรัพย์
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -57,6 +57,9 @@ function checkAndSendNotifications() {
     dueDate.setHours(0, 0, 0, 0);
     const diffDays = Math.round((dueDate - today) / 86400000);
 
+      // ── ข้ามสัญญาที่ปิดแล้ว ──────────────────────────────
+    if (isContractClosed(String(row[COL.customer_id - 1] || i))) { skipCount++; continue; }
+
     // ── ส่วนที่ 1: แจ้งเตือนชำระดอกเบี้ย ──────────────────
     if (diffDays === 0) {
       const msg = buildDueMsg(name, installment, amount, freq, dueDate);
@@ -294,6 +297,9 @@ function saveValuation(data) {
     "รอดำเนินการ"
   ];
 
+  // ตรวจ headers ก่อน append เสมอ
+  ensureValuationHeaders(sheet);
+
   sheet.appendRow(row);
 
   const lastRow = sheet.getLastRow();
@@ -356,6 +362,10 @@ function doPost(e) {
       result = updateValuation(body.rowIndex, body.data);
     } else if (action === "deleteImgbbImage") {
       result = deleteImgbbImage(body.imageId);
+    } else if (action === "closeContract") {
+      result = closeContract(body.customerId, body.customerName);
+    } else if (action === "reopenContract") {
+      result = reopenContract(body.customerId);
     }
 
     return ContentService
@@ -378,10 +388,14 @@ function doGet(e) {
 
     if (action === "getValuations") {
       result = getValuations();
+    } else if (action === "debugValuations") {
+      result = debugValuations();
     } else if (action === "getPaymentRecords") {
       result = getPaymentRecords();
     } else if (action === "getCustomers") {
       result = getCustomers();
+    } else if (action === "getContractStatuses") {
+      result = getContractStatuses();
     }
 
     return ContentService
@@ -395,6 +409,122 @@ function doGet(e) {
 }
 
 // ============================================================
+// Debug: ดู headers และ lat/lng จริงๆ ใน Sheet
+// ============================================================
+function debugValuations() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName("ประเมิน");
+  if (!sheet) return { error: 'ไม่พบ Sheet ประเมิน' };
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const latIdx = headers.indexOf('lat');
+  const lngIdx = headers.indexOf('lng');
+
+  const rows = data.slice(1, 4).map(function(row, i) {
+    return {
+      rowNum: i + 2,
+      latIdx: latIdx,
+      lngIdx: lngIdx,
+      latValue: latIdx >= 0 ? row[latIdx] : 'NO LAT COLUMN',
+      lngValue: lngIdx >= 0 ? row[lngIdx] : 'NO LNG COLUMN',
+      colAI: row[34],
+      colAJ: row[35],
+      colAK: row[36],
+    };
+  });
+
+  return {
+    totalHeaders: headers.length,
+    latColumnIndex: latIdx,
+    lngColumnIndex: lngIdx,
+    headers_AI_to_AM: headers.slice(34, 39),
+    sampleRows: rows,
+  };
+}
+
+// ============================================================
+// แก้ไข header row ของ Sheet ประเมิน ให้ตรงกับโครงสร้างปัจจุบัน
+// รันครั้งเดียวเพื่อ fix Sheet เก่า
+// ============================================================
+function fixValuationHeaders() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName("ประเมิน");
+  if (!sheet) { Logger.log('ไม่พบ Sheet ประเมิน'); return; }
+
+  const CORRECT_HEADERS = [
+    "วันที่บันทึก", "วันที่ประเมิน", "ผู้ประเมิน", "รหัส/ชื่อทรัพย์",
+    "ประเภทการประเมิน", "ประเภทอสังหาฯ", "ประเภทย่อย",
+    "เลขโฉนด", "หน้าสำรวจ", "เลขที่ดิน",
+    "จังหวัด", "อำเภอ/เขต", "ตำบล/แขวง",
+    "ไร่", "งาน", "ตร.ว.", "ตร.ว.รวม",
+    "ราคาประเมินรัฐ (บ./ตร.ว.)", "ราคาตลาด (บ./ตร.ว.)", "มูลค่าตลาดรวม",
+    "ทำเล", "ความกว้างถนน", "หน้ากว้าง", "ระยะห่างถนนใหญ่",
+    "ผังเมือง", "สภาพดิน", "Comp (บ./ตร.ว.)", "แหล่ง Comp",
+    "Property Score", "LTV Rate (%)", "FSV (80%)", "วงเงินแนะนำ",
+    "วงเงินที่ลูกค้าขอ", "LTV ลูกค้า (% ต่อตลาด)",
+    "lat", "lng",
+    "ปัจจัยเสี่ยง", "หมายเหตุ", "สถานะ"
+  ];
+
+  // เขียน header ทับแถวที่ 1
+  sheet.getRange(1, 1, 1, CORRECT_HEADERS.length).setValues([CORRECT_HEADERS]);
+  sheet.getRange(1, 1, 1, CORRECT_HEADERS.length)
+    .setBackground("#1a3a5c").setFontColor("#ffffff").setFontWeight("bold");
+  sheet.setFrozenRows(1);
+
+  // ล้าง header column ส่วนเกิน (ที่ถูก ensureValuationHeaders เพิ่มผิดที่)
+  const lastCol = sheet.getLastColumn();
+  if (lastCol > CORRECT_HEADERS.length) {
+    const extraCols = lastCol - CORRECT_HEADERS.length;
+    sheet.getRange(1, CORRECT_HEADERS.length + 1, 1, extraCols).clearContent();
+    sheet.getRange(1, CORRECT_HEADERS.length + 1, 1, extraCols).setBackground(null).setFontColor(null).setFontWeight(null);
+    Logger.log('ล้าง ' + extraCols + ' extra columns (col ' + (CORRECT_HEADERS.length + 1) + ' ถึง ' + lastCol + ')');
+  }
+
+  Logger.log('✅ แก้ไข headers เสร็จแล้ว — ' + CORRECT_HEADERS.length + ' columns');
+  Logger.log('lat อยู่ที่ column 35 (AI), lng อยู่ที่ column 36 (AJ)');
+}
+
+// ============================================================
+// ตรวจและเพิ่ม headers ที่ขาดใน Sheet ประเมิน
+// ============================================================
+function ensureValuationHeaders(sheet) {
+  const REQUIRED_HEADERS = [
+    "วันที่บันทึก", "วันที่ประเมิน", "ผู้ประเมิน", "รหัส/ชื่อทรัพย์",
+    "ประเภทการประเมิน", "ประเภทอสังหาฯ", "ประเภทย่อย",
+    "เลขโฉนด", "หน้าสำรวจ", "เลขที่ดิน",
+    "จังหวัด", "อำเภอ/เขต", "ตำบล/แขวง",
+    "ไร่", "งาน", "ตร.ว.", "ตร.ว.รวม",
+    "ราคาประเมินรัฐ (บ./ตร.ว.)", "ราคาตลาด (บ./ตร.ว.)", "มูลค่าตลาดรวม",
+    "ทำเล", "ความกว้างถนน", "หน้ากว้าง", "ระยะห่างถนนใหญ่",
+    "ผังเมือง", "สภาพดิน", "Comp (บ./ตร.ว.)", "แหล่ง Comp",
+    "Property Score", "LTV Rate (%)", "FSV (80%)", "วงเงินแนะนำ",
+    "วงเงินที่ลูกค้าขอ", "LTV ลูกค้า (% ต่อตลาด)",
+    "lat", "lng",
+    "ปัจจัยเสี่ยง", "หมายเหตุ", "สถานะ"
+  ];
+
+  const lastCol = sheet.getLastColumn();
+  const currentHeaders = lastCol > 0
+    ? sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    : [];
+
+  var added = 0;
+  REQUIRED_HEADERS.forEach(function(h) {
+    if (currentHeaders.indexOf(h) === -1) {
+      const newCol = sheet.getLastColumn() + 1;
+      sheet.getRange(1, newCol).setValue(h);
+      sheet.getRange(1, newCol).setBackground("#1a3a5c").setFontColor("#ffffff").setFontWeight("bold");
+      added++;
+      Logger.log('เพิ่ม header: ' + h + ' ที่ column ' + newCol);
+    }
+  });
+
+  if (added > 0) Logger.log('ensureValuationHeaders: เพิ่ม ' + added + ' headers');
+}
+
+// ============================================================
 // ดึงข้อมูลประวัติการประเมินทั้งหมด
 // ============================================================
 function getValuations() {
@@ -405,16 +535,21 @@ function getValuations() {
     return { success: true, data: [] };
   }
 
+  // ตรวจและเพิ่ม headers ที่ขาดไป (เช่น lat/lng)
+  ensureValuationHeaders(sheet);
+
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) {
     return { success: true, data: [] };
   }
 
-  const headers = data[0];
-  const rows = data.slice(1).map((row, i) => {
+  const headers = data[0].map(function(h) { return String(h).trim(); });
+  const rows = data.slice(1).map(function(row, i) {
     const obj = {};
-    headers.forEach((h, idx) => { obj[h] = row[idx]; });
-    obj['_rowIndex'] = i + 2; // row จริงใน Sheet (1=header, ดังนั้น data เริ่มที่ 2)
+    headers.forEach(function(h, idx) {
+      obj[h] = row[idx] !== undefined ? row[idx] : '';
+    });
+    obj['_rowIndex'] = i + 2;
     return obj;
   });
 
@@ -522,6 +657,69 @@ function updateValuation(rowIndex, data) {
     const colIdx = headers.indexOf(key);
     if (colIdx !== -1) sheet.getRange(rowIndex, colIdx + 1).setValue(data[key]);
   });
+  return { success: true };
+}
+
+// ============================================================
+// จัดการสถานะสัญญา (ปิดแล้ว / เปิดใหม่)
+// ============================================================
+function getOrCreateStatusSheet() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName("สถานะสัญญา");
+  if (!sheet) {
+    sheet = ss.insertSheet("สถานะสัญญา");
+    const h = ["customerId", "customerName", "status", "closedAt"];
+    sheet.getRange(1, 1, 1, h.length).setValues([h]);
+    sheet.getRange(1, 1, 1, h.length).setBackground("#1a3a5c").setFontColor("#ffffff").setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function getContractStatuses() {
+  const sheet = getOrCreateStatusSheet();
+  const rows = sheet.getDataRange().getValues();
+  const result = {};
+  for (var i = 1; i < rows.length; i++) {
+    const id = String(rows[i][0]);
+    if (id) result[id] = { customerName: String(rows[i][1]), status: String(rows[i][2]), closedAt: String(rows[i][3]) };
+  }
+  return { success: true, data: result };
+}
+
+function isContractClosed(customerId) {
+  const sheet = getOrCreateStatusSheet();
+  const rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(customerId) && rows[i][2] === 'ปิดแล้ว') return true;
+  }
+  return false;
+}
+
+function closeContract(customerId, customerName) {
+  const sheet = getOrCreateStatusSheet();
+  const rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(customerId)) {
+      sheet.getRange(i + 1, 3).setValue('ปิดแล้ว');
+      sheet.getRange(i + 1, 4).setValue(new Date().toLocaleString('th-TH'));
+      return { success: true };
+    }
+  }
+  sheet.appendRow([String(customerId), customerName || '', 'ปิดแล้ว', new Date().toLocaleString('th-TH')]);
+  return { success: true };
+}
+
+function reopenContract(customerId) {
+  const sheet = getOrCreateStatusSheet();
+  const rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(customerId)) {
+      sheet.getRange(i + 1, 3).setValue('');
+      sheet.getRange(i + 1, 4).setValue('');
+      return { success: true };
+    }
+  }
   return { success: true };
 }
 
