@@ -8,7 +8,7 @@ import InvestorPage from "./InvestorPage.jsx";
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbwvMPdSPchzOv3knn1Fu4Pr081BRLctNU-CA9siYXVUbHFYGervPN1b3EUHehLJLG_5JQ/exec";
+  "https://script.google.com/macros/s/AKfycbxeFrxL5BK2jSZQgK-0Bh7syT2takvy56c9Wneh9Xrj9cwtRKRCe1zpqQasmJjLVOvqhA/exec";
 const IMGBB_KEY = "c83de7744f238eb8f1d0e87efb8bc639";
 // Album ID ตามเดือน (CE year-month → album ID)
 const IMGBB_ALBUMS = {
