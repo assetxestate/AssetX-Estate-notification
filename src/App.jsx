@@ -3006,16 +3006,16 @@ export default function App() {
                                       key={p.installment}
                                       style={{
                                         display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
+                                        flexDirection: "column",
                                         padding: "10px 14px",
                                         background: pSt.bg,
                                         borderRadius: 10,
                                         border: `1px solid ${pSt.border}40`,
-                                        flexWrap: "wrap",
                                         gap: 8,
                                       }}
                                     >
+                                      {/* แถวบน: วงกลม + ชื่องวด | ปุ่มต่างๆ */}
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                                       <div
                                         style={{
                                           display: "flex",
@@ -3145,6 +3145,7 @@ export default function App() {
                                           📅
                                         </a>
                                       </div>
+                                      </div>{/* /แถวบน */}
                                       {/* แสดงข้อมูลสลิปถ้าชำระแล้ว */}
                                       {p.record && (
                                         <div style={{
@@ -3177,7 +3178,7 @@ export default function App() {
 
                                       {/* ปุ่มปิดสัญญา — แสดงใต้งวดสุดท้าย */}
                                       {isLastPayment && (
-                                        <div>
+                                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
                                           {c.isClosed ? (
                                             <button
                                               onClick={(e) => { e.stopPropagation(); reopenContract(c); }}
