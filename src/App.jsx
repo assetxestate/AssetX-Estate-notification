@@ -2121,16 +2121,6 @@ export default function App() {
                 >
                   AssetX Estate
                 </div>
-                <div
-                  style={{
-                    fontSize: 9,
-                    color: BRAND.textSec,
-                    letterSpacing: 0.5,
-                    marginTop: -1,
-                  }}
-                >
-                  LINE NOTIFICATION SYSTEM{" "}
-                </div>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -2823,33 +2813,6 @@ export default function App() {
                                 background: "rgba(0,0,0,.2)",
                               }}
                             >
-                              {/* ── ปุ่มปิด/เปิดสัญญา ── */}
-                              <div style={{ marginBottom: 16 }}>
-                                {c.isClosed ? (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); reopenContract(c); }}
-                                    style={{
-                                      width: '100%', padding: '11px 16px', borderRadius: 10,
-                                      background: 'rgba(45,212,191,0.15)', border: '1px solid rgba(45,212,191,0.5)',
-                                      color: '#2DD4BF', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                                    }}
-                                  >
-                                    🔓 เปิดสัญญาใหม่ (กลับมาแจ้งเตือนตามปกติ)
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); closeContract(c); }}
-                                    style={{
-                                      width: '100%', padding: '11px 16px', borderRadius: 10,
-                                      background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)',
-                                      color: '#FCA5A5', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                                    }}
-                                  >
-                                    🔒 ปิดสัญญา (หยุดแจ้งเตือนทั้งหมด)
-                                  </button>
-                                )}
-                              </div>
-
                               {/* ── โฉนดที่ดิน ── */}
                               {c.deeds && c.deeds.length > 0 && (
                                 <div style={{ marginBottom: 20 }}>
@@ -3031,7 +2994,8 @@ export default function App() {
                                   gap: 8,
                                 }}
                               >
-                                {c.payments.map((p) => {
+                                {c.payments.map((p, pIdx) => {
+                                  const isLastPayment = pIdx === c.payments.length - 1;
                                   const pSt = P_STATUS[p.status];
                                   const msg =
                                     p.status === "today"
@@ -3206,6 +3170,37 @@ export default function App() {
                                             }}
                                               style={{ background: "none", border: "none", color: BRAND.teal, fontSize: 11, cursor: "pointer", padding: 0 }}>
                                               🖼️ ดูสลิป
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* ปุ่มปิดสัญญา — แสดงใต้งวดสุดท้าย */}
+                                      {isLastPayment && (
+                                        <div>
+                                          {c.isClosed ? (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); reopenContract(c); }}
+                                              className="btn"
+                                              style={{
+                                                padding: '3px 8px', borderRadius: 7, fontSize: 10,
+                                                background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.4)',
+                                                color: '#2DD4BF', fontWeight: 700, cursor: 'pointer',
+                                              }}
+                                            >
+                                              🔓 เปิดสัญญา
+                                            </button>
+                                          ) : (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); closeContract(c); }}
+                                              className="btn"
+                                              style={{
+                                                padding: '3px 8px', borderRadius: 7, fontSize: 10,
+                                                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)',
+                                                color: '#FCA5A5', fontWeight: 700, cursor: 'pointer',
+                                              }}
+                                            >
+                                              🔒 ปิดสัญญา
                                             </button>
                                           )}
                                         </div>

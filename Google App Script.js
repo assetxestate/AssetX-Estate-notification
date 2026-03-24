@@ -221,7 +221,7 @@ function saveValuation(data) {
     const headers = [
       "วันที่บันทึก", "วันที่ประเมิน", "ผู้ประเมิน", "รหัส/ชื่อทรัพย์",
       "ประเภทการประเมิน", "ประเภทอสังหาฯ", "ประเภทย่อย",
-      "เลขโฉนด", "หน้าสำรวจ", "เลขที่ดิน",
+      "เลขโฉนด", "ระวาง", "หน้าสำรวจ", "เลขที่ดิน",
       "จังหวัด", "อำเภอ/เขต", "ตำบล/แขวง",
       "ไร่", "งาน", "ตร.ว.", "ตร.ว.รวม",
       "ราคาประเมินรัฐ (บ./ตร.ว.)", "ราคาตลาด (บ./ตร.ว.)", "มูลค่าตลาดรวม",
@@ -264,6 +264,7 @@ function saveValuation(data) {
     data.propertyType || "",
     data.propertySubtype || "",
     data.titleDeedNo || "",
+    data.mapSheet || "",
     data.surveyPage || "",
     data.landNo || "",
     data.province || "",
@@ -483,7 +484,7 @@ function fixValuationHeaders() {
   }
 
   Logger.log('✅ แก้ไข headers เสร็จแล้ว — ' + CORRECT_HEADERS.length + ' columns');
-  Logger.log('lat อยู่ที่ column 35 (AI), lng อยู่ที่ column 36 (AJ)');
+  Logger.log('lat อยู่ที่ column 36 (AJ), lng อยู่ที่ column 37 (AK)');
 }
 
 // ============================================================

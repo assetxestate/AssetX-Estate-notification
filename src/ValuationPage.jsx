@@ -94,7 +94,7 @@ const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 const INITIAL_FORM = {
   assessmentType: 'ขายฝาก', propertyType: 'ที่ดิน', propertySubtype: 'ที่ดินเปล่า (โฉนด)',
   projectName: '', assessmentDate: new Date().toISOString().split('T')[0], assessorName: '',
-  titleDeedNo: '', surveyPage: '', landNo: '',
+  titleDeedNo: '', surveyPage: '', landNo: '', mapSheet: '',
   province: 'กรุงเทพมหานคร', district: '', subdistrict: '',
   areaRai: 0, areaNgan: 0, areaSqw: 0, govPrice: 0,
   roadType: '', roadWidth: '', landFrontage: '', distanceFromMain: '',
@@ -183,7 +183,7 @@ function printHistoryRow(row) {
   <div class="grid2">
     <div class="box">
       <h3>📋 รายละเอียดทรัพย์</h3>
-      ${[['ประเภทการประเมิน', row['ประเภทการประเมิน']], ['ประเภทอสังหาฯ', (row['ประเภทอสังหาฯ'] || '') + ' — ' + (row['ประเภทย่อย'] || '')], ['เนื้อที่', (row['ไร่'] || 0) + ' ไร่ ' + (row['งาน'] || 0) + ' งาน ' + (row['ตร.ว.'] || 0) + ' ตร.ว.'], ['ราคาประเมินกรมธนารักษ์', f(row['ราคาประเมินรัฐ (บ./ตร.ว.)']) + ' บาท/ตร.ว.'], ['ทำเล', row['ทำเล']], ['ถนนหน้าที่ดิน', row['ความกว้างถนน']], ['ผังเมือง', row['ผังเมือง']], ['สภาพดิน', row['สภาพดิน']]].map(([k,v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v || '—'}</span></div>`).join('')}
+      ${[['ประเภทการประเมิน', row['ประเภทการประเมิน']], ['ประเภทอสังหาฯ', (row['ประเภทอสังหาฯ'] || '') + ' — ' + (row['ประเภทย่อย'] || '')], ['เลขโฉนด', row['เลขโฉนด']], ['ระวาง', row['ระวาง']], ['หน้าสำรวจ', row['หน้าสำรวจ']], ['เลขที่ดิน', row['เลขที่ดิน']], ['เนื้อที่', (row['ไร่'] || 0) + ' ไร่ ' + (row['งาน'] || 0) + ' งาน ' + (row['ตร.ว.'] || 0) + ' ตร.ว.'], ['ราคาประเมินกรมธนารักษ์', f(row['ราคาประเมินรัฐ (บ./ตร.ว.)']) + ' บาท/ตร.ว.'], ['ทำเล', row['ทำเล']], ['ถนนหน้าที่ดิน', row['ความกว้างถนน']], ['ผังเมือง', row['ผังเมือง']], ['สภาพดิน', row['สภาพดิน']]].map(([k,v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v || '—'}</span></div>`).join('')}
     </div>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <div class="box">
@@ -570,6 +570,8 @@ function Step1({ form, update, customers }) {
           <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>📄 เลขที่โฉนด</div>
           <Label>เลขโฉนดที่ดิน</Label>
           <Inp value={form.titleDeedNo} onChange={e => update('titleDeedNo', e.target.value)} placeholder="เช่น 89062" style={{ marginBottom: 10 }} />
+          <Label>ระวาง</Label>
+          <Inp value={form.mapSheet} onChange={e => update('mapSheet', e.target.value)} placeholder="เช่น 5237I" style={{ marginBottom: 10 }} />
           <Label>หน้าสำรวจ</Label>
           <Inp value={form.surveyPage} onChange={e => update('surveyPage', e.target.value)} placeholder="เช่น 12560" style={{ marginBottom: 10 }} />
           <Label>เลขที่ดิน</Label>

@@ -183,21 +183,40 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
         if (filterType !== 'ทั้งหมด' && row['ประเภทการประเมิน'] !== filterType) return
 
         const color = TYPE_COLOR[row['ประเภทการประเมิน']] || '#64748B'
-        const score = row['Property Score'] || 0
-        const scoreColor = score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : '#EF4444'
+        const assessType = row['ประเภทการประเมิน'] || ''
+        const loanLabel = assessType === 'ขายฝาก' ? 'วงเงินขายฝาก'
+          : assessType === 'จำนอง' ? 'วงเงินจำนอง'
+          : assessType === 'ซื้อขาย' ? 'วงเงินซื้อขาย'
+          : assessType === 'ประเมินเพื่อสินเชื่อ' ? 'วงเงินสินเชื่อ'
+          : 'วงเงินที่ขอ'
+        const requestedLoan = parseFloat(row['วงเงินที่ลูกค้าขอ']) || 0
+        const marketValue = parseFloat(row['มูลค่าตลาดรวม']) || 0
+        const ltv = marketValue > 0 ? ((requestedLoan / marketValue) * 100).toFixed(1) : null
+        const ltvColor = ltv === null ? '#888' : ltv <= 50 ? '#10B981' : ltv <= 70 ? '#F59E0B' : '#EF4444'
+        const govPrice = parseFloat(row['ราคาประเมินรัฐ (บ./ตร.ว.)']) || 0
+        const totalSqw = parseFloat(row['ตร.ว.รวม']) || 0
+        const govTotal = govPrice * totalSqw
 
         const marker = L.marker([lat, lng], { icon: makeValuationIcon(color) }).addTo(map)
         marker.bindPopup(`
-          <div style="font-family:'Sarabun',sans-serif;min-width:210px;padding:4px">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <div style="font-family:'Sarabun',sans-serif;min-width:230px;padding:4px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
               <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
               <div style="font-weight:700;font-size:13px;color:#111">${row['รหัส/ชื่อทรัพย์'] || '—'}</div>
             </div>
-            <div style="font-size:10px;color:#777;margin-bottom:8px">${row['ประเภทการประเมิน']} • ${row['ประเภทย่อย'] || ''} • 📍${row['จังหวัด'] || ''}</div>
+            <div style="font-size:10px;color:#777;margin-bottom:8px">${assessType} • ${row['ประเภทย่อย'] || ''} • 📍${row['จังหวัด'] || ''}</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">
               <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
+                <div style="font-size:9px;color:#888">ราคาประเมินที่ดิน</div>
+                <div style="font-size:11px;font-weight:700;color:#6366F1">฿${fmt(govTotal)}</div>
+              </div>
+              <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
                 <div style="font-size:9px;color:#888">มูลค่าตลาด</div>
-                <div style="font-size:11px;font-weight:700;color:#2DD4BF">฿${fmt(row['มูลค่าตลาดรวม'])}</div>
+                <div style="font-size:11px;font-weight:700;color:#2DD4BF">฿${fmt(marketValue)}</div>
+              </div>
+              <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
+                <div style="font-size:9px;color:#888">${loanLabel}</div>
+                <div style="font-size:11px;font-weight:700;color:#A78BFA">฿${fmt(requestedLoan)}</div>
               </div>
               <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
                 <div style="font-size:9px;color:#888">วงเงินแนะนำ</div>
@@ -205,12 +224,12 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-size:10px;color:#888">Property Score</span>
-              <span style="font-size:13px;font-weight:700;color:${scoreColor}">${score}/100</span>
+              <span style="font-size:10px;color:#888">%LTV (เงินขอ/มูลค่าตลาด)</span>
+              <span style="font-size:13px;font-weight:700;color:${ltvColor}">${ltv !== null ? ltv + '%' : '—'}</span>
             </div>
             ${row['วันที่บันทึก'] ? `<div style="font-size:9px;color:#bbb;margin-top:4px">บันทึก: ${row['วันที่บันทึก']}</div>` : ''}
           </div>
-        `, { maxWidth: 250 })
+        `, { maxWidth: 260 })
 
         markersRef.current.push(marker)
       })
