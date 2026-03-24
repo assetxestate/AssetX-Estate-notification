@@ -7,7 +7,7 @@ const BRAND = {
 };
 
 const STATUS_CONFIG = {
-  'รอการตัดสินใจ': { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: '#F59E0B', label: '⏳ รอการตัดสินใจ' },
+  'รอการพิจารณา': { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: '#F59E0B', label: '⏳ รอการพิจารณา' },
   'อนุมัติ':        { bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.4)', text: '#10B981', label: '✅ อนุมัติแล้ว' },
   'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.4)',  text: '#F87171', label: '❌ ปฏิเสธ' },
   'สร้างสัญญาแล้ว': { bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.4)', text: '#A5B4FC', label: '📋 สร้างสัญญาแล้ว' },
@@ -15,7 +15,7 @@ const STATUS_CONFIG = {
 };
 
 const TABS = [
-  { key: 'รอการตัดสินใจ', label: '⏳ รอตัดสินใจ' },
+  { key: 'รอการพิจารณา', label: '⏳ รอตัดสินใจ' },
   { key: 'อนุมัติ',        label: '✅ อนุมัติ' },
   { key: 'ปฏิเสธ',         label: '❌ ปฏิเสธ' },
   { key: 'สร้างสัญญาแล้ว', label: '📋 สร้างสัญญา' },
@@ -198,7 +198,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
 export default function InvestorPage({ appsScriptUrl }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('รอการตัดสินใจ');
+  const [activeTab, setActiveTab] = useState('รอการพิจารณา');
   const [contractModal, setContractModal] = useState(null);
   const [processingRow, setProcessingRow] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
@@ -315,7 +315,7 @@ export default function InvestorPage({ appsScriptUrl }) {
           <div style={{ textAlign: 'center', color: BRAND.textMut, padding: 40 }}>ไม่มีรายการใน "{activeTab}"</div>
         ) : (
           filtered.map((row, i) => {
-            const st = STATUS_CONFIG[row['สถานะ']] || STATUS_CONFIG['รอการตัดสินใจ'];
+            const st = STATUS_CONFIG[row['สถานะ']] || STATUS_CONFIG['รอการพิจารณา'];
             const isProcessing = processingRow === row['_rowIndex'];
             const loc = [
               row['ตำบล/แขวง'] ? 'ต.' + row['ตำบล/แขวง'] : '',
@@ -376,7 +376,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                 )}
 
                 {/* Action buttons */}
-                {activeTab === 'รอการตัดสินใจ' && (
+                {activeTab === 'รอการพิจารณา' && (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={() => updateStatus(row, 'ปฏิเสธ')}
@@ -397,7 +397,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                 {activeTab === 'อนุมัติ' && (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
-                      onClick={() => updateStatus(row, 'รอการตัดสินใจ')}
+                      onClick={() => updateStatus(row, 'รอการพิจารณา')}
                       disabled={isProcessing}
                       style={{ flex: 1, padding: '9px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}
                     >

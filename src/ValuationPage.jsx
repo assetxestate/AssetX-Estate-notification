@@ -206,7 +206,7 @@ function printHistoryRow(row) {
 }
 
 const INVESTOR_STATUS_COLORS = {
-  'รอการตัดสินใจ': { bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.4)', text: '#F59E0B' },
+  'รอการพิจารณา': { bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.4)', text: '#F59E0B' },
   'อนุมัติ':        { bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.4)', text: '#10B981' },
   'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.15)',  border: 'rgba(239,68,68,0.4)',  text: '#F87171' },
   'สร้างสัญญาแล้ว': { bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.4)', text: '#A5B4FC' },
@@ -230,14 +230,14 @@ function HistoryView({ appsScriptUrl }) {
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'updateValuation', rowIndex: row['_rowIndex'], data: { 'สถานะ': 'รอการตัดสินใจ' } }),
+        body: JSON.stringify({ action: 'updateValuation', rowIndex: row['_rowIndex'], data: { 'สถานะ': 'รอการพิจารณา' } }),
       })
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'notifyInvestor', valuationData: row }),
       })
-      setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': 'รอการตัดสินใจ' } : r))
+      setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': 'รอการพิจารณา' } : r))
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message)
     } finally {

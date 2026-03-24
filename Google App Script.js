@@ -949,7 +949,7 @@ function notifyInvestorNewValuation(v) {
     '✅ วงเงินแนะนำ: ฿' + fmtNum(v['วงเงินแนะนำ']),
     '👤 ผู้ประเมิน: ' + (v['ผู้ประเมิน'] || '—'),
     '─────────────────',
-    '⏳ รอการตัดสินใจจากท่าน',
+    '⏳ รอการพิจารณาจากท่าน',
     'AssetX Estate Co., Ltd. 🏠'
   ].join('\n');
   sendLine(INVESTOR_LINE_USER_ID, msg);
