@@ -230,7 +230,7 @@ function HistoryView({ appsScriptUrl }) {
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'updateValuationStatus', rowIndex: row['_rowIndex'], status: 'รอการตัดสินใจ' }),
+        body: JSON.stringify({ action: 'updateValuation', rowIndex: row['_rowIndex'], data: { 'สถานะ': 'รอการตัดสินใจ' } }),
       })
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',

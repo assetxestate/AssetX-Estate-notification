@@ -370,6 +370,8 @@ function doPost(e) {
       result = closeContract(body.customerId, body.customerName);
     } else if (action === "reopenContract") {
       result = reopenContract(body.customerId);
+    } else if (action === "cancelCustomer") {
+      result = cancelCustomer(body.customerId, body.customerName);
     } else if (action === "updateValuationStatus") {
       result = updateValuationStatus(body.rowIndex, body.status);
     } else if (action === "createCustomerFromValuation") {
@@ -719,6 +721,20 @@ function closeContract(customerId, customerName) {
     }
   }
   sheet.appendRow([String(customerId), customerName || '', 'ปิดแล้ว', new Date().toLocaleString('th-TH')]);
+  return { success: true };
+}
+
+function cancelCustomer(customerId, customerName) {
+  const sheet = getOrCreateStatusSheet();
+  const rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(customerId)) {
+      sheet.getRange(i + 1, 3).setValue('ยกเลิก');
+      sheet.getRange(i + 1, 4).setValue(new Date().toLocaleString('th-TH'));
+      return { success: true };
+    }
+  }
+  sheet.appendRow([String(customerId), customerName || '', 'ยกเลิก', new Date().toLocaleString('th-TH')]);
   return { success: true };
 }
 

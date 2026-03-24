@@ -11,13 +11,15 @@ const STATUS_CONFIG = {
   'อนุมัติ':        { bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.4)', text: '#10B981', label: '✅ อนุมัติแล้ว' },
   'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.4)',  text: '#F87171', label: '❌ ปฏิเสธ' },
   'สร้างสัญญาแล้ว': { bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.4)', text: '#A5B4FC', label: '📋 สร้างสัญญาแล้ว' },
+  'ยกเลิก':         { bg: 'rgba(100,116,139,0.12)', border: 'rgba(100,116,139,0.4)', text: '#94A3B8', label: '🚫 ยกเลิก' },
 };
 
 const TABS = [
   { key: 'รอการตัดสินใจ', label: '⏳ รอตัดสินใจ' },
-  { key: 'อนุมัติ',        label: '✅ อนุมัติแล้ว' },
+  { key: 'อนุมัติ',        label: '✅ อนุมัติ' },
   { key: 'ปฏิเสธ',         label: '❌ ปฏิเสธ' },
-  { key: 'สร้างสัญญาแล้ว', label: '📋 สร้างสัญญาแล้ว' },
+  { key: 'สร้างสัญญาแล้ว', label: '📋 สร้างสัญญา' },
+  { key: 'ยกเลิก',         label: '🚫 ยกเลิก' },
 ];
 
 const FREQ_OPTIONS = ['รายเดือน', 'ราย 2 สัปดาห์'];
@@ -203,7 +205,7 @@ export default function InvestorPage({ appsScriptUrl }) {
 
   const load = () => {
     setLoading(true);
-    fetch(`${appsScriptUrl}?action=getPendingValuations`)
+    fetch(`${appsScriptUrl}?action=getValuations`)
       .then(r => r.json())
       .then(r => { setRows(r.data || []); setLoading(false); })
       .catch(() => setLoading(false));
@@ -217,9 +219,25 @@ export default function InvestorPage({ appsScriptUrl }) {
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'updateValuationStatus', rowIndex: row['_rowIndex'], status }),
+        body: JSON.stringify({ action: 'updateValuation', rowIndex: row['_rowIndex'], data: { 'สถานะ': status } }),
       });
       setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': status } : r));
+    } catch (e) {
+      alert('เกิดข้อผิดพลาด: ' + e.message);
+    } finally {
+      setProcessingRow(null);
+    }
+  };
+
+  const cancelCustomer = async (row) => {
+    setProcessingRow(row['_rowIndex']);
+    try {
+      await fetch(appsScriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancelCustomer', customerId: row['_customerId'] || row['รหัส/ชื่อทรัพย์'], customerName: row['รหัส/ชื่อทรัพย์'] }),
+      });
+      await updateStatus(row, 'ยกเลิก');
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message);
     } finally {
@@ -254,26 +272,39 @@ export default function InvestorPage({ appsScriptUrl }) {
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, padding: '12px 16px', overflowX: 'auto' }}>
-        {TABS.map(t => {
-          const st = STATUS_CONFIG[t.key];
-          const isActive = activeTab === t.key;
-          return (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              style={{
-                padding: '7px 14px', borderRadius: 20, border: `1px solid ${isActive ? st.border : BRAND.border}`,
-                background: isActive ? st.bg : 'transparent', color: isActive ? st.text : BRAND.textSec,
-                fontSize: 12, fontWeight: isActive ? 700 : 400, cursor: 'pointer', whiteSpace: 'nowrap',
-              }}
-            >
-              {t.label} {counts[t.key] > 0 && <span style={{ background: st.bg, borderRadius: 10, padding: '1px 7px', marginLeft: 4 }}>{counts[t.key]}</span>}
-            </button>
-          );
-        })}
-        <button onClick={load} style={{ padding: '7px 12px', borderRadius: 20, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer', marginLeft: 'auto' }}>🔄</button>
+      {/* Tabs — wrap grid + refresh */}
+      <div style={{ padding: '10px 16px 4px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
+          {TABS.map(t => {
+            const st = STATUS_CONFIG[t.key];
+            const isActive = activeTab === t.key;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                style={{
+                  padding: '8px 6px', borderRadius: 10,
+                  border: `1px solid ${isActive ? st.border : BRAND.border}`,
+                  background: isActive ? st.bg : 'transparent',
+                  color: isActive ? st.text : BRAND.textSec,
+                  fontSize: 12, fontWeight: isActive ? 700 : 400,
+                  cursor: 'pointer', textAlign: 'center',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                }}
+              >
+                {t.label}
+                {counts[t.key] > 0 && (
+                  <span style={{ background: isActive ? 'rgba(0,0,0,0.2)' : BRAND.border, borderRadius: 10, padding: '0px 6px', fontSize: 11, fontWeight: 700 }}>
+                    {counts[t.key]}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={load} style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}>🔄 รีเฟรช</button>
+        </div>
       </div>
 
       {/* Content */}
@@ -312,7 +343,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                 </div>
 
                 {/* Stats grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 14 }}>
                   <StatBox label="มูลค่าตลาด" value={'฿' + fmt(row['มูลค่าตลาดรวม'])} />
                   <StatBox label="FSV (80%)" value={'฿' + fmt(row['FSV (80%)'])} />
                   <StatBox label="วงเงินที่ขอ" value={'฿' + fmt(row['วงเงินที่ลูกค้าขอ'])} color={BRAND.gold} />
@@ -378,6 +409,18 @@ export default function InvestorPage({ appsScriptUrl }) {
                     style={{ width: '100%', padding: '9px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}
                   >
                     ↩️ ส่งกลับรอตัดสินใจ
+                  </button>
+                )}
+                {activeTab === 'สร้างสัญญาแล้ว' && (
+                  <button
+                    onClick={() => {
+                      if (!window.confirm(`ยืนยันยกเลิกสัญญาของ "${row['รหัส/ชื่อทรัพย์'] || '—'}"?\n\nลูกค้าจะถูกซ่อนออกจากระบบ แต่ข้อมูลยังคงอยู่`)) return;
+                      cancelCustomer(row);
+                    }}
+                    disabled={isProcessing}
+                    style={{ width: '100%', padding: '9px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', color: '#F87171', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    🚫 ยกเลิกสัญญา (ลูกค้าเปลี่ยนใจ)
                   </button>
                 )}
               </Card>

@@ -2005,6 +2005,7 @@ export default function App() {
         ...c,
         deeds: parseDeeds(c.deeds),
         isClosed: contractStatuses[c.id]?.status === 'ปิดแล้ว',
+        isVoided: contractStatuses[c.id]?.status === 'ยกเลิก',
         payments: (c.payments || []).map((p) => {
           const diff = getDiff(p.dateStr, today);
           const record = paymentRecords[c.id]?.[p.installment];
@@ -2021,7 +2022,7 @@ export default function App() {
   const payAlerts = useMemo(() => {
     const r = [];
     enriched.forEach((c) => {
-      if (c.isClosed) return;
+      if (c.isClosed || c.isVoided) return;
       c.payments.forEach((p) => {
         if (p.status === "today" || p.status === "soon") r.push({ c, p });
       });
@@ -2032,7 +2033,7 @@ export default function App() {
   const contractAlerts = useMemo(
     () =>
       enriched
-        .filter((c) => !c.isClosed && c.contractDiff !== null && c.contractDiff <= 180)
+        .filter((c) => !c.isClosed && !c.isVoided && c.contractDiff !== null && c.contractDiff <= 180)
         .sort((a, b) => a.contractDiff - b.contractDiff),
     [enriched]
   );
@@ -2041,6 +2042,7 @@ export default function App() {
     () =>
       enriched
         .map((c) => {
+          if (c.isVoided) return null; // ซ่อนลูกค้าที่ถูกยกเลิก
           if (filter === "mortgage" && c.type !== "จำนอง") return null;
           if (filter === "sell" && c.type !== "ขายฝาก") return null;
           let pays = c.payments;
