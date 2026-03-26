@@ -1726,7 +1726,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [lastFetch, setLastFetch] = useState(null);
   const [filter, setFilter] = useState("all");
-  const [mainTab, setMainTab] = useState("customers");
+  const [mainTab, setMainTab] = useState("dashboard");
   const [expandedId, setExpandedId] = useState(null);
   const [expandedDeeds, setExpandedDeeds] = useState({});
   const [slipModal, setSlipModal] = React.useState(null); // { customer, payment }
