@@ -900,26 +900,30 @@ function createCustomerFromValuation(d) {
     installments.push(payDate.toISOString().split('T')[0]);
   }
 
-  // เพิ่มแถวใน Sheet DATA ตาม column order
-  const row = [
-    customerId,           // customer_id
-    d.customerName,       // name
-    fullLabel,            // full_label
-    d.contractType,       // type
-    color,                // color
-    icon,                 // icon
-    parseFloat(d.principal),  // principal
-    amount,               // amount
-    d.freq,               // freq
-    location,             // location
-    d.propertyType,       // property_type
-    endDateStr,           // contract_end_date
-    installments.join(','),   // installment
-    parseInt(d.payDay),   // date
-    d.titleDeedNo || '',  // deeds
-    d.lineUserId || '',   // line_user_id
+  // เพิ่มแถวใน Sheet DATA — 1 แถวต่อ 1 งวด (เหมือนโครงสร้างเดิม)
+  const baseInfo = [
+    customerId,               // col 1: customer_id
+    d.customerName,           // col 2: name
+    fullLabel,                // col 3: full_label
+    d.contractType,           // col 4: type
+    color,                    // col 5: color
+    icon,                     // col 6: icon
+    parseFloat(d.principal),  // col 7: principal
+    amount,                   // col 8: amount
+    d.freq,                   // col 9: freq
+    location,                 // col 10: location
+    d.propertyType,           // col 11: property_type
+    endDateStr,               // col 12: contract_end_date
   ];
-  sheet.appendRow(row);
+
+  installments.forEach(function(dateStr, idx) {
+    const row = baseInfo.slice();
+    row.push(idx + 1);        // col 13: installment number (1, 2, 3, ...)
+    row.push(dateStr);        // col 14: actual date of this installment
+    row.push(d.titleDeedNo || ''); // col 15: deeds
+    row.push(d.lineUserId || ''); // col 16: line_user_id
+    sheet.appendRow(row);
+  });
 
   // อัพเดทสถานะใน Sheet ประเมิน
   if (d.valuationRowIndex) {
