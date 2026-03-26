@@ -8,6 +8,9 @@ const BRAND = {
   textSec: '#64748B', textMut: '#475569', success: '#10B981',
 }
 
+const CSE_API_KEY = 'AIzaSyB4Aob3vFGs-J2hMMvWsprq8JXiBmlFfFg'
+const CSE_CX = 'a02753d79baa74133'
+
 const ASSESSMENT_TYPES = [
   { value: 'ขายฝาก', icon: '🔒', desc: 'รับซื้อฝาก / ได้ผลตอบแทนหลัง' },
   { value: 'จำนอง', icon: '🏛️', desc: 'จดจำนองที่สำนักงานที่ดิน' },
@@ -351,7 +354,17 @@ function HistoryView({ appsScriptUrl }) {
       {editRow && (() => {
         const inp = { width: '100%', background: 'rgba(255,255,255,0.06)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', marginTop: 4 }
         const lbl = { fontSize: 11, color: BRAND.textSec, display: 'block', marginBottom: 2 }
-        const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }))
+        const ef = (k, v) => setEditForm(p => {
+          const next = { ...p, [k]: v }
+          if (k === 'มูลค่าตลาดรวม' || k === 'LTV Rate (%)') {
+            const market = parseFloat(k === 'มูลค่าตลาดรวม' ? v : next['มูลค่าตลาดรวม']) || 0
+            const ltv = parseFloat(k === 'LTV Rate (%)' ? v : next['LTV Rate (%)']) || 50
+            const fsv = Math.round(market * 0.8)
+            next['FSV (80%)'] = fsv
+            next['วงเงินแนะนำ'] = Math.round(fsv * (ltv / 100))
+          }
+          return next
+        })
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
             <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: 24, maxWidth: 580, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -612,7 +625,20 @@ function Step1({ form, update, customers }) {
           <Inp value={form.assessorName} onChange={e => update('assessorName', e.target.value)} placeholder="ชื่อผู้ประเมิน" />
         </Card>
         <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>📄 เลขที่โฉนด</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold }}>📄 เลขที่โฉนด</div>
+            <button
+              onClick={() => {
+                const deed = form.titleDeedNo ? `เลขโฉนด ${form.titleDeedNo}` : ''
+                const prov = form.province ? `จังหวัด${form.province}` : ''
+                const q = [deed, prov].filter(Boolean).join(' ')
+                window.open(`https://landsmaps.dol.go.th/${q ? '?q=' + encodeURIComponent(q) : ''}`, '_blank')
+              }}
+              style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: `1px solid ${BRAND.gold}`, background: 'rgba(245,158,11,0.08)', color: BRAND.gold, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
+            >
+              🌐 LandMap
+            </button>
+          </div>
           <Label>เลขโฉนดที่ดิน</Label>
           <Inp value={form.titleDeedNo} onChange={e => update('titleDeedNo', e.target.value)} placeholder="เช่น 89062" style={{ marginBottom: 10 }} />
           <Label>ระวาง</Label>
@@ -661,6 +687,7 @@ function MapPicker({ form, update }) {
   const mapInstanceRef = useRef(null)
   const markerRef = useRef(null)
   const [searching, setSearching] = useState(false)
+  const [geocoding, setGeocoding] = useState(false)
   const [latInput, setLatInput] = useState(form.lat != null ? String(form.lat) : '')
   const [lngInput, setLngInput] = useState(form.lng != null ? String(form.lng) : '')
   const mapHeight = typeof window !== 'undefined' && window.innerWidth < 640 ? 260 : 320
@@ -680,7 +707,7 @@ function MapPicker({ form, update }) {
       maxZoom: 19,
     }).addTo(map)
 
-    map.on('click', (e) => {
+    map.on('click', async (e) => {
       const { lat, lng } = e.latlng
       update('lat', lat)
       update('lng', lng)
@@ -692,6 +719,21 @@ function MapPicker({ form, update }) {
         markerRef.current = L.marker([lat, lng]).addTo(map)
         markerRef.current.bindPopup('📍 ตำแหน่งทรัพย์สิน').openPopup()
       }
+      setGeocoding(true)
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th`)
+        const data = await res.json()
+        if (data.address) {
+          const addr = data.address
+          const province = (addr.state || '').replace(/^จังหวัด/, '').trim()
+          const district = (addr.county || addr.city_district || addr.town || '').replace(/^(อำเภอ|เขต)/, '').trim()
+          const subdistrict = (addr.suburb || addr.village || addr.quarter || '').replace(/^(ตำบล|แขวง)/, '').trim()
+          if (province) update('province', province)
+          if (district) update('district', district)
+          if (subdistrict) update('subdistrict', subdistrict)
+        }
+      } catch {}
+      setGeocoding(false)
     })
 
     mapInstanceRef.current = map
@@ -731,7 +773,7 @@ function MapPicker({ form, update }) {
     }
   }
 
-  const placeMarker = (lat, lng) => {
+  const placeMarker = async (lat, lng) => {
     if (!mapInstanceRef.current) return
     update('lat', lat)
     update('lng', lng)
@@ -744,6 +786,21 @@ function MapPicker({ form, update }) {
       markerRef.current = L.marker([lat, lng]).addTo(mapInstanceRef.current)
       markerRef.current.bindPopup('📍 ตำแหน่งทรัพย์สิน').openPopup()
     }
+    setGeocoding(true)
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th`)
+      const data = await res.json()
+      if (data.address) {
+        const addr = data.address
+        const province = (addr.state || '').replace(/^จังหวัด/, '').trim()
+        const district = (addr.county || addr.city_district || addr.town || '').replace(/^(อำเภอ|เขต)/, '').trim()
+        const subdistrict = (addr.suburb || addr.village || addr.quarter || '').replace(/^(ตำบล|แขวง)/, '').trim()
+        if (province) update('province', province)
+        if (district) update('district', district)
+        if (subdistrict) update('subdistrict', subdistrict)
+      }
+    } catch {}
+    setGeocoding(false)
   }
 
   const handleCoordConfirm = () => {
@@ -819,14 +876,147 @@ function MapPicker({ form, update }) {
         <div ref={mapRef} style={{ width: '100%', height: mapHeight }} />
       </div>
       <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 6 }}>
-        💡 กรอกพิกัดในช่องด้านบน / คลิกบนแผนที่ / หรือกด "ค้นหาจากที่อยู่" — พิกัดจะถูกบันทึกลง Sheet อัตโนมัติ
+        {geocoding
+          ? <span style={{ color: BRAND.teal }}>⏳ กำลังดึงที่อยู่จากพิกัด...</span>
+          : '💡 กรอกพิกัดในช่องด้านบน / คลิกบนแผนที่ / หรือกด "ค้นหาจากที่อยู่" — เติมจังหวัด/อำเภอ/ตำบลอัตโนมัติ'
+        }
+      </div>
+    </Card>
+  )
+}
+
+// ── Market Search Panel ─────────────────────────────────
+function MarketSearchPanel({ form, update }) {
+  const [manualPrice, setManualPrice] = useState('')
+  const [manualSource, setManualSource] = useState('')
+
+  const location = [form.district, form.province].filter(Boolean).join(' ')
+  const type = form.propertyType || 'ที่ดิน'
+  const q = encodeURIComponent(`${type} ${location} ราคา`)
+  const qEn = encodeURIComponent(`${type} ${form.province} price per rai`)
+
+  const portals = [
+    {
+      name: 'DDproperty',
+      icon: '🏠',
+      url: `https://www.ddproperty.com/property-for-sale?freetext=${encodeURIComponent(`${type} ${location}`)}`,
+      color: '#E53E3E',
+    },
+    {
+      name: 'Fazwaz',
+      icon: '🏡',
+      url: `https://www.fazwaz.com/search?search=${q}`,
+      color: '#D69E2E',
+    },
+    {
+      name: 'Hipflat',
+      icon: '🏘️',
+      url: `https://www.hipflat.com/th/search?query=${q}`,
+      color: '#38A169',
+    },
+    {
+      name: 'Livinginsider',
+      icon: '🔑',
+      url: `https://www.livinginsider.com/search?keyword=${encodeURIComponent(`${type} ${location}`)}`,
+      color: '#3182CE',
+    },
+    {
+      name: 'Google ราคาตลาด',
+      icon: '🔍',
+      url: `https://www.google.com/search?q=${encodeURIComponent(`ราคา${type} ${location} ตร.ว. 2568`)}`,
+      color: '#805AD5',
+    },
+    {
+      name: 'Pantip ราคาที่ดิน',
+      icon: '💬',
+      url: `https://pantip.com/search?q=${encodeURIComponent(`ราคาที่ดิน ${location}`)}`,
+      color: '#DD6B20',
+    },
+  ]
+
+  return (
+    <Card style={{ borderColor: 'rgba(45,212,191,0.3)' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 4 }}>🔍 ค้นหาราคาตลาดจริง</div>
+      <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 12 }}>
+        กดปุ่มด้านล่างเพื่อดูราคาตลาดจริง → จดราคา → กรอกใน "Comp" ด้านบน
+        {location && <span style={{ color: BRAND.teal }}> ({type} · {location})</span>}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+        {portals.map(p => (
+          <a
+            key={p.name}
+            href={p.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: BRAND.bg, textDecoration: 'none', color: BRAND.textPri }}
+          >
+            <span style={{ fontSize: 18 }}>{p.icon}</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: p.color }}>{p.name}</div>
+              <div style={{ fontSize: 10, color: BRAND.textSec }}>เปิดดูราคา ↗</div>
+            </div>
+          </a>
+        ))}
+      </div>
+
+      <div style={{ borderTop: `1px solid ${BRAND.border}`, paddingTop: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.gold, marginBottom: 8 }}>📝 กรอกราคาที่หามาได้</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: BRAND.textSec, marginBottom: 4 }}>ราคาตลาด Comp (บาท/ตร.ว.)</div>
+            <input
+              type="number"
+              value={manualPrice}
+              onChange={e => setManualPrice(e.target.value)}
+              placeholder="เช่น 25000"
+              style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: BRAND.textSec, marginBottom: 4 }}>แหล่งที่มา</div>
+            <input
+              value={manualSource}
+              onChange={e => setManualSource(e.target.value)}
+              placeholder="เช่น DDproperty ซ.20"
+              style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+          <button
+            disabled={!manualPrice}
+            onClick={() => {
+              update('compPrice', parseFloat(manualPrice))
+              update('compSource', manualSource || 'ค้นหาราคาตลาด')
+              setManualPrice('')
+              setManualSource('')
+            }}
+            style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: manualPrice ? BRAND.teal : BRAND.border, color: manualPrice ? '#000' : BRAND.textMut, fontSize: 12, fontWeight: 700, cursor: manualPrice ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap' }}
+          >
+            ✓ เติม
+          </button>
+        </div>
       </div>
     </Card>
   )
 }
 
 // ── Step 2 ─────────────────────────────────────────────
-function Step2({ form, update, calc }) {
+function Step2({ form, update, calc, comps = [] }) {
+  // ราคาอ้างอิงจากประวัติในพื้นที่เดียวกัน
+  const relevantComps = comps.filter(c =>
+    c['จังหวัด'] === form.province && c['ประเภทอสังหาฯ'] === form.propertyType
+  )
+  const avgGovPrice = relevantComps.length > 0
+    ? Math.round(relevantComps.reduce((s, c) => s + (parseFloat(c['ราคาประเมินรัฐ (บ./ตร.ว.)']) || 0), 0) / relevantComps.length)
+    : null
+  const avgMarketPrice = relevantComps.length > 0
+    ? Math.round(relevantComps.reduce((s, c) => s + (parseFloat(c['ราคาตลาด (บ./ตร.ว.)']) || 0), 0) / relevantComps.length)
+    : null
+  const avgComp = relevantComps.filter(c => parseFloat(c['Comp (บ./ตร.ว.)']) > 0)
+  const avgCompPrice = avgComp.length > 0
+    ? Math.round(avgComp.reduce((s, c) => s + (parseFloat(c['Comp (บ./ตร.ว.)']) || 0), 0) / avgComp.length)
+    : null
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
@@ -870,6 +1060,45 @@ function Step2({ form, update, calc }) {
           <Inp type="number" min="0" value={form.compPrice} onChange={e => update('compPrice', e.target.value)} placeholder="ระบุถ้ามี" style={{ marginBottom: 10 }} />
           <Label>แหล่งที่มา Comp</Label>
           <Inp value={form.compSource} onChange={e => update('compSource', e.target.value)} placeholder="เช่น ซ.20 ถนนแล้ว" />
+          {relevantComps.length > 0 && (
+            <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.06)', border: `1px solid rgba(245,158,11,0.25)` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.gold, marginBottom: 8 }}>
+                📊 ราคาอ้างอิงจากประวัติ {form.province} ({form.propertyType}) — {relevantComps.length} รายการ
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {avgGovPrice > 0 && (
+                  <button
+                    onClick={() => update('govPrice', avgGovPrice)}
+                    style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid rgba(245,158,11,0.4)`, background: 'transparent', color: BRAND.textPri, fontSize: 11, cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    <div style={{ color: BRAND.textSec, fontSize: 10 }}>เฉลี่ยราคาประเมินรัฐ</div>
+                    <div style={{ fontWeight: 700, color: BRAND.gold }}>฿{fmt(avgGovPrice)}/ตร.ว.</div>
+                    <div style={{ fontSize: 10, color: BRAND.teal }}>👆 คลิกเติม</div>
+                  </button>
+                )}
+                {avgCompPrice > 0 && (
+                  <button
+                    onClick={() => { update('compPrice', avgCompPrice); update('compSource', `ค่าเฉลี่ยจากประวัติ ${form.province}`) }}
+                    style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid rgba(245,158,11,0.4)`, background: 'transparent', color: BRAND.textPri, fontSize: 11, cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    <div style={{ color: BRAND.textSec, fontSize: 10 }}>เฉลี่ยราคาตลาด Comp</div>
+                    <div style={{ fontWeight: 700, color: BRAND.gold }}>฿{fmt(avgCompPrice)}/ตร.ว.</div>
+                    <div style={{ fontSize: 10, color: BRAND.teal }}>👆 คลิกเติม</div>
+                  </button>
+                )}
+                {avgMarketPrice > 0 && !avgCompPrice && (
+                  <button
+                    onClick={() => { update('compPrice', avgMarketPrice); update('compSource', `ค่าเฉลี่ยตลาดจากประวัติ ${form.province}`) }}
+                    style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid rgba(245,158,11,0.4)`, background: 'transparent', color: BRAND.textPri, fontSize: 11, cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    <div style={{ color: BRAND.textSec, fontSize: 10 }}>เฉลี่ยราคาตลาดรวม</div>
+                    <div style={{ fontWeight: 700, color: BRAND.gold }}>฿{fmt(avgMarketPrice)}/ตร.ว.</div>
+                    <div style={{ fontSize: 10, color: BRAND.teal }}>👆 คลิกเติม Comp</div>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </Card>
       </div>
       <Card style={{ borderColor: 'rgba(45,212,191,0.3)' }}>
@@ -893,6 +1122,7 @@ function Step2({ form, update, calc }) {
         <Label>หมายเหตุทำเล / สภาพพื้นที่</Label>
         <textarea value={form.locationNote} onChange={e => update('locationNote', e.target.value)} placeholder="บันทึกเพิ่มเติม เช่น สภาพพื้นที่ ทิศทาง สิ่งแวดล้อม..." style={{ width: '100%', background: BRAND.bg, border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '10px 12px', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box' }} />
       </Card>
+      <MarketSearchPanel form={form} update={update} />
       <MapPicker form={form} update={update} />
     </div>
   )
@@ -1153,8 +1383,19 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   const [form, setForm] = useState(INITIAL_FORM)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [comps, setComps] = useState([])
+  const compsLoadedRef = useRef(false)
 
   const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
+
+  useEffect(() => {
+    if (step !== 2 || compsLoadedRef.current || !appsScriptUrl) return
+    compsLoadedRef.current = true
+    fetch(`${appsScriptUrl}?action=getValuations`)
+      .then(r => r.json())
+      .then(d => setComps(d.data || []))
+      .catch(() => {})
+  }, [step, appsScriptUrl])
 
   const calc = useMemo(() => {
     const totalSqw = form.areaRai * 400 + form.areaNgan * 100 + +form.areaSqw
@@ -1273,7 +1514,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
           <>
             <Stepper step={step} />
             {step === 1 && <Step1 form={form} update={update} customers={customers} />}
-            {step === 2 && <Step2 form={form} update={update} calc={calc} />}
+            {step === 2 && <Step2 form={form} update={update} calc={calc} comps={comps} />}
             {step === 3 && <Step3 form={form} update={update} calc={calc} />}
             {step === 4 && <Step4 form={form} calc={calc} update={update} />}
 
