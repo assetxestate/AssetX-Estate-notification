@@ -3,6 +3,7 @@ import ChatPanel from "./ChatPanel.jsx";
 import ValuationPage from "./ValuationPage.jsx";
 import MapView from "./MapView.jsx";
 import InvestorPage from "./InvestorPage.jsx";
+import DashboardPage from "./DashboardPage.jsx";
 
 // ============================================================
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
@@ -2218,6 +2219,13 @@ export default function App() {
             }}
           >
             <button
+              className={`tab ${mainTab === "dashboard" ? "active" : ""}`}
+              onClick={() => setMainTab("dashboard")}
+              style={mainTab === "dashboard" ? { borderColor: '#7C3AED', background: 'rgba(124,58,237,0.1)', color: '#A78BFA' } : {}}
+            >
+              📊 Dashboard
+            </button>
+            <button
               className={`tab ${mainTab === "customers" ? "active" : ""}`}
               onClick={() => setMainTab("customers")}
             >
@@ -2257,6 +2265,11 @@ export default function App() {
               💼 นายทุน
             </button>
           </div>
+
+          {/* Dashboard Tab */}
+          {mainTab === "dashboard" && (
+            <DashboardPage customers={enriched} paymentRecords={paymentRecords} />
+          )}
 
           {/* System Status Tab */}
           {mainTab === "status" && (
