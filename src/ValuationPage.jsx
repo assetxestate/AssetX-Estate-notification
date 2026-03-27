@@ -51,6 +51,53 @@ const PROVINCES = [
   'อุดรธานี','อุตรดิตถ์','อุทัยธานี','อุบลราชธานี',
 ]
 
+// ── รหัสทรัพย์ Mappings ────────────────────────────────
+const ASSESSMENT_CODE = {
+  'ขายฝาก': 'SR', 'จำนอง': 'MG', 'ซื้อขาย': 'PS',
+  'ประเมินเพื่อสินเชื่อ': 'LN', 'ประเมินมูลค่าทรัพย์สิน': 'AV', 'อื่นๆ': 'OT',
+}
+
+const PROVINCE_CODE = {
+  'กรุงเทพมหานคร':'BKK','กระบี่':'KBI','กาญจนบุรี':'KAN','กาฬสินธุ์':'KSN',
+  'กำแพงเพชร':'KPT','ขอนแก่น':'KKN','จันทบุรี':'CTI','ฉะเชิงเทรา':'CCO',
+  'ชลบุรี':'CBI','ชัยนาท':'CNT','ชัยภูมิ':'CPM','ชุมพร':'CPN',
+  'เชียงราย':'CRI','เชียงใหม่':'CMI','ตรัง':'TRG','ตราด':'TRT',
+  'ตาก':'TAK','นครนายก':'NYK','นครปฐม':'NPT','นครพนม':'NPM',
+  'นครราชสีมา':'NMA','นครศรีธรรมราช':'NST','นครสวรรค์':'NSN','นนทบุรี':'NBI',
+  'นราธิวาส':'NWT','น่าน':'NAN','บึงกาฬ':'BKN','บุรีรัมย์':'BRM',
+  'ปทุมธานี':'PTM','ประจวบคีรีขันธ์':'PKN','ปราจีนบุรี':'PRI','ปัตตานี':'PTN',
+  'พระนครศรีอยุธยา':'AYA','พะเยา':'PYO','พังงา':'PNA','พัทลุง':'PLG',
+  'พิจิตร':'PCT','พิษณุโลก':'PLK','เพชรบุรี':'PBI','เพชรบูรณ์':'PNB',
+  'แพร่':'PRE','ภูเก็ต':'PKT','มหาสารคาม':'MKM','มุกดาหาร':'MDH',
+  'แม่ฮ่องสอน':'MSN','ยโสธร':'YST','ยะลา':'YLA','ร้อยเอ็ด':'RET',
+  'ระนอง':'RNG','ระยอง':'RYG','ราชบุรี':'RBR','ลพบุรี':'LRI',
+  'ลำปาง':'LPG','ลำพูน':'LPN','เลย':'LEI','ศรีสะเกษ':'SSK',
+  'สกลนคร':'SNK','สงขลา':'SKA','สตูล':'STN','สมุทรปราการ':'SPK',
+  'สมุทรสงคราม':'SKM','สมุทรสาคร':'SAK','สระแก้ว':'SKW','สระบุรี':'SRI',
+  'สิงห์บุรี':'SBR','สุโขทัย':'STI','สุพรรณบุรี':'SPB','สุราษฎร์ธานี':'SNI',
+  'สุรินทร์':'SRN','หนองคาย':'NKI','หนองบัวลำภู':'NBP','อ่างทอง':'ATG',
+  'อำนาจเจริญ':'ACR','อุดรธานี':'UDN','อุตรดิตถ์':'UTD','อุทัยธานี':'UTI',
+  'อุบลราชธานี':'UBL',
+}
+
+const SUBTYPE_CODE = {
+  'ที่ดินเปล่า (โฉนด)':'NS','ที่ดินเปล่า (น.ส.3)':'N3','ที่ดินเปล่า (ส.ค.1)':'SK',
+  'ที่ดินพร้อมสิ่งปลูกสร้าง':'LB','บ้านเดี่ยว':'HB','บ้านแฝด':'TW',
+  'ทาวน์เฮ้าส์':'TH','ตึกแถว':'SH','คอนโดมิเนียม':'CD','อาคารชุด':'AP',
+  'เซอร์วิสอพาร์ทเมนท์':'SA','อาคารพาณิชย์':'CM','ศูนย์การค้า':'ML',
+  'สำนักงาน':'OF','โกดัง':'WH','โรงงาน':'FC','นิคมอุตสาหกรรม':'IE',
+  'คลังสินค้า':'WS','โรงแรม':'HT','รีสอร์ท':'RS','เกสต์เฮ้าส์':'GH','อื่นๆ':'OT',
+}
+
+function generateAssetCode(assessmentType, province, propertySubtype, seq) {
+  const typeCode = ASSESSMENT_CODE[assessmentType] || 'OT'
+  const provCode = PROVINCE_CODE[province] || 'UNK'
+  const subCode = SUBTYPE_CODE[propertySubtype] || 'OT'
+  const year = String(new Date().getFullYear()).slice(-2)
+  const seqStr = String(seq).padStart(3, '0')
+  return `${typeCode}-${provCode}-${subCode}-${seqStr}-${year}`
+}
+
 const ROAD_TYPE_OPTIONS = [
   { value: 'ไม่ซอย / เลียบตลอง', factor: 1.00 },
   { value: 'ซอยสั้น / ออกถนนใหญ่ < 200ม.', factor: 0.90 },
@@ -105,7 +152,7 @@ const INITIAL_FORM = {
   risks: { flood: false, hardAccess: false, irregularShape: false, encumbrance: false, dispute: false, noUtilities: false, nuisance: false, incompleteDeed: false },
   ltvRate: 50, linkedCustomer: '',
   lat: null, lng: null,
-  requestedLoan: '',
+  requestedLoan: '', assetCode: '',
 }
 
 // ── UI Components ──────────────────────────────────────
@@ -545,7 +592,7 @@ function HistoryView({ appsScriptUrl }) {
 }
 
 // ── Step 1 ─────────────────────────────────────────────
-function Step1({ form, update, customers }) {
+function Step1({ form, update, customers, assetCode }) {
   const subtypes = PROPERTY_SUBTYPES[form.propertyType] || ['อื่นๆ']
 
   const handleCustomerSelect = (val) => {
@@ -617,7 +664,16 @@ function Step1({ form, update, customers }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <Card>
           <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>📌 ข้อมูลการประเมิน</div>
-          <Label>ชื่อโครงการ / รหัสทรัพย์</Label>
+          {assetCode && (
+            <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(45,212,191,0.08)', border: `1px solid ${BRAND.teal}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+              <div>
+                <div style={{ fontSize: 10, color: BRAND.textSec, marginBottom: 2 }}>รหัสทรัพย์ (Auto)</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: BRAND.teal, letterSpacing: 1 }}>{assetCode}</div>
+              </div>
+              <button onClick={() => { navigator.clipboard?.writeText(assetCode) }} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: `1px solid ${BRAND.teal}`, background: 'transparent', color: BRAND.teal, cursor: 'pointer' }}>คัดลอก</button>
+            </div>
+          )}
+          <Label>ชื่อโครงการ / หมายเหตุเพิ่มเติม</Label>
           <Inp value={form.projectName} onChange={e => update('projectName', e.target.value)} placeholder="เช่น ที่ดินเลียบคลองฯ ซ.20" style={{ marginBottom: 10 }} />
           <Label>วันที่ประเมิน</Label>
           <Inp type="date" value={form.assessmentDate} onChange={e => update('assessmentDate', e.target.value)} style={{ marginBottom: 10 }} />
@@ -1384,9 +1440,35 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [comps, setComps] = useState([])
+  const [valuationSeq, setValuationSeq] = useState(1)
   const compsLoadedRef = useRef(false)
+  const seqLoadedRef = useRef(false)
 
   const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
+
+  // โหลด sequence number จากจำนวนประเมินทั้งหมด
+  useEffect(() => {
+    if (seqLoadedRef.current || !appsScriptUrl) return
+    seqLoadedRef.current = true
+    fetch(`${appsScriptUrl}?action=getValuations`)
+      .then(r => r.json())
+      .then(d => {
+        const rows = d.data || []
+        const curYear = String(new Date().getFullYear()).slice(-2)
+        const thisYearCount = rows.filter(r => {
+          const code = r['รหัส/ชื่อทรัพย์'] || r['projectName'] || ''
+          return code.endsWith(`-${curYear}`)
+        }).length
+        setValuationSeq(thisYearCount + 1)
+      })
+      .catch(() => {})
+  }, [appsScriptUrl])
+
+  // Auto-generate รหัสทรัพย์ เมื่อเปลี่ยนประเภท/จังหวัด/ประเภทย่อย
+  useEffect(() => {
+    const code = generateAssetCode(form.assessmentType, form.province, form.propertySubtype, valuationSeq)
+    setForm(prev => ({ ...prev, assetCode: code }))
+  }, [form.assessmentType, form.province, form.propertySubtype, valuationSeq])
 
   useEffect(() => {
     if (step !== 2 || compsLoadedRef.current || !appsScriptUrl) return
@@ -1422,7 +1504,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'saveValuation', data: { ...form, ...calc, savedAt: new Date().toISOString() } }),
+        body: JSON.stringify({ action: 'saveValuation', data: { ...form, ...calc, savedAt: new Date().toISOString(), 'รหัส/ชื่อทรัพย์': form.assetCode || form.projectName } }),
       })
       setSaved(true)
     } catch (e) {
@@ -1513,7 +1595,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
         {view === 'form' && (
           <>
             <Stepper step={step} />
-            {step === 1 && <Step1 form={form} update={update} customers={customers} />}
+            {step === 1 && <Step1 form={form} update={update} customers={customers} assetCode={form.assetCode} />}
             {step === 2 && <Step2 form={form} update={update} calc={calc} comps={comps} />}
             {step === 3 && <Step3 form={form} update={update} calc={calc} />}
             {step === 4 && <Step4 form={form} calc={calc} update={update} />}
