@@ -9,7 +9,7 @@ import DashboardPage from "./DashboardPage.jsx";
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbwM6ALIXarUxtMhx4pRWpAdKc3zOgNPbKYaB5oFftaQw5UbAbxOBJ1czjdRZexUBB1LVw/exec";
+  "https://script.google.com/macros/s/AKfycbx1pWFz8gZth1vGIvHcQi4YD9STLy4a6_QCckaM_GtSDNR_rUeF4jREyp1uZbUVN9C40g/exec";
 const IMGBB_KEY = "c83de7744f238eb8f1d0e87efb8bc639";
 // Album ID ตามเดือน (CE year-month → album ID)
 const IMGBB_ALBUMS = {
