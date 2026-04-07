@@ -4,12 +4,13 @@ import ValuationPage from "./ValuationPage.jsx";
 import MapView from "./MapView.jsx";
 import InvestorPage from "./InvestorPage.jsx";
 import DashboardPage from "./DashboardPage.jsx";
+import TaxPage from "./TaxPage.jsx";
 
 // ============================================================
 // 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
 // ============================================================
 const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbx1pWFz8gZth1vGIvHcQi4YD9STLy4a6_QCckaM_GtSDNR_rUeF4jREyp1uZbUVN9C40g/exec";
+  "https://script.google.com/macros/s/AKfycbwoFeclTFx72tQJclYNEInHZGP-qCQ0eArUm-uZeX6ifnj9w7Zr8RGAfLm2At62Vj-unw/exec";
 const IMGBB_KEY = "c83de7744f238eb8f1d0e87efb8bc639";
 // Album ID ตามเดือน (CE year-month → album ID)
 const IMGBB_ALBUMS = {
@@ -1603,6 +1604,123 @@ function CustomerExtraInfoSection({ customer, extraInfoMap, onUpdate }) {
   );
 }
 
+// ── แก้ไขข้อมูลหลักลูกค้าจาก Sheet DATA ────────────────────────
+function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSaved }) {
+  const [form, setForm] = React.useState({
+    name: customer.name || '',
+    type: customer.type || 'จำนอง',
+    principal: String(customer.principal || ''),
+    amount: String(customer.amount || ''),
+    freq: customer.freq || 'รายเดือน',
+    contractEndDate: customer.contractEndDate || '',
+    lineUserId: customer.lineUserId || '',
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState(null);
+
+  const up = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleSave = async () => {
+    if (!form.name.trim()) { setError('กรุณากรอกชื่อลูกค้า'); return; }
+    setSaving(true); setError(null);
+    try {
+      await fetch(appsScriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'updateCustomer', customerId: customer.id, data: form }),
+      });
+      await new Promise(r => setTimeout(r, 1500));
+      onSaved({ ...customer, ...form, principal: parseFloat(form.principal) || 0, amount: parseFloat(form.amount) || 0 });
+      onClose();
+    } catch (e) {
+      setError('เกิดข้อผิดพลาด: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    background: 'rgba(255,255,255,.05)', border: '1px solid rgba(45,212,191,.2)',
+    borderRadius: 7, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none',
+  };
+  const labelStyle = { fontSize: 11, color: BRAND.textSec, marginBottom: 4, display: 'block' };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }} onClick={onClose}>
+      <div style={{
+        background: BRAND.card, border: `1px solid rgba(45,212,191,.3)`, borderRadius: 16,
+        padding: 24, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, color: BRAND.textPri, fontSize: 16 }}>✏️ แก้ไขข้อมูลลูกค้า</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: BRAND.textSec, fontSize: 20, cursor: 'pointer' }}>×</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={labelStyle}>ชื่อลูกค้า</label>
+            <input style={inputStyle} value={form.name} onChange={e => up('name', e.target.value)} />
+          </div>
+          <div>
+            <label style={labelStyle}>ประเภทสัญญา</label>
+            <select style={inputStyle} value={form.type} onChange={e => up('type', e.target.value)}>
+              <option value="จำนอง">จำนอง</option>
+              <option value="ขายฝาก">ขายฝาก</option>
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={labelStyle}>เงินต้น (บาท)</label>
+              <input style={inputStyle} type="number" value={form.principal} onChange={e => up('principal', e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>ดอกเบี้ย/งวด (บาท)</label>
+              <input style={inputStyle} type="number" value={form.amount} onChange={e => up('amount', e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>รอบชำระ</label>
+            <select style={inputStyle} value={form.freq} onChange={e => up('freq', e.target.value)}>
+              <option value="รายเดือน">รายเดือน</option>
+              <option value="ราย 2 สัปดาห์">ราย 2 สัปดาห์</option>
+              <option value="รายปี">รายปี</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>วันสิ้นสุดสัญญา (YYYY-MM-DD)</label>
+            <input style={inputStyle} value={form.contractEndDate} onChange={e => up('contractEndDate', e.target.value)} placeholder="เช่น 2026-06-01" />
+          </div>
+          <div>
+            <label style={labelStyle}>LINE User ID</label>
+            <input style={inputStyle} value={form.lineUserId} onChange={e => up('lineUserId', e.target.value)} placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+          </div>
+        </div>
+
+        {error && <div style={{ color: '#F87171', fontSize: 12, marginTop: 12 }}>{error}</div>}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          <button onClick={onClose} style={{
+            flex: 1, padding: '10px 0', borderRadius: 8,
+            background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.1)',
+            color: BRAND.textSec, fontSize: 13, cursor: 'pointer',
+          }}>ยกเลิก</button>
+          <button onClick={handleSave} disabled={saving} style={{
+            flex: 2, padding: '10px 0', borderRadius: 8,
+            background: saving ? 'rgba(45,212,191,.3)' : 'linear-gradient(135deg,#2DD4BF,#0E7490)',
+            border: 'none', color: '#000', fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer',
+          }}>
+            {saving ? 'กำลังบันทึก...' : 'บันทึกลง Sheet'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── LINE User ID Section per Customer ──────────────────────────
 function CustomerLineIdSection({ customer, customerLineIds, savedUserIds, onUpdate }) {
   const currentId = customerLineIds[customer.id] || "";
@@ -1730,6 +1848,7 @@ export default function App() {
   const [expandedId, setExpandedId] = useState(null);
   const [expandedDeeds, setExpandedDeeds] = useState({});
   const [slipModal, setSlipModal] = React.useState(null); // { customer, payment }
+  const [editCustomerModal, setEditCustomerModal] = React.useState(null); // customer object
   const [toast, setToast] = useState(null);
   const [apiConnected, setApiConnected] = useState(false);
   const [currentView, setCurrentView] = useState("main");
@@ -1952,7 +2071,31 @@ export default function App() {
   // ───────────────────────────────────────────────────────────
 
   const lineHook = useLineNotification(targetUserId);
-  const today = useMemo(() => new Date(), []);
+  const [lineTokens, setLineTokens] = React.useState({});
+
+  const generateToken = React.useCallback(async (customerId, customerName) => {
+    setLineTokens(prev => ({ ...prev, [customerId]: { loading: true } }));
+    try {
+      const res = await fetch(
+        `${APPS_SCRIPT_URL}?action=generateRegistrationToken&customerId=${encodeURIComponent(customerId)}&customerName=${encodeURIComponent(customerName)}`
+      ).then(r => r.json());
+      if (res.success) {
+        setLineTokens(prev => ({ ...prev, [customerId]: { token: res.token, expiresAt: res.expiresAt } }));
+      } else {
+        setLineTokens(prev => ({ ...prev, [customerId]: { error: res.error } }));
+      }
+    } catch {
+      setLineTokens(prev => ({ ...prev, [customerId]: { error: 'เชื่อมต่อไม่ได้' } }));
+    }
+  }, []);
+
+  const [today, setToday] = React.useState(() => new Date());
+  React.useEffect(() => {
+    const now = new Date();
+    const msUntilMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now;
+    const timer = setTimeout(() => setToday(new Date()), msUntilMidnight);
+    return () => clearTimeout(timer);
+  }, [today]);
   const thToday = formatThai(
     `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(
       today.getDate()
@@ -2264,6 +2407,13 @@ export default function App() {
             >
               💼 นายทุน
             </button>
+            <button
+              className={`tab ${mainTab === "tax" ? "active" : ""}`}
+              onClick={() => setMainTab("tax")}
+              style={mainTab === "tax" ? { borderColor: '#10B981', background: 'rgba(16,185,129,0.1)', color: '#10B981' } : {}}
+            >
+              🧮 ภาษี
+            </button>
           </div>
 
           {/* Dashboard Tab */}
@@ -2297,6 +2447,9 @@ export default function App() {
           {mainTab === "investor" && (
             <InvestorPage appsScriptUrl={APPS_SCRIPT_URL} />
           )}
+
+          {/* Tax Tab */}
+          {mainTab === "tax" && <TaxPage />}
 
           {/* Payment Tab */}
           {mainTab === "payment" && (
@@ -2785,6 +2938,15 @@ export default function App() {
                                       🔒 ปิดแล้ว
                                     </span>
                                   )}
+                                  {c.lineUserId ? (
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(6,199,85,0.15)', color: '#06C755', border: '1px solid rgba(6,199,85,0.4)' }}>
+                                      ✅ LINE
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(251,191,36,0.15)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.4)' }}>
+                                      ⚠️ ยังไม่มี LINE
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -2830,6 +2992,50 @@ export default function App() {
                               >
                                 เงินต้น: {formatMoney(c.principal)} ฿
                               </div>
+                              <div style={{ display: 'flex', gap: 4, marginTop: 6, justifyContent: 'flex-end' }}>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setEditCustomerModal(c); }}
+                                  style={{
+                                    padding: '3px 10px', borderRadius: 6,
+                                    background: 'rgba(45,212,191,.1)', border: '1px solid rgba(45,212,191,.3)',
+                                    color: BRAND.teal, fontSize: 11, cursor: 'pointer',
+                                  }}
+                                >✏️ แก้ไข</button>
+                                {!c.lineUserId && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); generateToken(c.id, c.name); }}
+                                    style={{
+                                      padding: '3px 10px', borderRadius: 6,
+                                      background: 'rgba(6,199,85,.1)', border: '1px solid rgba(6,199,85,.3)',
+                                      color: '#06C755', fontSize: 11, cursor: 'pointer',
+                                    }}
+                                  >
+                                    {lineTokens[c.id]?.loading ? '⏳' : '📲 สร้างรหัส LINE'}
+                                  </button>
+                                )}
+                              </div>
+                              {(() => {
+                                const tk = lineTokens[c.id];
+                                if (!tk || tk.loading) return null;
+                                if (tk.error) return (
+                                  <div style={{ marginTop: 6, fontSize: 11, color: '#F87171', textAlign: 'right' }}>❌ {tk.error}</div>
+                                );
+                                return (
+                                  <div onClick={e => e.stopPropagation()} style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(6,199,85,0.08)', border: '1px solid rgba(6,199,85,0.3)', textAlign: 'right' }}>
+                                    <div style={{ fontSize: 10, color: BRAND.textSec, marginBottom: 4 }}>รหัสลงทะเบียน LINE (หมดอายุ {tk.expiresAt})</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                                      <span style={{ fontSize: 16, fontWeight: 800, color: '#06C755', letterSpacing: 2 }}>{tk.token}</span>
+                                      <button
+                                        onClick={() => { navigator.clipboard.writeText(tk.token); }}
+                                        style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(6,199,85,.2)', border: '1px solid rgba(6,199,85,.4)', color: '#06C755', fontSize: 10, cursor: 'pointer' }}
+                                      >คัดลอก</button>
+                                    </div>
+                                    <div style={{ fontSize: 10, color: BRAND.textSec, marginTop: 4 }}>
+                                      แจ้งลูกค้าพิมพ์ใน LINE: <strong style={{ color: BRAND.textPri }}>/ลงทะเบียน {tk.token}</strong>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -3274,6 +3480,19 @@ export default function App() {
 
       {/* Claude AI Chat */}
       {/* <ChatPanel customerData={customers} /> */}
+
+      {/* Edit Customer Modal */}
+      {editCustomerModal && (
+        <CustomerSheetEditModal
+          customer={editCustomerModal}
+          appsScriptUrl={APPS_SCRIPT_URL}
+          onClose={() => setEditCustomerModal(null)}
+          onSaved={(updated) => {
+            setCustomers(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+            setEditCustomerModal(null);
+          }}
+        />
+      )}
 
       {/* Slip Modal */}
       {slipModal && (
