@@ -180,6 +180,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
         const lat = parseFloat(row['lat'])
         const lng = parseFloat(row['lng'])
         if (isNaN(lat) || isNaN(lng)) return
+        if (String(row['สถานะ'] || '').trim().includes('สร้างสัญญา')) return  // ลูกค้าแสดงหมุดอยู่แล้ว
         if (filterType !== 'ทั้งหมด' && row['ประเภทการประเมิน'] !== filterType) return
 
         const color = TYPE_COLOR[row['ประเภทการประเมิน']] || '#64748B'
@@ -197,39 +198,138 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
         const totalSqw = parseFloat(row['ตร.ว.รวม']) || 0
         const govTotal = govPrice * totalSqw
 
-        const marker = L.marker([lat, lng], { icon: makeValuationIcon(color) }).addTo(map)
-        marker.bindPopup(`
-          <div style="font-family:'Sarabun',sans-serif;min-width:230px;padding:4px">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-              <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
-              <div style="font-weight:700;font-size:13px;color:#111">${row['รหัส/ชื่อทรัพย์'] || '—'}</div>
+        const hasContract = row['สถานะ'] === 'สร้างสัญญาแล้ว'
+        // หาข้อมูลลูกค้าที่ตรงกับการประเมินนี้ (หลายกลยุทธ์)
+        let linkedCustomer = null
+        if (hasContract) {
+          const linkedName = row['ชื่อลูกค้า'] || ''
+          // กลยุทธ์ 1: ชื่อลูกค้าตรงกัน (รายการใหม่)
+          if (linkedName) {
+            linkedCustomer = customers.find(c => c.name === linkedName)
+          }
+          // กลยุทธ์ 2: ประเภทตรงกัน + location มี จังหวัด + อำเภอ
+          if (!linkedCustomer && row['จังหวัด'] && row['อำเภอ/เขต']) {
+            linkedCustomer = customers.find(c =>
+              c.type === assessType &&
+              c.location &&
+              c.location.includes(row['จังหวัด']) &&
+              c.location.includes(row['อำเภอ/เขต'])
+            )
+          }
+          // กลยุทธ์ 3: ประเภทตรงกัน + จังหวัด
+          if (!linkedCustomer && row['จังหวัด']) {
+            linkedCustomer = customers.find(c =>
+              c.type === assessType &&
+              c.location &&
+              c.location.includes(row['จังหวัด'])
+            )
+          }
+        }
+
+        const pinColor = linkedCustomer ? (linkedCustomer.color || '#60A5FA') : color
+        const pinIcon = linkedCustomer ? (linkedCustomer.icon || '🏠') : (assessType === 'ขายฝาก' ? '🔒' : assessType === 'จำนอง' ? '🏛️' : '📍')
+        const icon = hasContract
+          ? makeCustomerIcon(pinColor, pinIcon)
+          : makeValuationIcon(color)
+
+        const marker = L.marker([lat, lng], { icon }).addTo(map)
+
+        // ถ้า match ลูกค้าได้ → แสดง popup แบบลูกค้า
+        if (linkedCustomer) {
+          const c = linkedCustomer
+          const nextPayment = (c.payments || []).find(p => p.status !== 'paid')
+          const contractColor = c.contractDiff !== null
+            ? (c.contractDiff <= 30 ? '#EF4444' : c.contractDiff <= 90 ? '#F59E0B' : BRAND.success)
+            : BRAND.textSec
+          marker.bindPopup(`
+            <div style="font-family:'Sarabun',sans-serif;min-width:220px;padding:4px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span style="font-size:20px">${c.icon || '🏠'}</span>
+                <div>
+                  <div style="font-weight:700;font-size:14px;color:#111">คุณ${c.name}</div>
+                  <span style="background:${c.color || '#60A5FA'}22;border:1px solid ${c.color || '#60A5FA'}66;border-radius:12px;padding:2px 8px;font-size:11px;color:${c.color || '#60A5FA'};font-weight:600">${c.type}</span>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+                <div style="background:#f5f5f5;border-radius:6px;padding:6px;text-align:center">
+                  <div style="font-size:9px;color:#888">เงินต้น</div>
+                  <div style="font-size:12px;font-weight:700;color:#1a3a5c">฿${fmt(c.principal)}</div>
+                </div>
+                <div style="background:#f5f5f5;border-radius:6px;padding:6px;text-align:center">
+                  <div style="font-size:9px;color:#888">ดอกเบี้ย/งวด</div>
+                  <div style="font-size:12px;font-weight:700;color:#F59E0B">฿${fmt(c.amount)}</div>
+                </div>
+              </div>
+              <div style="font-size:11px;color:#555;margin-bottom:4px">
+                📅 ครบสัญญา: <span style="color:${contractColor};font-weight:600">${formatThaiDate(c.contractEndDate)}</span>
+                ${c.contractDiff !== null ? `<span style="color:${contractColor}"> (${c.contractDiff >= 0 ? 'อีก ' + c.contractDiff + ' วัน' : 'เกินกำหนด'})</span>` : ''}
+              </div>
+              ${nextPayment ? `<div style="font-size:11px;color:#555">💳 งวดถัดไป: งวด ${nextPayment.installment} — ${formatThaiDate(nextPayment.dateStr)}</div>` : ''}
+              <div style="font-size:10px;color:#aaa;margin-top:6px">📌 ${c.fullLabel}</div>
             </div>
-            <div style="font-size:10px;color:#777;margin-bottom:8px">${assessType} • ${row['ประเภทย่อย'] || ''} • 📍${row['จังหวัด'] || ''}</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">
-              <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
-                <div style="font-size:9px;color:#888">ราคาประเมินที่ดิน</div>
-                <div style="font-size:11px;font-weight:700;color:#6366F1">฿${fmt(govTotal)}</div>
+          `, { maxWidth: 260 })
+        } else if (hasContract) {
+          // สร้างสัญญาแล้ว แต่ match ลูกค้าไม่ได้ → แสดงสไตล์ลูกค้าจากข้อมูลประเมิน
+          const principal = requestedLoan || parseFloat(row['วงเงินแนะนำ']) || 0
+          const loc = [row['ตำบล/แขวง'] ? 'ต.' + row['ตำบล/แขวง'] : '', row['อำเภอ/เขต'] ? 'อ.' + row['อำเภอ/เขต'] : '', row['จังหวัด'] || ''].filter(Boolean).join(' ')
+          marker.bindPopup(`
+            <div style="font-family:'Sarabun',sans-serif;min-width:220px;padding:4px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span style="font-size:20px">${assessType === 'ขายฝาก' ? '🏡' : '🏦'}</span>
+                <div>
+                  <div style="font-weight:700;font-size:14px;color:#111">${row['รหัส/ชื่อทรัพย์'] || '—'}</div>
+                  <span style="background:${color}22;border:1px solid ${color}66;border-radius:12px;padding:2px 8px;font-size:11px;color:${color};font-weight:600">${assessType}</span>
+                </div>
               </div>
-              <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
-                <div style="font-size:9px;color:#888">มูลค่าตลาด</div>
-                <div style="font-size:11px;font-weight:700;color:#2DD4BF">฿${fmt(marketValue)}</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+                <div style="background:#f5f5f5;border-radius:6px;padding:6px;text-align:center">
+                  <div style="font-size:9px;color:#888">วงเงิน</div>
+                  <div style="font-size:12px;font-weight:700;color:#1a3a5c">฿${fmt(principal)}</div>
+                </div>
+                <div style="background:#f5f5f5;border-radius:6px;padding:6px;text-align:center">
+                  <div style="font-size:9px;color:#888">มูลค่าตลาด</div>
+                  <div style="font-size:12px;font-weight:700;color:#2DD4BF">฿${fmt(marketValue)}</div>
+                </div>
               </div>
-              <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
-                <div style="font-size:9px;color:#888">${loanLabel}</div>
-                <div style="font-size:11px;font-weight:700;color:#A78BFA">฿${fmt(requestedLoan)}</div>
-              </div>
-              <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
-                <div style="font-size:9px;color:#888">วงเงินแนะนำ</div>
-                <div style="font-size:11px;font-weight:700;color:#F59E0B">฿${fmt(row['วงเงินแนะนำ'])}</div>
-              </div>
+              <div style="font-size:11px;color:#555;margin-bottom:4px">📋 สร้างสัญญาแล้ว</div>
+              <div style="font-size:10px;color:#aaa">📌 ${loc}</div>
             </div>
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-size:10px;color:#888">%LTV (เงินขอ/มูลค่าตลาด)</span>
-              <span style="font-size:13px;font-weight:700;color:${ltvColor}">${ltv !== null ? ltv + '%' : '—'}</span>
+          `, { maxWidth: 260 })
+        } else {
+          // ยังไม่สร้างสัญญา → popup แบบประเมินปกติ
+          marker.bindPopup(`
+            <div style="font-family:'Sarabun',sans-serif;min-width:230px;padding:4px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
+                <div style="font-weight:700;font-size:13px;color:#111">${row['รหัส/ชื่อทรัพย์'] || '—'}</div>
+              </div>
+              <div style="font-size:10px;color:#777;margin-bottom:8px">${assessType} • ${row['ประเภทย่อย'] || ''} • 📍${row['จังหวัด'] || ''}</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">
+                <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
+                  <div style="font-size:9px;color:#888">ราคาประเมินที่ดิน</div>
+                  <div style="font-size:11px;font-weight:700;color:#6366F1">฿${fmt(govTotal)}</div>
+                </div>
+                <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
+                  <div style="font-size:9px;color:#888">มูลค่าตลาด</div>
+                  <div style="font-size:11px;font-weight:700;color:#2DD4BF">฿${fmt(marketValue)}</div>
+                </div>
+                <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
+                  <div style="font-size:9px;color:#888">${loanLabel}</div>
+                  <div style="font-size:11px;font-weight:700;color:#A78BFA">฿${fmt(requestedLoan)}</div>
+                </div>
+                <div style="background:#f5f5f5;border-radius:6px;padding:5px;text-align:center">
+                  <div style="font-size:9px;color:#888">วงเงินแนะนำ</div>
+                  <div style="font-size:11px;font-weight:700;color:#F59E0B">฿${fmt(row['วงเงินแนะนำ'])}</div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:10px;color:#888">%LTV (เงินขอ/มูลค่าตลาด)</span>
+                <span style="font-size:13px;font-weight:700;color:${ltvColor}">${ltv !== null ? ltv + '%' : '—'}</span>
+              </div>
+              ${row['วันที่บันทึก'] ? `<div style="font-size:9px;color:#bbb;margin-top:4px">บันทึก: ${row['วันที่บันทึก']}</div>` : ''}
             </div>
-            ${row['วันที่บันทึก'] ? `<div style="font-size:9px;color:#bbb;margin-top:4px">บันทึก: ${row['วันที่บันทึก']}</div>` : ''}
-          </div>
-        `, { maxWidth: 260 })
+          `, { maxWidth: 260 })
+        }
 
         markersRef.current.push(marker)
       })
@@ -301,6 +401,10 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: BRAND.textSec }}>
           <div style={{ width: 12, height: 12, borderRadius: '50% 50% 50% 0', background: BRAND.gold, transform: 'rotate(-45deg)', border: '2px solid #fff' }} />
           <span style={{ marginLeft: 4 }}>หมุดประเมิน (หยดน้ำ)</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: BRAND.textSec }}>
+          <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#A78BFA', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8 }}>📋</div>
+          <span>ประเมิน + สร้างสัญญาแล้ว (วงกลม)</span>
         </div>
         {Object.entries(TYPE_COLOR).slice(0, 3).map(([t, c]) => (
           <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: BRAND.textSec }}>

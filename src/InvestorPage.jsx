@@ -52,12 +52,14 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     customerName: '',
     interestRate: '',
     installmentCount: '',
-    contractStartDate: new Date().toISOString().split('T')[0],
+    contractStartDate: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
     payDay: '',
     freq: 'รายเดือน',
     lineUserId: '',
+    advanceInstallments: 0,
   });
   const [saving, setSaving] = useState(false);
+  const [regToken, setRegToken] = useState(null);
 
   const up = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
@@ -97,10 +99,21 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
       };
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ action: 'createCustomerFromValuation', data }),
       });
-      onSuccess();
+      // ตรวจสอบว่า Apps Script บันทึกจริงโดย fetch ข้อมูลลูกค้ากลับมา
+      await new Promise(r => setTimeout(r, 1500));
+      const verify = await fetch(`${appsScriptUrl}?action=getCustomers`).then(r => r.json()).catch(() => null);
+      const saved = verify?.data?.find(c => c.name === data.customerName);
+      if (!saved) throw new Error('Apps Script ไม่ได้บันทึกข้อมูล — กรุณาตรวจสอบ Apps Script Logs');
+      // สร้างรหัสลงทะเบียน LINE อัตโนมัติ
+      const tokenRes = await fetch(`${appsScriptUrl}?action=generateRegistrationToken&customerId=${encodeURIComponent(saved.id)}&customerName=${encodeURIComponent(data.customerName)}`).then(r => r.json()).catch(() => null);
+      if (tokenRes?.success) {
+        setRegToken({ token: tokenRes.token, expiresAt: tokenRes.expiresAt, customerName: data.customerName });
+      } else {
+        onSuccess();
+      }
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message);
     } finally {
@@ -110,6 +123,39 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
 
   const inp = { width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: 'rgba(255,255,255,0.05)', color: BRAND.textPri, fontSize: 13, boxSizing: 'border-box' };
   const lbl = { fontSize: 11, color: BRAND.textSec, marginBottom: 4, display: 'block' };
+
+  // Modal แสดงรหัสลงทะเบียน LINE หลังสร้างสัญญาสำเร็จ
+  if (regToken) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+        <div style={{ background: BRAND.cardBg, border: '1px solid rgba(6,199,85,0.4)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 400, textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+          <div style={{ fontWeight: 800, fontSize: 18, color: BRAND.textPri, marginBottom: 6 }}>สร้างสัญญาสำเร็จ!</div>
+          <div style={{ fontSize: 13, color: BRAND.textSec, marginBottom: 20 }}>คุณ{regToken.customerName}</div>
+
+          <div style={{ background: 'rgba(6,199,85,0.08)', border: '1px solid rgba(6,199,85,0.3)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+            <div style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 8 }}>รหัสลงทะเบียน LINE</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: '#06C755', letterSpacing: 4, marginBottom: 8 }}>{regToken.token}</div>
+            <button
+              onClick={() => navigator.clipboard.writeText(regToken.token)}
+              style={{ padding: '6px 20px', borderRadius: 8, background: 'rgba(6,199,85,.2)', border: '1px solid rgba(6,199,85,.5)', color: '#06C755', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+            >📋 คัดลอกรหัส</button>
+            <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 10 }}>หมดอายุ {regToken.expiresAt}</div>
+          </div>
+
+          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 14, marginBottom: 20, textAlign: 'left' }}>
+            <div style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 6 }}>แจ้งลูกค้าพิมพ์ในกลุ่ม LINE:</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.textPri, fontFamily: 'monospace' }}>/ลงทะเบียน {regToken.token}</div>
+          </div>
+
+          <button
+            onClick={onSuccess}
+            style={{ width: '100%', padding: '10px 0', borderRadius: 10, background: BRAND.teal, border: 'none', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+          >เสร็จสิ้น</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
@@ -167,6 +213,13 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
             </select>
           </div>
           <div>
+            <label style={lbl}>หักดอกเบี้ยล่วงหน้า (งวด)</label>
+            <select style={inp} value={form.advanceInstallments} onChange={e => up('advanceInstallments', parseInt(e.target.value))}>
+              <option value={0}>ไม่มีการหักล่วงหน้า</option>
+              {[1,2,3,4,5,6].map(n => <option key={n} value={n}>หัก {n} งวด (งวด 1–{n} ชำระแล้ว)</option>)}
+            </select>
+          </div>
+          <div>
             <label style={lbl}>LINE User ID (ไม่บังคับ)</label>
             <input style={inp} value={form.lineUserId} onChange={e => up('lineUserId', e.target.value)} placeholder="Uxxxxxxxxxxxxxxxxx" />
           </div>
@@ -180,6 +233,17 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
               <div><div style={{ fontSize: 10, color: BRAND.textSec }}>ดอกเบี้ย/งวด</div><div style={{ fontWeight: 700, color: BRAND.gold }}>฿{fmt(amountPerInstall)}</div></div>
               <div style={{ gridColumn: '1/-1' }}><div style={{ fontSize: 10, color: BRAND.textSec }}>สิ้นสุดสัญญา (ประมาณ)</div><div style={{ fontWeight: 600, color: BRAND.textPri, fontSize: 13 }}>{calcEndDate()}</div></div>
             </div>
+            {form.advanceInstallments > 0 && (
+              <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.12)', borderRadius: 8, border: '1px solid rgba(245,158,11,0.3)', fontSize: 12 }}>
+                <div style={{ color: BRAND.gold, fontWeight: 700, marginBottom: 3 }}>⚡ หักล่วงหน้า {form.advanceInstallments} งวด</div>
+                <div style={{ color: BRAND.textSec }}>
+                  งวด 1–{form.advanceInstallments} = บันทึกชำระแล้วอัตโนมัติ (฿{fmt(amountPerInstall * form.advanceInstallments)})
+                </div>
+                <div style={{ color: BRAND.textSec }}>
+                  งวดแรกที่ต้องชำระจริง = งวดที่ {form.advanceInstallments + 1}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -218,7 +282,7 @@ export default function InvestorPage({ appsScriptUrl }) {
     try {
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ action: 'updateValuation', rowIndex: row['_rowIndex'], data: { 'สถานะ': status } }),
       });
       setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': status } : r));
@@ -234,7 +298,7 @@ export default function InvestorPage({ appsScriptUrl }) {
     try {
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ action: 'cancelCustomer', customerId: row['_customerId'] || row['รหัส/ชื่อทรัพย์'], customerName: row['รหัส/ชื่อทรัพย์'] }),
       });
       await updateStatus(row, 'ยกเลิก');

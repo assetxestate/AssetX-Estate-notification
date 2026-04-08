@@ -116,13 +116,68 @@ const FRONTAGE_OPTIONS = [
   { value: '< 5 ม.', factor: 0.85 },
 ]
 const ZONE_OPTIONS = [
-  { value: 'พ.5 (แดง) — พาณิชยกรรมหลัก', factor: 1.40 },
-  { value: 'พ.3/4 (แดง) — พาณิชยกรรม', factor: 1.25 },
-  { value: 'ย.10 (ส้ม) — อยู่อาศัยหนาแน่นสูง', factor: 1.15 },
-  { value: 'ย.7–9 (ส้ม) — อยู่อาศัยหนาแน่นมาก', factor: 1.08 },
-  { value: 'ย.4 (สีเหลือง) — พักอาศัยหนาแน่นน้อย', factor: 1.00 },
-  { value: 'ย.1–3 (เขียว) — ชนบทและเกษตร', factor: 0.85 },
-  { value: 'ก.1–3 (เขียวอ่อน) — เกษตรกรรม', factor: 0.70 },
+  // ── พาณิชยกรรม (สีแดง) ──────────────────────────────────────
+  { value: 'พ.5 — พาณิชยกรรมหลัก (แดงเข้ม)', factor: 1.40 },
+  { value: 'พ.4 — พาณิชยกรรม (แดง)', factor: 1.30 },
+  { value: 'พ.3 — พาณิชยกรรม (แดง)', factor: 1.25 },
+  { value: 'พ.2 — พาณิชยกรรม (แดง)', factor: 1.20 },
+  { value: 'พ.1 — พาณิชยกรรม (แดง)', factor: 1.15 },
+  { value: 'พ/ย — พาณิชยกรรมและที่อยู่อาศัยหนาแน่นมาก (แดงลาย)', factor: 1.18 },
+  // ── ที่อยู่อาศัย (สีเหลือง-ส้ม) ─────────────────────────────
+  { value: 'ย.10 — อยู่อาศัยหนาแน่นสูงมาก (ส้ม)', factor: 1.15 },
+  { value: 'ย.9 — อยู่อาศัยหนาแน่นสูง (ส้ม)', factor: 1.12 },
+  { value: 'ย.8 — อยู่อาศัยหนาแน่นมาก (ส้ม)', factor: 1.10 },
+  { value: 'ย.7 — อยู่อาศัยหนาแน่นมาก (ส้ม)', factor: 1.08 },
+  { value: 'ย.6 — อยู่อาศัยหนาแน่นปานกลาง (เหลืองส้ม)', factor: 1.05 },
+  { value: 'ย.5 — อยู่อาศัยหนาแน่นปานกลาง (เหลืองส้ม)', factor: 1.03 },
+  { value: 'ย.4 — อยู่อาศัยหนาแน่นน้อย (เหลือง)', factor: 1.00 },
+  { value: 'ย.3 — อยู่อาศัยหนาแน่นน้อย (เหลือง)', factor: 0.95 },
+  { value: 'ย.2 — อยู่อาศัยหนาแน่นน้อย (เหลือง)', factor: 0.92 },
+  { value: 'ย.1 — อยู่อาศัยหนาแน่นน้อยมาก (เหลือง)', factor: 0.90 },
+  { value: 'ย/อ — อนุรักษ์เพื่อการอยู่อาศัย (เหลืองลาย)', factor: 0.88 },
+  // ── อุตสาหกรรม (สีม่วง) ──────────────────────────────────────
+  { value: 'อ.1 — อุตสาหกรรมทั่วไป (ม่วง)', factor: 0.90 },
+  { value: 'อ.2 — อุตสาหกรรมทั่วไป (ม่วง)', factor: 0.88 },
+  { value: 'อ.3 — อุตสาหกรรมหนัก (ม่วงเข้ม)', factor: 0.85 },
+  { value: 'อ/ค — อุตสาหกรรมและคลังสินค้า (ม่วง)', factor: 0.88 },
+  { value: 'ค — คลังสินค้า (ม่วงอ่อน)', factor: 0.87 },
+  { value: 'อก — อุตสาหกรรมเฉพาะกิจ (ม่วง)', factor: 0.83 },
+  { value: 'อ/มล — อุตสาหกรรมไม่เป็นมลพิษ + คลังสินค้า (ม่วงลาย)', factor: 0.85 },
+  { value: 'อ/ค/ก — อุตสาหกรรม คลังสินค้า และเกษตรกรรม (ม่วงลาย)', factor: 0.80 },
+  // ── ชนบทและชุมชน (สีชมพู) ───────────────────────────────────
+  { value: 'ช — ชุมชน (ชมพู)', factor: 0.88 },
+  { value: 'ช.1 — ชุมชน ช1 (ชมพูอ่อน)', factor: 0.87 },
+  { value: 'ช.2 — ชุมชน ช2 (ชมพูอ่อน)', factor: 0.85 },
+  { value: 'ชก — ชนบทและเกษตรกรรม (เขียวอ่อน)', factor: 0.78 },
+  { value: 'ชก/อ — อนุรักษ์ชนบทและเกษตรกรรม (เขียวลาย)', factor: 0.72 },
+  { value: 'ชก/ป — ชนบทและปศุสัตว์ (เขียวลาย)', factor: 0.70 },
+  // ── เกษตรกรรม (สีเขียว) ──────────────────────────────────────
+  { value: 'ก.1 — เกษตรกรรม (เขียวอ่อน)', factor: 0.75 },
+  { value: 'ก.2 — เกษตรกรรม (เขียวอ่อน)', factor: 0.72 },
+  { value: 'ก.3 — เกษตรกรรม (เขียวอ่อน)', factor: 0.70 },
+  { value: 'กป — พื้นที่ปฏิรูปที่ดินเพื่อเกษตรกรรม (เขียวลาย)', factor: 0.68 },
+  { value: 'กจ — จัดรูปที่ดินเพื่อเกษตรกรรม (เขียวลาย)', factor: 0.68 },
+  // ── อนุรักษ์และสิ่งแวดล้อม (สีเขียวเข้ม) ────────────────────
+  { value: 'ส — รักษาคุณภาพสิ่งแวดล้อม (เขียวเข้ม)', factor: 0.65 },
+  { value: 'ปา — อนุรักษ์ป่าไม้ (เขียวเข้ม)', factor: 0.55 },
+  { value: 'ทพ — อนุรักษ์ทรัพยากรธรรมชาติและสิ่งแวดล้อม (เขียวเข้ม)', factor: 0.60 },
+  { value: 'สท — อนุรักษ์สภาพแวดล้อมและการท่องเที่ยว (เขียวเข้ม)', factor: 0.65 },
+  { value: 'วท — อนุรักษ์เอกลักษณ์ศิลปวัฒนธรรมไทย (เขียวเข้ม)', factor: 0.65 },
+  { value: 'ล — ที่โล่งเพื่อนันทนาการและสิ่งแวดล้อม (เขียวอ่อน)', factor: 0.60 },
+  { value: 'ลช — ที่โล่งนันทนาการและสิ่งแวดล้อมชายฝั่ง (เขียวอ่อน)', factor: 0.58 },
+  { value: 'ลท — ที่โล่งรักษาสิ่งแวดล้อมและการท่องเที่ยว (เขียวอ่อน)', factor: 0.62 },
+  { value: 'ลป — ที่โล่งนันทนาการและปศุสัตว์ (เขียวอ่อน)', factor: 0.58 },
+  { value: 'สน — สวนนันทนาการและรักษาสิ่งแวดล้อม (เขียวอ่อน)', factor: 0.60 },
+  { value: 'สล — สวนรักษาสภาพป่าชายเลน (เขียวเข้ม)', factor: 0.50 },
+  // ── สถาบัน/สาธารณูปการ (สีเทา-น้ำเงิน) ─────────────────────
+  { value: 'สศ — สถาบันการศึกษา (เทา)', factor: 0.85 },
+  { value: 'สน — สถาบันศาสนา (เทา)', factor: 0.82 },
+  { value: 'สร — สถาบันราชการและสาธารณูปการ (น้ำเงิน)', factor: 0.88 },
+  { value: 'ทห — เขตทหาร (น้ำเงินเข้ม)', factor: 0.70 },
+  // ── คมนาคม ───────────────────────────────────────────────────
+  { value: 'คข — คมนาคมขนส่ง (เทา)', factor: 0.80 },
+  // ── เสี่ยงภัย ─────────────────────────────────────────────────
+  { value: 'อภ — เสี่ยงอุกภัย (เทาลาย)', factor: 0.40 },
 ]
 const SOIL_OPTIONS = [
   { value: 'ถมเรียบร้อย / ใช้ได้เลย', factor: 1.00 }, { value: 'ถมบางส่วน', factor: 0.95 },
@@ -192,64 +247,223 @@ function printHistoryRow(row) {
   const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
   const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
   const f = (v) => Number(v) ? Number(v).toLocaleString('th-TH') : (v || '—')
+  const fm = (v) => Number(v) ? '฿' + Number(v).toLocaleString('th-TH') : '—'
+  const score = Number(row['Property Score']) || 100
+  const scoreColor = score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626'
+  const ltv = Number(row['LTV Rate (%)']) || 0
+  const ltvCustomer = Number(row['LTV ลูกค้า (% ต่อตลาด)']) || 0
+  const ltvColor = ltvCustomer <= 50 ? '#16a34a' : ltvCustomer <= 70 ? '#d97706' : '#dc2626'
+  const location = [row['ตำบล/แขวง'] ? 'ต.' + row['ตำบล/แขวง'] : '', row['อำเภอ/เขต'] ? 'อ.' + row['อำเภอ/เขต'] : '', row['จังหวัด'] || ''].filter(Boolean).join(' ')
+  const area = `${row['ไร่'] || 0} ไร่ ${row['งาน'] || 0} งาน ${row['ตร.ว.'] || 0} ตร.ว. (${f(row['ตร.ว.รวม'])} ตร.ว.)`
   const win = window.open('', '_blank')
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>
+  win.document.write(`<!DOCTYPE html><html lang="th"><head>
+  <meta charset="utf-8">
+  <title>AssetX Estate</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     @page { size: A4 portrait; margin: 0; }
-    * { box-sizing: border-box; font-family: 'Sarabun','Segoe UI',sans-serif; }
-    body { margin: 6mm; padding: 0; background: white; color: black; font-size: 12px; }
-    .top-bar { display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:#1a3a5c; color:white; border-radius:8px; margin-bottom:10px; font-size:11px; }
-    .top-bar .l { font-weight:700; font-size:13px; }
-    .top-bar .r { text-align:right; line-height:1.6; }
-    h2 { font-size:18px; margin:0 0 4px; }
-    .sub { color:#555; font-size:12px; margin-bottom:12px; }
-    .grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
-    .stat { border:1px solid #ccc; border-radius:8px; padding:10px; text-align:center; }
-    .stat .lbl { font-size:10px; color:#666; margin-bottom:4px; }
-    .stat .val { font-size:15px; font-weight:800; color:#1a3a5c; }
-    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .box { border:1px solid #ccc; border-radius:8px; padding:10px; }
-    .box h3 { font-size:12px; font-weight:700; margin:0 0 8px; color:#b45309; }
-    .row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee; font-size:11px; }
-    .row .k { color:#555; } .row .v { font-weight:600; text-align:right; max-width:55%; }
-    .badge { display:inline-block; border:1px solid #ccc; border-radius:20px; padding:2px 10px; font-size:11px; margin-right:6px; margin-bottom:6px; }
-    .footer { text-align:center; font-size:10px; color:#888; margin-top:10px; }
-    .zoom { zoom: 0.68; }
-  </style></head><body><div class="zoom">
-  <div class="top-bar">
-    <div class="l">AssetX Estate Co., Ltd.<br><span style="font-size:10px;font-weight:400;">รายงานประเมินมูลค่าอสังหาริมทรัพย์</span></div>
-    <div class="r">📅 ${dateStr} &nbsp; 🕐 ${timeStr}<br>ผู้ประเมิน: ${row['ผู้ประเมิน'] || '—'} &nbsp;|&nbsp; วันที่ประเมิน: ${row['วันที่ประเมิน'] || '—'}</div>
-  </div>
-  <div class="badge">${row['ประเภทการประเมิน'] || ''}</div>
-  <div class="badge">${row['ประเภทย่อย'] || ''}</div>
-  <h2>${row['รหัส/ชื่อทรัพย์'] || '—'}</h2>
-  <div class="sub">โฉนดเลขที่ ${row['เลขโฉนด'] || '—'} | ${row['ตำบล/แขวง'] ? 'ต.' + row['ตำบล/แขวง'] + ' ' : ''}${row['อำเภอ/เขต'] ? 'อ.' + row['อำเภอ/เขต'] + ' ' : ''}${row['จังหวัด'] || ''}</div>
-  <div class="grid4">
-    <div class="stat"><div class="lbl">ราคาประเมินรัฐ</div><div class="val">฿${f(row['ราคาประเมินรัฐ (บ./ตร.ว.)'])}/ตร.ว.</div></div>
-    <div class="stat"><div class="lbl">ราคาตลาดโดยประมาณ</div><div class="val">฿${f(row['มูลค่าตลาดรวม'])}</div></div>
-    <div class="stat"><div class="lbl">FORCED SALE VALUE</div><div class="val">฿${f(row['FSV (80%)'])}</div></div>
-    <div class="stat"><div class="lbl">วงเงินแนะนำ</div><div class="val" style="color:#0d9488;">฿${f(row['วงเงินแนะนำ'])}</div></div>
-  </div>
-  <div class="grid2">
-    <div class="box">
-      <h3>📋 รายละเอียดทรัพย์</h3>
-      ${[['ประเภทการประเมิน', row['ประเภทการประเมิน']], ['ประเภทอสังหาฯ', (row['ประเภทอสังหาฯ'] || '') + ' — ' + (row['ประเภทย่อย'] || '')], ['เลขโฉนด', row['เลขโฉนด']], ['ระวาง', row['ระวาง']], ['หน้าสำรวจ', row['หน้าสำรวจ']], ['เลขที่ดิน', row['เลขที่ดิน']], ['เนื้อที่', (row['ไร่'] || 0) + ' ไร่ ' + (row['งาน'] || 0) + ' งาน ' + (row['ตร.ว.'] || 0) + ' ตร.ว.'], ['ราคาประเมินกรมธนารักษ์', f(row['ราคาประเมินรัฐ (บ./ตร.ว.)']) + ' บาท/ตร.ว.'], ['ทำเล', row['ทำเล']], ['ถนนหน้าที่ดิน', row['ความกว้างถนน']], ['ผังเมือง', row['ผังเมือง']], ['สภาพดิน', row['สภาพดิน']]].map(([k,v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v || '—'}</span></div>`).join('')}
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Sarabun', sans-serif; font-size: 11px; color: #1e293b; background: white; line-height: 1.5; padding: 12mm 14mm; }
+
+    /* Header */
+    .header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 10px; border-bottom: 3px solid #1a3a5c; margin-bottom: 12px; }
+    .company-name { font-size: 16px; font-weight: 800; color: #1a3a5c; }
+    .company-sub { font-size: 10px; color: #64748b; margin-top: 2px; }
+    .header-right { text-align: right; font-size: 10px; color: #475569; line-height: 1.8; }
+    .header-right strong { color: #1a3a5c; }
+
+    /* Title section */
+    .title-section { margin-bottom: 12px; }
+    .badges { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+    .badge { padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; border: 1.5px solid; }
+    .badge-type { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+    .badge-sub  { background: #f0fdf4; border-color: #16a34a; color: #166534; }
+    .title-name { font-size: 17px; font-weight: 800; color: #0f172a; margin-bottom: 3px; }
+    .title-loc  { font-size: 11px; color: #64748b; }
+    .title-deed { font-size: 11px; color: #475569; margin-top: 2px; }
+
+    /* KPI cards */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    .kpi { border-radius: 8px; padding: 10px 8px; text-align: center; border: 1px solid; }
+    .kpi .kpi-lbl { font-size: 9px; color: #64748b; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+    .kpi .kpi-val { font-size: 14px; font-weight: 800; }
+    .kpi-gov  { background: #f8faff; border-color: #c7d7f9; } .kpi-gov .kpi-val  { color: #3730a3; }
+    .kpi-mkt  { background: #f0fdf4; border-color: #bbf7d0; } .kpi-mkt .kpi-val  { color: #166534; }
+    .kpi-fsv  { background: #fff7ed; border-color: #fed7aa; } .kpi-fsv .kpi-val  { color: #c2410c; }
+    .kpi-rec  { background: #f0fdfa; border-color: #99f6e4; } .kpi-rec .kpi-val  { color: #0f766e; }
+
+    /* Main content grid */
+    .main-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 10px; margin-bottom: 10px; }
+    .section { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+    .section-title { background: #1a3a5c; color: white; font-size: 10px; font-weight: 700; padding: 5px 10px; letter-spacing: 0.5px; }
+    .section-body { padding: 8px 10px; }
+    .data-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f1f5f9; font-size: 10.5px; }
+    .data-row:last-child { border-bottom: none; }
+    .data-key { color: #64748b; }
+    .data-val { font-weight: 600; color: #1e293b; text-align: right; max-width: 58%; }
+
+    /* Score box */
+    .score-box { display: flex; align-items: center; gap: 14px; padding: 10px; }
+    .score-circle { width: 60px; height: 60px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px solid ${scoreColor}; flex-shrink: 0; }
+    .score-num { font-size: 22px; font-weight: 800; color: ${scoreColor}; line-height: 1; }
+    .score-denom { font-size: 9px; color: #94a3b8; }
+    .score-detail { flex: 1; }
+    .score-label { font-size: 11px; font-weight: 700; color: ${scoreColor}; margin-bottom: 3px; }
+    .score-risk { font-size: 10px; color: #64748b; }
+
+    /* LTV section */
+    .ltv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 10px; }
+    .ltv-box { text-align: center; background: #f8fafc; border-radius: 6px; padding: 8px; }
+    .ltv-lbl { font-size: 9px; color: #64748b; margin-bottom: 3px; }
+    .ltv-val { font-size: 16px; font-weight: 800; }
+
+    /* Summary */
+    .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+    .sum-box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; text-align: center; }
+    .sum-lbl { font-size: 9px; color: #64748b; margin-bottom: 3px; font-weight: 600; }
+    .sum-val { font-size: 13px; font-weight: 800; color: #0f766e; }
+
+    /* Signature */
+    .sig-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 14px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
+    .sig-box { text-align: center; }
+    .sig-line { border-bottom: 1px solid #94a3b8; margin: 24px 10px 4px; }
+    .sig-lbl { font-size: 10px; color: #64748b; }
+
+    /* Footer */
+    .footer { margin-top: 10px; padding-top: 6px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8; }
+
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+  </head><body>
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="company-name">AssetX Estate Co., Ltd.</div>
+      <div class="company-sub">รายงานประเมินมูลค่าอสังหาริมทรัพย์ / Property Valuation Report</div>
     </div>
+    <div class="header-right">
+      <div>📅 <strong>${dateStr}</strong> &nbsp; 🕐 ${timeStr}</div>
+      <div>ผู้ประเมิน: <strong>${row['ผู้ประเมิน'] || '—'}</strong></div>
+      <div>วันที่ประเมิน: <strong>${row['วันที่ประเมิน'] || '—'}</strong></div>
+    </div>
+  </div>
+
+  <!-- Title -->
+  <div class="title-section">
+    <div class="badges">
+      <span class="badge badge-type">${row['ประเภทการประเมิน'] || ''}</span>
+      <span class="badge badge-sub">${row['ประเภทอสังหาฯ'] || ''} ${row['ประเภทย่อย'] ? '— ' + row['ประเภทย่อย'] : ''}</span>
+    </div>
+    <div class="title-name">${row['รหัส/ชื่อทรัพย์'] || '—'}</div>
+    <div class="title-loc">📍 ${location || '—'}</div>
+    <div class="title-deed">โฉนดเลขที่ ${row['เลขโฉนด'] || '—'} &nbsp;|&nbsp; ระวาง ${row['ระวาง'] || '—'} &nbsp;|&nbsp; หน้าสำรวจ ${row['หน้าสำรวจ'] || '—'} &nbsp;|&nbsp; เลขที่ดิน ${row['เลขที่ดิน'] || '—'}</div>
+  </div>
+
+  <!-- KPI -->
+  <div class="kpi-grid">
+    <div class="kpi kpi-gov">
+      <div class="kpi-lbl">ราคาประเมินกรมธนารักษ์</div>
+      <div class="kpi-val">${f(row['ราคาประเมินรัฐ (บ./ตร.ว.)'])}</div>
+      <div style="font-size:9px;color:#64748b">บาท/ตร.ว.</div>
+    </div>
+    <div class="kpi kpi-mkt">
+      <div class="kpi-lbl">มูลค่าตลาดรวม</div>
+      <div class="kpi-val">${fm(row['มูลค่าตลาดรวม'])}</div>
+      <div style="font-size:9px;color:#64748b">Market Value</div>
+    </div>
+    <div class="kpi kpi-fsv">
+      <div class="kpi-lbl">Forced Sale Value</div>
+      <div class="kpi-val">${fm(row['FSV (80%)'])}</div>
+      <div style="font-size:9px;color:#64748b">FSV 80%</div>
+    </div>
+    <div class="kpi kpi-rec">
+      <div class="kpi-lbl">วงเงินแนะนำ</div>
+      <div class="kpi-val">${fm(row['วงเงินแนะนำ'])}</div>
+      <div style="font-size:9px;color:#64748b">LTV ${ltv}%</div>
+    </div>
+  </div>
+
+  <!-- Main Grid -->
+  <div class="main-grid">
+    <!-- Left: Property Detail -->
+    <div class="section">
+      <div class="section-title">📋 รายละเอียดทรัพย์สิน</div>
+      <div class="section-body">
+        ${[
+          ['เนื้อที่', area],
+          ['ราคาตลาด (บ./ตร.ว.)', f(row['ราคาตลาด (บ./ตร.ว.)']) + ' บาท/ตร.ว.'],
+          ['ทำเล / ถนน', (row['ทำเล'] || '—') + ' / กว้าง ' + (row['ความกว้างถนน'] || '—')],
+          ['หน้ากว้าง', row['หน้ากว้าง'] || '—'],
+          ['ระยะห่างถนนใหญ่', row['ระยะห่างถนนใหญ่'] ? row['ระยะห่างถนนใหญ่'] + ' เมตร' : '—'],
+          ['ผังเมือง', row['ผังเมือง'] || '—'],
+          ['สภาพดิน', row['สภาพดิน'] || '—'],
+          ['Comp ราคา (บ./ตร.ว.)', f(row['Comp (บ./ตร.ว.)']) + (row['แหล่ง Comp'] ? ' — ' + row['แหล่ง Comp'] : '')],
+          ['หมายเหตุ', row['หมายเหตุ'] || '—'],
+        ].map(([k,v]) => `<div class="data-row"><span class="data-key">${k}</span><span class="data-val">${v}</span></div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Right: Score + LTV -->
     <div style="display:flex;flex-direction:column;gap:10px;">
-      <div class="box">
-        <h3>⚠️ ความเสี่ยงและ SCORE</h3>
-        <div style="font-size:28px;font-weight:800;">${row['Property Score'] || 100}</div>
-        <div style="font-size:11px;color:#555;">/100</div>
-        <div style="font-size:11px;margin-top:6px;color:#666;">${row['ปัจจัยเสี่ยง'] || 'ไม่มี'}</div>
+      <div class="section">
+        <div class="section-title">⚠️ Property Score &amp; ความเสี่ยง</div>
+        <div class="score-box">
+          <div class="score-circle">
+            <div class="score-num">${score}</div>
+            <div class="score-denom">/100</div>
+          </div>
+          <div class="score-detail">
+            <div class="score-label">${score >= 80 ? '✅ ดีมาก' : score >= 60 ? '⚠️ ปานกลาง' : '🔴 ความเสี่ยงสูง'}</div>
+            <div class="score-risk">${row['ปัจจัยเสี่ยง'] || 'ไม่มีปัจจัยเสี่ยง'}</div>
+          </div>
+        </div>
       </div>
-      <div class="box">
-        <h3>💰 สรุปวงเงิน</h3>
-        ${[['มูลค่าตลาด', row['มูลค่าตลาดรวม']], ['FSV (80%)', row['FSV (80%)']], ['วงเงินแนะนำ (LTV ' + (row['LTV Rate (%)'] || '') + '%)', row['วงเงินแนะนำ']], ['วงเงินที่ลูกค้าขอ', row['วงเงินที่ลูกค้าขอ']], ['LTV ลูกค้า (%)', row['LTV ลูกค้า (% ต่อตลาด)'] + '%']].map(([k,v]) => `<div class="row"><span class="k">${k}</span><span class="v">฿${f(v)}</span></div>`).join('')}
+      <div class="section">
+        <div class="section-title">💰 วงเงินและ LTV</div>
+        <div class="ltv-grid">
+          <div class="ltv-box">
+            <div class="ltv-lbl">วงเงินที่ขอ</div>
+            <div class="ltv-val" style="color:#1a3a5c">${fm(row['วงเงินที่ลูกค้าขอ'])}</div>
+          </div>
+          <div class="ltv-box">
+            <div class="ltv-lbl">LTV ลูกค้า</div>
+            <div class="ltv-val" style="color:${ltvColor}">${ltvCustomer ? ltvCustomer + '%' : '—'}</div>
+          </div>
+        </div>
+        <div style="padding:0 10px 8px;">
+          ${[
+            ['มูลค่าตลาด', fm(row['มูลค่าตลาดรวม'])],
+            ['FSV (80%)', fm(row['FSV (80%)'])],
+            ['วงเงินแนะนำ (LTV ' + ltv + '%)', fm(row['วงเงินแนะนำ'])],
+          ].map(([k,v]) => `<div class="data-row"><span class="data-key">${k}</span><span class="data-val" style="color:#0f766e">${v}</span></div>`).join('')}
+        </div>
       </div>
     </div>
   </div>
-  <div class="footer">AssetX Estate Co., Ltd. — พิมพ์: ${now.toLocaleString('th-TH')}</div>
+
+  <!-- Signature -->
+  <div class="sig-section">
+    <div class="sig-box">
+      <div class="sig-line"></div>
+      <div class="sig-lbl">ผู้ประเมิน / Valuator</div>
+      <div style="font-size:10px;color:#475569;margin-top:2px">(${row['ผู้ประเมิน'] || '...................................'})</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-line"></div>
+      <div class="sig-lbl">ผู้อนุมัติ / Authorized</div>
+      <div style="font-size:10px;color:#475569;margin-top:2px">(...................................)</div>
+    </div>
   </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>AssetX Estate Co., Ltd. — รายงานฉบับนี้จัดทำเพื่อใช้ภายในเท่านั้น</span>
+    <span>พิมพ์: ${now.toLocaleString('th-TH')} &nbsp;|&nbsp; เลขอ้างอิง: ${row['_rowIndex'] || '—'}</span>
+  </div>
+
   <script>window.onload = () => { window.print(); window.close(); }<\/script>
   </body></html>`)
   win.document.close()
@@ -270,6 +484,7 @@ function HistoryView({ appsScriptUrl }) {
   const [confirmRow, setConfirmRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [editRow, setEditRow] = useState(null)
+  const [expandedContracted, setExpandedContracted] = useState({})
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
   const [sendingRow, setSendingRow] = useState(null)
@@ -279,12 +494,12 @@ function HistoryView({ appsScriptUrl }) {
     try {
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ action: 'updateValuation', rowIndex: row['_rowIndex'], data: { 'สถานะ': 'รอการพิจารณา' } }),
       })
       await fetch(appsScriptUrl, {
         method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ action: 'notifyInvestor', valuationData: row }),
       })
       setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': 'รอการพิจารณา' } : r))
@@ -510,11 +725,24 @@ function HistoryView({ appsScriptUrl }) {
       <div style={{ fontWeight: 700, fontSize: 16, color: BRAND.textPri, marginBottom: 4 }}>
         📋 ประวัติการประเมิน ({rows.length} รายการ)
       </div>
-      {[...rows].reverse().map((row, i) => (
-        <Card key={row['_rowIndex'] || i} style={{ padding: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+      {[...rows].reverse().map((row, i) => {
+        const isContracted = row['สถานะ'] === 'สร้างสัญญาแล้ว'
+        const isExpanded = expandedContracted[row['_rowIndex'] || i]
+        return (
+        <Card key={row['_rowIndex'] || i} style={{ padding: 16, opacity: isContracted ? 0.75 : 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: isContracted && !isExpanded ? 0 : 10 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: BRAND.textPri, fontSize: 15 }}>{row['รหัส/ชื่อทรัพย์'] || '—'}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontWeight: 700, color: isContracted ? BRAND.textSec : BRAND.textPri, fontSize: 15 }}>{row['รหัส/ชื่อทรัพย์'] || '—'}</div>
+                {isContracted && (
+                  <button
+                    onClick={() => setExpandedContracted(p => ({ ...p, [row['_rowIndex'] || i]: !isExpanded }))}
+                    style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 10, cursor: 'pointer' }}
+                  >
+                    {isExpanded ? '▲ ย่อ' : '▼ ดูข้อมูล'}
+                  </button>
+                )}
+              </div>
               <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
                 {row['ประเภทการประเมิน']} • {row['ประเภทย่อย']} • {row['จังหวัด']}
               </div>
@@ -542,13 +770,15 @@ function HistoryView({ appsScriptUrl }) {
                   {sendingRow === row['_rowIndex'] ? '⏳' : '📤 ส่งนายทุน'}
                 </button>
               )}
-              <button
-                onClick={() => openEdit(row)}
-                title="แก้ไขข้อมูล"
-                style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(99,102,241,0.3)`, background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
-              >
-                ✏️
-              </button>
+              {row['สถานะ'] !== 'สร้างสัญญาแล้ว' && (
+                <button
+                  onClick={() => openEdit(row)}
+                  title="แก้ไขข้อมูล"
+                  style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(99,102,241,0.3)`, background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
+                >
+                  ✏️
+                </button>
+              )}
               <button
                 onClick={() => setDetailRow(row)}
                 title="ดูรายละเอียด"
@@ -572,21 +802,24 @@ function HistoryView({ appsScriptUrl }) {
               </button>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
-            {[
-              ['มูลค่าตลาด', `฿${fmt(row['มูลค่าตลาดรวม'])}`],
-              ['FSV (80%)', `฿${fmt(row['FSV (80%)'])}`],
-              ['วงเงินแนะนำ', `฿${fmt(row['วงเงินแนะนำ'])}`],
-              ['Score', `${row['Property Score']}/100`],
-            ].map(([k, v]) => (
-              <div key={k} style={{ background: BRAND.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-                <div style={{ fontSize: 10, color: BRAND.textMut }}>{k}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginTop: 2 }}>{v}</div>
-              </div>
-            ))}
-          </div>
+          {(!isContracted || isExpanded) && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+              {[
+                ['มูลค่าตลาด', `฿${fmt(row['มูลค่าตลาดรวม'])}`],
+                ['FSV (80%)', `฿${fmt(row['FSV (80%)'])}`],
+                ['วงเงินแนะนำ', `฿${fmt(row['วงเงินแนะนำ'])}`],
+                ['Score', `${row['Property Score']}/100`],
+              ].map(([k, v]) => (
+                <div key={k} style={{ background: BRAND.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: BRAND.textMut }}>{k}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginTop: 2 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -1105,7 +1338,30 @@ function Step2({ form, update, calc, comps = [] }) {
           <Label>ผังเมือง (สี)</Label>
           <Sel value={form.zoneColor} onChange={e => update('zoneColor', e.target.value)} style={{ marginBottom: 10 }}>
             <option value="">— เลือกผังเมือง —</option>
-            {ZONE_OPTIONS.map(o => <option key={o.value}>{o.value}</option>)}
+            <optgroup label="🔴 พาณิชยกรรม">
+              {ZONE_OPTIONS.filter(o => o.value.startsWith('พ')).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </optgroup>
+            <optgroup label="🟡 ที่อยู่อาศัย">
+              {ZONE_OPTIONS.filter(o => o.value.startsWith('ย')).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </optgroup>
+            <optgroup label="🟣 อุตสาหกรรมและคลังสินค้า">
+              {ZONE_OPTIONS.filter(o => o.value.startsWith('อ') || o.value.startsWith('ค —')).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </optgroup>
+            <optgroup label="🩷 ชนบทและชุมชน">
+              {ZONE_OPTIONS.filter(o => o.value.startsWith('ช')).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </optgroup>
+            <optgroup label="🟢 เกษตรกรรม">
+              {ZONE_OPTIONS.filter(o => o.value.startsWith('ก')).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </optgroup>
+            <optgroup label="🌿 อนุรักษ์และสิ่งแวดล้อม">
+              {ZONE_OPTIONS.filter(o => ['ส —','ปา','ทพ','สท','วท','ล —','ลช','ลท','ลป','สน —','สล'].some(p => o.value.startsWith(p))).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </optgroup>
+            <optgroup label="🔵 สถาบัน / สาธารณูปการ / ทหาร">
+              {ZONE_OPTIONS.filter(o => ['สศ','สน —','สร','ทห'].some(p => o.value.startsWith(p))).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </optgroup>
+            <optgroup label="⚫ คมนาคม / เสี่ยงภัย">
+              {ZONE_OPTIONS.filter(o => o.value.startsWith('คข') || o.value.startsWith('อภ')).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </optgroup>
           </Sel>
           <Label>สภาพดิน</Label>
           <Sel value={form.soilCondition} onChange={e => update('soilCondition', e.target.value)} style={{ marginBottom: 10 }}>
