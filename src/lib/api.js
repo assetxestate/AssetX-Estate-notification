@@ -239,6 +239,7 @@ export async function getValuations() {
     "หมายเหตุ": v.location_note,
     "สถานะ": v.status,
     "ชื่อลูกค้า": v.customer_name,
+    deeds: Array.isArray(v.deeds) ? v.deeds : [],
   }));
 }
 
@@ -298,6 +299,7 @@ export async function saveValuation(data) {
     location_note: data.locationNote || "",
     status: "รอดำเนินการ",
     customer_name: data.customerName || "",
+    deeds: Array.isArray(data.deeds) ? data.deeds : [],
   }).select("id").single();
   if (error) throw error;
   return { success: true, rowIndex: inserted.id };

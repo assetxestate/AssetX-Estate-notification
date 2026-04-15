@@ -203,12 +203,13 @@ const RISK_FACTORS = [
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 
+const EMPTY_DEED = () => ({ id: Date.now() + Math.random(), titleDeedNo: '', mapSheet: '', surveyPage: '', landNo: '', areaRai: 0, areaNgan: 0, areaSqw: 0, govPrice: 0 })
+
 const INITIAL_FORM = {
   assessmentType: 'ขายฝาก', propertyType: 'ที่ดิน', propertySubtype: 'ที่ดินเปล่า (โฉนด)',
   projectName: '', assessmentDate: new Date().toISOString().split('T')[0], assessorName: '',
-  titleDeedNo: '', surveyPage: '', landNo: '', mapSheet: '',
+  deeds: [EMPTY_DEED()],
   province: 'กรุงเทพมหานคร', district: '', subdistrict: '',
-  areaRai: 0, areaNgan: 0, areaSqw: 0, govPrice: 0,
   roadType: '', roadWidth: '', landFrontage: '', distanceFromMain: '',
   zoneColor: '', soilCondition: '', compPrice: '', compSource: '', locationNote: '',
   risks: { flood: false, hardAccess: false, irregularShape: false, encumbrance: false, dispute: false, noUtilities: false, nuisance: false, incompleteDeed: false },
@@ -814,7 +815,7 @@ function HistoryView({ appsScriptUrl }) {
 }
 
 // ── Step 1 ─────────────────────────────────────────────
-function Step1({ form, update, customers, assetCode }) {
+function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, assetCode }) {
   const subtypes = PROPERTY_SUBTYPES[form.propertyType] || ['อื่นๆ']
 
   const handleCustomerSelect = (val) => {
@@ -902,31 +903,114 @@ function Step1({ form, update, customers, assetCode }) {
           <Label>ผู้ประเมิน</Label>
           <Inp value={form.assessorName} onChange={e => update('assessorName', e.target.value)} placeholder="ชื่อผู้ประเมิน" />
         </Card>
-        <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold }}>📄 เลขที่โฉนด</div>
-            <button
-              onClick={() => {
-                const deed = form.titleDeedNo ? `เลขโฉนด ${form.titleDeedNo}` : ''
-                const prov = form.province ? `จังหวัด${form.province}` : ''
-                const q = [deed, prov].filter(Boolean).join(' ')
-                window.open(`https://landsmaps.dol.go.th/${q ? '?q=' + encodeURIComponent(q) : ''}`, '_blank')
-              }}
-              style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: `1px solid ${BRAND.gold}`, background: 'rgba(245,158,11,0.08)', color: BRAND.gold, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
-            >
-              🌐 LandMap
-            </button>
-          </div>
-          <Label>เลขโฉนดที่ดิน</Label>
-          <Inp value={form.titleDeedNo} onChange={e => update('titleDeedNo', e.target.value)} placeholder="เช่น 89062" style={{ marginBottom: 10 }} />
-          <Label>ระวาง</Label>
-          <Inp value={form.mapSheet} onChange={e => update('mapSheet', e.target.value)} placeholder="เช่น 5237I" style={{ marginBottom: 10 }} />
-          <Label>หน้าสำรวจ</Label>
-          <Inp value={form.surveyPage} onChange={e => update('surveyPage', e.target.value)} placeholder="เช่น 12560" style={{ marginBottom: 10 }} />
-          <Label>เลขที่ดิน</Label>
-          <Inp value={form.landNo} onChange={e => update('landNo', e.target.value)} placeholder="เช่น 10" />
-        </Card>
       </div>
+
+      {/* Multi-deed section */}
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold }}>📄 รายการโฉนด ({form.deeds.length} แปลง)</div>
+            <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>เพิ่มได้หลายโฉนดในการประเมินเดียว</div>
+          </div>
+          <button
+            onClick={addDeed}
+            style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: `1px solid ${BRAND.teal}`, background: 'rgba(45,212,191,0.08)', color: BRAND.teal, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+            + เพิ่มโฉนด
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {form.deeds.map((deed, idx) => {
+            const deedSqw = deed.areaRai * 400 + deed.areaNgan * 100 + +deed.areaSqw
+            return (
+              <div key={deed.id} style={{ padding: 14, borderRadius: 10, border: `1px solid ${BRAND.border}`, background: BRAND.bg }}>
+                {/* Deed header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: BRAND.teal, color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800 }}>{idx + 1}</div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri }}>
+                      {deed.titleDeedNo ? `โฉนด ${deed.titleDeedNo}` : `โฉนดแปลงที่ ${idx + 1}`}
+                    </span>
+                    {deedSqw > 0 && <span style={{ fontSize: 11, color: BRAND.teal }}>{deed.areaRai > 0 ? `${deed.areaRai} ไร่ ` : ''}{deed.areaNgan > 0 ? `${deed.areaNgan} งาน ` : ''}{deed.areaSqw > 0 ? `${deed.areaSqw} ตร.ว.` : ''}</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => {
+                        const q = [deed.titleDeedNo ? `เลขโฉนด ${deed.titleDeedNo}` : '', form.province ? `จังหวัด${form.province}` : ''].filter(Boolean).join(' ')
+                        window.open(`https://landsmaps.dol.go.th/${q ? '?q=' + encodeURIComponent(q) : ''}`, '_blank')
+                      }}
+                      style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: `1px solid ${BRAND.gold}`, background: 'transparent', color: BRAND.gold, cursor: 'pointer' }}
+                    >🌐 LandMap</button>
+                    {form.deeds.length > 1 && (
+                      <button
+                        onClick={() => removeDeed(idx)}
+                        style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,0.4)', background: 'transparent', color: '#F87171', cursor: 'pointer' }}
+                      >✕ ลบ</button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Deed fields grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <Label>เลขโฉนดที่ดิน</Label>
+                    <Inp value={deed.titleDeedNo} onChange={e => updateDeed(idx, 'titleDeedNo', e.target.value)} placeholder="เช่น 89062" />
+                  </div>
+                  <div>
+                    <Label>เลขที่ดิน</Label>
+                    <Inp value={deed.landNo} onChange={e => updateDeed(idx, 'landNo', e.target.value)} placeholder="เช่น 10" />
+                  </div>
+                  <div>
+                    <Label>ระวาง</Label>
+                    <Inp value={deed.mapSheet} onChange={e => updateDeed(idx, 'mapSheet', e.target.value)} placeholder="เช่น 5237I" />
+                  </div>
+                  <div>
+                    <Label>หน้าสำรวจ</Label>
+                    <Inp value={deed.surveyPage} onChange={e => updateDeed(idx, 'surveyPage', e.target.value)} placeholder="เช่น 12560" />
+                  </div>
+                </div>
+
+                {/* Area + govPrice */}
+                <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 10, marginTop: 10 }}>
+                  <div>
+                    <Label>เนื้อที่ (ไร่ - งาน - ตร.ว.)</Label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
+                      {[['areaRai','ไร่'],['areaNgan','งาน'],['areaSqw','ตร.ว.']].map(([k, lbl]) => (
+                        <div key={k}>
+                          <input type="number" min="0" value={deed[k]} onChange={e => updateDeed(idx, k, +e.target.value)} style={{ ...inputBase, textAlign: 'center', padding: '8px 4px' }} />
+                          <div style={{ fontSize: 10, color: BRAND.textSec, textAlign: 'center', marginTop: 2 }}>{lbl}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <Label>ราคาประเมินรัฐ (บ./ตร.ว.)</Label>
+                    <input type="number" min="0" value={deed.govPrice} onChange={e => updateDeed(idx, 'govPrice', +e.target.value)} style={inputBase} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Summary row */}
+        {form.deeds.length > 1 && (() => {
+          const totalSqw = form.deeds.reduce((s, d) => s + d.areaRai * 400 + d.areaNgan * 100 + +d.areaSqw, 0)
+          const totalRai = Math.floor(totalSqw / 400)
+          const rem1 = totalSqw % 400
+          const totalNgan = Math.floor(rem1 / 100)
+          const totalSqwRem = rem1 % 100
+          return (
+            <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'rgba(45,212,191,0.08)', border: `1px solid rgba(45,212,191,0.3)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontSize: 12, color: BRAND.teal, fontWeight: 700 }}>รวมเนื้อที่ทั้งหมด</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: BRAND.teal }}>
+                {totalRai > 0 ? `${totalRai} ไร่ ` : ''}{totalNgan > 0 ? `${totalNgan} งาน ` : ''}{totalSqwRem > 0 ? `${totalSqwRem.toFixed(1)} ตร.ว.` : ''} ({Math.round(totalSqw).toLocaleString('th-TH')} ตร.ว.)
+              </div>
+            </div>
+          )
+        })()}
+      </Card>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <Card>
@@ -939,20 +1023,6 @@ function Step1({ form, update, customers, assetCode }) {
           <Inp value={form.district} onChange={e => update('district', e.target.value)} placeholder="เช่น มีนบุรี" style={{ marginBottom: 10 }} />
           <Label>ตำบล / แขวง</Label>
           <Inp value={form.subdistrict} onChange={e => update('subdistrict', e.target.value)} placeholder="เช่น มีนบุรี" />
-        </Card>
-        <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>📐 เนื้อที่และราคาประเมิน</div>
-          <Label>เนื้อที่ (ไร่-งาน-ตร.ว.)</Label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 10 }}>
-            {[['areaRai','ไร่'],['areaNgan','งาน'],['areaSqw','ตร.ว.']].map(([k,lbl]) => (
-              <div key={k}>
-                <input type="number" min="0" value={form[k]} onChange={e => update(k, +e.target.value)} style={{ ...inputBase, textAlign: 'center', padding: '9px 4px' }} />
-                <div style={{ fontSize: 10, color: BRAND.textSec, textAlign: 'center', marginTop: 3 }}>{lbl}</div>
-              </div>
-            ))}
-          </div>
-          <Label>ราคาประเมิน กรมธนารักษ์ (บาท/ตร.ว.)</Label>
-          <input type="number" min="0" value={form.govPrice} onChange={e => update('govPrice', +e.target.value)} style={inputBase} />
         </Card>
       </div>
     </div>
@@ -1369,7 +1439,7 @@ function Step2({ form, update, calc, comps = [] }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 {avgGovPrice > 0 && (
                   <button
-                    onClick={() => update('govPrice', avgGovPrice)}
+                    onClick={() => setForm(prev => ({ ...prev, deeds: prev.deeds.map(d => ({ ...d, govPrice: avgGovPrice })) }))}
                     style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid rgba(245,158,11,0.4)`, background: 'transparent', color: BRAND.textPri, fontSize: 11, cursor: 'pointer', textAlign: 'left' }}
                   >
                     <div style={{ color: BRAND.textSec, fontSize: 10 }}>เฉลี่ยราคาประเมินรัฐ</div>
@@ -1406,7 +1476,7 @@ function Step2({ form, update, calc, comps = [] }) {
         <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 12 }}>🧮 ผลคำนวณราคาตลาดเบื้องต้น</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
           {[
-            { label: 'ราคาประเมินรัฐ', value: `฿${fmt(form.govPrice)}`, sub: 'บาท/ตร.ว.' },
+            { label: 'ราคาประเมินรัฐ', value: `฿${fmt(calc.weightedGovPrice)}`, sub: 'บาท/ตร.ว. (ถัวเฉลี่ย)' },
             { label: 'ราคาตลาดคำนวณ', value: `฿${fmt(calc.calculatedMarketPrice)}`, sub: 'บาท/ตร.ว.' },
             { label: 'ราคาตลาด/ตร.ว.', value: `฿${fmt(calc.effectiveMarketPrice)}`, sub: 'บาท/ตร.ว.' },
             { label: 'มูลค่าตลาดรวม', value: `฿${fmt(calc.marketValue)}`, sub: 'บาท', hi: true },
@@ -1507,12 +1577,14 @@ function Step4({ form, calc, update }) {
           <span style={{ background: 'rgba(45,212,191,0.1)', border: '1px solid rgba(45,212,191,0.3)', borderRadius: 20, padding: '3px 12px', fontSize: 12, color: BRAND.teal }}>{form.propertySubtype}</span>
         </div>
         <div style={{ fontSize: 22, fontWeight: 800, color: BRAND.textPri }}>{form.projectName || form.propertySubtype}</div>
-        <div style={{ fontSize: 13, color: BRAND.textSec }}>โฉนดเลขที่ {form.titleDeedNo || '—'} | {form.subdistrict ? `ต.${form.subdistrict} ` : ''}{form.district ? `อ.${form.district} ` : ''}{form.province}</div>
+        <div style={{ fontSize: 13, color: BRAND.textSec }}>
+          โฉนดเลขที่ {form.deeds.map(d => d.titleDeedNo).filter(Boolean).join(', ') || '—'} ({form.deeds.length} แปลง) | {form.subdistrict ? `ต.${form.subdistrict} ` : ''}{form.district ? `อ.${form.district} ` : ''}{form.province}
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
         {[
-          { icon: '🏛️', label: 'ราคาประเมินรัฐ', value: `฿${fmt(calc.govPriceTotal)}`, sub: `${fmt(form.govPrice)} บาท/ตร.ว.` },
+          { icon: '🏛️', label: 'ราคาประเมินรัฐ', value: `฿${fmt(calc.govPriceTotal)}`, sub: `${fmt(calc.weightedGovPrice)} บาท/ตร.ว. (ถัวเฉลี่ย)` },
           { icon: '📊', label: 'ราคาตลาดโดยประมาณ', value: `฿${fmt(calc.marketValue)}`, sub: `${fmt(calc.effectiveMarketPrice)} บาท/ตร.ว.` },
           { icon: '🔥', label: 'FORCED SALE VALUE', value: `฿${fmt(calc.fsv)}`, sub: '80% ของราคาตลาด' },
           { icon: '🏦', label: 'วงเงินขายฝากแนะนำ', value: `฿${fmt(calc.recommendedLoan)}`, sub: `LTV ${form.ltvRate}% × FSV`, hi: true },
@@ -1532,8 +1604,8 @@ function Step4({ form, calc, update }) {
           {[
             ['ประเภทการประเมิน', form.assessmentType],
             ['ประเภทอสังหาริมทรัพย์', `${form.propertyType} — ${form.propertySubtype}`],
-            ['เนื้อที่', `${form.areaRai} ไร่ ${form.areaNgan} งาน ${form.areaSqw} ตร.ว. (${fmt(calc.totalSqw)} ตร.ว.)`],
-            ['ราคาประเมินกรมธนารักษ์', `${fmt(form.govPrice)} บาท/ตร.ว.`],
+            ['เนื้อที่รวม', `${fmt(calc.totalSqw)} ตร.ว. (${form.deeds.length} แปลง)`],
+            ['ราคาประเมินกรมธนารักษ์', `${fmt(calc.weightedGovPrice)} บาท/ตร.ว. (ถัวเฉลี่ย)`],
             ['ทำเล', form.roadType || '—'], ['ถนนหน้าที่ดิน', form.roadWidth || '—'],
             ['หน้ากว้าง', form.landFrontage || '—'], ['ผังเมือง', form.zoneColor || '—'],
             ['สภาพดิน', form.soilCondition || '—'],
@@ -1690,6 +1762,9 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   const seqLoadedRef = useRef(false)
 
   const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
+  const updateDeed = (idx, key, val) => setForm(prev => ({ ...prev, deeds: prev.deeds.map((d, i) => i === idx ? { ...d, [key]: val } : d) }))
+  const addDeed = () => setForm(prev => ({ ...prev, deeds: [...prev.deeds, EMPTY_DEED()] }))
+  const removeDeed = (idx) => setForm(prev => ({ ...prev, deeds: prev.deeds.filter((_, i) => i !== idx) }))
 
   // โหลด sequence number จากจำนวนประเมินทั้งหมด
   useEffect(() => {
@@ -1722,28 +1797,47 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   }, [step])
 
   const calc = useMemo(() => {
-    const totalSqw = form.areaRai * 400 + form.areaNgan * 100 + +form.areaSqw
+    const deeds = form.deeds || []
+    const totalSqw = deeds.reduce((s, d) => s + d.areaRai * 400 + d.areaNgan * 100 + +d.areaSqw, 0)
+    const weightedGovPrice = totalSqw > 0
+      ? deeds.reduce((s, d) => { const sq = d.areaRai * 400 + d.areaNgan * 100 + +d.areaSqw; return s + d.govPrice * sq }, 0) / totalSqw
+      : 0
     const roadTypeFactor = ROAD_TYPE_OPTIONS.find(o => o.value === form.roadType)?.factor ?? 1
     const roadWidthFactor = ROAD_WIDTH_OPTIONS.find(o => o.value === form.roadWidth)?.factor ?? 1
     const frontageFactor = FRONTAGE_OPTIONS.find(o => o.value === form.landFrontage)?.factor ?? 1
     const zoneFactor = ZONE_OPTIONS.find(o => o.value === form.zoneColor)?.factor ?? 1
     const soilFactor = SOIL_OPTIONS.find(o => o.value === form.soilCondition)?.factor ?? 1
     const locationFactor = roadTypeFactor * roadWidthFactor * frontageFactor * zoneFactor * soilFactor
-    const calculatedMarketPrice = form.govPrice * locationFactor
+    const calculatedMarketPrice = weightedGovPrice * locationFactor
     const effectiveMarketPrice = form.compPrice ? +form.compPrice : calculatedMarketPrice
     const marketValue = effectiveMarketPrice * totalSqw
-    const govPriceTotal = form.govPrice * totalSqw
+    const govPriceTotal = weightedGovPrice * totalSqw
     const riskPenalty = RISK_FACTORS.reduce((s, rf) => s + (form.risks[rf.key] ? rf.penalty : 0), 0)
     const propertyScore = Math.max(0, 100 + riskPenalty)
     const fsv = marketValue * 0.80
     const recommendedLoan = fsv * (form.ltvRate / 100)
-    return { totalSqw, govPriceTotal, calculatedMarketPrice, effectiveMarketPrice, marketValue, propertyScore, fsv, recommendedLoan }
+    return { totalSqw, govPriceTotal, weightedGovPrice, calculatedMarketPrice, effectiveMarketPrice, marketValue, propertyScore, fsv, recommendedLoan }
   }, [form])
 
   const handleSave = async () => {
     setSaving(true)
     try {
-      await apiSaveValuation({ ...form, ...calc, savedAt: new Date().toISOString(), projectName: form.assetCode || form.projectName })
+      const primaryDeed = form.deeds[0] || {}
+      await apiSaveValuation({
+        ...form,
+        ...calc,
+        savedAt: new Date().toISOString(),
+        projectName: form.assetCode || form.projectName,
+        // ส่งข้อมูลโฉนดแรกใน top-level fields (backward compat)
+        titleDeedNo: primaryDeed.titleDeedNo || '',
+        mapSheet: primaryDeed.mapSheet || '',
+        surveyPage: primaryDeed.surveyPage || '',
+        landNo: primaryDeed.landNo || '',
+        areaRai: primaryDeed.areaRai || 0,
+        areaNgan: primaryDeed.areaNgan || 0,
+        areaSqw: primaryDeed.areaSqw || 0,
+        govPrice: calc.weightedGovPrice,
+      })
       setSaved(true)
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message)
@@ -1833,7 +1927,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
         {view === 'form' && (
           <>
             <Stepper step={step} />
-            {step === 1 && <Step1 form={form} update={update} customers={customers} assetCode={form.assetCode} />}
+            {step === 1 && <Step1 form={form} update={update} updateDeed={updateDeed} addDeed={addDeed} removeDeed={removeDeed} customers={customers} assetCode={form.assetCode} />}
             {step === 2 && <Step2 form={form} update={update} calc={calc} comps={comps} />}
             {step === 3 && <Step3 form={form} update={update} calc={calc} />}
             {step === 4 && <Step4 form={form} calc={calc} update={update} />}
