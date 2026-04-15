@@ -5,12 +5,22 @@ import MapView from "./MapView.jsx";
 import InvestorPage from "./InvestorPage.jsx";
 import DashboardPage from "./DashboardPage.jsx";
 import TaxPage from "./TaxPage.jsx";
+import {
+  getCustomers as apiGetCustomers,
+  getContractStatuses as apiGetContractStatuses,
+  closeContract as apiCloseContract,
+  reopenContract as apiReopenContract,
+  getPaymentRecords as apiGetPaymentRecords,
+  savePaymentRecord as apiSavePaymentRecord,
+  deletePaymentRecord as apiDeletePaymentRecord,
+  getDestinations as apiGetDestinations,
+  updateCustomer as apiUpdateCustomer,
+} from "./lib/api.js";
 
 // ============================================================
-// 🔧 ตั้งค่า: วาง URL จาก Google Apps Script ตรงนี้
+// 🔧 GAS URL — ใช้สำหรับส่ง LINE เท่านั้น
 // ============================================================
-const APPS_SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbwoFeclTFx72tQJclYNEInHZGP-qCQ0eArUm-uZeX6ifnj9w7Zr8RGAfLm2At62Vj-unw/exec";
+const APPS_SCRIPT_URL = import.meta.env.VITE_GAS_URL || "";
 const IMGBB_KEY = "c83de7744f238eb8f1d0e87efb8bc639";
 // Album ID ตามเดือน (CE year-month → album ID)
 const IMGBB_ALBUMS = {
@@ -1624,12 +1634,15 @@ function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSaved }) {
     if (!form.name.trim()) { setError('กรุณากรอกชื่อลูกค้า'); return; }
     setSaving(true); setError(null);
     try {
-      await fetch(appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'updateCustomer', customerId: customer.id, data: form }),
+      await apiUpdateCustomer(customer.id, {
+        name: form.name,
+        type: form.type,
+        principal: parseFloat(form.principal) || 0,
+        amount: parseFloat(form.amount) || 0,
+        freq: form.freq,
+        contractEndDate: form.contractEndDate || null,
+        lineUserId: form.lineUserId,
       });
-      await new Promise(r => setTimeout(r, 1500));
       onSaved({ ...customer, ...form, principal: parseFloat(form.principal) || 0, amount: parseFloat(form.amount) || 0 });
       onClose();
     } catch (e) {
@@ -1895,30 +1908,21 @@ export default function App() {
   const [contractStatuses, setContractStatuses] = React.useState({});
 
   React.useEffect(() => {
-    fetch(`${APPS_SCRIPT_URL}?action=getContractStatuses`)
-      .then(r => r.json())
-      .then(r => { if (r.success) setContractStatuses(r.data || {}); })
+    apiGetContractStatuses()
+      .then(data => setContractStatuses(data))
       .catch(() => {});
   }, []);
 
   const closeContract = React.useCallback(async (customer) => {
     if (!window.confirm(`ยืนยันปิดสัญญาของ คุณ${customer.name}?\n\nระบบจะหยุดแจ้งเตือนสัญญานี้ทั้งหมด`)) return;
     setContractStatuses(prev => ({ ...prev, [customer.id]: { status: 'ปิดแล้ว', customerName: customer.name } }));
-    await fetch(APPS_SCRIPT_URL, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'closeContract', customerId: customer.id, customerName: customer.name }),
-    });
+    await apiCloseContract(customer.id, customer.name).catch(() => {});
   }, []);
 
   const reopenContract = React.useCallback(async (customer) => {
     if (!window.confirm(`ยืนยันเปิดสัญญาคุณ${customer.name} ใหม่?\n\nระบบจะกลับมาแจ้งเตือนตามปกติ`)) return;
     setContractStatuses(prev => { const n = { ...prev }; delete n[customer.id]; return n; });
-    await fetch(APPS_SCRIPT_URL, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'reopenContract', customerId: customer.id }),
-    });
+    await apiReopenContract(customer.id).catch(() => {});
   }, []);
 
   // ── บันทึกการชำระเงิน (สลิป) ────────────────────────────────────
@@ -1927,14 +1931,13 @@ export default function App() {
     catch { return {}; }
   });
 
-  // โหลดข้อมูลจาก Apps Script เพื่อ sync ข้ามอุปกรณ์
+  // โหลดข้อมูลจาก Supabase เพื่อ sync ข้ามอุปกรณ์
   React.useEffect(() => {
-    fetch(`${APPS_SCRIPT_URL}?action=getPaymentRecords`)
-      .then(r => r.json())
-      .then(r => {
-        if (r.success && r.data && Object.keys(r.data).length > 0) {
-          setPaymentRecords(r.data);
-          localStorage.setItem("assetx_payment_records", JSON.stringify(r.data));
+    apiGetPaymentRecords()
+      .then(data => {
+        if (Object.keys(data).length > 0) {
+          setPaymentRecords(data);
+          localStorage.setItem("assetx_payment_records", JSON.stringify(data));
         }
       })
       .catch(() => {});
@@ -1946,35 +1949,18 @@ export default function App() {
       localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
       return updated;
     });
-    fetch(APPS_SCRIPT_URL, {
-      method: "POST", mode: "no-cors",
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ action: "savePaymentRecord", data: { customerId, installment, ...record } }),
-    }).catch(() => {});
+    apiSavePaymentRecord(customerId, installment, record).catch(() => {});
   }, []);
 
   const deletePaymentRecord = React.useCallback((customerId, installment) => {
-    // ลบรูปจาก ImgBB ถ้ามี slipId
     setPaymentRecords(prev => {
-      const record = prev[customerId]?.[installment];
-      if (record?.slipId) {
-        fetch(APPS_SCRIPT_URL, {
-          method: "POST", mode: "no-cors",
-          headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({ action: "deleteImgbbImage", imageId: record.slipId }),
-        }).catch(() => {});
-      }
       const cust = { ...prev[customerId] };
       delete cust[installment];
       const updated = { ...prev, [customerId]: cust };
       localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
       return updated;
     });
-    fetch(APPS_SCRIPT_URL, {
-      method: "POST", mode: "no-cors",
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ action: "deletePaymentRecord", customerId, installment }),
-    }).catch(() => {});
+    apiDeletePaymentRecord(customerId, installment).catch(() => {});
   }, []);
 
   // ── LINE User ID รายลูกค้า ──────────────────────────────────
@@ -2008,21 +1994,17 @@ export default function App() {
     }
   }, []);
 
-  // โหลด IDs จาก Apps Script ตอนเริ่ม (merge กับ localStorage)
+  // โหลด destinations จาก Supabase (merge กับ localStorage)
   useEffect(() => {
-    if (APPS_SCRIPT_URL.includes("YOUR_")) return;
-    fetch(`${APPS_SCRIPT_URL}?action=getDestinations`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.destinations) && data.destinations.length > 0) {
+    apiGetDestinations()
+      .then(rows => {
+        if (rows.length > 0) {
           setSavedUserIds(prev => {
-            // merge: เอา IDs จาก Script มา enrich ด้วย label จาก localStorage
-            const merged = data.destinations.map(id => {
-              const existing = prev.find(u => u.id === id);
-              return existing || { id, label: id.substring(0, 12) + "...", savedAt: "จาก Apps Script" };
+            const merged = rows.map(row => {
+              const existing = prev.find(u => u.id === row.id);
+              return existing || { id: row.id, label: row.label, savedAt: "จาก Supabase" };
             });
-            // เพิ่ม IDs ใน localStorage ที่ไม่มีใน Script
-            const extra = prev.filter(u => !data.destinations.includes(u.id));
+            const extra = prev.filter(u => !rows.find(r => r.id === u.id));
             const result = [...merged, ...extra];
             localStorage.setItem("assetx_saved_user_ids", JSON.stringify(result));
             return result;
@@ -2113,19 +2095,17 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${APPS_SCRIPT_URL}?action=getCustomers`);
-      const json = await res.json();
-      if (json.success && json.data?.length > 0) {
-        // Merge ข้อมูลสดจาก Sheet กับ MOCK_DATA (สำหรับ field ที่ไม่มีใน Sheet เช่น deeds, location, color, icon)
-        const merged = json.data.map(sheetC => {
-          const mock = MOCK_DATA.find(m => m.id === sheetC.id || m.name === sheetC.name) || {};
-          return { ...mock, ...sheetC };
+      const data = await apiGetCustomers();
+      if (data.length > 0) {
+        const merged = data.map(c => {
+          const mock = MOCK_DATA.find(m => m.id === c.id || m.name === c.name) || {};
+          return { ...mock, ...c };
         });
         setCustomers(merged);
         lineHook.addLog("success", "✅ โหลดข้อมูลลูกค้าสำเร็จ " + merged.length + " ราย");
       } else {
         setCustomers(MOCK_DATA);
-        lineHook.addLog("info", "ℹ️ ใช้ข้อมูล fallback");
+        lineHook.addLog("info", "ℹ️ ยังไม่มีข้อมูลใน Supabase — ใช้ข้อมูล fallback");
       }
       setLastFetch(new Date().toLocaleTimeString("th-TH"));
       setApiConnected(true);

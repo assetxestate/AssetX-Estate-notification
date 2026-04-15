@@ -1,6 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import {
+  getValuations as apiGetValuations,
+  saveValuation as apiSaveValuation,
+  updateValuation as apiUpdateValuation,
+  updateValuationStatus as apiUpdateValuationStatus,
+  deleteValuation as apiDeleteValuation,
+} from './lib/api.js'
 
 const BRAND = {
   teal: '#2DD4BF', gold: '#F59E0B', bg: '#050B18', bgCard: '#0D1B2E',
@@ -492,16 +499,7 @@ function HistoryView({ appsScriptUrl }) {
   const sendToInvestor = async (row) => {
     setSendingRow(row['_rowIndex'])
     try {
-      await fetch(appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'updateValuation', rowIndex: row['_rowIndex'], data: { 'สถานะ': 'รอการพิจารณา' } }),
-      })
-      await fetch(appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'notifyInvestor', valuationData: row }),
-      })
+      await apiUpdateValuationStatus(row['_rowIndex'], 'รอการพิจารณา')
       setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': 'รอการพิจารณา' } : r))
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message)
@@ -511,11 +509,10 @@ function HistoryView({ appsScriptUrl }) {
   }
 
   useEffect(() => {
-    fetch(`${appsScriptUrl}?action=getValuations`)
-      .then(r => r.json())
-      .then(r => { setRows(r.data || []); setLoading(false) })
+    apiGetValuations()
+      .then(data => { setRows(data); setLoading(false) })
       .catch(() => { setError('ไม่สามารถโหลดข้อมูลได้'); setLoading(false) })
-  }, [appsScriptUrl])
+  }, [])
 
   const openEdit = (row) => {
     setEditForm({
@@ -540,11 +537,7 @@ function HistoryView({ appsScriptUrl }) {
     if (!editRow) return
     setSaving(true)
     try {
-      await fetch(appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'updateValuation', rowIndex: editRow['_rowIndex'], data: editForm }),
-      })
+      await apiUpdateValuation(editRow['_rowIndex'], editForm)
       setRows(prev => prev.map(r =>
         r['_rowIndex'] === editRow['_rowIndex'] ? { ...r, ...editForm } : r
       ))
@@ -561,11 +554,7 @@ function HistoryView({ appsScriptUrl }) {
     if (!rowIndex) { alert('ไม่พบ index ของรายการ — กรุณา reload แล้วลองใหม่'); return }
     setDeletingIdx(rowIndex)
     try {
-      await fetch(appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteValuation', rowIndex }),
-      })
+      await apiDeleteValuation(rowIndex)
       setRows(prev => prev.filter(r => r['_rowIndex'] !== rowIndex))
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message)
@@ -1704,12 +1693,10 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
 
   // โหลด sequence number จากจำนวนประเมินทั้งหมด
   useEffect(() => {
-    if (seqLoadedRef.current || !appsScriptUrl) return
+    if (seqLoadedRef.current) return
     seqLoadedRef.current = true
-    fetch(`${appsScriptUrl}?action=getValuations`)
-      .then(r => r.json())
-      .then(d => {
-        const rows = d.data || []
+    apiGetValuations()
+      .then(rows => {
         const curYear = String(new Date().getFullYear()).slice(-2)
         const thisYearCount = rows.filter(r => {
           const code = r['รหัส/ชื่อทรัพย์'] || r['projectName'] || ''
@@ -1718,7 +1705,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
         setValuationSeq(thisYearCount + 1)
       })
       .catch(() => {})
-  }, [appsScriptUrl])
+  }, [])
 
   // Auto-generate รหัสทรัพย์ เมื่อเปลี่ยนประเภท/จังหวัด/ประเภทย่อย
   useEffect(() => {
@@ -1727,13 +1714,12 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   }, [form.assessmentType, form.province, form.propertySubtype, valuationSeq])
 
   useEffect(() => {
-    if (step !== 2 || compsLoadedRef.current || !appsScriptUrl) return
+    if (step !== 2 || compsLoadedRef.current) return
     compsLoadedRef.current = true
-    fetch(`${appsScriptUrl}?action=getValuations`)
-      .then(r => r.json())
-      .then(d => setComps(d.data || []))
+    apiGetValuations()
+      .then(data => setComps(data))
       .catch(() => {})
-  }, [step, appsScriptUrl])
+  }, [step])
 
   const calc = useMemo(() => {
     const totalSqw = form.areaRai * 400 + form.areaNgan * 100 + +form.areaSqw
@@ -1757,11 +1743,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   const handleSave = async () => {
     setSaving(true)
     try {
-      await fetch(appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'saveValuation', data: { ...form, ...calc, savedAt: new Date().toISOString(), 'รหัส/ชื่อทรัพย์': form.assetCode || form.projectName } }),
-      })
+      await apiSaveValuation({ ...form, ...calc, savedAt: new Date().toISOString(), projectName: form.assetCode || form.projectName })
       setSaved(true)
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message)

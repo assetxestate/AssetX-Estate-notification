@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { getValuations as apiGetValuations } from './lib/api.js'
 
 const BRAND = {
   teal: '#2DD4BF', gold: '#F59E0B', bg: '#050B18', bgCard: '#0D1B2E',
@@ -80,13 +81,12 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
   // โหลดข้อมูลการประเมิน
   const loadValuations = (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
-    fetch(`${appsScriptUrl}?action=getValuations`)
-      .then(r => r.json())
-      .then(r => { setValuations(r.data || []); setLoading(false); setRefreshing(false) })
+    apiGetValuations()
+      .then(data => { setValuations(data); setLoading(false); setRefreshing(false) })
       .catch(() => { setLoading(false); setRefreshing(false) })
   }
 
-  useEffect(() => { loadValuations() }, [appsScriptUrl])
+  useEffect(() => { loadValuations() }, [])
 
   // สร้างแผนที่
   useEffect(() => {

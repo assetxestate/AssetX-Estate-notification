@@ -1,4 +1,10 @@
 import React, { useState, useEffect } from "react";
+import {
+  getValuations as apiGetValuations,
+  updateValuationStatus as apiUpdateValuationStatus,
+  createCustomer as apiCreateCustomer,
+  cancelCustomer as apiCancelCustomer,
+} from "./lib/api.js";
 
 const BRAND = {
   bg: "#0A1628", cardBg: "#111D35", border: "rgba(45,212,191,0.15)",
@@ -97,23 +103,24 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
         titleDeedNo: row['เลขโฉนด'],
         valuationRowIndex: row['_rowIndex'],
       };
-      await fetch(appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'createCustomerFromValuation', data }),
+      const customerId = `CID${Date.now()}`;
+      await apiCreateCustomer({
+        customer: {
+          id: customerId,
+          name: data.customerName,
+          fullLabel: data.fullLabel || data.customerName,
+          type: data.contractType || '',
+          principal: data.principal || 0,
+          amount: data.amount || 0,
+          freq: data.freq || 'รายเดือน',
+          contractEndDate: data.contractEndDate || null,
+          lineUserId: '',
+          location: [data.subdistrict, data.district, data.province].filter(Boolean).join(' '),
+          deeds: data.titleDeedNo ? [{ no: data.titleDeedNo }] : [],
+        },
+        payments: data.payments || [],
       });
-      // ตรวจสอบว่า Apps Script บันทึกจริงโดย fetch ข้อมูลลูกค้ากลับมา
-      await new Promise(r => setTimeout(r, 1500));
-      const verify = await fetch(`${appsScriptUrl}?action=getCustomers`).then(r => r.json()).catch(() => null);
-      const saved = verify?.data?.find(c => c.name === data.customerName);
-      if (!saved) throw new Error('Apps Script ไม่ได้บันทึกข้อมูล — กรุณาตรวจสอบ Apps Script Logs');
-      // สร้างรหัสลงทะเบียน LINE อัตโนมัติ
-      const tokenRes = await fetch(`${appsScriptUrl}?action=generateRegistrationToken&customerId=${encodeURIComponent(saved.id)}&customerName=${encodeURIComponent(data.customerName)}`).then(r => r.json()).catch(() => null);
-      if (tokenRes?.success) {
-        setRegToken({ token: tokenRes.token, expiresAt: tokenRes.expiresAt, customerName: data.customerName });
-      } else {
-        onSuccess();
-      }
+      onSuccess();
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message);
     } finally {
@@ -269,22 +276,17 @@ export default function InvestorPage({ appsScriptUrl }) {
 
   const load = () => {
     setLoading(true);
-    fetch(`${appsScriptUrl}?action=getValuations`)
-      .then(r => r.json())
-      .then(r => { setRows(r.data || []); setLoading(false); })
+    apiGetValuations()
+      .then(data => { setRows(data); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [appsScriptUrl]);
+  useEffect(() => { load(); }, []);
 
   const updateStatus = async (row, status) => {
     setProcessingRow(row['_rowIndex']);
     try {
-      await fetch(appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'updateValuation', rowIndex: row['_rowIndex'], data: { 'สถานะ': status } }),
-      });
+      await apiUpdateValuationStatus(row['_rowIndex'], status);
       setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': status } : r));
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message);
@@ -296,11 +298,8 @@ export default function InvestorPage({ appsScriptUrl }) {
   const cancelCustomer = async (row) => {
     setProcessingRow(row['_rowIndex']);
     try {
-      await fetch(appsScriptUrl, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'cancelCustomer', customerId: row['_customerId'] || row['รหัส/ชื่อทรัพย์'], customerName: row['รหัส/ชื่อทรัพย์'] }),
-      });
+      const customerId = row['_customerId'] || row['รหัส/ชื่อทรัพย์'];
+      await apiCancelCustomer(customerId).catch(() => {});
       await updateStatus(row, 'ยกเลิก');
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message);
