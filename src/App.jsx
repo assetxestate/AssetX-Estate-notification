@@ -75,26 +75,33 @@ const BRAND = {
 
 // Helpers
 function parseDate(s) {
-  const [y, m, d] = s.split("-").map(Number);
+  if (!s) return new Date(NaN);
+  const [y, m, d] = String(s).split("-").map(Number);
   return new Date(y, m - 1, d);
 }
 function formatThai(s) {
-  const d = parseDate(s);
-  const M = [
-    "ม.ค.",
-    "ก.พ.",
-    "มี.ค.",
-    "เม.ย.",
-    "พ.ค.",
-    "มิ.ย.",
-    "ก.ค.",
-    "ส.ค.",
-    "ก.ย.",
-    "ต.ค.",
-    "พ.ย.",
-    "ธ.ค.",
-  ];
-  return `${d.getDate()} ${M[d.getMonth()]} ${d.getFullYear() + 543}`;
+  if (!s) return "—";
+  try {
+    const d = parseDate(s);
+    if (isNaN(d.getTime())) return String(s);
+    const M = [
+      "ม.ค.",
+      "ก.พ.",
+      "มี.ค.",
+      "เม.ย.",
+      "พ.ค.",
+      "มิ.ย.",
+      "ก.ค.",
+      "ส.ค.",
+      "ก.ย.",
+      "ต.ค.",
+      "พ.ย.",
+      "ธ.ค.",
+    ];
+    return `${d.getDate()} ${M[d.getMonth()]} ${d.getFullYear() + 543}`;
+  } catch {
+    return String(s);
+  }
 }
 function formatThaiLong(s) {
   try {
