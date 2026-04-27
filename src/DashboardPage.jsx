@@ -111,16 +111,14 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   }
   const monthlyIncome = active.reduce((s, c) => s + toMonthly(c), 0)
 
-  // ยอดดอกเบี้ยที่ชำระแล้วเดือนนี้ — ใช้ amountPaid จากสลิปจริง
+  // ยอดดอกเบี้ยที่ชำระแล้วทั้งหมด — อ้างอิงจาก amountPaid ของสลิปจริง
   const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
   let collectedThisMonth = 0
   let collectedCount = 0
   Object.entries(paymentRecords).forEach(([cid, records]) => {
     Object.values(records || {}).forEach(rec => {
-      const paidStr = rec?.paidAt || rec?.paidDate || ''
-      if (paidStr.startsWith(thisMonth)) {
-        const cust = customers.find(c => String(c.id) === String(cid))
-        collectedThisMonth += rec?.amountPaid || cust?.amount || 0
+      if (rec?.amountPaid > 0) {
+        collectedThisMonth += rec.amountPaid
         collectedCount++
       }
     })
@@ -203,7 +201,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <KpiCard icon="💰" label="วงเงินรวมที่ปล่อย" value={`฿${fmt(totalPrincipal)}`} sub={`${active.length} สัญญา active`} color={BRAND.teal} />
         <KpiCard icon="📈" label="รายได้ดอกเบี้ย/เดือน" value={`฿${fmtFull(Math.round(monthlyIncome))}`} sub={`Yield ${yieldRate}%/ปี`} color={BRAND.gold} />
-        <KpiCard icon="✅" label="ดอกเบี้ยที่ชำระแล้ว" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · ${collectionRate}% ของเป้า`} color={BRAND.success} />
+        <KpiCard icon="✅" label="ดอกเบี้ยที่ชำระแล้ว" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · อ้างอิงจากสลิปโอนเงิน`} color={BRAND.success} />
         <KpiCard icon="⚠️" label="ค้างชำระ" value={overduePayments.length} sub={overduePayments.length > 0 ? `${overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย` : 'ไม่มีค้างชำระ'} color={overduePayments.length > 0 ? BRAND.danger : BRAND.success} />
         <KpiCard icon="🏦" label="Advance 2% (ตั้ม & ต่าย)" value={`฿${fmtFull(Math.round(totalAdvance))}`} sub={`${active.length} สัญญา · 2% ของวงเงินรวม`} color={BRAND.purple} />
       </div>
