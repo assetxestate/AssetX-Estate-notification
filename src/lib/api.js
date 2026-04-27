@@ -41,6 +41,7 @@ export async function getCustomers() {
     lineUserId: c.line_user_id,
     location: c.location,
     deeds: typeof c.deeds === "string" ? c.deeds : JSON.stringify(c.deeds || []),
+    incomeType: c.income_type || 'commission',
     payments: payMap[c.id] || [],
   }));
 }
@@ -60,6 +61,7 @@ export async function createCustomer(data) {
     line_user_id: customer.lineUserId || "",
     location: customer.location || "",
     deeds: customer.deeds || [],
+    income_type: customer.incomeType || 'commission',
     updated_at: new Date().toISOString(),
   });
   if (custErr) throw custErr;
@@ -91,6 +93,7 @@ export async function updateCustomer(customerId, data) {
   if (data.lineUserId !== undefined)      updates.line_user_id = data.lineUserId;
   if (data.location !== undefined)        updates.location = data.location;
   if (data.deeds !== undefined)           updates.deeds = data.deeds;
+  if (data.incomeType !== undefined)      updates.income_type = data.incomeType;
   updates.updated_at = new Date().toISOString();
 
   const { error } = await supabase.from("customers").update(updates).eq("id", customerId);

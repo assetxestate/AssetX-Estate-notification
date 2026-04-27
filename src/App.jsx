@@ -1631,6 +1631,7 @@ function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSaved }) {
     freq: customer.freq || 'รายเดือน',
     contractEndDate: customer.contractEndDate || '',
     lineUserId: customer.lineUserId || '',
+    incomeType: customer.incomeType || 'commission',
   });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
@@ -1649,6 +1650,7 @@ function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSaved }) {
         freq: form.freq,
         contractEndDate: form.contractEndDate || null,
         lineUserId: form.lineUserId,
+        incomeType: form.incomeType,
       });
       onSaved({ ...customer, ...form, principal: parseFloat(form.principal) || 0, amount: parseFloat(form.amount) || 0 });
       onClose();
@@ -1717,6 +1719,13 @@ function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSaved }) {
           <div>
             <label style={labelStyle}>LINE User ID</label>
             <input style={inputStyle} value={form.lineUserId} onChange={e => up('lineUserId', e.target.value)} placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+          </div>
+          <div>
+            <label style={labelStyle}>ประเภทรายได้บริษัท</label>
+            <select style={inputStyle} value={form.incomeType} onChange={e => up('incomeType', e.target.value)}>
+              <option value="commission">รับค่าคอมมิชชั่น (มี Advance 2%)</option>
+              <option value="interest">รับดอกเบี้ยแทน (ไม่มี Advance)</option>
+            </select>
           </div>
         </div>
 

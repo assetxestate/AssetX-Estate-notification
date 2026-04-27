@@ -138,6 +138,11 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   // Yield
   const yieldRate = totalPrincipal > 0 ? ((monthlyIncome * 12) / totalPrincipal * 100).toFixed(1) : 0
 
+  // ค่านายหน้า Advance 2% (ตั้ม & ต่าย จ่ายล่วงหน้าเข้าบริษัท) — เฉพาะเคสประเภท commission เท่านั้น
+  const commissionCases = active.filter(c => (c.incomeType || 'commission') === 'commission')
+  const interestCases = active.filter(c => c.incomeType === 'interest')
+  const totalAdvance = commissionCases.reduce((s, c) => s + (c.principal || 0) * 0.02, 0)
+
   // ── กราฟรายได้ 6 เดือนย้อนหลัง ──────────────────────────
   const monthlyChart = useMemo(() => {
     const months = []
@@ -198,6 +203,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
         <KpiCard icon="📈" label="รายได้ดอกเบี้ย/เดือน" value={`฿${fmtFull(Math.round(monthlyIncome))}`} sub={`Yield ${yieldRate}%/ปี`} color={BRAND.gold} />
         <KpiCard icon="✅" label="เก็บได้เดือนนี้" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · ${collectionRate}% ของเป้า`} color={BRAND.success} />
         <KpiCard icon="⚠️" label="ค้างชำระ" value={overduePayments.length} sub={overduePayments.length > 0 ? `${overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย` : 'ไม่มีค้างชำระ'} color={overduePayments.length > 0 ? BRAND.danger : BRAND.success} />
+        <KpiCard icon="🏦" label="Advance 2% (ตั้ม & ต่าย)" value={`฿${fmtFull(Math.round(totalAdvance))}`} sub={`${active.length} สัญญา · 2% ของวงเงินรวม`} color={BRAND.purple} />
       </div>
 
       {/* Charts Row */}
@@ -260,6 +266,63 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
               )
             })}
           </div>
+        )}
+      </div>
+
+      {/* Advance 2% Breakdown */}
+      <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.purple}44`, borderRadius: 14, padding: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri, marginBottom: 4 }}>🏦 Advance 2% รายเคส (ตั้ม & ต่าย)</div>
+        <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 16 }}>เงินที่ต้องจ่ายล่วงหน้าเข้าบริษัทตามยอดวงเงินแต่ละเคส</div>
+
+        {commissionCases.length > 0 && (
+          <div style={{ marginBottom: interestCases.length > 0 ? 16 : 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.purple, marginBottom: 8 }}>รับค่าคอมมิชชั่น (มี Advance 2%)</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {commissionCases.map(c => (
+                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: BRAND.textSec }}>{c.type} · วงเงิน ฿{fmtFull(c.principal)}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 10, color: BRAND.textSec }}>Advance 2%</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.purple }}>฿{fmtFull(Math.round((c.principal || 0) * 0.02))}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: `${BRAND.purple}18`, border: `1px solid ${BRAND.purple}44`, display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: BRAND.textSec }}>รวม Advance ทั้งหมด</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: BRAND.purple }}>฿{fmtFull(Math.round(totalAdvance))}</span>
+            </div>
+          </div>
+        )}
+
+        {interestCases.length > 0 && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.gold, marginBottom: 8 }}>รับดอกเบี้ยแทน (ไม่มี Advance)</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {interestCases.map(c => (
+                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: BRAND.textSec }}>{c.type} · วงเงิน ฿{fmtFull(c.principal)}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 10, color: BRAND.gold }}>ดอกเบี้ย/งวด</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold }}>฿{fmtFull(c.amount)}</div>
+                  </div>
+                  <div style={{ padding: '3px 8px', borderRadius: 6, background: `${BRAND.gold}22`, border: `1px solid ${BRAND.gold}55` }}>
+                    <div style={{ fontSize: 10, color: BRAND.gold, whiteSpace: 'nowrap' }}>รับดอกเบี้ย</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {commissionCases.length === 0 && interestCases.length === 0 && (
+          <div style={{ fontSize: 12, color: BRAND.textMut, textAlign: 'center', padding: '12px 0' }}>ไม่มีสัญญา active</div>
         )}
       </div>
 

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS customers (
   location        TEXT DEFAULT '',
   deeds           JSONB DEFAULT '[]',
   is_cancelled    BOOLEAN DEFAULT FALSE,
+  income_type     TEXT DEFAULT 'commission',  -- 'commission' = มีค่าคอม+Advance 2%, 'interest' = รับดอกเบี้ยแทน
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
