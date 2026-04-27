@@ -111,15 +111,16 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   }
   const monthlyIncome = active.reduce((s, c) => s + toMonthly(c), 0)
 
-  // เก็บได้เดือนนี้จาก paymentRecords
+  // ยอดดอกเบี้ยที่ชำระแล้วเดือนนี้ — ใช้ amountPaid จากสลิปจริง
   const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
   let collectedThisMonth = 0
   let collectedCount = 0
   Object.entries(paymentRecords).forEach(([cid, records]) => {
     Object.values(records || {}).forEach(rec => {
-      if (rec?.paidDate?.startsWith(thisMonth)) {
+      const paidStr = rec?.paidAt || rec?.paidDate || ''
+      if (paidStr.startsWith(thisMonth)) {
         const cust = customers.find(c => String(c.id) === String(cid))
-        collectedThisMonth += cust?.amount || rec?.amount || 0
+        collectedThisMonth += rec?.amountPaid || cust?.amount || 0
         collectedCount++
       }
     })
@@ -152,9 +153,10 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
       let total = 0
       Object.entries(paymentRecords).forEach(([cid, records]) => {
         Object.values(records || {}).forEach(rec => {
-          if (rec?.paidDate?.startsWith(key)) {
+          const paidStr = rec?.paidAt || rec?.paidDate || ''
+          if (paidStr.startsWith(key)) {
             const cust = customers.find(c => String(c.id) === String(cid))
-            total += cust?.amount || 0
+            total += rec?.amountPaid || cust?.amount || 0
           }
         })
       })
@@ -201,7 +203,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <KpiCard icon="💰" label="วงเงินรวมที่ปล่อย" value={`฿${fmt(totalPrincipal)}`} sub={`${active.length} สัญญา active`} color={BRAND.teal} />
         <KpiCard icon="📈" label="รายได้ดอกเบี้ย/เดือน" value={`฿${fmtFull(Math.round(monthlyIncome))}`} sub={`Yield ${yieldRate}%/ปี`} color={BRAND.gold} />
-        <KpiCard icon="✅" label="เก็บได้เดือนนี้" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · ${collectionRate}% ของเป้า`} color={BRAND.success} />
+        <KpiCard icon="✅" label="ดอกเบี้ยชำระแล้วเดือนนี้" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · ${collectionRate}% ของเป้า`} color={BRAND.success} />
         <KpiCard icon="⚠️" label="ค้างชำระ" value={overduePayments.length} sub={overduePayments.length > 0 ? `${overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย` : 'ไม่มีค้างชำระ'} color={overduePayments.length > 0 ? BRAND.danger : BRAND.success} />
         <KpiCard icon="🏦" label="Advance 2% (ตั้ม & ต่าย)" value={`฿${fmtFull(Math.round(totalAdvance))}`} sub={`${active.length} สัญญา · 2% ของวงเงินรวม`} color={BRAND.purple} />
       </div>
