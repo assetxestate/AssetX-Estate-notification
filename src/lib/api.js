@@ -157,6 +157,7 @@ export async function getPaymentRecords() {
     if (!result[row.customer_id]) result[row.customer_id] = {};
     result[row.customer_id][row.installment] = {
       paidAt: row.paid_at,
+      paidDate: row.paid_at,
       slipUrl: row.slip_url,
       slipId: row.slip_id,
       amountPaid: row.amount_paid,
@@ -170,10 +171,10 @@ export async function savePaymentRecord(customerId, installment, record) {
   const { error } = await supabase.from("payment_records").upsert({
     customer_id: customerId,
     installment: installment,
-    paid_at: record.paidAt || "",
+    paid_at: record.paidDate || record.paidAt || "",
     slip_url: record.slipUrl || "",
     slip_id: record.slipId || "",
-    amount_paid: record.amountPaid || 0,
+    amount_paid: record.amountPaid || record.amount || 0,
     note: record.note || "",
   }, { onConflict: "customer_id,installment" });
   if (error) throw error;
