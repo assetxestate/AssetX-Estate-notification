@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS customers (
   line_user_id    TEXT DEFAULT '',
   location        TEXT DEFAULT '',
   deeds           JSONB DEFAULT '[]',
+  disbursement    JSONB DEFAULT '{}',
   is_cancelled    BOOLEAN DEFAULT FALSE,
   income_type     TEXT DEFAULT 'commission',  -- 'commission' = มีค่าคอม+Advance 2%, 'interest' = รับดอกเบี้ยแทน
   created_at      TIMESTAMPTZ DEFAULT NOW(),
@@ -99,6 +100,9 @@ CREATE TABLE IF NOT EXISTS valuations (
   customer_name         TEXT DEFAULT '',
   created_at            TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ── Migration: เพิ่ม disbursement column (run ถ้า table มีอยู่แล้ว) ──
+-- ALTER TABLE customers ADD COLUMN IF NOT EXISTS disbursement JSONB DEFAULT '{}';
 
 -- ── 6. ตาราง LINE destinations (กลุ่มแจ้งเตือน) ──────────────
 CREATE TABLE IF NOT EXISTS destinations (

@@ -30,6 +30,12 @@ const TABS = [
 
 const FREQ_OPTIONS = ['รายเดือน', 'ราย 2 สัปดาห์'];
 
+const EMPTY_DEBT = () => ({
+  id: Date.now() + Math.random(),
+  creditorName: '', contractType: 'จำนอง', amount: '',
+  paymentMethod: 'โอน', bankName: '', accountNo: '', accountName: '', checkPayableTo: '',
+});
+
 function fmt(n) {
   const num = parseFloat(n);
   return isNaN(num) ? '—' : num.toLocaleString('th-TH');
@@ -64,6 +70,9 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     lineUserId: '',
     advanceInstallments: 0,
   });
+  const [existingDebts, setExistingDebts] = useState([]);
+  const [externalBroker, setExternalBroker] = useState({ name: '', amount: '', payment: 'โอน' });
+  const [companyFee, setCompanyFee] = useState({ type: 'fixed', rate: '', amount: '' });
   const [saving, setSaving] = useState(false);
   const [regToken, setRegToken] = useState(null);
 
@@ -73,6 +82,15 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
   const amountPerInstall = form.interestRate
     ? Math.round(principal * parseFloat(form.interestRate) / 100)
     : 0;
+
+  // disbursement calculations
+  const totalDebt = existingDebts.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+  const advanceTotal = form.advanceInstallments * amountPerInstall;
+  const externalFee = parseFloat(externalBroker.amount) || 0;
+  const companyFeeAmt = companyFee.type === 'percent'
+    ? Math.round(principal * (parseFloat(companyFee.rate) || 0) / 100)
+    : parseFloat(companyFee.amount) || 0;
+  const netDisbursement = principal - totalDebt - advanceTotal - externalFee - companyFeeAmt;
 
   const calcEndDate = () => {
     if (!form.contractStartDate || !form.installmentCount) return '—';
@@ -111,12 +129,25 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
           fullLabel: data.fullLabel || data.customerName,
           type: data.contractType || '',
           principal: data.principal || 0,
-          amount: data.amount || 0,
+          amount: amountPerInstall,
           freq: data.freq || 'รายเดือน',
           contractEndDate: data.contractEndDate || null,
           lineUserId: '',
           location: [data.subdistrict, data.district, data.province].filter(Boolean).join(' '),
           deeds: data.titleDeedNo ? [{ no: data.titleDeedNo }] : [],
+          disbursement: {
+            approvedAmount: principal,
+            existingDebts,
+            advanceMonths: form.advanceInstallments,
+            advanceTotal,
+            externalBrokerName: externalBroker.name,
+            externalBrokerAmount: externalFee,
+            externalBrokerPayment: externalBroker.payment,
+            companyFeeType: companyFee.type,
+            companyFeeRate: parseFloat(companyFee.rate) || 0,
+            companyFeeAmount: companyFeeAmt,
+            netDisbursement,
+          },
         },
         payments: data.payments || [],
       });
@@ -229,6 +260,139 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
           <div>
             <label style={lbl}>LINE User ID (ไม่บังคับ)</label>
             <input style={inp} value={form.lineUserId} onChange={e => up('lineUserId', e.target.value)} placeholder="Uxxxxxxxxxxxxxxxxx" />
+          </div>
+        </div>
+
+        {/* ── การเบิกจ่าย ── */}
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${BRAND.border}` }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: BRAND.gold, marginBottom: 12 }}>💰 รายละเอียดการเบิกจ่าย</div>
+
+          {/* ทุนเก่า */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textSec, marginBottom: 6 }}>🔗 ทุนเก่า ({existingDebts.length} รายการ)</div>
+          {existingDebts.map((debt, idx) => (
+            <div key={debt.id} style={{ background: 'rgba(0,0,0,.25)', borderRadius: 10, padding: 10, marginBottom: 8, border: `1px solid ${BRAND.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: BRAND.textPri }}>เจ้าหนี้ที่ {idx + 1}</span>
+                <button onClick={() => setExistingDebts(p => p.filter(d => d.id !== debt.id))} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(239,68,68,.4)', background: 'transparent', color: '#FCA5A5', cursor: 'pointer' }}>ลบ</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={lbl}>ชื่อเจ้าหนี้</label>
+                  <input style={inp} value={debt.creditorName} onChange={e => setExistingDebts(p => p.map(d => d.id === debt.id ? { ...d, creditorName: e.target.value } : d))} placeholder="ชื่อ-นามสกุล / บริษัท" />
+                </div>
+                <div>
+                  <label style={lbl}>ประเภทสัญญาเดิม</label>
+                  <select style={inp} value={debt.contractType} onChange={e => setExistingDebts(p => p.map(d => d.id === debt.id ? { ...d, contractType: e.target.value } : d))}>
+                    <option value="จำนอง">จำนอง</option>
+                    <option value="ขายฝาก">ขายฝาก</option>
+                    <option value="อื่นๆ">อื่นๆ</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>ยอดปลด (บาท)</label>
+                  <input style={inp} type="number" value={debt.amount} onChange={e => setExistingDebts(p => p.map(d => d.id === debt.id ? { ...d, amount: e.target.value } : d))} placeholder="0" />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={lbl}>วิธีชำระ</label>
+                  <select style={inp} value={debt.paymentMethod} onChange={e => setExistingDebts(p => p.map(d => d.id === debt.id ? { ...d, paymentMethod: e.target.value } : d))}>
+                    <option value="โอน">เงินโอน</option>
+                    <option value="แคชเชียร์เช็ก">แคชเชียร์เช็ก</option>
+                    <option value="เงินสด">เงินสด</option>
+                  </select>
+                </div>
+                {debt.paymentMethod === 'โอน' && (<>
+                  <div>
+                    <label style={lbl}>ธนาคาร</label>
+                    <input style={inp} value={debt.bankName} onChange={e => setExistingDebts(p => p.map(d => d.id === debt.id ? { ...d, bankName: e.target.value } : d))} placeholder="เช่น กสิกรไทย" />
+                  </div>
+                  <div>
+                    <label style={lbl}>เลขบัญชี</label>
+                    <input style={inp} value={debt.accountNo} onChange={e => setExistingDebts(p => p.map(d => d.id === debt.id ? { ...d, accountNo: e.target.value } : d))} placeholder="xxx-x-xxxxx-x" />
+                  </div>
+                  <div style={{ gridColumn: '1/-1' }}>
+                    <label style={lbl}>ชื่อบัญชี</label>
+                    <input style={inp} value={debt.accountName} onChange={e => setExistingDebts(p => p.map(d => d.id === debt.id ? { ...d, accountName: e.target.value } : d))} />
+                  </div>
+                </>)}
+                {debt.paymentMethod === 'แคชเชียร์เช็ก' && (
+                  <div style={{ gridColumn: '1/-1' }}>
+                    <label style={lbl}>สั่งจ่ายในนาม</label>
+                    <input style={inp} value={debt.checkPayableTo} onChange={e => setExistingDebts(p => p.map(d => d.id === debt.id ? { ...d, checkPayableTo: e.target.value } : d))} placeholder="ชื่อ-นามสกุล หรือ บริษัท" />
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          <button onClick={() => setExistingDebts(p => [...p, EMPTY_DEBT()])} style={{ width: '100%', padding: '7px', borderRadius: 8, border: '1px dashed rgba(239,68,68,.4)', background: 'transparent', color: '#FCA5A5', fontSize: 12, cursor: 'pointer', marginBottom: 12 }}>
+            + เพิ่มเจ้าหนี้เดิม
+          </button>
+
+          {/* ค่านายหน้าภายนอก */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textSec, marginBottom: 6 }}>🤝 ค่านายหน้าภายนอก</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+            <div style={{ gridColumn: '1/-1' }}>
+              <label style={lbl}>ชื่อนายหน้า (ถ้ามี)</label>
+              <input style={inp} value={externalBroker.name} onChange={e => setExternalBroker(p => ({ ...p, name: e.target.value }))} placeholder="ชื่อ-นามสกุล" />
+            </div>
+            <div>
+              <label style={lbl}>ค่านายหน้า (บาท)</label>
+              <input style={inp} type="number" value={externalBroker.amount} onChange={e => setExternalBroker(p => ({ ...p, amount: e.target.value }))} placeholder="0" />
+            </div>
+            <div>
+              <label style={lbl}>วิธีจ่าย</label>
+              <select style={inp} value={externalBroker.payment} onChange={e => setExternalBroker(p => ({ ...p, payment: e.target.value }))}>
+                <option value="โอน">เงินโอน</option>
+                <option value="เงินสด">เงินสด</option>
+              </select>
+            </div>
+          </div>
+
+          {/* ค่านายหน้าบริษัท */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textSec, marginBottom: 6 }}>🏢 ค่านายหน้าบริษัท</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+            <div>
+              <label style={lbl}>ประเภท</label>
+              <select style={inp} value={companyFee.type} onChange={e => setCompanyFee(p => ({ ...p, type: e.target.value }))}>
+                <option value="fixed">ยอดคงที่</option>
+                <option value="percent">% ของวงเงิน</option>
+              </select>
+            </div>
+            {companyFee.type === 'percent' ? (<>
+              <div>
+                <label style={lbl}>อัตรา (%)</label>
+                <input style={inp} type="number" step="0.1" value={companyFee.rate} onChange={e => setCompanyFee(p => ({ ...p, rate: e.target.value }))} placeholder="เช่น 2" />
+              </div>
+              <div>
+                <label style={lbl}>ยอด (คำนวณ)</label>
+                <input style={{ ...inp, color: BRAND.gold }} value={companyFeeAmt.toLocaleString('th-TH')} readOnly />
+              </div>
+            </>) : (
+              <div style={{ gridColumn: '2/-1' }}>
+                <label style={lbl}>ยอด (บาท)</label>
+                <input style={{ ...inp, color: BRAND.gold }} type="number" value={companyFee.amount} onChange={e => setCompanyFee(p => ({ ...p, amount: e.target.value }))} placeholder="0" />
+              </div>
+            )}
+          </div>
+
+          {/* Summary การเบิกจ่าย */}
+          <div style={{ padding: 12, background: 'rgba(0,0,0,.3)', borderRadius: 10, border: `1px solid ${BRAND.border}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.textSec, marginBottom: 8 }}>สรุปการเบิกจ่าย</div>
+            {[
+              ['วงเงินอนุมัติ', principal, BRAND.textPri, false],
+              totalDebt > 0 && ['หักทุนเก่า', totalDebt, '#FCA5A5', true],
+              advanceTotal > 0 && [`หักล่วงหน้า (${form.advanceInstallments} งวด)`, advanceTotal, '#FCA5A5', true],
+              externalFee > 0 && ['ค่านายหน้าภายนอก', externalFee, '#FCA5A5', true],
+              companyFeeAmt > 0 && ['ค่านายหน้าบริษัท', companyFeeAmt, BRAND.gold, true],
+            ].filter(Boolean).map(([label, val, color, minus]) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: `1px solid ${BRAND.border}`, fontSize: 12 }}>
+                <span style={{ color: BRAND.textSec }}>{label}</span>
+                <span style={{ color, fontWeight: 600 }}>{minus ? '−' : ''}{val.toLocaleString('th-TH')}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 14, fontWeight: 800 }}>
+              <span style={{ color: BRAND.textPri }}>ยอดที่ลูกค้าได้รับจริง</span>
+              <span style={{ color: netDisbursement >= 0 ? BRAND.teal : '#FCA5A5' }}>{netDisbursement.toLocaleString('th-TH')} ฿</span>
+            </div>
           </div>
         </div>
 

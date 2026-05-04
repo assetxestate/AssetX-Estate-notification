@@ -106,21 +106,56 @@ function generateAssetCode(assessmentType, province, propertySubtype, seq) {
 }
 
 const ROAD_TYPE_OPTIONS = [
-  { value: 'ไม่ซอย / เลียบตลอง', factor: 1.00 },
-  { value: 'ซอยสั้น / ออกถนนใหญ่ < 200ม.', factor: 0.90 },
-  { value: 'ซอยลึก 200–500ม.', factor: 0.80 },
-  { value: 'ซอยลึก > 500ม.', factor: 0.70 },
-  { value: 'ทางลัด / ตรอกแคบ', factor: 0.65 },
+  // ── ติดถนนสาธารณะโดยตรง ──────────────────────────────────────
+  { value: 'ติดทางหลวง / ถนนหลัก 4 เลนขึ้นไป', factor: 1.15 },
+  { value: 'ติดถนนหลัก 2 เลน (สายหลัก)', factor: 1.05 },
+  { value: 'ติดถนนคสล./ลาดยาง สาธารณะ (ท้องถิ่น/อบต.)', factor: 1.00 },
+  { value: 'ติดถนนลูกรัง/หินคลุก สาธารณะ', factor: 0.88 },
+  { value: 'ติดถนนดิน / ทางชลประทาน', factor: 0.80 },
+  // ── มุมถนน / ลักษณะพิเศษบวก ─────────────────────────────────
+  { value: 'มุมถนน 2 ด้าน (Corner Plot)', factor: 1.12 },
+  { value: 'ชายทะเล / ติดหาดทราย', factor: 1.20 },
+  { value: 'ริมน้ำ / เลียบแม่น้ำ / คลองใหญ่', factor: 1.05 },
+  { value: 'ใกล้รถไฟฟ้า BTS/MRT/ARL < 500ม.', factor: 1.12 },
+  { value: 'ใกล้รถไฟฟ้า BTS/MRT/ARL 500ม.–1กม.', factor: 1.05 },
+  // ── เข้าซอย ──────────────────────────────────────────────────
+  { value: 'ซอยสั้น < 100ม. ออกถนนใหญ่', factor: 0.93 },
+  { value: 'ซอย 100–200ม. ออกถนนใหญ่', factor: 0.87 },
+  { value: 'ซอย 200–500ม.', factor: 0.80 },
+  { value: 'ซอยลึก 500ม.–1กม.', factor: 0.72 },
+  { value: 'ซอยลึกมาก > 1กม.', factor: 0.65 },
+  { value: 'ซอยตัน / ปลายซอย', factor: 0.62 },
+  // ── ทางเข้าพิเศษ / จำกัด ─────────────────────────────────────
+  { value: 'ตรอกแคบ (รถเล็กผ่านได้ < 3ม.)', factor: 0.68 },
+  { value: 'ทางเดินเท้าเท่านั้น (รถไม่ผ่าน)', factor: 0.45 },
+  { value: 'ทางเอกชน — มีภาระจำยอมจดทะเบียน', factor: 0.78 },
+  { value: 'ทางเอกชน — ไม่มีภาระจำยอม (ขออนุญาตผ่าน)', factor: 0.55 },
+  { value: 'ที่ดินตาบอด (ไม่มีทางเข้าออก)', factor: 0.25 },
+  // ── ลักษณะที่กระทบเชิงลบ ─────────────────────────────────────
+  { value: 'เลียบทางด่วน / ใต้ทางด่วน (เสียง/ฝุ่น)', factor: 0.85 },
+  { value: 'เลียบทางรถไฟ (เสียงรบกวน)', factor: 0.80 },
+  { value: 'ที่ดินบนเนิน / ทางชัน (รถขึ้นยาก)', factor: 0.82 },
+  { value: 'เลียบคลองเล็ก / คูน้ำชลประทาน', factor: 0.92 },
 ]
 const ROAD_WIDTH_OPTIONS = [
-  { value: '≥ 20 ม.', factor: 1.05 }, { value: '12–19 ม.', factor: 1.00 },
-  { value: '8–11 ม.', factor: 0.95 }, { value: '6–7 ม. (คสล.)', factor: 0.90 },
-  { value: '4–5 ม.', factor: 0.85 }, { value: '< 4 ม. / ทางเท้า', factor: 0.75 },
+  { value: '≥ 30 ม. (ถนนหลักใหญ่)', factor: 1.10 },
+  { value: '20–29 ม.', factor: 1.05 },
+  { value: '12–19 ม.', factor: 1.00 },
+  { value: '8–11 ม.', factor: 0.95 },
+  { value: '6–7 ม. (คสล./ลาดยาง)', factor: 0.90 },
+  { value: '4–5 ม.', factor: 0.85 },
+  { value: '< 4 ม. / ตรอกแคบ', factor: 0.75 },
+  { value: 'ไม่มีถนนหน้าที่ดิน', factor: 0.60 },
 ]
 const FRONTAGE_OPTIONS = [
-  { value: '≥ 20 ม.', factor: 1.05 }, { value: '12–19 ม.', factor: 1.00 },
-  { value: '8–11 ม.', factor: 0.95 }, { value: '5–7 ม.', factor: 0.90 },
-  { value: '< 5 ม.', factor: 0.85 },
+  { value: '≥ 30 ม.', factor: 1.08 },
+  { value: '20–29 ม.', factor: 1.05 },
+  { value: '12–19 ม.', factor: 1.00 },
+  { value: '8–11 ม.', factor: 0.95 },
+  { value: '5–7 ม.', factor: 0.90 },
+  { value: '2–4 ม.', factor: 0.80 },
+  { value: '< 2 ม. (แคบมาก)', factor: 0.70 },
+  { value: 'ไม่มีหน้ากว้าง / เข้าทางอื่น', factor: 0.50 },
 ]
 const ZONE_OPTIONS = [
   // ── พาณิชยกรรม (สีแดง) ──────────────────────────────────────
@@ -187,8 +222,24 @@ const ZONE_OPTIONS = [
   { value: 'อภ — เสี่ยงอุกภัย (เทาลาย)', factor: 0.40 },
 ]
 const SOIL_OPTIONS = [
-  { value: 'ถมเรียบร้อย / ใช้ได้เลย', factor: 1.00 }, { value: 'ถมบางส่วน', factor: 0.95 },
-  { value: 'ยังไม่ถม', factor: 0.90 }, { value: 'ต่ำกว่าถนน / มีน้ำขัง', factor: 0.80 },
+  // ── พร้อมใช้ ──────────────────────────────────────────────────
+  { value: 'ถมเรียบร้อย ระดับดี / ใช้ได้เลย', factor: 1.00 },
+  { value: 'ถมแล้ว ระดับพอดีถนน', factor: 0.97 },
+  { value: 'ถมบางส่วน ยังไม่เสร็จ', factor: 0.93 },
+  // ── ต้องถมเพิ่ม ───────────────────────────────────────────────
+  { value: 'ยังไม่ถม (ต้องถมทั้งแปลง)', factor: 0.88 },
+  { value: 'ต่ำกว่าถนน 0.5–1 ม.', factor: 0.85 },
+  { value: 'ต่ำกว่าถนน > 1 ม. (ถมมาก)', factor: 0.78 },
+  { value: 'มีน้ำขัง / ทุ่งน้ำท่วมซ้ำซาก', factor: 0.70 },
+  // ── ดินมีปัญหา ────────────────────────────────────────────────
+  { value: 'ดินเหนียวอ่อน / ดินเสียง (ต้องปรับปรุง)', factor: 0.85 },
+  { value: 'ที่นา / สวน ยังไม่ปรับที่', factor: 0.82 },
+  { value: 'บ่อ / สระน้ำ (ต้องถมมาก)', factor: 0.65 },
+  { value: 'ป่าละเมาะ / ดงไผ่ / ต้องถางมาก', factor: 0.80 },
+  // ── ปนเปื้อน / ปัญหาพิเศษ ────────────────────────────────────
+  { value: 'เคยเป็นโรงงาน / สงสัยปนเปื้อน', factor: 0.55 },
+  { value: 'ดินทรุด / มีโพรงใต้ดิน', factor: 0.60 },
+  { value: 'ที่ดินลาดชัน / ดินไหล (ต้องกันดิน)', factor: 0.75 },
 ]
 const RISK_FACTORS = [
   { key: 'flood', label: 'เสี่ยงน้ำท่วม', penalty: -15 },
@@ -530,6 +581,7 @@ function HistoryView({ appsScriptUrl }) {
       'ปัจจัยเสี่ยง': row['ปัจจัยเสี่ยง'] || '',
       'หมายเหตุ': row['หมายเหตุ'] || '',
       'สถานะ': row['สถานะ'] || 'รอดำเนินการ',
+      deeds: Array.isArray(row.deeds) && row.deeds.length > 0 ? row.deeds : [EMPTY_DEED()],
     })
     setEditRow(row)
   }
@@ -662,6 +714,49 @@ function HistoryView({ appsScriptUrl }) {
                 <textarea value={editForm['หมายเหตุ']} onChange={e => ef('หมายเหตุ', e.target.value)}
                   rows={3} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
+
+              <div style={{ margin: '16px 0 8px', fontSize: 12, fontWeight: 700, color: BRAND.gold }}>
+                📄 รายการโฉนด ({(editForm.deeds || []).length} แปลง)
+              </div>
+              {(editForm.deeds || []).map((deed, idx) => (
+                <div key={deed.id || idx} style={{ background: BRAND.bg, borderRadius: 10, padding: 12, marginBottom: 10, border: `1px solid ${BRAND.border}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textPri }}>โฉนดที่ {idx + 1}</div>
+                    {(editForm.deeds || []).length > 1 && (
+                      <button
+                        onClick={() => setEditForm(p => ({ ...p, deeds: p.deeds.filter((_, i) => i !== idx) }))}
+                        style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,0.4)', background: 'transparent', color: '#FCA5A5', cursor: 'pointer' }}
+                      >ลบ</button>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={lbl}>เลขโฉนด</label>
+                      <input value={deed.titleDeedNo || ''} onChange={e => setEditForm(p => ({ ...p, deeds: p.deeds.map((d, i) => i === idx ? { ...d, titleDeedNo: e.target.value } : d) }))} style={inp} />
+                    </div>
+                    <div>
+                      <label style={lbl}>ไร่</label>
+                      <input type="number" value={deed.areaRai ?? 0} onChange={e => setEditForm(p => ({ ...p, deeds: p.deeds.map((d, i) => i === idx ? { ...d, areaRai: +e.target.value } : d) }))} style={inp} />
+                    </div>
+                    <div>
+                      <label style={lbl}>งาน</label>
+                      <input type="number" value={deed.areaNgan ?? 0} onChange={e => setEditForm(p => ({ ...p, deeds: p.deeds.map((d, i) => i === idx ? { ...d, areaNgan: +e.target.value } : d) }))} style={inp} />
+                    </div>
+                    <div>
+                      <label style={lbl}>ตร.ว.</label>
+                      <input type="number" value={deed.areaSqw ?? 0} onChange={e => setEditForm(p => ({ ...p, deeds: p.deeds.map((d, i) => i === idx ? { ...d, areaSqw: +e.target.value } : d) }))} style={inp} />
+                    </div>
+                    <div>
+                      <label style={lbl}>ราคาประเมินกรมฯ (บ./ตร.ว.)</label>
+                      <input type="number" value={deed.govPrice ?? 0} onChange={e => setEditForm(p => ({ ...p, deeds: p.deeds.map((d, i) => i === idx ? { ...d, govPrice: +e.target.value } : d) }))} style={inp} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={() => setEditForm(p => ({ ...p, deeds: [...(p.deeds || []), EMPTY_DEED()] }))}
+                style={{ width: '100%', padding: '8px', borderRadius: 8, border: `1px dashed ${BRAND.gold}`, background: 'transparent', color: BRAND.gold, fontSize: 12, cursor: 'pointer', marginBottom: 4 }}
+              >+ เพิ่มโฉนด</button>
 
               <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
                 <button onClick={() => setEditRow(null)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>

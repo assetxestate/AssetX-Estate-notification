@@ -42,6 +42,7 @@ export async function getCustomers() {
     location: c.location,
     deeds: typeof c.deeds === "string" ? c.deeds : JSON.stringify(c.deeds || []),
     incomeType: c.income_type || 'commission',
+    disbursement: c.disbursement || {},
     payments: payMap[c.id] || [],
   }));
 }
@@ -62,6 +63,7 @@ export async function createCustomer(data) {
     location: customer.location || "",
     deeds: customer.deeds || [],
     income_type: customer.incomeType || 'commission',
+    disbursement: customer.disbursement || {},
     updated_at: new Date().toISOString(),
   });
   if (custErr) throw custErr;
@@ -94,6 +96,7 @@ export async function updateCustomer(customerId, data) {
   if (data.location !== undefined)        updates.location = data.location;
   if (data.deeds !== undefined)           updates.deeds = data.deeds;
   if (data.incomeType !== undefined)      updates.income_type = data.incomeType;
+  if (data.disbursement !== undefined)    updates.disbursement = data.disbursement;
   updates.updated_at = new Date().toISOString();
 
   const { error } = await supabase.from("customers").update(updates).eq("id", customerId);
@@ -312,6 +315,7 @@ export async function saveValuation(data) {
 export async function updateValuation(rowIndex, data) {
   const updates = {};
   const fieldMap = {
+    // camelCase keys
     assessmentDate: "assessment_date", assessorName: "assessor_name",
     projectName: "project_name", assessmentType: "assessment_type",
     propertyType: "property_type", propertySubtype: "property_subtype",
@@ -326,10 +330,25 @@ export async function updateValuation(rowIndex, data) {
     propertyScore: "property_score", ltvRate: "ltv_rate", fsv: "fsv",
     recommendedLoan: "recommended_loan", requestedLoan: "requested_loan",
     lat: "lat", lng: "lng", locationNote: "location_note", customerName: "customer_name",
+    // Thai keys (used by HistoryView editForm)
+    'รหัส/ชื่อทรัพย์': "project_name",
+    'วันที่ประเมิน': "assessment_date",
+    'ผู้ประเมิน': "assessor_name",
+    'ประเภทการประเมิน': "assessment_type",
+    'มูลค่าตลาดรวม': "market_value",
+    'FSV (80%)': "fsv",
+    'วงเงินแนะนำ': "recommended_loan",
+    'Property Score': "property_score",
+    'LTV Rate (%)': "ltv_rate",
+    'วงเงินที่ลูกค้าขอ': "requested_loan",
+    'ปัจจัยเสี่ยง': "risks",
+    'หมายเหตุ': "location_note",
+    'สถานะ': "status",
   };
   Object.entries(fieldMap).forEach(([jsKey, dbKey]) => {
     if (data[jsKey] !== undefined) updates[dbKey] = data[jsKey];
   });
+  if (data.deeds !== undefined) updates.deeds = data.deeds;
 
   const { error } = await supabase.from("valuations").update(updates).eq("id", rowIndex);
   if (error) throw error;
