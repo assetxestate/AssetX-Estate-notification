@@ -104,6 +104,24 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
+  const generatePayments = () => {
+    const count = parseInt(form.installmentCount);
+    const payDay = parseInt(form.payDay);
+    if (!form.contractStartDate || !count || !payDay) return [];
+    const payments = [];
+    const d = new Date(form.contractStartDate);
+    for (let i = 0; i < count; i++) {
+      if (form.freq === 'ราย 2 สัปดาห์') {
+        if (i > 0) d.setDate(d.getDate() + 14);
+      } else {
+        if (i > 0) d.setMonth(d.getMonth() + 1);
+        d.setDate(payDay);
+      }
+      payments.push({ installment: i + 1, dateStr: d.toISOString().split('T')[0] });
+    }
+    return payments;
+  };
+
   const handleSave = async () => {
     if (savingRef.current) return;
     if (!form.customerName || !form.interestRate || !form.installmentCount || !form.payDay) {
@@ -152,7 +170,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
             netDisbursement,
           },
         },
-        payments: data.payments || [],
+        payments: generatePayments(),
       });
       onSuccess();
     } catch (e) {
@@ -476,6 +494,20 @@ export default function InvestorPage({ appsScriptUrl }) {
     }
   };
 
+  const holdCustomer = async (row) => {
+    if (!window.confirm(`เบรกทรัพย์ "${row['รหัส/ชื่อทรัพย์'] || '—'}"?\n\nลูกค้าจะถูกลบออกจากหน้าลูกค้า และทรัพย์จะกลับไปที่แท็บ "รอการพิจารณา"`)) return;
+    setProcessingRow(row['_rowIndex']);
+    try {
+      const customerId = row['_customerId'] || row['รหัส/ชื่อทรัพย์'];
+      await apiCancelCustomer(customerId).catch(() => {});
+      await updateStatus(row, 'รอการพิจารณา');
+    } catch (e) {
+      alert('เกิดข้อผิดพลาด: ' + e.message);
+    } finally {
+      setProcessingRow(null);
+    }
+  };
+
   const handleContractSuccess = () => {
     setContractModal(null);
     setSuccessMsg('✅ บันทึกลูกค้าเรียบร้อย! ลูกค้าใหม่จะปรากฏในหน้าลูกค้าแล้ว');
@@ -652,16 +684,25 @@ export default function InvestorPage({ appsScriptUrl }) {
                   </button>
                 )}
                 {activeTab === 'สร้างสัญญาแล้ว' && (
-                  <button
-                    onClick={() => {
-                      if (!window.confirm(`ยืนยันยกเลิกสัญญาของ "${row['รหัส/ชื่อทรัพย์'] || '—'}"?\n\nลูกค้าจะถูกซ่อนออกจากระบบ แต่ข้อมูลยังคงอยู่`)) return;
-                      cancelCustomer(row);
-                    }}
-                    disabled={isProcessing}
-                    style={{ width: '100%', padding: '9px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', color: '#F87171', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    🚫 ยกเลิกสัญญา (ลูกค้าเปลี่ยนใจ)
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <button
+                      onClick={() => holdCustomer(row)}
+                      disabled={isProcessing}
+                      style={{ width: '100%', padding: '9px', borderRadius: 10, border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#FCD34D', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      🛑 เบรกทรัพย์ (กลับรอการพิจารณา)
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!window.confirm(`ยืนยันยกเลิกสัญญาของ "${row['รหัส/ชื่อทรัพย์'] || '—'}"?\n\nลูกค้าจะถูกซ่อนออกจากระบบ แต่ข้อมูลยังคงอยู่`)) return;
+                        cancelCustomer(row);
+                      }}
+                      disabled={isProcessing}
+                      style={{ width: '100%', padding: '9px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', color: '#F87171', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      🚫 ยกเลิกสัญญา (ลูกค้าเปลี่ยนใจ)
+                    </button>
+                  </div>
                 )}
               </Card>
             );
