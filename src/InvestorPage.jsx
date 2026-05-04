@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   getValuations as apiGetValuations,
   updateValuationStatus as apiUpdateValuationStatus,
@@ -74,6 +74,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
   const [externalBroker, setExternalBroker] = useState({ name: '', amount: '', payment: 'โอน' });
   const [companyFee, setCompanyFee] = useState({ type: 'fixed', rate: '', amount: '' });
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [regToken, setRegToken] = useState(null);
 
   const up = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
@@ -104,10 +105,12 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
     if (!form.customerName || !form.interestRate || !form.installmentCount || !form.payDay) {
       alert('กรุณากรอกข้อมูลให้ครบ');
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     try {
       const data = {
@@ -155,6 +158,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     } catch (e) {
       alert('เกิดข้อผิดพลาด: ' + e.message);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
