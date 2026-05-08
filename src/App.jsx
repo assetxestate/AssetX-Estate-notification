@@ -16,6 +16,7 @@ import {
   getDestinations as apiGetDestinations,
   updateCustomer as apiUpdateCustomer,
   postponePayment as apiPostponePayment,
+  cancelCustomer as apiCancelCustomer,
 } from "./lib/api.js";
 
 // ============================================================
@@ -2198,6 +2199,8 @@ export default function App() {
   const [expandedDeeds, setExpandedDeeds] = useState({});
   const [slipModal, setSlipModal] = React.useState(null); // { customer, payment }
   const [postponeModal, setPostponeModal] = React.useState(null); // { customer, payment }
+  const [cancelConfirm, setCancelConfirm] = React.useState(null); // customer object
+  const [cancelling, setCancelling] = React.useState(false);
   const [editCustomerModal, setEditCustomerModal] = React.useState(null); // customer object
   const [disbursementModal, setDisbursementModal] = React.useState(null); // customer object
   const [toast, setToast] = useState(null);
@@ -3413,6 +3416,14 @@ export default function App() {
                                     {lineTokens[c.id]?.loading ? '⏳' : '📲 สร้างรหัส LINE'}
                                   </button>
                                 )}
+                                <button
+                                  onClick={e => { e.stopPropagation(); setCancelConfirm(c); }}
+                                  style={{
+                                    padding: '3px 10px', borderRadius: 6,
+                                    background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)',
+                                    color: '#FCA5A5', fontSize: 11, cursor: 'pointer',
+                                  }}
+                                >🚫 ยกเลิกสัญญา</button>
                               </div>
                               {(() => {
                                 const tk = lineTokens[c.id];
@@ -3966,6 +3977,46 @@ export default function App() {
           onDelete={() => deletePaymentRecord(slipModal.customer.id, slipModal.payment.installment)}
           onClose={() => setSlipModal(null)}
         />
+      )}
+
+      {/* Cancel Contract Confirmation */}
+      {cancelConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: BRAND.bgCard, border: '1px solid rgba(239,68,68,.4)', borderRadius: 16, padding: 24, maxWidth: 360, width: '100%' }}>
+            <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>🚫</div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: BRAND.textPri, textAlign: 'center', marginBottom: 6 }}>ยืนยันยกเลิกสัญญา</div>
+            <div style={{ fontSize: 13, color: '#FCA5A5', textAlign: 'center', marginBottom: 4 }}>{cancelConfirm.fullLabel || cancelConfirm.name}</div>
+            <div style={{ fontSize: 12, color: BRAND.textSec, textAlign: 'center', marginBottom: 20 }}>
+              ลูกค้ารายนี้จะถูกซ่อนออกจากระบบทั้งหมด<br/>ข้อมูลยังคงอยู่ในฐานข้อมูล
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setCancelConfirm(null)}
+                style={{ flex: 1, padding: '10px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 13, cursor: 'pointer' }}
+              >ไม่ใช่</button>
+              <button
+                disabled={cancelling}
+                onClick={async () => {
+                  setCancelling(true);
+                  try {
+                    await apiCancelCustomer(cancelConfirm.id);
+                    setCustomers(prev => prev.filter(c => c.id !== cancelConfirm.id));
+                    setCancelConfirm(null);
+                    setToast({ success: true, message: `ยกเลิกสัญญา ${cancelConfirm.name} แล้ว` });
+                    setTimeout(() => setToast(null), 3000);
+                  } catch (e) {
+                    alert('เกิดข้อผิดพลาด: ' + e.message);
+                  } finally {
+                    setCancelling(false);
+                  }
+                }}
+                style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: '#EF4444', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+              >
+                {cancelling ? '⏳ กำลังยกเลิก...' : '🚫 ยืนยันยกเลิก'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Postpone Modal */}
