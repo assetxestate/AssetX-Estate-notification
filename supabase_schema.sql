@@ -104,6 +104,10 @@ CREATE TABLE IF NOT EXISTS valuations (
 -- ── Migration: เพิ่ม disbursement column (run ถ้า table มีอยู่แล้ว) ──
 -- ALTER TABLE customers ADD COLUMN IF NOT EXISTS disbursement JSONB DEFAULT '{}';
 
+-- ── Migration: เพิ่ม postpone columns ใน payments (run ถ้า table มีอยู่แล้ว) ──
+-- ALTER TABLE payments ADD COLUMN IF NOT EXISTS postponed_from DATE;
+-- ALTER TABLE payments ADD COLUMN IF NOT EXISTS postpone_note TEXT DEFAULT '';
+
 -- ── 6. ตาราง LINE destinations (กลุ่มแจ้งเตือน) ──────────────
 CREATE TABLE IF NOT EXISTS destinations (
   id           TEXT PRIMARY KEY,             -- LINE User/Group ID

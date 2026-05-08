@@ -15,6 +15,7 @@ import {
   deletePaymentRecord as apiDeletePaymentRecord,
   getDestinations as apiGetDestinations,
   updateCustomer as apiUpdateCustomer,
+  postponePayment as apiPostponePayment,
 } from "./lib/api.js";
 
 // ============================================================
@@ -1866,6 +1867,77 @@ function CustomerLineIdSection({ customer, customerLineIds, savedUserIds, onUpda
   );
 }
 
+// ── Modal เลื่อนนัดชำระ ──────────────────────────────────────────
+function PostponeModal({ customer, payment, onSave, onClose }) {
+  const [newDate, setNewDate] = React.useState(payment.dateStr || "");
+  const [note, setNote] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+
+  const inp = { width: "100%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: "8px 10px", outline: "none", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, color: BRAND.textSec, display: "block", marginBottom: 4, marginTop: 10 };
+
+  const handleSave = async () => {
+    if (!newDate) return;
+    setSaving(true);
+    try {
+      await apiPostponePayment(customer.id, payment.installment, newDate, note);
+      onSave({ newDate, note });
+    } catch (e) {
+      alert("เกิดข้อผิดพลาด: " + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: 24, maxWidth: 380, width: "100%" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: BRAND.textPri }}>📅 เลื่อนนัดชำระ</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: BRAND.textSec, fontSize: 18, cursor: "pointer" }}>✕</button>
+        </div>
+
+        <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: BRAND.textPri, fontWeight: 600 }}>{customer.name}</div>
+          <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
+            งวดที่ {payment.installment} · กำหนดเดิม: <span style={{ color: BRAND.gold }}>{formatThai(payment.dateStr)}</span>
+          </div>
+          {payment.postponedFrom && (
+            <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 2 }}>
+              (เลื่อนจากต้น: {formatThai(payment.postponedFrom)})
+            </div>
+          )}
+        </div>
+
+        <label style={lbl}>วันนัดใหม่ *</label>
+        <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} style={inp} />
+
+        <label style={lbl}>เหตุผล / บันทึก</label>
+        <textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="เช่น ลูกค้าขอเลื่อน 7 วัน, ติดธุระ..."
+          rows={3}
+          style={{ ...inp, resize: "vertical", fontFamily: "inherit" }}
+        />
+
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1px solid ${BRAND.border}`, background: "transparent", color: BRAND.textSec, fontSize: 13, cursor: "pointer" }}>
+            ยกเลิก
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!newDate || saving}
+            style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", background: newDate ? BRAND.gold : "rgba(245,158,11,.3)", color: "#000", fontSize: 13, fontWeight: 700, cursor: newDate ? "pointer" : "not-allowed" }}
+          >
+            {saving ? "⏳ กำลังบันทึก..." : "📅 บันทึกการเลื่อน"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Modal สรุปการเบิกจ่าย ────────────────────────────────────────
 function DisbursementModal({ customer, onClose, onSaved }) {
   const EMPTY_DEBT = () => ({
@@ -2125,6 +2197,7 @@ export default function App() {
   const [expandedId, setExpandedId] = useState(null);
   const [expandedDeeds, setExpandedDeeds] = useState({});
   const [slipModal, setSlipModal] = React.useState(null); // { customer, payment }
+  const [postponeModal, setPostponeModal] = React.useState(null); // { customer, payment }
   const [editCustomerModal, setEditCustomerModal] = React.useState(null); // customer object
   const [disbursementModal, setDisbursementModal] = React.useState(null); // customer object
   const [toast, setToast] = useState(null);
@@ -3565,14 +3638,14 @@ export default function App() {
                                           >
                                             งวดที่ {p.installment}
                                           </div>
-                                          <div
-                                            style={{
-                                              fontSize: 11,
-                                              color: BRAND.textSec,
-                                            }}
-                                          >
+                                          <div style={{ fontSize: 11, color: BRAND.textSec }}>
                                             {formatThai(p.dateStr)}
                                           </div>
+                                          {p.postponedFrom && (
+                                            <div style={{ fontSize: 10, color: "#FB923C", marginTop: 1 }}>
+                                              เลื่อนจาก {formatThai(p.postponedFrom)}
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                       <div
@@ -3614,6 +3687,28 @@ export default function App() {
                                         >
                                           {p.status === "paid" ? "🧾 ดูสลิป" : "💳 บันทึก"}
                                         </button>
+                                        {/* ปุ่มเลื่อนนัดชำระ (เฉพาะยังไม่ชำระ) */}
+                                        {p.status !== "paid" && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setPostponeModal({ customer: c, payment: p });
+                                            }}
+                                            className="btn"
+                                            style={{
+                                              padding: "3px 8px", borderRadius: 7, fontSize: 10,
+                                              border: p.postponedFrom
+                                                ? "1px solid rgba(251,146,60,.6)"
+                                                : "1px solid rgba(251,146,60,.3)",
+                                              background: p.postponedFrom
+                                                ? "rgba(251,146,60,.18)"
+                                                : "rgba(251,146,60,.07)",
+                                              color: "#FB923C",
+                                            }}
+                                          >
+                                            {p.postponedFrom ? "🔄 เลื่อนแล้ว" : "📅 เลื่อน"}
+                                          </button>
+                                        )}
                                         {(p.status === "today" ||
                                           p.status === "soon") && (
                                           <LineButton
@@ -3797,6 +3892,32 @@ export default function App() {
           onSave={(record) => savePaymentRecord(slipModal.customer.id, slipModal.payment.installment, record)}
           onDelete={() => deletePaymentRecord(slipModal.customer.id, slipModal.payment.installment)}
           onClose={() => setSlipModal(null)}
+        />
+      )}
+
+      {/* Postpone Modal */}
+      {postponeModal && (
+        <PostponeModal
+          customer={postponeModal.customer}
+          payment={postponeModal.payment}
+          onSave={({ newDate, note }) => {
+            const { customer: c, payment: p } = postponeModal;
+            setCustomers(prev => prev.map(cust =>
+              cust.id !== c.id ? cust : {
+                ...cust,
+                payments: cust.payments.map(pay =>
+                  pay.installment !== p.installment ? pay : {
+                    ...pay,
+                    dateStr: newDate,
+                    postponedFrom: pay.postponedFrom || pay.dateStr,
+                    postponeNote: note,
+                  }
+                ),
+              }
+            ));
+            setPostponeModal(null);
+          }}
+          onClose={() => setPostponeModal(null)}
         />
       )}
     </>

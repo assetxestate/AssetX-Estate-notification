@@ -26,6 +26,8 @@ export async function getCustomers() {
     payMap[p.customer_id].push({
       installment: p.installment,
       dateStr: p.date_str,
+      postponedFrom: p.postponed_from || null,
+      postponeNote: p.postpone_note || "",
     });
   });
 
@@ -180,6 +182,29 @@ export async function savePaymentRecord(customerId, installment, record) {
     amount_paid: record.amountPaid || record.amount || 0,
     note: record.note || "",
   }, { onConflict: "customer_id,installment" });
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function postponePayment(customerId, installment, newDate, note) {
+  const { data: current, error: fetchErr } = await supabase
+    .from("payments")
+    .select("date_str, postponed_from")
+    .eq("customer_id", customerId)
+    .eq("installment", installment)
+    .single();
+  if (fetchErr) throw fetchErr;
+
+  const originalDate = current.postponed_from || current.date_str;
+  const { error } = await supabase
+    .from("payments")
+    .update({
+      date_str: newDate,
+      postponed_from: originalDate,
+      postpone_note: note || "",
+    })
+    .eq("customer_id", customerId)
+    .eq("installment", installment);
   if (error) throw error;
   return { success: true };
 }
