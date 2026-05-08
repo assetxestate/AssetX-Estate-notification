@@ -2492,6 +2492,17 @@ export default function App() {
     return r.sort((a, b) => a.p.diff - b.p.diff);
   }, [enriched]);
 
+  const overdueAlerts = useMemo(() => {
+    const r = [];
+    enriched.forEach((c) => {
+      if (c.isClosed || c.isVoided) return;
+      c.payments.forEach((p) => {
+        if (p.status === "past") r.push({ c, p });
+      });
+    });
+    return r.sort((a, b) => a.p.diff - b.p.diff); // เรียงเกินนานที่สุดก่อน
+  }, [enriched]);
+
   const contractAlerts = useMemo(
     () =>
       enriched
@@ -2972,10 +2983,72 @@ export default function App() {
                               onSend={(ok) => handleLineSend(ok, c.name)}
                               destinationId={targetUserId}
                             />
+                            <button
+                              onClick={() => setPostponeModal({ customer: c, payment: p })}
+                              className="btn"
+                              style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(251,146,60,.4)", background: "rgba(251,146,60,.08)", color: "#FB923C", cursor: "pointer" }}
+                            >
+                              📅 เลื่อน
+                            </button>
                           </div>
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── ค้างชำระ (เลยกำหนดยังไม่ชำระ) ── */}
+              {overdueAlerts.length > 0 && (
+                <div className="card" style={{ borderColor: "rgba(251,146,60,.4)", background: "rgba(251,146,60,.05)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#FB923C", fontSize: 14 }}>
+                      ⏰ ค้างชำระ ({overdueAlerts.length} งวด)
+                    </div>
+                    <span style={{ fontSize: 11, color: BRAND.textSec }}>เลยกำหนดแล้วยังไม่ได้บันทึก</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {overdueAlerts.map(({ c, p }, i) => (
+                      <div
+                        key={i}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,0,0,.3)", borderRadius: 10, border: "1px solid rgba(251,146,60,.3)", flexWrap: "wrap", gap: 8 }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 180 }}>
+                          <span style={{ fontSize: 18 }}>{c.icon || "🏠"}</span>
+                          <div>
+                            <div style={{ fontWeight: 600, color: BRAND.textPri, fontSize: 13 }}>{c.name}</div>
+                            <div style={{ fontSize: 11, color: BRAND.textSec }}>
+                              งวด {p.installment} • {formatThai(p.dateStr)}
+                              {p.postponedFrom && (
+                                <span style={{ color: "#FB923C", marginLeft: 6 }}>(เลื่อนจาก {formatThai(p.postponedFrom)})</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ padding: "3px 10px", borderRadius: 20, background: "rgba(251,146,60,.15)", border: "1px solid rgba(251,146,60,.5)", color: "#FB923C", fontSize: 11, fontWeight: 600 }}>
+                            เลย {Math.abs(p.diff)} วัน
+                          </span>
+                          <span style={{ fontWeight: 700, color: BRAND.gold, fontSize: 13 }}>
+                            {formatMoney(c.amount)} ฿
+                          </span>
+                          <button
+                            onClick={() => setPostponeModal({ customer: c, payment: p })}
+                            className="btn"
+                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: p.postponedFrom ? "1px solid rgba(251,146,60,.6)" : "1px solid rgba(251,146,60,.4)", background: p.postponedFrom ? "rgba(251,146,60,.18)" : "rgba(251,146,60,.08)", color: "#FB923C", cursor: "pointer" }}
+                          >
+                            {p.postponedFrom ? "🔄 เลื่อนแล้ว" : "📅 เลื่อนนัด"}
+                          </button>
+                          <button
+                            onClick={() => setSlipModal({ customer: c, payment: p })}
+                            className="btn"
+                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(45,212,191,.3)", background: "rgba(45,212,191,.08)", color: BRAND.teal, cursor: "pointer" }}
+                          >
+                            💳 บันทึกชำระ
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
