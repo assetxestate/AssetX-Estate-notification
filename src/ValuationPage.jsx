@@ -241,16 +241,45 @@ const SOIL_OPTIONS = [
   { value: 'ดินทรุด / มีโพรงใต้ดิน', factor: 0.60 },
   { value: 'ที่ดินลาดชัน / ดินไหล (ต้องกันดิน)', factor: 0.75 },
 ]
-const RISK_FACTORS = [
-  { key: 'flood', label: 'เสี่ยงน้ำท่วม', penalty: -15 },
-  { key: 'hardAccess', label: 'เข้าถึงยาก / ซอยตัน', penalty: -10 },
-  { key: 'irregularShape', label: 'รูปแปลงผิดปกติ', penalty: -8 },
-  { key: 'encumbrance', label: 'มีภาระผูกพัน', penalty: -20 },
-  { key: 'dispute', label: 'มีข้อพิพาท / ครอบครอง', penalty: -25 },
-  { key: 'noUtilities', label: 'ไม่มีสาธารณูปโภค', penalty: -7 },
-  { key: 'nuisance', label: 'ติดสิ่งรบกวน (โรงงาน/กม.)', penalty: -10 },
-  { key: 'incompleteDeed', label: 'โฉนดไม่สมบูรณ์ / น.ส.3', penalty: -15 },
+const FLOOD_LEVELS = [
+  { value: 'ไม่มีประวัติน้ำท่วม', score: 0 },
+  { value: 'ท่วม 1 ครั้ง/10 ปี', score: 5 },
+  { value: 'ท่วม 2-3 ครั้ง/10 ปี', score: 15 },
+  { value: 'ท่วมรุนแรง/บ่อย (เช่น ระดับ 2554)', score: 25 },
 ]
+const TITLE_TYPES = [
+  { value: 'โฉนด (Chanote) ปลอดภาระ', score: 0 },
+  { value: 'โฉนด มีจำนองอยู่ชั้นเดียว', score: 3 },
+  { value: 'น.ส.3ก (NS3G)', score: 5 },
+  { value: 'น.ส.3 (NS3)', score: 8 },
+  { value: 'มีภาระ/ข้อพิพาทรุนแรง', score: 18 },
+]
+const RISK_FACTORS = [
+  { key: 'hardAccess',     label: 'เข้าถึงยาก / ซอยตัน',         score: 10 },
+  { key: 'irregularShape', label: 'รูปแปลงผิดปกติ',                score: 8  },
+  { key: 'encumbrance',    label: 'มีภาระผูกพัน',                  score: 10 },
+  { key: 'dispute',        label: 'มีข้อพิพาท / ครอบครอง',         score: 15 },
+  { key: 'noUtilities',    label: 'ไม่มีสาธารณูปโภค',              score: 10 },
+  { key: 'nuisance',       label: 'ติดสิ่งรบกวน (โรงงาน/กม.)',     score: 12 },
+]
+const BASE_FSV_RATE = {
+  'บ้านเดี่ยว': 0.78, 'บ้านแฝด': 0.75, 'ทาวน์เฮ้าส์': 0.75, 'ตึกแถว': 0.73,
+  'ที่ดินเปล่า (โฉนด)': 0.72, 'ที่ดินเปล่า (น.ส.3)': 0.65, 'ที่ดินเปล่า (ส.ค.1)': 0.60,
+  'ที่ดินพร้อมสิ่งปลูกสร้าง': 0.70, 'คอนโดมิเนียม': 0.73, 'อาคารชุด': 0.70,
+  'อาคารพาณิชย์': 0.70, 'โกดัง': 0.65, 'โรงงาน': 0.60,
+}
+const RISK_BANDS = [
+  { maxScore: 15,  label: 'ต่ำมาก',  color: '#10B981', fsvAdj: 1.00, ltvMax: 75 },
+  { maxScore: 30,  label: 'ต่ำ',     color: '#84CC16', fsvAdj: 0.98, ltvMax: 70 },
+  { maxScore: 50,  label: 'กลาง',    color: '#F59E0B', fsvAdj: 0.95, ltvMax: 65 },
+  { maxScore: 70,  label: 'สูง',     color: '#F97316', fsvAdj: 0.88, ltvMax: 55 },
+  { maxScore: 100, label: 'สูงมาก',  color: '#EF4444', fsvAdj: 0.78, ltvMax: 45 },
+]
+const COMP_ADJ = {
+  size:      { '< 200 ตร.ว.': 0.05, '200–500 ตร.ว.': 0, '500–1,000 ตร.ว.': -0.10, '> 1,000 ตร.ว.': -0.20 },
+  access:    { 'ถนนหลัก': 0, 'ซอยปกติ': -0.08, 'ซอยลึก': -0.15, 'ซอยตัน': -0.25 },
+  utilities: { 'ครบทุกอย่าง': 0, 'บางส่วน': -0.08, 'ไม่มี': -0.15 },
+}
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 
@@ -263,7 +292,10 @@ const INITIAL_FORM = {
   province: 'กรุงเทพมหานคร', district: '', subdistrict: '',
   roadType: '', roadWidth: '', landFrontage: '', distanceFromMain: '',
   zoneColor: '', soilCondition: '', compPrice: '', compSource: '', locationNote: '',
-  risks: { flood: false, hardAccess: false, irregularShape: false, encumbrance: false, dispute: false, noUtilities: false, nuisance: false, incompleteDeed: false },
+  risks: { hardAccess: false, irregularShape: false, encumbrance: false, dispute: false, noUtilities: false, nuisance: false },
+  floodLevel: 'ไม่มีประวัติน้ำท่วม',
+  titleType: 'โฉนด (Chanote) ปลอดภาระ',
+  comps: [],
   ltvRate: 50, linkedCustomer: '',
   lat: null, lng: null,
   requestedLoan: '', assetCode: '',
@@ -1444,6 +1476,73 @@ function MarketSearchPanel({ form, update }) {
 }
 
 // ── Step 2 ─────────────────────────────────────────────
+function CompAdjPanel({ form, update, calc }) {
+  const comps = form.comps || []
+  const addComp = () => update('comps', [...comps, { price: '', date: '', size: '200–500 ตร.ว.', access: 'ถนนหลัก', utilities: 'ครบทุกอย่าง' }])
+  const removeComp = i => update('comps', comps.filter((_, idx) => idx !== i))
+  const updateComp = (i, k, v) => update('comps', comps.map((c, idx) => idx === i ? { ...c, [k]: v } : c))
+  return (
+    <Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold }}>📐 Comparable Sales — Adjusted</div>
+        <button onClick={addComp} style={{ padding: '5px 14px', borderRadius: 8, background: 'rgba(45,212,191,0.15)', border: '1px solid rgba(45,212,191,0.4)', color: BRAND.teal, fontSize: 12, cursor: 'pointer' }}>+ เพิ่ม Comp</button>
+      </div>
+      {comps.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '14px 0', fontSize: 12, color: BRAND.textMut }}>ยังไม่มี Comp — กด "+ เพิ่ม Comp" เพื่อบันทึกราคาอ้างอิงพร้อม adjustment อัตโนมัติ</div>
+      )}
+      {comps.map((c, i) => {
+        const months = c.date ? Math.max(0, (Date.now() - new Date(c.date)) / (1000 * 60 * 60 * 24 * 30)) : 0
+        const adjPrice = +c.price > 0 ? Math.round(+c.price * (1 + 0.005 * months) * (1 + (COMP_ADJ.size[c.size] ?? 0)) * (1 + (COMP_ADJ.access[c.access] ?? 0)) * (1 + (COMP_ADJ.utilities[c.utilities] ?? 0))) : null
+        return (
+          <div key={i} style={{ marginBottom: 10, padding: 12, background: BRAND.bg, borderRadius: 10, border: `1px solid ${BRAND.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: BRAND.textPri }}>Comp {i + 1}</span>
+              <button onClick={() => removeComp(i)} style={{ background: 'none', border: 'none', color: BRAND.textSec, cursor: 'pointer', fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div><Label>ราคา (บาท/ตร.ว.)</Label><Inp type="number" min="0" value={c.price} onChange={e => updateComp(i, 'price', e.target.value)} placeholder="เช่น 8500" /></div>
+              <div><Label>วันที่ขาย Comp</Label><Inp type="date" value={c.date} onChange={e => updateComp(i, 'date', e.target.value)} /></div>
+              <div><Label>ขนาดแปลง Comp</Label>
+                <Sel value={c.size} onChange={e => updateComp(i, 'size', e.target.value)}>
+                  {Object.keys(COMP_ADJ.size).map(k => <option key={k}>{k}</option>)}
+                </Sel>
+              </div>
+              <div><Label>การเข้าถึง Comp</Label>
+                <Sel value={c.access} onChange={e => updateComp(i, 'access', e.target.value)}>
+                  {Object.keys(COMP_ADJ.access).map(k => <option key={k}>{k}</option>)}
+                </Sel>
+              </div>
+              <div><Label>สาธารณูปโภค Comp</Label>
+                <Sel value={c.utilities} onChange={e => updateComp(i, 'utilities', e.target.value)}>
+                  {Object.keys(COMP_ADJ.utilities).map(k => <option key={k}>{k}</option>)}
+                </Sel>
+              </div>
+              {adjPrice && (
+                <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.3)', textAlign: 'center', alignSelf: 'end' }}>
+                  <div style={{ fontSize: 10, color: BRAND.textSec }}>Adjusted Price</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: BRAND.teal }}>฿{fmt(adjPrice)}/ตร.ว.</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+      {calc.compAvgAdjPrice && (
+        <div style={{ marginTop: 4, padding: '12px 16px', borderRadius: 10, background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.4)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 11, color: BRAND.textSec }}>ราคาตลาด Adjusted เฉลี่ย ({comps.filter(c => +c.price > 0).length} Comps)</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: BRAND.teal }}>฿{fmt(calc.compAvgAdjPrice)}/ตร.ว.</div>
+          </div>
+          <button
+            onClick={() => { update('compPrice', calc.compAvgAdjPrice); update('compSource', `Comp Adjusted เฉลี่ย ${comps.filter(c => +c.price > 0).length} รายการ`) }}
+            style={{ padding: '8px 16px', borderRadius: 8, background: 'rgba(45,212,191,0.2)', border: '1px solid rgba(45,212,191,0.5)', color: BRAND.teal, fontSize: 12, cursor: 'pointer', fontWeight: 700 }}
+          >ใช้ราคานี้ →</button>
+        </div>
+      )}
+    </Card>
+  )
+}
+
 function Step2({ form, update, calc, comps = [] }) {
   // ราคาอ้างอิงจากประวัติในพื้นที่เดียวกัน
   const relevantComps = comps.filter(c =>
@@ -1588,6 +1687,7 @@ function Step2({ form, update, calc, comps = [] }) {
         <Label>หมายเหตุทำเล / สภาพพื้นที่</Label>
         <textarea value={form.locationNote} onChange={e => update('locationNote', e.target.value)} placeholder="บันทึกเพิ่มเติม เช่น สภาพพื้นที่ ทิศทาง สิ่งแวดล้อม..." style={{ width: '100%', background: BRAND.bg, border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '10px 12px', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box' }} />
       </Card>
+      <CompAdjPanel form={form} update={update} calc={calc} />
       <MarketSearchPanel form={form} update={update} />
       <MapPicker form={form} update={update} />
     </div>
@@ -1596,48 +1696,82 @@ function Step2({ form, update, calc, comps = [] }) {
 
 // ── Step 3 ─────────────────────────────────────────────
 function Step3({ form, update, calc }) {
-  const score = calc.propertyScore
-  const scoreColor = score >= 80 ? BRAND.success : score >= 60 ? BRAND.gold : '#EF4444'
+  const { riskScore, riskBand } = calc
+  const scoreColor = riskScore <= 15 ? '#10B981' : riskScore <= 30 ? '#84CC16' : riskScore <= 50 ? '#F59E0B' : riskScore <= 70 ? '#F97316' : '#EF4444'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
         <div style={{ fontWeight: 700, fontSize: 18, color: BRAND.textPri, marginBottom: 4 }}>⚠️ ปัจจัยความเสี่ยงทรัพย์</div>
-        <div style={{ fontSize: 12, color: BRAND.textSec }}>ทำเครื่องหมายปัจจัยที่พบในทรัพย์นี้</div>
+        <div style={{ fontSize: 12, color: BRAND.textSec }}>ระบุระดับความเสี่ยงแต่ละด้านเพื่อคำนวณ FSV ที่แม่นยำขึ้น</div>
       </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <Card>
+          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>🌊 ประวัติน้ำท่วม</div>
+          <Label>ระดับความเสี่ยงน้ำท่วม</Label>
+          <Sel value={form.floodLevel} onChange={e => update('floodLevel', e.target.value)}>
+            {FLOOD_LEVELS.map(f => (
+              <option key={f.value} value={f.value}>{f.value}{f.score > 0 ? ` (+${f.score} pts)` : ''}</option>
+            ))}
+          </Sel>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>📄 เอกสารสิทธิ์</div>
+          <Label>ประเภทโฉนด / สิทธิ์ที่ดิน</Label>
+          <Sel value={form.titleType} onChange={e => update('titleType', e.target.value)}>
+            {TITLE_TYPES.map(t => (
+              <option key={t.value} value={t.value}>{t.value}{t.score > 0 ? ` (+${t.score} pts)` : ''}</option>
+            ))}
+          </Sel>
+        </Card>
+      </div>
+
       <Card>
+        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>🚩 ปัจจัยเสี่ยงเพิ่มเติม</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {RISK_FACTORS.map(rf => (
             <label key={rf.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${form.risks[rf.key] ? 'rgba(239,68,68,0.4)' : BRAND.border}`, background: form.risks[rf.key] ? 'rgba(239,68,68,0.08)' : BRAND.bg }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input type="checkbox" checked={form.risks[rf.key]} onChange={e => update('risks', { ...form.risks, [rf.key]: e.target.checked })} style={{ width: 16, height: 16, accentColor: '#EF4444', cursor: 'pointer' }} />
+                <input type="checkbox" checked={!!form.risks[rf.key]} onChange={e => update('risks', { ...form.risks, [rf.key]: e.target.checked })} style={{ width: 16, height: 16, accentColor: '#EF4444', cursor: 'pointer' }} />
                 <span style={{ fontSize: 13, color: BRAND.textPri }}>{rf.label}</span>
               </div>
-              <span style={{ fontSize: 11, color: '#F87171', fontWeight: 600 }}>{rf.penalty}pt</span>
+              <span style={{ fontSize: 11, color: '#F87171', fontWeight: 600 }}>+{rf.score} pts</span>
             </label>
           ))}
         </div>
         <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: BRAND.bg, borderRadius: 12, border: `1px solid ${scoreColor}40` }}>
           <div>
-            <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 4 }}>Property Score</div>
-            <div style={{ fontSize: 36, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}</div>
+            <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 4 }}>Risk Score</div>
+            <div style={{ fontSize: 36, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{riskScore}</div>
             <div style={{ fontSize: 12, color: BRAND.textSec }}>/100</div>
-            <div style={{ fontSize: 13, color: scoreColor, marginTop: 4 }}>{score >= 80 ? 'ดีมาก ✅' : score >= 60 ? 'พอใช้' : 'มีความเสี่ยงสูง ⚠️'}</div>
+            <div style={{ marginTop: 6, display: 'inline-block', padding: '2px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: `${scoreColor}20`, color: scoreColor, border: `1px solid ${scoreColor}50` }}>
+              ความเสี่ยง{riskBand.label}
+            </div>
           </div>
           <svg width="80" height="80" style={{ transform: 'rotate(-90deg)' }}>
             <circle cx="40" cy="40" r="32" fill="none" stroke={BRAND.border} strokeWidth="8" />
-            <circle cx="40" cy="40" r="32" fill="none" stroke={scoreColor} strokeWidth="8" strokeDasharray={`${(score / 100) * 201} 201`} strokeLinecap="round" />
+            <circle cx="40" cy="40" r="32" fill="none" stroke={scoreColor} strokeWidth="8" strokeDasharray={`${(riskScore / 100) * 201} 201`} strokeLinecap="round" />
           </svg>
         </div>
       </Card>
+
       <Card>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 16 }}>🏦 กำหนด LTV RATE</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>🏦 กำหนด LTV RATE</div>
+        <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: `${riskBand.color}18`, border: `1px solid ${riskBand.color}40`, fontSize: 12, display: 'flex', gap: 16 }}>
+          <span><span style={{ color: BRAND.textSec }}>LTV สูงสุด (Risk Band): </span><span style={{ fontWeight: 700, color: riskBand.color }}>{riskBand.ltvMax}%</span></span>
+          <span><span style={{ color: BRAND.textSec }}>FSV Rate: </span><span style={{ fontWeight: 700, color: riskBand.color }}>{Math.round(calc.fsvRate * 100)}%</span></span>
+        </div>
         <input type="range" min="20" max="75" step="5" value={form.ltvRate} onChange={e => update('ltvRate', +e.target.value)} style={{ width: '100%', accentColor: BRAND.gold, cursor: 'pointer' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11, color: BRAND.textSec }}>
           <span>20% — อนุรักษ์นิยม</span>
-          <span style={{ fontWeight: 700, fontSize: 18, color: BRAND.gold }}>{form.ltvRate}%</span>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontWeight: 700, fontSize: 18, color: BRAND.gold }}>{form.ltvRate}%</div>
+            {form.ltvRate > riskBand.ltvMax && (
+              <div style={{ fontSize: 10, color: '#F97316' }}>จะถูก cap ที่ {riskBand.ltvMax}%</div>
+            )}
+          </div>
           <span>75% — สูงสุด</span>
         </div>
-        <div style={{ textAlign: 'center', fontSize: 11, color: BRAND.textMut, marginTop: 2 }}>50% — มาตรฐาน</div>
       </Card>
     </div>
   )
@@ -1681,8 +1815,8 @@ function Step4({ form, calc, update }) {
         {[
           { icon: '🏛️', label: 'ราคาประเมินรัฐ', value: `฿${fmt(calc.govPriceTotal)}`, sub: `${fmt(calc.weightedGovPrice)} บาท/ตร.ว. (ถัวเฉลี่ย)` },
           { icon: '📊', label: 'ราคาตลาดโดยประมาณ', value: `฿${fmt(calc.marketValue)}`, sub: `${fmt(calc.effectiveMarketPrice)} บาท/ตร.ว.` },
-          { icon: '🔥', label: 'FORCED SALE VALUE', value: `฿${fmt(calc.fsv)}`, sub: '80% ของราคาตลาด' },
-          { icon: '🏦', label: 'วงเงินขายฝากแนะนำ', value: `฿${fmt(calc.recommendedLoan)}`, sub: `LTV ${form.ltvRate}% × FSV`, hi: true },
+          { icon: '🔥', label: 'FORCED SALE VALUE', value: `฿${fmt(calc.fsv)}`, sub: `${Math.round(calc.fsvRate * 100)}% ของราคาตลาด (Risk: ${calc.riskBand?.label || '—'})` },
+          { icon: '🏦', label: 'วงเงินขายฝากแนะนำ', value: `฿${fmt(calc.recommendedLoan)}`, sub: `LTV ${calc.cappedLtv}% × FSV`, hi: true },
         ].map(item => (
           <div key={item.label} style={{ padding: 14, borderRadius: 12, border: `1px solid ${item.hi ? 'rgba(45,212,191,0.4)' : BRAND.border}`, background: item.hi ? 'rgba(45,212,191,0.06)' : BRAND.bgCard, textAlign: 'center' }}>
             <div style={{ fontSize: 20, marginBottom: 8 }}>{item.icon}</div>
@@ -1714,16 +1848,20 @@ function Step4({ form, calc, update }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card>
             <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>⚠️ ความเสี่ยงและ SCORE</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: calc.propertyScore >= 80 ? BRAND.success : BRAND.gold }}>{calc.propertyScore}</div>
-            <div style={{ fontSize: 12, color: BRAND.textSec }}>/100 — {calc.propertyScore >= 80 ? 'ดีมาก ✅' : 'พอใช้'}</div>
-            {RISK_FACTORS.filter(rf => form.risks[rf.key]).length === 0
-              ? <div style={{ marginTop: 8, fontSize: 12, color: BRAND.success }}>ไม่พบปัจจัยเสี่ยง</div>
-              : <div style={{ marginTop: 8, fontSize: 12, color: '#FCA5A5' }}>{RISK_FACTORS.filter(rf => form.risks[rf.key]).map(rf => rf.label).join(', ')}</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: calc.riskBand?.color || BRAND.gold }}>Risk {calc.riskScore}</div>
+              <div style={{ fontSize: 12, color: BRAND.textSec }}>/100</div>
+            </div>
+            <div style={{ marginTop: 4, display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${calc.riskBand?.color || BRAND.gold}20`, color: calc.riskBand?.color || BRAND.gold, border: `1px solid ${calc.riskBand?.color || BRAND.gold}50` }}>ความเสี่ยง{calc.riskBand?.label}</div>
+            <div style={{ marginTop: 6, fontSize: 11, color: BRAND.textSec }}>FSV Rate: {Math.round(calc.fsvRate * 100)}% | LTV Cap: {calc.riskBand?.ltvMax}%</div>
+            {RISK_FACTORS.filter(rf => form.risks[rf.key]).length === 0 && !form.floodLevel?.includes('ท่วม') && form.titleType === 'โฉนด (Chanote) ปลอดภาระ'
+              ? <div style={{ marginTop: 6, fontSize: 12, color: BRAND.success }}>ไม่พบปัจจัยเสี่ยง</div>
+              : <div style={{ marginTop: 6, fontSize: 11, color: '#FCA5A5' }}>{[form.floodLevel !== 'ไม่มีประวัติน้ำท่วม' ? form.floodLevel : null, form.titleType !== 'โฉนด (Chanote) ปลอดภาระ' ? form.titleType : null, ...RISK_FACTORS.filter(rf => form.risks[rf.key]).map(rf => rf.label)].filter(Boolean).join(', ')}</div>
             }
           </Card>
           <Card>
             <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>💰 สรุปวงเงิน</div>
-            {[['มูลค่าตลาด', calc.marketValue], ['FSV (80%)', calc.fsv], [`วงเงินแนะนำ (LTV ${form.ltvRate}%)`, calc.recommendedLoan]].map(([k, v]) => (
+            {[['มูลค่าตลาด', calc.marketValue], [`FSV (${Math.round(calc.fsvRate*100)}%)`, calc.fsv], [`วงเงินแนะนำ (LTV ${calc.cappedLtv}%)`, calc.recommendedLoan]].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${BRAND.border}`, fontSize: 12 }}>
                 <span style={{ color: BRAND.textSec }}>{k}</span>
                 <span style={{ color: BRAND.textPri, fontWeight: 600 }}>฿{fmt(v)}</span>
@@ -1753,7 +1891,7 @@ function Step4({ form, calc, update }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
                   {[
                     { label: 'LTV ต่อราคาตลาด', value: `${reqLtv.toFixed(2)}%`, sub: `฿${fmt(reqLoan)} ÷ ฿${fmt(calc.marketValue)}` },
-                    { label: 'LTV ต่อ FSV (80%)', value: `${reqLtvVsFsv.toFixed(2)}%`, sub: `฿${fmt(reqLoan)} ÷ ฿${fmt(calc.fsv)}` },
+                    { label: `LTV ต่อ FSV (${Math.round(calc.fsvRate*100)}%)`, value: `${reqLtvVsFsv.toFixed(2)}%`, sub: `฿${fmt(reqLoan)} ÷ ฿${fmt(calc.fsv)}` },
                   ].map(item => (
                     <div key={item.label} style={{ padding: 12, borderRadius: 10, background: BRAND.bg, border: `1px solid ${BRAND.border}`, textAlign: 'center' }}>
                       <div style={{ fontSize: 10, color: BRAND.textSec, marginBottom: 4 }}>{item.label}</div>
@@ -1907,11 +2045,23 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
     const effectiveMarketPrice = form.compPrice ? +form.compPrice : calculatedMarketPrice
     const marketValue = effectiveMarketPrice * totalSqw
     const govPriceTotal = weightedGovPrice * totalSqw
-    const riskPenalty = RISK_FACTORS.reduce((s, rf) => s + (form.risks[rf.key] ? rf.penalty : 0), 0)
-    const propertyScore = Math.max(0, 100 + riskPenalty)
-    const fsv = marketValue * 0.80
-    const recommendedLoan = fsv * (form.ltvRate / 100)
-    return { totalSqw, govPriceTotal, weightedGovPrice, calculatedMarketPrice, effectiveMarketPrice, marketValue, propertyScore, fsv, recommendedLoan }
+    const floodScore = FLOOD_LEVELS.find(f => f.value === form.floodLevel)?.score ?? 0
+    const titleScore = TITLE_TYPES.find(t => t.value === form.titleType)?.score ?? 0
+    const flagScore  = RISK_FACTORS.reduce((s, rf) => s + (form.risks[rf.key] ? rf.score : 0), 0)
+    const riskScore  = Math.min(100, floodScore + titleScore + flagScore)
+    const riskBand   = RISK_BANDS.find(b => riskScore <= b.maxScore) || RISK_BANDS[RISK_BANDS.length - 1]
+    const propertyScore = Math.max(0, 100 - riskScore)
+    const baseFsvRate = BASE_FSV_RATE[form.propertySubtype] ?? 0.72
+    const fsvRate = Math.round(baseFsvRate * riskBand.fsvAdj * 100) / 100
+    const fsv = marketValue * fsvRate
+    const cappedLtv = Math.min(form.ltvRate, riskBand.ltvMax)
+    const recommendedLoan = fsv * (cappedLtv / 100)
+    const compAdjPrices = (form.comps || []).filter(c => +c.price > 0).map(c => {
+      const months = c.date ? Math.max(0, (Date.now() - new Date(c.date)) / (1000 * 60 * 60 * 24 * 30)) : 0
+      return +c.price * (1 + 0.005 * months) * (1 + (COMP_ADJ.size[c.size] ?? 0)) * (1 + (COMP_ADJ.access[c.access] ?? 0)) * (1 + (COMP_ADJ.utilities[c.utilities] ?? 0))
+    })
+    const compAvgAdjPrice = compAdjPrices.length > 0 ? Math.round(compAdjPrices.reduce((a, b) => a + b, 0) / compAdjPrices.length) : null
+    return { totalSqw, govPriceTotal, weightedGovPrice, calculatedMarketPrice, effectiveMarketPrice, marketValue, propertyScore, riskScore, riskBand, fsvRate, fsv, cappedLtv, recommendedLoan, compAvgAdjPrice }
   }, [form])
 
   const handleSave = async () => {

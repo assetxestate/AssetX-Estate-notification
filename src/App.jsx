@@ -3850,7 +3850,7 @@ export default function App() {
                                           borderRadius: 7, fontSize: 11,
                                           display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
                                         }}>
-                                          <span style={{ color: "#86EFAC" }}>✓ ชำระ {(p.record.amount||0).toLocaleString("th-TH")} บาท</span>
+                                          <span style={{ color: "#86EFAC" }}>✓ ชำระ {(p.record.amountPaid||0).toLocaleString("th-TH")} บาท</span>
                                           <span style={{ color: BRAND.textSec }}>วันที่ {formatThai(p.record.paidDate)}</span>
                                           {p.record.note && <span style={{ color: BRAND.textSec }}>| {p.record.note}</span>}
                                           {(p.record.slipUrl || p.record.slipImage) && (
