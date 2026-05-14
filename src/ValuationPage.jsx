@@ -824,7 +824,44 @@ function HistoryView({ appsScriptUrl }) {
                 </div>
               ))}
             </div>
-            {[['📋 รายละเอียดทรัพย์', [['ประเภทอสังหาฯ', detailRow['ประเภทอสังหาฯ']], ['ประเภทย่อย', detailRow['ประเภทย่อย']], ['เลขโฉนด', detailRow['เลขโฉนด']], ['เนื้อที่', `${detailRow['ไร่'] || 0} ไร่ ${detailRow['งาน'] || 0} งาน ${detailRow['ตร.ว.'] || 0} ตร.ว.`], ['ทำเล', detailRow['ทำเล']], ['ผังเมือง', detailRow['ผังเมือง']], ['สภาพดิน', detailRow['สภาพดิน']], ['ผู้ประเมิน', detailRow['ผู้ประเมิน']]]], ['⚠️ ปัจจัยเสี่ยงและหมายเหตุ', [['ปัจจัยเสี่ยง', detailRow['ปัจจัยเสี่ยง']], ['หมายเหตุ', detailRow['หมายเหตุ']], ['Comp ราคา', detailRow['Comp (บ./ตร.ว.)']], ['แหล่ง Comp', detailRow['แหล่ง Comp']]]]].map(([title, fields]) => (
+            {/* โฉนดทั้งหมด */}
+            {(() => {
+              const deeds = Array.isArray(detailRow.deeds) && detailRow.deeds.length > 0 ? detailRow.deeds : null
+              if (!deeds) return null
+              const totalSqw = deeds.reduce((s, d) => s + (d.areaRai||0)*400 + (d.areaNgan||0)*100 + +(d.areaSqw||0), 0)
+              return (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.gold, marginBottom: 6 }}>📄 รายการโฉนด ({deeds.length} แปลง • รวม {fmt(totalSqw)} ตร.ว.)</div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${BRAND.border}` }}>
+                          {['#', 'เลขโฉนด', 'เลขที่ดิน', 'เนื้อที่', 'ราคาประเมินรัฐ'].map(h => (
+                            <th key={h} style={{ padding: '5px 8px', color: BRAND.textSec, fontWeight: 600, textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deeds.map((d, i) => {
+                          const sqw = (d.areaRai||0)*400 + (d.areaNgan||0)*100 + +(d.areaSqw||0)
+                          const area = [(d.areaRai>0 ? `${d.areaRai} ไร่` : ''), (d.areaNgan>0 ? `${d.areaNgan} งาน` : ''), (d.areaSqw>0 ? `${d.areaSqw} ตร.ว.` : '')].filter(Boolean).join(' ') || `${sqw} ตร.ว.`
+                          return (
+                            <tr key={i} style={{ borderBottom: `1px solid ${BRAND.border}` }}>
+                              <td style={{ padding: '5px 8px', color: BRAND.textMut }}>{i+1}</td>
+                              <td style={{ padding: '5px 8px', color: BRAND.teal, fontWeight: 600 }}>{d.titleDeedNo || '—'}</td>
+                              <td style={{ padding: '5px 8px', color: BRAND.textPri }}>{d.landNo || '—'}</td>
+                              <td style={{ padding: '5px 8px', color: BRAND.textPri, whiteSpace: 'nowrap' }}>{area}</td>
+                              <td style={{ padding: '5px 8px', color: BRAND.textPri }}>{d.govPrice ? `฿${fmt(d.govPrice)}/ตร.ว.` : '—'}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            })()}
+            {[['📋 รายละเอียดทรัพย์', [['ประเภทอสังหาฯ', detailRow['ประเภทอสังหาฯ']], ['ประเภทย่อย', detailRow['ประเภทย่อย']], ['เนื้อที่รวม', `${detailRow['ตร.ว.รวม'] ? fmt(detailRow['ตร.ว.รวม']) + ' ตร.ว.' : (detailRow['ไร่'] || 0) + ' ไร่ ' + (detailRow['งาน'] || 0) + ' งาน ' + (detailRow['ตร.ว.'] || 0) + ' ตร.ว.'}`], ['ทำเล', detailRow['ทำเล']], ['ผังเมือง', detailRow['ผังเมือง']], ['สภาพดิน', detailRow['สภาพดิน']], ['ผู้ประเมิน', detailRow['ผู้ประเมิน']]]], ['⚠️ ปัจจัยเสี่ยงและหมายเหตุ', [['ปัจจัยเสี่ยง', detailRow['ปัจจัยเสี่ยง']], ['หมายเหตุ', detailRow['หมายเหตุ']], ['Comp ราคา', detailRow['Comp (บ./ตร.ว.)']], ['แหล่ง Comp', detailRow['แหล่ง Comp']]]]].map(([title, fields]) => (
               <div key={title} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.gold, marginBottom: 6 }}>{title}</div>
                 {fields.map(([k, v]) => (
@@ -920,18 +957,38 @@ function HistoryView({ appsScriptUrl }) {
             </div>
           </div>
           {(!isContracted || isExpanded) && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
-              {[
-                ['มูลค่าตลาด', `฿${fmt(row['มูลค่าตลาดรวม'])}`],
-                ['FSV (80%)', `฿${fmt(row['FSV (80%)'])}`],
-                ['วงเงินแนะนำ', `฿${fmt(row['วงเงินแนะนำ'])}`],
-                ['Score', `${row['Property Score']}/100`],
-              ].map(([k, v]) => (
-                <div key={k} style={{ background: BRAND.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, color: BRAND.textMut }}>{k}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginTop: 2 }}>{v}</div>
-                </div>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+                {[
+                  ['มูลค่าตลาด', `฿${fmt(row['มูลค่าตลาดรวม'])}`],
+                  ['FSV', `฿${fmt(row['FSV (80%)'])}`],
+                  ['วงเงินแนะนำ', `฿${fmt(row['วงเงินแนะนำ'])}`],
+                  ['Score', `${row['Property Score']}/100`],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ background: BRAND.bg, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: BRAND.textMut }}>{k}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginTop: 2 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              {/* โฉนด summary */}
+              {(() => {
+                const deeds = Array.isArray(row.deeds) && row.deeds.length > 0 ? row.deeds : null
+                if (!deeds) return null
+                const totalSqw = deeds.reduce((s, d) => s + (d.areaRai||0)*400 + (d.areaNgan||0)*100 + +(d.areaSqw||0), 0)
+                return (
+                  <div style={{ padding: '8px 12px', borderRadius: 8, background: BRAND.bg, border: `1px solid ${BRAND.border}`, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: BRAND.textSec }}>📄 {deeds.length} โฉนด • {fmt(totalSqw)} ตร.ว. รวม</span>
+                    <span style={{ color: BRAND.border }}>|</span>
+                    {deeds.map((d, i) => (
+                      <span key={i} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'rgba(45,212,191,0.08)', border: `1px solid rgba(45,212,191,0.2)`, color: BRAND.teal }}>
+                        {d.titleDeedNo || `แปลง${i+1}`}
+                        {(d.areaRai||d.areaNgan||d.areaSqw) ? ` (${[(d.areaRai>0?d.areaRai+' ไร่':''), (d.areaNgan>0?d.areaNgan+' งาน':''), (d.areaSqw>0?d.areaSqw+' ตร.ว.':'')].filter(Boolean).join(' ')})` : ''}
+                      </span>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
           )}
         </Card>
