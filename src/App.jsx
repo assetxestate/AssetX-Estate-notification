@@ -5,6 +5,8 @@ import MapView from "./MapView.jsx";
 import InvestorPage from "./InvestorPage.jsx";
 import DashboardPage from "./DashboardPage.jsx";
 import TaxPage from "./TaxPage.jsx";
+import LegalPage from "./LegalPage.jsx";
+import ReservationPage from "./ReservationPage.jsx";
 import {
   getCustomers as apiGetCustomers,
   getContractStatuses as apiGetContractStatuses,
@@ -2746,6 +2748,20 @@ export default function App() {
             >
               🧮 ภาษี
             </button>
+            <button
+              className={`tab ${mainTab === "legal" ? "active" : ""}`}
+              onClick={() => setMainTab("legal")}
+              style={mainTab === "legal" ? { borderColor: '#3B82F6', background: 'rgba(59,130,246,0.1)', color: '#3B82F6' } : {}}
+            >
+              ⚖️ กฎหมาย
+            </button>
+            <button
+              className={`tab ${mainTab === "reservation" ? "active" : ""}`}
+              onClick={() => setMainTab("reservation")}
+              style={mainTab === "reservation" ? { borderColor: '#F59E0B', background: 'rgba(245,158,11,0.1)', color: '#F59E0B' } : {}}
+            >
+              🏷️ ใบจอง
+            </button>
           </div>
 
           {/* Dashboard Tab */}
@@ -2782,6 +2798,12 @@ export default function App() {
 
           {/* Tax Tab */}
           {mainTab === "tax" && <TaxPage />}
+
+          {/* Legal Tab */}
+          {mainTab === "legal" && <LegalPage />}
+
+          {/* Reservation Tab */}
+          {mainTab === "reservation" && <ReservationPage />}
 
           {/* Payment Tab */}
           {mainTab === "payment" && (

@@ -392,6 +392,80 @@ export async function deleteValuation(rowIndex) {
   return { success: true };
 }
 
+// ── Reservations (ใบจอง) ─────────────────────────────────────
+
+export async function getReservations() {
+  const { data, error } = await supabase
+    .from("reservations")
+    .select("*")
+    .order("transfer_deadline", { ascending: true });
+  if (error) throw error;
+  return data.map((r) => ({
+    id: r.id,
+    projectName: r.project_name,
+    developer: r.developer || "",
+    propertyType: r.property_type || "",
+    unitNo: r.unit_no || "",
+    bookingPrice: r.booking_price || 0,
+    depositPaid: r.deposit_paid || 0,
+    downPaymentPaid: r.down_payment_paid || 0,
+    monthlyInstallment: r.monthly_installment || 0,
+    bookingDate: r.booking_date || "",
+    transferDeadline: r.transfer_deadline || "",
+    status: r.status || "ถือครอง",
+    assignedTo: r.assigned_to || "",
+    assignmentPrice: r.assignment_price || 0,
+    assignmentDate: r.assignment_date || "",
+    assignmentFee: r.assignment_fee || 0,
+    notes: r.notes || "",
+    createdAt: r.created_at,
+  }));
+}
+
+export async function createReservation(data) {
+  const { error } = await supabase.from("reservations").insert({
+    project_name: data.projectName,
+    developer: data.developer || "",
+    property_type: data.propertyType || "",
+    unit_no: data.unitNo || "",
+    booking_price: data.bookingPrice || 0,
+    deposit_paid: data.depositPaid || 0,
+    down_payment_paid: data.downPaymentPaid || 0,
+    monthly_installment: data.monthlyInstallment || 0,
+    booking_date: data.bookingDate || null,
+    transfer_deadline: data.transferDeadline || null,
+    status: data.status || "ถือครอง",
+    notes: data.notes || "",
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function updateReservation(id, data) {
+  const updates = { updated_at: new Date().toISOString() };
+  const map = {
+    projectName: "project_name", developer: "developer",
+    propertyType: "property_type", unitNo: "unit_no",
+    bookingPrice: "booking_price", depositPaid: "deposit_paid",
+    downPaymentPaid: "down_payment_paid", monthlyInstallment: "monthly_installment",
+    bookingDate: "booking_date", transferDeadline: "transfer_deadline",
+    status: "status", assignedTo: "assigned_to",
+    assignmentPrice: "assignment_price", assignmentDate: "assignment_date",
+    assignmentFee: "assignment_fee", notes: "notes",
+  };
+  Object.entries(map).forEach(([k, v]) => { if (data[k] !== undefined) updates[v] = data[k]; });
+  const { error } = await supabase.from("reservations").update(updates).eq("id", id);
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function deleteReservation(id) {
+  const { error } = await supabase.from("reservations").delete().eq("id", id);
+  if (error) throw error;
+  return { success: true };
+}
+
 // ── Destinations ──────────────────────────────────────────────
 
 export async function getDestinations() {
