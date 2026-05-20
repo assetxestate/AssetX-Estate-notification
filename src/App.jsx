@@ -27,7 +27,8 @@ import {
 } from "./lib/utils.js";
 import { IMGBB_KEY, IMGBB_ALBUMS, gcalPayment, msgPayment, msgContract } from "./lib/messages.js";
 import { SENDER_INFO, numberToThaiText, formatThaiDateFull, formatLandArea, printNotice } from "./lib/notice.js";
-import { APPS_SCRIPT_URL, LOGO_CONFIG } from "./lib/config.js";
+import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
+import { MOCK_DATA } from "./lib/mockData.js";
 import { useLineNotification } from "./hooks/useLineNotification.js";
 import { Logo, Skeleton, LineButton, TypeBadge } from "./components/SharedComponents.jsx";
 
