@@ -27,6 +27,7 @@ import {
 } from "./lib/utils.js";
 import { IMGBB_KEY, IMGBB_ALBUMS, gcalPayment, msgPayment, msgContract } from "./lib/messages.js";
 import { SENDER_INFO, numberToThaiText, formatThaiDateFull, formatLandArea, printNotice } from "./lib/notice.js";
+import { APPS_SCRIPT_URL, LOGO_CONFIG } from "./lib/config.js";
 
 // Logo Component
 function Logo({ size = 40 }) {
