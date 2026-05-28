@@ -1,0 +1,237 @@
+import React, { useState, useEffect } from "react";
+import { BRAND } from "../lib/config.js";
+import { formatMoney, formatThai } from "../lib/utils.js";
+import { createTopup } from "../lib/api.js";
+
+function generateSchedule(startDateStr, freq, endDateStr) {
+  const payments = [];
+  if (!startDateStr) return payments;
+
+  const addFreq = (d) => {
+    const next = new Date(d);
+    if (freq === "สัปดาห์") next.setDate(next.getDate() + 7);
+    else next.setMonth(next.getMonth() + 1);
+    return next;
+  };
+
+  let current = new Date(startDateStr);
+  const end = endDateStr ? new Date(endDateStr) : null;
+  let installment = 1;
+
+  while (installment <= 360) {
+    const dateStr = current.toISOString().split("T")[0];
+    payments.push({ installment, dateStr });
+    if (end && current >= end) break;
+    if (!end && installment >= 12) break;
+    current = addFreq(current);
+    installment++;
+  }
+  return payments;
+}
+
+export function TopupModal({ customer, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    topupDate: new Date().toISOString().split("T")[0],
+    topupAmount: "",
+    interestAmount: "",
+    freq: "เดือน",
+    topupStartDate: "",
+    topupEndDate: customer.contractEndDate || "",
+    approvedBy: "",
+    reason: "",
+    note: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [schedule, setSchedule] = useState([]);
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const topupAmt = parseFloat(form.topupAmount) || 0;
+  const totalPrincipal = (customer.principal || 0) + topupAmt;
+
+  useEffect(() => {
+    setSchedule(generateSchedule(form.topupStartDate, form.freq, form.topupEndDate));
+  }, [form.topupStartDate, form.freq, form.topupEndDate]);
+
+  const handleSave = async () => {
+    if (!topupAmt) { alert("กรุณากรอกจำนวนเงินที่ขอเพิ่ม"); return; }
+    if (!parseFloat(form.interestAmount)) { alert("กรุณากรอกดอกเบี้ยต่องวด"); return; }
+    if (!form.topupStartDate) { alert("กรุณาระบุวันเริ่มชำระงวดแรก"); return; }
+    setSaving(true);
+    try {
+      await createTopup({
+        customerId: customer.id,
+        topupDate: form.topupDate,
+        topupAmount: topupAmt,
+        originalPrincipal: customer.principal || 0,
+        totalPrincipal,
+        interestAmount: parseFloat(form.interestAmount),
+        freq: form.freq,
+        topupStartDate: form.topupStartDate,
+        topupEndDate: form.topupEndDate || null,
+        approvedBy: form.approvedBy,
+        reason: form.reason,
+        note: form.note,
+        payments: schedule,
+      });
+      onSaved();
+    } catch (e) {
+      alert("บันทึกไม่สำเร็จ: " + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inp = {
+    width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13,
+    background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.border}`,
+    color: BRAND.textPri, outline: "none", boxSizing: "border-box",
+  };
+  const lbl = { fontSize: 11, color: BRAND.textSec, marginBottom: 4, display: "block" };
+  const row2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px 12px" }}>
+      <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 18, padding: 20, width: "100%", maxWidth: 500, maxHeight: "92vh", overflowY: "auto" }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: BRAND.textPri }}>➕ เพิ่มวงเงินจำนอง</div>
+            <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>{customer.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: BRAND.textSec, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* สัญญาเดิม (read-only) */}
+        <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(45,212,191,.06)", border: "1px solid rgba(45,212,191,.2)", borderRadius: 10 }}>
+          <div style={{ fontSize: 11, color: BRAND.teal, fontWeight: 700, marginBottom: 8 }}>📋 สัญญาเดิม</div>
+          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 16px", fontSize: 12 }}>
+            <span style={{ color: BRAND.textSec }}>วงเงินเดิม</span>
+            <span style={{ color: BRAND.textPri, fontWeight: 700 }}>{formatMoney(customer.principal || 0)} ฿</span>
+            <span style={{ color: BRAND.textSec }}>ดอกเบี้ย/งวดเดิม</span>
+            <span style={{ color: BRAND.gold, fontWeight: 700 }}>{formatMoney(customer.amount || 0)} ฿/{customer.freq}</span>
+            {customer.contractEndDate && (
+              <>
+                <span style={{ color: BRAND.textSec }}>ครบสัญญา</span>
+                <span style={{ color: BRAND.textPri }}>{formatThai(customer.contractEndDate)}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* วงเงินที่ขอเพิ่ม */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.gold, marginBottom: 10 }}>💵 วงเงินที่ขอเพิ่ม</div>
+          <div style={row2}>
+            <div>
+              <label style={lbl}>จำนวนเงินที่ขอเพิ่ม (บาท) *</label>
+              <input type="number" style={inp} value={form.topupAmount}
+                onChange={e => set("topupAmount", e.target.value)} placeholder="700000" />
+            </div>
+            <div>
+              <label style={lbl}>วันที่ทำสัญญาเพิ่มวงเงิน</label>
+              <input type="date" style={inp} value={form.topupDate}
+                onChange={e => set("topupDate", e.target.value)} />
+            </div>
+          </div>
+          {topupAmt > 0 && (
+            <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.25)", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: BRAND.textSec }}>วงเงินรวมใหม่</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: BRAND.gold }}>{formatMoney(totalPrincipal)} ฿</span>
+            </div>
+          )}
+          <div style={{ marginTop: 10 }}>
+            <label style={lbl}>เหตุผลที่ขอเพิ่ม</label>
+            <input type="text" style={inp} value={form.reason}
+              onChange={e => set("reason", e.target.value)} placeholder="เช่น ต้องการทุนเพิ่มเติม" />
+          </div>
+        </div>
+
+        {/* เงื่อนไขชำระ */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.teal, marginBottom: 10 }}>💰 เงื่อนไขชำระส่วนเพิ่ม</div>
+          <div style={row2}>
+            <div>
+              <label style={lbl}>ดอกเบี้ยต่องวด (บาท) *</label>
+              <input type="number" style={inp} value={form.interestAmount}
+                onChange={e => set("interestAmount", e.target.value)} placeholder="เช่น 10500" />
+            </div>
+            <div>
+              <label style={lbl}>รอบชำระ</label>
+              <select style={inp} value={form.freq} onChange={e => set("freq", e.target.value)}>
+                <option value="เดือน">รายเดือน</option>
+                <option value="สัปดาห์">รายสัปดาห์</option>
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>วันชำระงวดแรก *</label>
+              <input type="date" style={inp} value={form.topupStartDate}
+                onChange={e => set("topupStartDate", e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>วันครบสัญญา</label>
+              <input type="date" style={inp} value={form.topupEndDate}
+                onChange={e => set("topupEndDate", e.target.value)} />
+            </div>
+          </div>
+          {schedule.length > 0 && (
+            <div style={{ marginTop: 8, padding: "7px 12px", background: "rgba(45,212,191,.05)", border: "1px solid rgba(45,212,191,.15)", borderRadius: 8, fontSize: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <span style={{ color: BRAND.textSec }}>จำนวนงวด: <span style={{ color: BRAND.teal, fontWeight: 700 }}>{schedule.length} งวด</span></span>
+              {form.interestAmount && (
+                <span style={{ color: BRAND.textSec }}>รวมดอกเบี้ย: <span style={{ color: BRAND.teal, fontWeight: 700 }}>{formatMoney(schedule.length * (parseFloat(form.interestAmount) || 0))} ฿</span></span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* การอนุมัติ */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textSec, marginBottom: 10 }}>👤 การอนุมัติ</div>
+          <div style={row2}>
+            <div>
+              <label style={lbl}>ผู้อนุมัติ</label>
+              <input type="text" style={inp} value={form.approvedBy}
+                onChange={e => set("approvedBy", e.target.value)} placeholder="ชื่อผู้อนุมัติ" />
+            </div>
+            <div>
+              <label style={lbl}>หมายเหตุ</label>
+              <input type="text" style={inp} value={form.note}
+                onChange={e => set("note", e.target.value)} placeholder="หมายเหตุเพิ่มเติม" />
+            </div>
+          </div>
+        </div>
+
+        {/* ตัวอย่างตาราง 3 งวดแรก */}
+        {schedule.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 6 }}>📅 ตัวอย่าง 3 งวดแรก</div>
+            {schedule.slice(0, 3).map((p) => (
+              <div key={p.installment} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${BRAND.border}`, fontSize: 12 }}>
+                <span style={{ color: BRAND.textSec }}>งวดที่ {p.installment}</span>
+                <span style={{ color: BRAND.textPri }}>{formatThai(p.dateStr)}</span>
+                {form.interestAmount && (
+                  <span style={{ color: BRAND.gold, fontWeight: 600 }}>{formatMoney(parseFloat(form.interestAmount) || 0)} ฿</span>
+                )}
+              </div>
+            ))}
+            {schedule.length > 3 && (
+              <div style={{ textAlign: "center", fontSize: 11, color: BRAND.textMut, paddingTop: 4 }}>
+                ...และอีก {schedule.length - 3} งวด
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 10, border: `1px solid ${BRAND.border}`, background: "transparent", color: BRAND.textSec, fontSize: 13, cursor: "pointer" }}>
+            ยกเลิก
+          </button>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: 10, borderRadius: 10, border: "none", background: "linear-gradient(135deg,#2DD4BF,#0E7490)", color: "#000", fontSize: 13, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+            {saving ? "⏳ กำลังบันทึก..." : "💾 บันทึกสัญญาเพิ่มวงเงิน"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

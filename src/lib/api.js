@@ -466,6 +466,109 @@ export async function deleteReservation(id) {
   return { success: true };
 }
 
+// ── Contract Top-ups ─────────────────────────────────────────
+
+export async function getTopups(customerId) {
+  const { data: topupRows, error: topupErr } = await supabase
+    .from("contract_topups")
+    .select("*")
+    .eq("customer_id", customerId)
+    .order("topup_date", { ascending: true });
+  if (topupErr) throw topupErr;
+
+  const { data: recRows, error: recErr } = await supabase
+    .from("topup_payment_records")
+    .select("*")
+    .eq("customer_id", customerId);
+  if (recErr) throw recErr;
+
+  const recMap = {};
+  recRows.forEach((r) => {
+    if (!recMap[r.topup_id]) recMap[r.topup_id] = {};
+    recMap[r.topup_id][r.installment] = {
+      paidDate: r.paid_at,
+      slipUrl: r.slip_url,
+      slipId: r.slip_id,
+      amountPaid: r.amount_paid,
+      note: r.note,
+    };
+  });
+
+  return topupRows.map((t) => ({
+    id: t.id,
+    customerId: t.customer_id,
+    topupDate: t.topup_date,
+    topupAmount: t.topup_amount,
+    originalPrincipal: t.original_principal,
+    totalPrincipal: t.total_principal,
+    interestAmount: t.interest_amount,
+    freq: t.freq,
+    topupStartDate: t.topup_start_date,
+    topupEndDate: t.topup_end_date || "",
+    approvedBy: t.approved_by || "",
+    reason: t.reason || "",
+    note: t.note || "",
+    payments: Array.isArray(t.payments) ? t.payments : [],
+    records: recMap[t.id] || {},
+    createdAt: t.created_at,
+  }));
+}
+
+export async function createTopup(data) {
+  const { error } = await supabase.from("contract_topups").insert({
+    customer_id: data.customerId,
+    topup_date: data.topupDate,
+    topup_amount: data.topupAmount,
+    original_principal: data.originalPrincipal,
+    total_principal: data.totalPrincipal,
+    interest_amount: data.interestAmount,
+    freq: data.freq,
+    topup_start_date: data.topupStartDate,
+    topup_end_date: data.topupEndDate || null,
+    approved_by: data.approvedBy || "",
+    reason: data.reason || "",
+    note: data.note || "",
+    payments: data.payments || [],
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function deleteTopup(topupId) {
+  const { error } = await supabase
+    .from("contract_topups")
+    .delete()
+    .eq("id", topupId);
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function saveTopupPaymentRecord(topupId, customerId, installment, record) {
+  const { error } = await supabase.from("topup_payment_records").upsert({
+    topup_id: topupId,
+    customer_id: customerId,
+    installment,
+    paid_at: record.paidDate || record.paidAt || "",
+    slip_url: record.slipUrl || "",
+    slip_id: record.slipId || "",
+    amount_paid: record.amountPaid || 0,
+    note: record.note || "",
+  }, { onConflict: "topup_id,installment" });
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function deleteTopupPaymentRecord(topupId, installment) {
+  const { error } = await supabase
+    .from("topup_payment_records")
+    .delete()
+    .eq("topup_id", topupId)
+    .eq("installment", installment);
+  if (error) throw error;
+  return { success: true };
+}
+
 // ── Destinations ──────────────────────────────────────────────
 
 export async function getDestinations() {

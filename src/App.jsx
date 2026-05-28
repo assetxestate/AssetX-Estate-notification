@@ -19,6 +19,11 @@ import {
   updateCustomer as apiUpdateCustomer,
   postponePayment as apiPostponePayment,
   cancelCustomer as apiCancelCustomer,
+  getTopups as apiGetTopups,
+  createTopup as apiCreateTopup,
+  deleteTopup as apiDeleteTopup,
+  saveTopupPaymentRecord as apiSaveTopupPaymentRecord,
+  deleteTopupPaymentRecord as apiDeleteTopupPaymentRecord,
 } from "./lib/api.js";
 import {
   parseDate, formatThai, formatThaiLong, formatMoney, pad, fmtCal,
@@ -38,6 +43,7 @@ import { CustomerSheetEditModal } from "./components/CustomerSheetEditModal.jsx"
 import { CustomerLineIdSection } from "./components/CustomerLineIdSection.jsx";
 import { PostponeModal } from "./components/PostponeModal.jsx";
 import { DisbursementModal } from "./components/DisbursementModal.jsx";
+import { TopupModal } from "./components/TopupModal.jsx";
 
 // Main App Component
 export default function App() {
@@ -53,6 +59,11 @@ export default function App() {
   const [postponeModal, setPostponeModal] = React.useState(null); // { customer, payment }
   const [cancelConfirm, setCancelConfirm] = React.useState(null); // customer object
   const [cancelling, setCancelling] = React.useState(false);
+  const [detailTabs, setDetailTabs] = React.useState({});
+  const [customerTopups, setCustomerTopups] = React.useState({});
+  const loadedTopupIdsRef = React.useRef(new Set());
+  const [topupModal, setTopupModal] = React.useState(null);
+  const [topupSlipModal, setTopupSlipModal] = React.useState(null);
   const [editCustomerModal, setEditCustomerModal] = React.useState(null); // customer object
   const [disbursementModal, setDisbursementModal] = React.useState(null); // customer object
   const [toast, setToast] = useState(null);
@@ -106,6 +117,15 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+  React.useEffect(() => {
+    if (!expandedId) return;
+    if (loadedTopupIdsRef.current.has(expandedId)) return;
+    loadedTopupIdsRef.current.add(expandedId);
+    apiGetTopups(expandedId)
+      .then(data => setCustomerTopups(prev => ({ ...prev, [expandedId]: data })))
+      .catch(() => { loadedTopupIdsRef.current.delete(expandedId); });
+  }, [expandedId]);
+
   const closeContract = React.useCallback(async (customer) => {
     if (!window.confirm(`ยืนยันปิดสัญญาของ คุณ${customer.name}?\n\nระบบจะหยุดแจ้งเตือนสัญญานี้ทั้งหมด`)) return;
     setContractStatuses(prev => ({ ...prev, [customer.id]: { status: 'ปิดแล้ว', customerName: customer.name } }));
@@ -154,6 +174,45 @@ export default function App() {
       return updated;
     });
     apiDeletePaymentRecord(customerId, installment).catch(() => {});
+  }, []);
+
+  const reloadTopups = React.useCallback(async (customerId) => {
+    loadedTopupIdsRef.current.delete(customerId);
+    const data = await apiGetTopups(customerId);
+    setCustomerTopups(prev => ({ ...prev, [customerId]: data }));
+    loadedTopupIdsRef.current.add(customerId);
+  }, []);
+
+  const saveTopupPayment = React.useCallback(async (topupId, customerId, installment, record) => {
+    await apiSaveTopupPaymentRecord(topupId, customerId, installment, record);
+    setCustomerTopups(prev => ({
+      ...prev,
+      [customerId]: (prev[customerId] || []).map(t =>
+        t.id !== topupId ? t : { ...t, records: { ...t.records, [installment]: record } }
+      ),
+    }));
+  }, []);
+
+  const deleteTopupPayment = React.useCallback(async (topupId, customerId, installment) => {
+    await apiDeleteTopupPaymentRecord(topupId, installment);
+    setCustomerTopups(prev => ({
+      ...prev,
+      [customerId]: (prev[customerId] || []).map(t => {
+        if (t.id !== topupId) return t;
+        const records = { ...t.records };
+        delete records[installment];
+        return { ...t, records };
+      }),
+    }));
+  }, []);
+
+  const handleDeleteTopup = React.useCallback(async (topupId, customerId) => {
+    if (!window.confirm("ลบรายการเพิ่มวงเงินนี้?")) return;
+    await apiDeleteTopup(topupId);
+    setCustomerTopups(prev => ({
+      ...prev,
+      [customerId]: (prev[customerId] || []).filter(t => t.id !== topupId),
+    }));
   }, []);
 
   // ── LINE User ID รายลูกค้า ──────────────────────────────────
@@ -1522,16 +1581,26 @@ export default function App() {
                                 </div>
                               )}
 
-                              <div
-                                style={{
-                                  marginBottom: 12,
-                                  fontWeight: 600,
-                                  color: BRAND.textPri,
-                                  fontSize: 13,
-                                }}
-                              >
-                                📅 ตารางชำระ
+                              {/* ── Detail Tabs ── */}
+                              <div style={{ display: "flex", gap: 6, marginBottom: 14, alignItems: "center", justifyContent: "space-between" }}>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setDetailTabs(prev => ({ ...prev, [c.id]: 'schedule' })); }}
+                                    style={{ padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", background: (detailTabs[c.id] || 'schedule') === 'schedule' ? "rgba(45,212,191,.2)" : "transparent", border: (detailTabs[c.id] || 'schedule') === 'schedule' ? "1px solid rgba(45,212,191,.5)" : `1px solid ${BRAND.border}`, color: (detailTabs[c.id] || 'schedule') === 'schedule' ? BRAND.teal : BRAND.textSec }}
+                                  >📅 ตารางชำระ</button>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setDetailTabs(prev => ({ ...prev, [c.id]: 'topup' })); }}
+                                    style={{ padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", background: (detailTabs[c.id] || 'schedule') === 'topup' ? "rgba(245,158,11,.2)" : "transparent", border: (detailTabs[c.id] || 'schedule') === 'topup' ? "1px solid rgba(245,158,11,.5)" : `1px solid ${BRAND.border}`, color: (detailTabs[c.id] || 'schedule') === 'topup' ? BRAND.gold : BRAND.textSec }}
+                                  >💵 วงเงินเพิ่ม{(customerTopups[c.id] || []).length > 0 ? ` (${(customerTopups[c.id] || []).length})` : ""}</button>
+                                </div>
+                                {(detailTabs[c.id] || 'schedule') === 'topup' && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setTopupModal(c); }}
+                                    style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(245,158,11,.15)", border: "1px solid rgba(245,158,11,.4)", color: BRAND.gold }}
+                                  >➕ เพิ่มวงเงิน</button>
+                                )}
                               </div>
+                              {(detailTabs[c.id] || 'schedule') === 'schedule' && (
                               <div
                                 style={{
                                   display: "flex",
@@ -1777,6 +1846,83 @@ export default function App() {
                                   );
                                 })}
                               </div>
+                              )}
+                              {/* ── วงเงินเพิ่ม Tab ── */}
+                              {(detailTabs[c.id] || 'schedule') === 'topup' && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                  {(customerTopups[c.id] || []).length === 0 ? (
+                                    <div style={{ textAlign: "center", padding: "28px 0", color: BRAND.textMut, fontSize: 13 }}>
+                                      <div style={{ fontSize: 28, marginBottom: 8 }}>💵</div>
+                                      ยังไม่มีการเพิ่มวงเงิน
+                                      <div style={{ fontSize: 11, marginTop: 4 }}>กดปุ่ม ➕ เพิ่มวงเงิน เพื่อบันทึกสัญญาเพิ่มวงเงิน</div>
+                                    </div>
+                                  ) : (customerTopups[c.id] || []).map(topup => {
+                                    const tPays = (topup.payments || []).map(tp => {
+                                      const diff = getDiff(tp.dateStr, today);
+                                      const record = topup.records[tp.installment];
+                                      const status = record ? 'paid' : payStatus(diff);
+                                      return { ...tp, diff, record, status };
+                                    });
+                                    const paidCount = tPays.filter(tp => tp.record).length;
+                                    return (
+                                      <div key={topup.id} style={{ border: "1px solid rgba(245,158,11,.25)", borderRadius: 12, overflow: "hidden" }}>
+                                        {/* Topup Header */}
+                                        <div style={{ padding: "12px 14px", background: "rgba(245,158,11,.06)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 700, fontSize: 14, color: BRAND.gold }}>
+                                              💵 เพิ่มวงเงิน +{formatMoney(topup.topupAmount)} ฿
+                                            </div>
+                                            <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>
+                                              วันที่: {formatThai(topup.topupDate)}{topup.approvedBy ? ` • อนุมัติโดย: ${topup.approvedBy}` : ""}
+                                            </div>
+                                            <div style={{ fontSize: 12, marginTop: 4, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                                              <span style={{ color: BRAND.textSec }}>วงเงินรวม: <span style={{ color: BRAND.textPri, fontWeight: 700 }}>{formatMoney(topup.totalPrincipal)} ฿</span></span>
+                                              <span style={{ color: BRAND.textSec }}>ดอกเบี้ย/งวด: <span style={{ color: BRAND.gold, fontWeight: 700 }}>{formatMoney(topup.interestAmount)} ฿/{topup.freq}</span></span>
+                                            </div>
+                                            {topup.reason && <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 2 }}>เหตุผล: {topup.reason}</div>}
+                                            <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 4 }}>ชำระแล้ว {paidCount}/{tPays.length} งวด</div>
+                                          </div>
+                                          <button
+                                            onClick={e => { e.stopPropagation(); handleDeleteTopup(topup.id, c.id); }}
+                                            style={{ padding: "3px 8px", borderRadius: 6, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.3)", color: "#FCA5A5", fontSize: 10, cursor: "pointer", flexShrink: 0, marginLeft: 8 }}
+                                          >🗑️ ลบ</button>
+                                        </div>
+                                        {/* Topup Payment Schedule */}
+                                        <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+                                          <div style={{ fontSize: 11, fontWeight: 600, color: BRAND.textSec, marginBottom: 2 }}>
+                                            📅 ตารางชำระส่วนเพิ่ม ({tPays.length} งวด)
+                                          </div>
+                                          {tPays.map(tp => {
+                                            const pSt = P_STATUS[tp.status];
+                                            return (
+                                              <div key={tp.installment} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: pSt.bg, borderRadius: 8, border: `1px solid ${pSt.border}40` }}>
+                                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                                  <span style={{ width: 24, height: 24, borderRadius: "50%", background: pSt.border + "30", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: pSt.text, flexShrink: 0 }}>
+                                                    {tp.installment}
+                                                  </span>
+                                                  <div>
+                                                    <div style={{ fontSize: 12, fontWeight: 600, color: pSt.text }}>งวดที่ {tp.installment}</div>
+                                                    <div style={{ fontSize: 11, color: BRAND.textSec }}>{formatThai(tp.dateStr)}</div>
+                                                  </div>
+                                                </div>
+                                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                                  {tp.record && (
+                                                    <span style={{ fontSize: 11, color: "#86EFAC" }}>✓ {(tp.record.amountPaid || topup.interestAmount).toLocaleString("th-TH")} ฿</span>
+                                                  )}
+                                                  <button
+                                                    onClick={e => { e.stopPropagation(); setTopupSlipModal({ topup, customer: c, payment: tp }); }}
+                                                    style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", background: tp.record ? "rgba(45,212,191,.08)" : "rgba(45,212,191,.15)", border: "1px solid rgba(45,212,191,.3)", color: BRAND.teal }}
+                                                  >{tp.record ? "✏️ แก้ไข" : "💳 บันทึก"}</button>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
 
                             </div>
                           )}
@@ -1848,6 +1994,37 @@ export default function App() {
           onSave={(record) => savePaymentRecord(slipModal.customer.id, slipModal.payment.installment, record)}
           onDelete={() => deletePaymentRecord(slipModal.customer.id, slipModal.payment.installment)}
           onClose={() => setSlipModal(null)}
+        />
+      )}
+
+      {/* Topup Modal */}
+      {topupModal && (
+        <TopupModal
+          customer={topupModal}
+          onClose={() => setTopupModal(null)}
+          onSaved={() => {
+            const id = topupModal.id;
+            setTopupModal(null);
+            reloadTopups(id);
+          }}
+        />
+      )}
+
+      {/* Topup Slip Modal */}
+      {topupSlipModal && (
+        <SlipModal
+          customer={topupSlipModal.customer}
+          payment={topupSlipModal.payment}
+          existing={topupSlipModal.topup.records[topupSlipModal.payment.installment]}
+          onSave={(record) => {
+            saveTopupPayment(topupSlipModal.topup.id, topupSlipModal.customer.id, topupSlipModal.payment.installment, record);
+            setTopupSlipModal(null);
+          }}
+          onDelete={() => {
+            deleteTopupPayment(topupSlipModal.topup.id, topupSlipModal.customer.id, topupSlipModal.payment.installment);
+            setTopupSlipModal(null);
+          }}
+          onClose={() => setTopupSlipModal(null)}
         />
       )}
 
