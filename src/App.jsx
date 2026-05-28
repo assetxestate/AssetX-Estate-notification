@@ -1317,6 +1317,16 @@ export default function App() {
                               >
                                 เงินต้น: {formatMoney(c.principal)} ฿
                               </div>
+                              {(customerTopups[c.id] || []).length > 0 && (() => {
+                                const tops = customerTopups[c.id] || [];
+                                const extraPrincipal = tops.reduce((s, t) => s + (t.topupAmount || 0), 0);
+                                const extraInterest = tops.reduce((s, t) => s + (t.interestAmount || 0), 0);
+                                return (
+                                  <div style={{ fontSize: 10, color: BRAND.gold, marginTop: 2, fontWeight: 600 }}>
+                                    💵 +{formatMoney(extraPrincipal)} ฿ · ดอกเบี้ยรวม {formatMoney((c.amount || 0) + extraInterest)} ฿/{c.freq}
+                                  </div>
+                                );
+                              })()}
                               <div style={{ display: 'flex', gap: 4, marginTop: 6, justifyContent: 'flex-end' }}>
                                 <button
                                   onClick={e => { e.stopPropagation(); setEditCustomerModal(c); }}
@@ -1903,6 +1913,15 @@ export default function App() {
                                                   <div>
                                                     <div style={{ fontSize: 12, fontWeight: 600, color: pSt.text }}>งวดที่ {tp.installment}</div>
                                                     <div style={{ fontSize: 11, color: BRAND.textSec }}>{formatThai(tp.dateStr)}</div>
+                                                    <div style={{ fontSize: 10, color: pSt.text, marginTop: 1 }}>
+                                                      {tp.record
+                                                        ? "ชำระแล้ว ✓"
+                                                        : tp.diff === 0
+                                                        ? "วันนี้!"
+                                                        : tp.diff > 0
+                                                        ? `อีก ${tp.diff} วัน`
+                                                        : `เกิน ${Math.abs(tp.diff)} วัน`}
+                                                    </div>
                                                   </div>
                                                 </div>
                                                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
