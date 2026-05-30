@@ -24,6 +24,7 @@ import {
   deleteTopup as apiDeleteTopup,
   saveTopupPaymentRecord as apiSaveTopupPaymentRecord,
   deleteTopupPaymentRecord as apiDeleteTopupPaymentRecord,
+  renewContract as apiRenewContract,
 } from "./lib/api.js";
 import {
   parseDate, formatThai, formatThaiLong, formatMoney, pad, fmtCal,
@@ -44,6 +45,8 @@ import { CustomerLineIdSection } from "./components/CustomerLineIdSection.jsx";
 import { PostponeModal } from "./components/PostponeModal.jsx";
 import { DisbursementModal } from "./components/DisbursementModal.jsx";
 import { TopupModal } from "./components/TopupModal.jsx";
+import { AdvancePaymentModal } from "./components/AdvancePaymentModal.jsx";
+import { RenewContractModal } from "./components/RenewContractModal.jsx";
 
 // Main App Component
 export default function App() {
@@ -64,6 +67,8 @@ export default function App() {
   const loadedTopupIdsRef = React.useRef(new Set());
   const [topupModal, setTopupModal] = React.useState(null);
   const [topupSlipModal, setTopupSlipModal] = React.useState(null);
+  const [advancePaymentModal, setAdvancePaymentModal] = React.useState(null);
+  const [renewModal, setRenewModal] = React.useState(null);
   const [editCustomerModal, setEditCustomerModal] = React.useState(null); // customer object
   const [disbursementModal, setDisbursementModal] = React.useState(null); // customer object
   const [toast, setToast] = useState(null);
@@ -204,6 +209,33 @@ export default function App() {
         return { ...t, records };
       }),
     }));
+  }, []);
+
+  const saveAdvancePayment = React.useCallback(async (customerId, installments, record) => {
+    const newRecs = {};
+    installments.forEach(n => { newRecs[n] = { paidDate: record.paidDate, amountPaid: record.amountPaid, note: record.note }; });
+    setPaymentRecords(prev => {
+      const updated = { ...prev, [customerId]: { ...(prev[customerId] || {}), ...newRecs } };
+      localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
+      return updated;
+    });
+    await Promise.all(installments.map(n => apiSavePaymentRecord(customerId, n, { paidDate: record.paidDate, amountPaid: record.amountPaid, note: record.note })));
+    setAdvancePaymentModal(null);
+  }, []);
+
+  const handleRenewContract = React.useCallback((customer, newEndDate, newPayments) => {
+    setCustomers(prev => prev.map(c => {
+      if (c.id !== customer.id) return c;
+      return {
+        ...c,
+        contractEndDate: newEndDate,
+        payments: [
+          ...c.payments,
+          ...newPayments.map(p => ({ installment: p.installment, dateStr: p.dateStr })),
+        ],
+      };
+    }));
+    setRenewModal(null);
   }, []);
 
   const handleDeleteTopup = React.useCallback(async (topupId, customerId) => {
@@ -1603,12 +1635,26 @@ export default function App() {
                                     style={{ padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", background: (detailTabs[c.id] || 'schedule') === 'topup' ? "rgba(245,158,11,.2)" : "transparent", border: (detailTabs[c.id] || 'schedule') === 'topup' ? "1px solid rgba(245,158,11,.5)" : `1px solid ${BRAND.border}`, color: (detailTabs[c.id] || 'schedule') === 'topup' ? BRAND.gold : BRAND.textSec }}
                                   >💵 วงเงินเพิ่ม{(customerTopups[c.id] || []).length > 0 ? ` (${(customerTopups[c.id] || []).length})` : ""}</button>
                                 </div>
-                                {(detailTabs[c.id] || 'schedule') === 'topup' && (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setTopupModal(c); }}
-                                    style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(245,158,11,.15)", border: "1px solid rgba(245,158,11,.4)", color: BRAND.gold }}
-                                  >➕ เพิ่มวงเงิน</button>
-                                )}
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  {(detailTabs[c.id] || 'schedule') === 'schedule' && (
+                                    <>
+                                      <button onClick={e => { e.stopPropagation(); setAdvancePaymentModal(c); }}
+                                        style={{ padding: "5px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(45,212,191,.15)", border: "1px solid rgba(45,212,191,.4)", color: BRAND.teal }}>
+                                        💰 ล่วงหน้า
+                                      </button>
+                                      <button onClick={e => { e.stopPropagation(); setRenewModal(c); }}
+                                        style={{ padding: "5px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(245,158,11,.15)", border: "1px solid rgba(245,158,11,.4)", color: BRAND.gold }}>
+                                        🔄 ต่ออายุ
+                                      </button>
+                                    </>
+                                  )}
+                                  {(detailTabs[c.id] || 'schedule') === 'topup' && (
+                                    <button onClick={e => { e.stopPropagation(); setTopupModal(c); }}
+                                      style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(245,158,11,.15)", border: "1px solid rgba(245,158,11,.4)", color: BRAND.gold }}>
+                                      ➕ เพิ่มวงเงิน
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               {(detailTabs[c.id] || 'schedule') === 'schedule' && (
                               <div
@@ -2013,6 +2059,24 @@ export default function App() {
           onSave={(record) => savePaymentRecord(slipModal.customer.id, slipModal.payment.installment, record)}
           onDelete={() => deletePaymentRecord(slipModal.customer.id, slipModal.payment.installment)}
           onClose={() => setSlipModal(null)}
+        />
+      )}
+
+      {/* Advance Payment Modal */}
+      {advancePaymentModal && (
+        <AdvancePaymentModal
+          customer={advancePaymentModal}
+          onClose={() => setAdvancePaymentModal(null)}
+          onSaved={saveAdvancePayment}
+        />
+      )}
+
+      {/* Renew Contract Modal */}
+      {renewModal && (
+        <RenewContractModal
+          customer={renewModal}
+          onClose={() => setRenewModal(null)}
+          onSaved={(newEndDate, newPayments) => handleRenewContract(renewModal, newEndDate, newPayments)}
         />
       )}
 

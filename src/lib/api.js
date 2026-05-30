@@ -569,6 +569,29 @@ export async function deleteTopupPaymentRecord(topupId, installment) {
   return { success: true };
 }
 
+// ── Contract Renewal ─────────────────────────────────────────
+
+export async function renewContract(customerId, data) {
+  const { error: custErr } = await supabase
+    .from("customers")
+    .update({ contract_end_date: data.newEndDate, updated_at: new Date().toISOString() })
+    .eq("id", customerId);
+  if (custErr) throw custErr;
+
+  if (data.newPayments && data.newPayments.length > 0) {
+    const rows = data.newPayments.map(p => ({
+      customer_id: customerId,
+      installment: p.installment,
+      date_str: p.dateStr,
+    }));
+    const { error: payErr } = await supabase
+      .from("payments")
+      .upsert(rows, { onConflict: "customer_id,installment" });
+    if (payErr) throw payErr;
+  }
+  return { success: true };
+}
+
 // ── Destinations ──────────────────────────────────────────────
 
 export async function getDestinations() {
