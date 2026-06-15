@@ -86,11 +86,15 @@ export async function searchGovPrice({ province, landNo, mapSheet }) {
     throw new Error(`resource_id: ${resourceId} — ${msg}`);
   }
 
-  // หา field ที่น่าจะเป็นเลขที่ดิน (มีคำว่า "ที่ดิน" หรือ "land")
+  // หา field ที่น่าจะเป็นเลขที่ดิน (รองรับทั้ง Thai และ English field names)
   const fields = (infoJson.result.fields || []).map(f => f.id);
-  const landField = fields.find(f => f.includes('ที่ดิน') || f.toLowerCase().includes('land')) || 'เลขที่ดิน';
-  const mapField  = fields.find(f => f.includes('ระหว่างภูมิ') || f.includes('map')) || 'หมายเลขระหว่างภูมิประเทศ';
-  const quadField = fields.find(f => f.includes('แผ่นระวาง')) || 'หมายเลขแผ่นระวางภูมิประเทศ';
+  const fl = (f) => f.toLowerCase();
+  // LAND_NO หรือ เลขที่ดิน
+  const landField = fields.find(f => fl(f).includes('land_no') || fl(f) === 'land_no' || f.includes('ที่ดิน')) || 'LAND_NO';
+  // UTMMAP1 = หมายเลขระวางหลัก (4 หลัก เช่น 4935)
+  const mapField  = fields.find(f => fl(f) === 'utmmap1' || f.includes('ระหว่างภูมิ') || (fl(f).includes('utm') && fl(f).endsWith('1'))) || 'UTMMAP1';
+  // UTMMAP2 = quadrant (1=I, 2=II, 3=III, 4=IV)
+  const quadField = fields.find(f => fl(f) === 'utmmap2' || f.includes('แผ่นระวาง') || (fl(f).includes('utm') && fl(f).endsWith('2'))) || 'UTMMAP2';
 
   // ขั้นที่ 2: ค้นด้วย q (full-text) แล้ว filter client-side ด้วย landField จริง
   const { num, quadrant } = parseMapSheet(mapSheet);
@@ -111,7 +115,8 @@ export async function searchGovPrice({ province, landNo, mapSheet }) {
     records = records.filter(r => String(r[mapField]).trim() === num);
   }
   if (quadrant != null && records.length > 1) {
-    records = records.filter(r => Number(r[quadField]) === quadrant);
+    // UTMMAP2 เก็บเป็น number (1-4) เทียบกับ quadrant ที่ได้จาก I→1, II→2, III→3, IV→4
+    records = records.filter(r => String(r[quadField]).trim() === String(quadrant));
   }
 
   return { records, total: records.length, fields };
