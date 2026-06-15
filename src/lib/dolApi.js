@@ -90,8 +90,22 @@ const _amphoeCache = {}
 async function dolFetch(params) {
   const qs = new URLSearchParams(params)
   const res = await fetch(`/api/landsmaps?${qs}`)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
+  const text = await res.text()
+  if (!res.ok) {
+    // พยายาม parse error message จาก JSON
+    try {
+      const j = JSON.parse(text)
+      throw new Error(j.error || j.message || `HTTP ${res.status}`)
+    } catch (e2) {
+      if (e2.message !== `HTTP ${res.status}`) throw e2
+      throw new Error(`HTTP ${res.status} — ${text.slice(0, 100)}`)
+    }
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Error(`ได้รับ response ที่ไม่ใช่ JSON: ${text.slice(0, 150)}`)
+  }
 }
 
 // ดึงรายการอำเภอตามรหัสจังหวัด

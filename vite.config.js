@@ -18,21 +18,31 @@ export default defineConfig(({ mode }) => {
               const params = new URLSearchParams(qs)
               const action = params.get('action')
               const BASE = 'https://landsmaps.dol.go.th/apiService/LandsMaps'
-              const HEADERS = { 'Accept': 'application/json', 'Referer': 'https://landsmaps.dol.go.th/' }
+              const HEADERS = {
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Referer': 'https://landsmaps.dol.go.th/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept-Language': 'th-TH,th;q=0.9,en;q=0.8',
+              }
               let url
               if (action === 'amphoe') {
                 url = `${BASE}/GetAmphoeByProvinceId/${params.get('provCode')}`
               } else {
                 url = `${BASE}/GetParcelByParcelNo/${params.get('provCode')}/${params.get('ampCode')}/${params.get('deedNo')}`
               }
+              console.log('[DOL proxy] →', url)
               const upstream = await fetch(url, { headers: HEADERS })
+              console.log('[DOL proxy] ← status:', upstream.status)
               const text = await upstream.text()
+              console.log('[DOL proxy] body preview:', text.slice(0, 200))
+              res.statusCode = upstream.status
               res.setHeader('Content-Type', 'application/json')
               res.end(text)
             } catch (e) {
+              console.error('[DOL proxy] ERROR:', e.message, e.cause?.message || '')
               res.statusCode = 500
               res.setHeader('Content-Type', 'application/json')
-              res.end(JSON.stringify({ error: e.message }))
+              res.end(JSON.stringify({ error: e.message, cause: e.cause?.message }))
             }
           })
 
