@@ -1216,19 +1216,29 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                           <div style={{ color: BRAND.textSec }}>ไม่พบข้อมูล — ลองตรวจสอบเลขที่ดินหรือระวาง</div>
                         ) : (
                           <>
-                            <div style={{ color: BRAND.textSec, marginBottom: 6 }}>พบ {trdLookup.total.toLocaleString('th-TH')} รายการ — เลือกเพื่อใส่ราคา:</div>
-                            {trdLookup.records.slice(0, 6).map((r, i) => {
+                            <div style={{ color: BRAND.textSec, marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>พบ {trdLookup.total.toLocaleString('th-TH')} รายการ</span>
+                              {trdLookup.total > 10 && (
+                                <span style={{ color: '#FBBF24', fontSize: 9 }}>ระบุระวางเพื่อลดผลลัพธ์</span>
+                              )}
+                            </div>
+                            <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                            {trdLookup.records.slice(0, 15).map((r, i) => {
                               const price = extractPrice(r)
                               return (
                                 <button key={i}
                                   onClick={() => { updateDeed(trdLookup.deedIdx, 'govPrice', price); setTrdLookup(null) }}
-                                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', margin: '3px 0', borderRadius: 6, border: '1px solid rgba(245,158,11,0.2)', background: 'rgba(245,158,11,0.05)', color: BRAND.textPri, cursor: 'pointer', fontSize: 11 }}
+                                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 8px', margin: '2px 0', borderRadius: 6, border: '1px solid rgba(245,158,11,0.2)', background: 'rgba(245,158,11,0.05)', color: BRAND.textPri, cursor: 'pointer' }}
                                 >
-                                  <span style={{ color: BRAND.gold, fontWeight: 700 }}>{price.toLocaleString('th-TH')} ฿/ตร.ว.</span>
-                                  <span style={{ color: BRAND.textSec, marginLeft: 8, fontSize: 10 }}>{recordLabel(r)}</span>
+                                  <div style={{ color: BRAND.gold, fontWeight: 700, fontSize: 12 }}>{price.toLocaleString('th-TH')} ฿/ตร.ว.</div>
+                                  <div style={{ color: BRAND.textSec, fontSize: 9, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{recordLabel(r)}</div>
                                 </button>
                               )
                             })}
+                            </div>
+                            {trdLookup.total > 15 && (
+                              <div style={{ color: BRAND.textSec, fontSize: 9, marginTop: 4, textAlign: 'center' }}>แสดง 15 จาก {trdLookup.total} รายการ — กรอกระวางเพื่อกรอง</div>
+                            )}
                           </>
                         )}
                         <button onClick={() => setTrdLookup(null)} style={{ fontSize: 10, color: BRAND.textSec, background: 'none', border: 'none', cursor: 'pointer', marginTop: 4, padding: 0 }}>✕ ปิด</button>

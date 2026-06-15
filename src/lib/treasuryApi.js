@@ -54,20 +54,16 @@ export function extractPrice(record) {
   return priceKey ? parseFloat(record[priceKey]) || 0 : 0;
 }
 
-// สร้าง label แสดงข้อมูลระวางสำหรับ UI
+// สร้าง label แสดงข้อมูลทุก field ที่มีค่าสำหรับ UI
 export function recordLabel(record) {
-  const keys = Object.keys(record);
-  const landKey  = keys.find(k => k.includes('ที่ดิน')) || 'เลขที่ดิน';
-  const mapKey   = keys.find(k => k.includes('ระหว่างภูมิ')) || 'หมายเลขระหว่างภูมิประเทศ';
-  const quadKey  = keys.find(k => k.includes('แผ่นระวาง')) || 'หมายเลขแผ่นระวางภูมิประเทศ';
-  const utmKey   = keys.find(k => k.includes('UTM'));
-  const parts = [
-    record[mapKey]  && `ระวาง ${record[mapKey]}`,
-    record[quadKey] && `แผ่น ${record[quadKey]}`,
-    record[landKey] && `เลขที่ ${record[landKey]}`,
-    utmKey && record[utmKey] && `UTM ${record[utmKey]}`,
-  ].filter(Boolean);
-  return parts.join(' • ') || 'รายการที่พบ';
+  const SKIP = new Set(['_id', '_full_text']);
+  const priceKeys = new Set(
+    Object.keys(record).filter(k => k.includes('ราคา') || k.toLowerCase().includes('price'))
+  );
+  const parts = Object.entries(record)
+    .filter(([k, v]) => !SKIP.has(k) && !priceKeys.has(k) && v != null && String(v).trim() !== '')
+    .map(([k, v]) => `${k}: ${v}`);
+  return parts.join(' | ') || 'รายการที่พบ';
 }
 
 // ค้นหาราคาประเมินจากกรมธนารักษ์
