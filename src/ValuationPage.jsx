@@ -1321,6 +1321,59 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
           <Inp value={form.subdistrict} onChange={e => update('subdistrict', e.target.value)} placeholder="เช่น มีนบุรี" />
         </Card>
       </div>
+
+      {/* ── DOL Search Modal ── */}
+      {dolSearch && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#0D1B2E', border: '1px solid rgba(45,212,191,0.4)', borderRadius: 12, padding: 24, width: 380, maxWidth: '90vw' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: BRAND.teal, marginBottom: 16 }}>🏛️ ค้นหาข้อมูลจากกรมที่ดิน</div>
+            <div style={{ marginBottom: 12 }}>
+              <Label>จังหวัด</Label>
+              <select value={dolSearch.provCode}
+                onChange={async e => {
+                  const code = e.target.value
+                  setDolSearch(p => ({ ...p, provCode: code, ampCode: '', amphoeList: null }))
+                  const list = await getAmphoeList(code)
+                  setDolSearch(p => p ? { ...p, amphoeList: list } : p)
+                }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13 }}>
+                <option value="">— เลือกจังหวัด —</option>
+                {THAI_PROVINCES.map(p => <option key={p.code} value={p.code}>{p.name}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Label>รหัสอำเภอ (2 หลัก)</Label>
+              <input value={dolSearch.ampCode}
+                onChange={e => setDolSearch(p => ({ ...p, ampCode: e.target.value }))}
+                placeholder="เช่น 01 = เมือง, 02 = อำเภอถัดไป"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13, boxSizing: 'border-box' }} />
+              <div style={{ fontSize: 10, color: BRAND.textSec, marginTop: 3 }}>ดูรหัสจาก landsmaps.dol.go.th → เลือกจังหวัด → อำเภอที่ขึ้นต้นด้วย 01, 02...</div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Label>เลขโฉนดที่ดิน</Label>
+              <input value={dolSearch.deedNo}
+                onChange={e => setDolSearch(p => ({ ...p, deedNo: e.target.value }))}
+                placeholder="เช่น 34337"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            {dolSearch.error && (
+              <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#FCA5A5', fontSize: 12, marginBottom: 12 }}>
+                ❌ {dolSearch.error}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleDolSearch} disabled={dolSearch.loading || !dolSearch.provCode || !dolSearch.ampCode || !dolSearch.deedNo}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: (dolSearch.loading || !dolSearch.provCode || !dolSearch.ampCode || !dolSearch.deedNo) ? BRAND.border : BRAND.teal, color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                {dolSearch.loading ? '⏳ กำลังค้นหา...' : '🔍 ค้นหา'}
+              </button>
+              <button onClick={() => setDolSearch(null)}
+                style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #162E56', background: 'transparent', color: BRAND.textSec, fontSize: 13, cursor: 'pointer' }}>
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1641,85 +1694,6 @@ function MarketSearchPanel({ form, update }) {
         </div>
       </div>
     </Card>
-
-    {/* ── DOL Search Modal ── */}
-    {dolSearch && (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ background: '#0D1B2E', border: '1px solid rgba(45,212,191,0.4)', borderRadius: 12, padding: 24, width: 380, maxWidth: '90vw' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: BRAND.teal, marginBottom: 16 }}>🏛️ ค้นหาข้อมูลจากกรมที่ดิน</div>
-
-          {/* จังหวัด */}
-          <div style={{ marginBottom: 12 }}>
-            <Label>จังหวัด</Label>
-            <select value={dolSearch.provCode}
-              onChange={async e => {
-                const code = e.target.value
-                setDolSearch(p => ({ ...p, provCode: code, ampCode: '', amphoeList: null }))
-                const list = await getAmphoeList(code)
-                setDolSearch(p => p ? { ...p, amphoeList: list } : p)
-              }}
-              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13 }}>
-              <option value="">— เลือกจังหวัด —</option>
-              {THAI_PROVINCES.map(p => <option key={p.code} value={p.code}>{p.name}</option>)}
-            </select>
-          </div>
-
-          {/* อำเภอ */}
-          <div style={{ marginBottom: 12 }}>
-            <Label>อำเภอ / เขต</Label>
-            {dolSearch.amphoeList && dolSearch.amphoeList.length > 0 ? (
-              <select value={dolSearch.ampCode}
-                onChange={e => setDolSearch(p => ({ ...p, ampCode: e.target.value }))}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13 }}>
-                <option value="">— เลือกอำเภอ —</option>
-                {dolSearch.amphoeList.map((a, i) => {
-                  const code = a.amphurid ? String(a.amphurid).slice(-2) : a.code || String(i + 1).padStart(2, '0')
-                  const name = a.amphurname || a.amphurname_th || a.name || `อำเภอ ${code}`
-                  return <option key={code} value={code}>{code} - {name}</option>
-                })}
-              </select>
-            ) : (
-              <div>
-                <input value={dolSearch.ampCode}
-                  onChange={e => setDolSearch(p => ({ ...p, ampCode: e.target.value }))}
-                  placeholder="รหัส 2 หลัก เช่น 01, 02 (ดูจาก landsmaps.dol.go.th)"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13, boxSizing: 'border-box' }} />
-                <div style={{ fontSize: 10, color: BRAND.textSec, marginTop: 3 }}>
-                  เลือกจังหวัดก่อน หรือกรอกรหัสอำเภอเอง (เช่น 01 = เมือง)
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* เลขโฉนด */}
-          <div style={{ marginBottom: 16 }}>
-            <Label>เลขโฉนดที่ดิน</Label>
-            <input value={dolSearch.deedNo}
-              onChange={e => setDolSearch(p => ({ ...p, deedNo: e.target.value }))}
-              placeholder="เช่น 34337"
-              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13, boxSizing: 'border-box' }} />
-          </div>
-
-          {dolSearch.error && (
-            <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#FCA5A5', fontSize: 12, marginBottom: 12 }}>
-              ❌ {dolSearch.error}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleDolSearch} disabled={dolSearch.loading || !dolSearch.provCode || !dolSearch.ampCode || !dolSearch.deedNo}
-              style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: (dolSearch.loading || !dolSearch.provCode || !dolSearch.ampCode || !dolSearch.deedNo) ? BRAND.border : BRAND.teal, color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              {dolSearch.loading ? '⏳ กำลังค้นหา...' : '🔍 ค้นหา'}
-            </button>
-            <button onClick={() => setDolSearch(null)}
-              style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #162E56', background: 'transparent', color: BRAND.textSec, fontSize: 13, cursor: 'pointer' }}>
-              ยกเลิก
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-  </div>
   )
 }
 
