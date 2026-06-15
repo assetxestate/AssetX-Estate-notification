@@ -141,10 +141,8 @@ export async function searchGovPrice({ province, landNo, mapSheet }) {
     records = records.filter(r => String(r[mapField]).trim() === num);
   if (quadrant != null && records.length > 1)
     records = records.filter(r => String(r[quadField]).trim() === String(quadrant));
-  if (sub1 && records.length > 1)
-    records = records.filter(r => String(r[sub1Field]).trim() === sub1);
-  if (sub2 && records.length > 1)
-    records = records.filter(r => String(r[sub2Field]).trim() === sub2);
+  // ข้าม sub1/sub2 (UTMMAP3/4) — กรมที่ดินกับกรมธนารักษ์ใช้ grid numbering ต่างกัน
+  // filter เฉพาะ scale ซึ่งตรงกันระหว่างสองระบบ
   if (scale && records.length > 1)
     records = records.filter(r => String(r[scaleField]).trim() === scale);
 
