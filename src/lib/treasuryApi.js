@@ -56,11 +56,16 @@ export function extractPrice(record) {
 
 // สร้าง label แสดงข้อมูลระวางสำหรับ UI
 export function recordLabel(record) {
+  const keys = Object.keys(record);
+  const landKey  = keys.find(k => k.includes('ที่ดิน')) || 'เลขที่ดิน';
+  const mapKey   = keys.find(k => k.includes('ระหว่างภูมิ')) || 'หมายเลขระหว่างภูมิประเทศ';
+  const quadKey  = keys.find(k => k.includes('แผ่นระวาง')) || 'หมายเลขแผ่นระวางภูมิประเทศ';
+  const utmKey   = keys.find(k => k.includes('UTM'));
   const parts = [
-    record['หมายเลขระหว่างภูมิประเทศ'] && `ระวาง ${record['หมายเลขระหว่างภูมิประเทศ']}`,
-    record['หมายเลขแผ่นระวางภูมิประเทศ'] && `แผ่น ${record['หมายเลขแผ่นระวางภูมิประเทศ']}`,
-    record['เลขที่ดิน'] && `เลขที่ ${record['เลขที่ดิน']}`,
-    record['หมายเลขระวาง UTM'] && `UTM ${record['หมายเลขระวาง UTM']}`,
+    record[mapKey]  && `ระวาง ${record[mapKey]}`,
+    record[quadKey] && `แผ่น ${record[quadKey]}`,
+    record[landKey] && `เลขที่ ${record[landKey]}`,
+    utmKey && record[utmKey] && `UTM ${record[utmKey]}`,
   ].filter(Boolean);
   return parts.join(' • ') || 'รายการที่พบ';
 }
@@ -73,25 +78,45 @@ export async function searchGovPrice({ province, landNo, mapSheet }) {
   const resources = await getProvinceResources();
   const resourceId = resources[province];
   if (!resourceId) {
-    throw new Error(`ไม่พบข้อมูลจังหวัด "${province}" ในระบบกรมธนารักษ์`);
+    const available = Object.keys(resources).slice(0, 5).join(', ');
+    throw new Error(`ไม่พบข้อมูลจังหวัด "${province}" — จังหวัดที่มี: ${available || 'ไม่มี (โหลดไม่สำเร็จ)'}`);
   }
 
-  const filters = { เลขที่ดิน: String(landNo).trim() };
+  // ขั้นที่ 1: ดูชื่อ field จริงจาก datastore (limit=1)
+  const infoParams = new URLSearchParams({ resource_id: resourceId, limit: 1 });
+  const infoJson = await proxyFetch(`${CKAN}/datastore_search?${infoParams}`);
+  if (!infoJson.success) {
+    const msg = infoJson.error?.message || infoJson.error?.__type || 'datastore ไม่พร้อมใช้งาน';
+    throw new Error(`resource_id: ${resourceId} — ${msg}`);
+  }
+
+  // หา field ที่น่าจะเป็นเลขที่ดิน (มีคำว่า "ที่ดิน" หรือ "land")
+  const fields = (infoJson.result.fields || []).map(f => f.id);
+  const landField = fields.find(f => f.includes('ที่ดิน') || f.toLowerCase().includes('land')) || 'เลขที่ดิน';
+  const mapField  = fields.find(f => f.includes('ระหว่างภูมิ') || f.includes('map')) || 'หมายเลขระหว่างภูมิประเทศ';
+  const quadField = fields.find(f => f.includes('แผ่นระวาง')) || 'หมายเลขแผ่นระวางภูมิประเทศ';
+
+  // ขั้นที่ 2: ค้นด้วย q (full-text) แล้ว filter client-side ด้วย landField จริง
   const { num, quadrant } = parseMapSheet(mapSheet);
-  if (num) filters['หมายเลขระหว่างภูมิประเทศ'] = num;
-  if (quadrant != null) filters['หมายเลขแผ่นระวางภูมิประเทศ'] = quadrant;
+  const q = String(landNo).trim();
 
-  const params = new URLSearchParams({
-    resource_id: resourceId,
-    filters: JSON.stringify(filters),
-    limit: 20,
-  });
+  const searchParams = new URLSearchParams({ resource_id: resourceId, q, limit: 100 });
+  const json = await proxyFetch(`${CKAN}/datastore_search?${searchParams}`);
+  if (!json.success) {
+    const msg = json.error?.message || json.error?.__type || 'unknown';
+    throw new Error(`ค้นหาไม่สำเร็จ: ${msg}`);
+  }
 
-  const json = await proxyFetch(`${CKAN}/datastore_search?${params}`);
-  if (!json.success) throw new Error('ค้นหาไม่สำเร็จ');
+  // Filter client-side: เลขที่ดินตรง + ระวางตรง (ถ้ามี)
+  let records = (json.result.records || []).filter(r =>
+    String(r[landField]).trim() === q
+  );
+  if (num && records.length > 1) {
+    records = records.filter(r => String(r[mapField]).trim() === num);
+  }
+  if (quadrant != null && records.length > 1) {
+    records = records.filter(r => Number(r[quadField]) === quadrant);
+  }
 
-  return {
-    records: json.result.records || [],
-    total: json.result.total || 0,
-  };
+  return { records, total: records.length, fields };
 }
