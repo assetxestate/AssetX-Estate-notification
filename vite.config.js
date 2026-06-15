@@ -11,6 +11,29 @@ export default defineConfig(({ mode }) => {
       {
         name: 'gemini-api-dev',
         configureServer(server) {
+          // Proxy กรมธนารักษ์ — Dev เท่านั้น (Production ใช้ api/treasury.js)
+          server.middlewares.use('/api/treasury', async (req, res) => {
+            try {
+              const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+              const params = new URLSearchParams(qs)
+              const targetUrl = decodeURIComponent(params.get('url') || '')
+              if (!targetUrl.startsWith('https://catalog.treasury.go.th/')) {
+                res.statusCode = 400
+                res.setHeader('Content-Type', 'application/json')
+                res.end(JSON.stringify({ error: 'Invalid URL' }))
+                return
+              }
+              const upstream = await fetch(targetUrl)
+              const text = await upstream.text()
+              res.setHeader('Content-Type', 'application/json')
+              res.end(text)
+            } catch (e) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: e.message }))
+            }
+          })
+
           // Dev server middleware เท่านั้น — Production ใช้ api/chat.js (Vercel)
           server.middlewares.use('/api/chat', async (req, res) => {
             if (req.method !== 'POST') {

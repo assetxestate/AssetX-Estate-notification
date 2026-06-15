@@ -5,6 +5,13 @@
 const CKAN = 'https://catalog.treasury.go.th/api/3/action';
 const PACKAGE_ID = 'land-valuation';
 
+// ส่ง request ผ่าน proxy /api/treasury (หลีก CORS)
+async function proxyFetch(url) {
+  const res = await fetch(`/api/treasury?url=${encodeURIComponent(url)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 let _resources = null;
 
 // ดึง resource_id ของแต่ละจังหวัด (cache ใน sessionStorage)
@@ -16,9 +23,7 @@ export async function getProvinceResources() {
     try { _resources = JSON.parse(cached); return _resources; } catch {}
   }
 
-  const res = await fetch(`${CKAN}/package_show?id=${PACKAGE_ID}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
+  const json = await proxyFetch(`${CKAN}/package_show?id=${PACKAGE_ID}`);
   if (!json.success) throw new Error('โหลดรายการจังหวัดไม่สำเร็จ');
 
   const map = {};
@@ -82,14 +87,7 @@ export async function searchGovPrice({ province, landNo, mapSheet }) {
     limit: 20,
   });
 
-  let res;
-  try {
-    res = await fetch(`${CKAN}/datastore_search?${params}`);
-  } catch {
-    throw new Error('เชื่อมต่อ catalog.treasury.go.th ไม่ได้ — อาจเป็นปัญหา CORS หรือเครือข่าย');
-  }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
+  const json = await proxyFetch(`${CKAN}/datastore_search?${params}`);
   if (!json.success) throw new Error('ค้นหาไม่สำเร็จ');
 
   return {
