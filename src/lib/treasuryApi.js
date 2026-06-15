@@ -54,15 +54,27 @@ export function extractPrice(record) {
   return priceKey ? parseFloat(record[priceKey]) || 0 : 0;
 }
 
-// สร้าง label แสดงข้อมูลทุก field ที่มีค่าสำหรับ UI
+// แปลง field name จาก CKAN เป็นภาษาไทยอ่านง่าย
+const FIELD_LABEL = {
+  UTMMAP1: 'ระวาง', UTMMAP2: 'แผ่น', UTMMAP3: 'ลำดับ', UTMMAP4: 'ย่อย',
+  UTMSCALE: 'มาตราส่วน', LAND_NO: 'เลขที่ดิน',
+  'หมายเลขระหว่างภูมิประเทศ': 'ระวาง', 'หมายเลขแผ่นระวางภูมิประเทศ': 'แผ่น',
+  'เลขที่ดิน': 'เลขที่ดิน', 'หมายเลขระวาง UTM': 'UTM',
+};
+
+// สร้าง label แสดงข้อมูลตำแหน่งสำหรับ UI
 export function recordLabel(record) {
-  const SKIP = new Set(['_id', '_full_text']);
+  const SKIP = new Set(['_id', '_full_text', 'rank']);
   const priceKeys = new Set(
     Object.keys(record).filter(k => k.includes('ราคา') || k.toLowerCase().includes('price'))
   );
   const parts = Object.entries(record)
     .filter(([k, v]) => !SKIP.has(k) && !priceKeys.has(k) && v != null && String(v).trim() !== '')
-    .map(([k, v]) => `${k}: ${v}`);
+    .map(([k, v]) => {
+      const label = FIELD_LABEL[k] || k;
+      const val = k === 'UTMSCALE' ? `1:${Number(v).toLocaleString('th-TH')}` : v;
+      return `${label} ${val}`;
+    });
   return parts.join(' | ') || 'รายการที่พบ';
 }
 
