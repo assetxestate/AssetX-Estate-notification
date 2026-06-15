@@ -461,7 +461,12 @@ export default function App() {
     () =>
       enriched
         .map((c) => {
-          if (c.isVoided) return null; // ซ่อนลูกค้าที่ถูกยกเลิก
+          if (filter === "closed") {
+            // แท็บนี้แสดงเฉพาะสัญญาที่ปิดแล้ว/ยกเลิกเท่านั้น (ปกติจะถูกซ่อน/ทำให้จาง)
+            if (!c.isClosed && !c.isVoided) return null;
+            return c;
+          }
+          if (c.isVoided) return null; // ซ่อนลูกค้าที่ถูกยกเลิก (ยกเว้นในแท็บ "ปิด/ยกเลิกสัญญา")
           if (filter === "mortgage" && c.type !== "จำนอง") return null;
           if (filter === "sell" && c.type !== "ขายฝาก") return null;
           let pays = c.payments;
@@ -1210,6 +1215,7 @@ export default function App() {
                       ["soon", "≤7 วัน"],
                       ["mortgage", "จำนอง"],
                       ["sell", "ขายฝาก"],
+                      ["closed", "🔒 ปิด/ยกเลิกสัญญา"],
                     ].map(([k, l]) => (
                       <button
                         key={k}
@@ -1232,12 +1238,14 @@ export default function App() {
                     {filtered.map((c) => {
                       const isExp = expandedId === c.id;
                       const nextPay =
-                        c.payments.find((p) => p.diff >= 0) || c.payments[0];
+                        c.payments.find((p) => p.diff >= 0 && p.status !== 'paid')
+                        || c.payments.find((p) => p.diff >= 0)
+                        || c.payments[0];
                       return (
                         <div
                           key={c.id}
                           className="card"
-                          style={{ overflow: "hidden", opacity: c.isClosed ? 0.6 : 1 }}
+                          style={{ overflow: "hidden", opacity: (c.isClosed || c.isVoided) ? 0.6 : 1 }}
                         >
                           <div
                             style={{
@@ -1262,7 +1270,7 @@ export default function App() {
                                   width: 44,
                                   height: 44,
                                   borderRadius: 12,
-                                  background: c.isClosed ? '#334155' : (c.color || BRAND.teal),
+                                  background: c.isVoided ? '#7C2D12' : (c.isClosed ? '#334155' : (c.color || BRAND.teal)),
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -1270,15 +1278,15 @@ export default function App() {
                                   flexShrink: 0,
                                 }}
                               >
-                                {c.isClosed ? "🔒" : (c.icon || "🏠")}
+                                {c.isVoided ? "🚫" : (c.isClosed ? "🔒" : (c.icon || "🏠"))}
                               </div>
                               <div>
                                 <div
                                   style={{
                                     fontWeight: 700,
-                                    color: c.isClosed ? BRAND.textMut : BRAND.textPri,
+                                    color: (c.isClosed || c.isVoided) ? BRAND.textMut : BRAND.textPri,
                                     fontSize: 15,
-                                    textDecoration: c.isClosed ? 'line-through' : 'none',
+                                    textDecoration: (c.isClosed || c.isVoided) ? 'line-through' : 'none',
                                   }}
                                 >
                                   {c.name}
@@ -1293,6 +1301,11 @@ export default function App() {
                                   {c.isClosed && (
                                     <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(100,116,139,0.2)', color: '#94A3B8', border: '1px solid rgba(100,116,139,0.4)' }}>
                                       🔒 ปิดแล้ว
+                                    </span>
+                                  )}
+                                  {c.isVoided && (
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(180,83,9,0.2)', color: '#FB923C', border: '1px solid rgba(180,83,9,0.4)' }}>
+                                      🚫 ยกเลิกสัญญา
                                     </span>
                                   )}
                                   {c.lineUserId ? (
@@ -1324,7 +1337,9 @@ export default function App() {
                                   }}
                                 >
                                   งวด {nextPay.installment} •{" "}
-                                  {nextPay.diff === 0
+                                  {nextPay.status === 'paid'
+                                    ? "ชำระแล้ว"
+                                    : nextPay.diff === 0
                                     ? "วันนี้"
                                     : nextPay.diff > 0
                                     ? `อีก ${nextPay.diff} วัน`
