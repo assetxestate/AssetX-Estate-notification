@@ -8,6 +8,7 @@ import {
   updateValuationStatus as apiUpdateValuationStatus,
   deleteValuation as apiDeleteValuation,
 } from './lib/api.js'
+import { searchGovPrice, extractPrice, recordLabel } from './lib/treasuryApi.js'
 
 const BRAND = {
   teal: '#2DD4BF', gold: '#F59E0B', bg: '#050B18', bgCard: '#0D1B2E',
@@ -1002,6 +1003,30 @@ function HistoryView({ appsScriptUrl }) {
 function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, assetCode }) {
   const subtypes = PROPERTY_SUBTYPES[form.propertyType] || ['อื่นๆ']
 
+  // ── กรมธนารักษ์ lookup ────────────────────────────────
+  const [trdLookup, setTrdLookup] = useState(null)
+
+  async function handleGovLookup(idx) {
+    const deed = form.deeds[idx]
+    if (!deed.landNo) { alert('กรุณากรอกเลขที่ดินก่อน'); return }
+    setTrdLookup({ deedIdx: idx, loading: true, records: [], error: null })
+    try {
+      const { records, total } = await searchGovPrice({
+        province: form.province,
+        landNo: deed.landNo,
+        mapSheet: deed.mapSheet,
+      })
+      if (records.length === 1) {
+        updateDeed(idx, 'govPrice', extractPrice(records[0]))
+        setTrdLookup(null)
+      } else {
+        setTrdLookup({ deedIdx: idx, loading: false, records, total, error: null })
+      }
+    } catch (e) {
+      setTrdLookup({ deedIdx: idx, loading: false, records: [], total: 0, error: e.message })
+    }
+  }
+
   const handleCustomerSelect = (val) => {
     update('linkedCustomer', val)
     if (!val) return
@@ -1169,8 +1194,46 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                     </div>
                   </div>
                   <div>
-                    <Label>ราคาประเมินรัฐ (บ./ตร.ว.)</Label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <Label style={{ margin: 0 }}>ราคาประเมินรัฐ (บ./ตร.ว.)</Label>
+                      <button
+                        type="button"
+                        onClick={() => handleGovLookup(idx)}
+                        disabled={trdLookup?.deedIdx === idx && trdLookup?.loading}
+                        style={{ fontSize: 10, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(245,158,11,0.5)', background: 'rgba(245,158,11,0.08)', color: BRAND.gold, cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1.6 }}
+                      >
+                        {trdLookup?.deedIdx === idx && trdLookup?.loading ? '⏳ กำลังค้นหา...' : '🏛️ กรมธนารักษ์'}
+                      </button>
+                    </div>
                     <input type="number" min="0" value={deed.govPrice} onChange={e => updateDeed(idx, 'govPrice', +e.target.value)} style={inputBase} />
+
+                    {/* Treasury lookup results */}
+                    {trdLookup?.deedIdx === idx && !trdLookup.loading && (
+                      <div style={{ marginTop: 6, padding: '10px 12px', background: '#0A1628', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 8, fontSize: 12 }}>
+                        {trdLookup.error ? (
+                          <div style={{ color: '#FCA5A5' }}>❌ {trdLookup.error}</div>
+                        ) : trdLookup.records.length === 0 ? (
+                          <div style={{ color: BRAND.textSec }}>ไม่พบข้อมูล — ลองตรวจสอบเลขที่ดินหรือระวาง</div>
+                        ) : (
+                          <>
+                            <div style={{ color: BRAND.textSec, marginBottom: 6 }}>พบ {trdLookup.total.toLocaleString('th-TH')} รายการ — เลือกเพื่อใส่ราคา:</div>
+                            {trdLookup.records.slice(0, 6).map((r, i) => {
+                              const price = extractPrice(r)
+                              return (
+                                <button key={i}
+                                  onClick={() => { updateDeed(trdLookup.deedIdx, 'govPrice', price); setTrdLookup(null) }}
+                                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', margin: '3px 0', borderRadius: 6, border: '1px solid rgba(245,158,11,0.2)', background: 'rgba(245,158,11,0.05)', color: BRAND.textPri, cursor: 'pointer', fontSize: 11 }}
+                                >
+                                  <span style={{ color: BRAND.gold, fontWeight: 700 }}>{price.toLocaleString('th-TH')} ฿/ตร.ว.</span>
+                                  <span style={{ color: BRAND.textSec, marginLeft: 8, fontSize: 10 }}>{recordLabel(r)}</span>
+                                </button>
+                              )
+                            })}
+                          </>
+                        )}
+                        <button onClick={() => setTrdLookup(null)} style={{ fontSize: 10, color: BRAND.textSec, background: 'none', border: 'none', cursor: 'pointer', marginTop: 4, padding: 0 }}>✕ ปิด</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
