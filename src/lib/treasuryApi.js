@@ -36,13 +36,22 @@ export async function getProvinceResources() {
   return map;
 }
 
-// แปลง "5237I" / "5036II" → { num: "5237", quadrant: 1 }
+// แปลงระวางแบบเต็ม เช่น "5035IV 1286-03" หรือ "5035 IV 1286-03 (2000)"
+// → { num: "5035", quadrant: 4, sub1: "1286", sub2: "3", scale: "2000" }
 function parseMapSheet(s) {
   if (!s) return {};
-  const m = String(s).trim().match(/^(\d+)\s*(IV|III|II|I)?$/i);
+  const clean = String(s).trim().replace(/[()]/g, '');
+  // หลัก 4 ตัว + roman + optional sub1-sub2 + optional scale
+  const m = clean.match(/^(\d+)\s*(IV|III|II|I)\s*(?:(\d+)(?:-0*(\d+))?)?\s*(?:(\d+))?$/i);
   if (!m) return {};
   const quadrant = { I: 1, II: 2, III: 3, IV: 4 }[(m[2] || '').toUpperCase()];
-  return { num: m[1], quadrant };
+  return {
+    num: m[1],
+    quadrant,
+    sub1: m[3] || null,   // UTMMAP3
+    sub2: m[4] || null,   // UTMMAP4
+    scale: m[5] || null,  // UTMSCALE
+  };
 }
 
 // หา column ที่มีราคาจาก record (รองรับชื่อ column หลายแบบ)
@@ -109,7 +118,7 @@ export async function searchGovPrice({ province, landNo, mapSheet }) {
   const quadField = fields.find(f => fl(f) === 'utmmap2' || f.includes('แผ่นระวาง') || (fl(f).includes('utm') && fl(f).endsWith('2'))) || 'UTMMAP2';
 
   // ขั้นที่ 2: ค้นด้วย q (full-text) แล้ว filter client-side ด้วย landField จริง
-  const { num, quadrant } = parseMapSheet(mapSheet);
+  const { num, quadrant, sub1, sub2, scale } = parseMapSheet(mapSheet);
   const q = String(landNo).trim();
 
   const searchParams = new URLSearchParams({ resource_id: resourceId, q, limit: 100 });
@@ -119,17 +128,25 @@ export async function searchGovPrice({ province, landNo, mapSheet }) {
     throw new Error(`ค้นหาไม่สำเร็จ: ${msg}`);
   }
 
-  // Filter client-side: เลขที่ดินตรง + ระวางตรง (ถ้ามี)
+  // หา field UTMMAP3, UTMMAP4, UTMSCALE จาก fields ที่ probe ไว้
+  const sub1Field  = fields.find(f => fl(f) === 'utmmap3' || (fl(f).includes('utm') && fl(f).endsWith('3'))) || 'UTMMAP3';
+  const sub2Field  = fields.find(f => fl(f) === 'utmmap4' || (fl(f).includes('utm') && fl(f).endsWith('4'))) || 'UTMMAP4';
+  const scaleField = fields.find(f => fl(f) === 'utmscale' || fl(f).includes('scale')) || 'UTMSCALE';
+
+  // Filter client-side: เลขที่ดินตรง → ระวางหลัก → quadrant → sub1 → sub2 → scale
   let records = (json.result.records || []).filter(r =>
     String(r[landField]).trim() === q
   );
-  if (num && records.length > 1) {
+  if (num && records.length > 1)
     records = records.filter(r => String(r[mapField]).trim() === num);
-  }
-  if (quadrant != null && records.length > 1) {
-    // UTMMAP2 เก็บเป็น number (1-4) เทียบกับ quadrant ที่ได้จาก I→1, II→2, III→3, IV→4
+  if (quadrant != null && records.length > 1)
     records = records.filter(r => String(r[quadField]).trim() === String(quadrant));
-  }
+  if (sub1 && records.length > 1)
+    records = records.filter(r => String(r[sub1Field]).trim() === sub1);
+  if (sub2 && records.length > 1)
+    records = records.filter(r => String(r[sub2Field]).trim() === sub2);
+  if (scale && records.length > 1)
+    records = records.filter(r => String(r[scaleField]).trim() === scale);
 
   return { records, total: records.length, fields };
 }
