@@ -11,6 +11,31 @@ export default defineConfig(({ mode }) => {
       {
         name: 'gemini-api-dev',
         configureServer(server) {
+          // Proxy กรมที่ดิน LandsMaps — Dev เท่านั้น (Production ใช้ api/landsmaps.js)
+          server.middlewares.use('/api/landsmaps', async (req, res) => {
+            try {
+              const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?') + 1) : ''
+              const params = new URLSearchParams(qs)
+              const action = params.get('action')
+              const BASE = 'https://landsmaps.dol.go.th/apiService/LandsMaps'
+              const HEADERS = { 'Accept': 'application/json', 'Referer': 'https://landsmaps.dol.go.th/' }
+              let url
+              if (action === 'amphoe') {
+                url = `${BASE}/GetAmphoeByProvinceId/${params.get('provCode')}`
+              } else {
+                url = `${BASE}/GetParcelByParcelNo/${params.get('provCode')}/${params.get('ampCode')}/${params.get('deedNo')}`
+              }
+              const upstream = await fetch(url, { headers: HEADERS })
+              const text = await upstream.text()
+              res.setHeader('Content-Type', 'application/json')
+              res.end(text)
+            } catch (e) {
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: e.message }))
+            }
+          })
+
           // Proxy กรมธนารักษ์ — Dev เท่านั้น (Production ใช้ api/treasury.js)
           server.middlewares.use('/api/treasury', async (req, res) => {
             try {
