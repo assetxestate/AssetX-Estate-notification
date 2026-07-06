@@ -1,11 +1,8 @@
 import React, { useState, useMemo } from 'react'
+import { BRAND as BASE_BRAND } from './lib/config.js'
 
-const BRAND = {
-  teal: '#2DD4BF', gold: '#F59E0B', bg: '#050B18', bgCard: '#0D1B2E',
-  border: '#0F2545', borderLt: '#162E56', textPri: '#F0F6FF',
-  textSec: '#64748B', textMut: '#475569', success: '#10B981',
-  danger: '#EF4444', purple: '#7C3AED', orange: '#F97316',
-}
+// ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
+const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981', danger: '#EF4444' }
 
 const fmtMoney = (n) => {
   if (!n || isNaN(n)) return '0'

@@ -1,6 +1,47 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import https from 'node:https'
+
+function dolGet(urlStr, headers) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr)
+    const req = https.request({ hostname: u.hostname, path: u.pathname + (u.search || ''), method: 'GET', headers }, (res) => {
+      const setCookies = res.headers['set-cookie'] || []
+      const cookies = setCookies.map(c => c.split(';')[0]).join('; ')
+      let body = ''
+      res.on('data', d => body += d)
+      res.on('end', () => resolve({ status: res.statusCode, body, cookies }))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+let _dolTokenCache = null
+let _dolTokenExpiry = 0
+
+async function autoGetDolToken() {
+  if (_dolTokenCache && Date.now() < _dolTokenExpiry) return _dolTokenCache
+  try {
+    const r = await dolGet('https://landsmaps.dol.go.th/getkey', {
+      'Accept': '*/*',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+    })
+    if (r.status === 200 || r.status === 304) {
+      const json = JSON.parse(Buffer.from(r.body.trim(), 'base64').toString('utf8'))
+      const token = json.defaultAccessToken
+      if (token) {
+        _dolTokenCache = token
+        _dolTokenExpiry = Date.now() + 20 * 60 * 1000
+        return token
+      }
+    }
+  } catch (e) {
+    console.log('[DOL] auto-token error:', e.message)
+  }
+  return null
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -11,38 +52,40 @@ export default defineConfig(({ mode }) => {
       {
         name: 'gemini-api-dev',
         configureServer(server) {
-          // Proxy กรมที่ดิน LandsMaps — Dev เท่านั้น (Production ใช้ api/landsmaps.js)
           server.middlewares.use('/api/landsmaps', async (req, res) => {
             try {
               const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?') + 1) : ''
               const params = new URLSearchParams(qs)
               const action = params.get('action')
               const BASE = 'https://landsmaps.dol.go.th/apiService/LandsMaps'
-              const HEADERS = {
+              const url = action === 'amphoe'
+                ? `${BASE}/GetAmphoeByProvinceId/${params.get('provCode')}`
+                : `${BASE}/GetParcelByParcelNo/${params.get('provCode')}/${params.get('ampCode')}/${params.get('deedNo')}`
+              const userCookie = req.headers['x-dol-cookie'] || ''
+              const userToken  = req.headers['x-dol-token'] || ''
+              const autoToken  = await autoGetDolToken()
+              const bearerToken = userToken || autoToken
+              const BASE_HEADERS = {
                 'Accept': 'application/json, text/javascript, */*; q=0.01',
-                'Referer': 'https://landsmaps.dol.go.th/',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept-Language': 'th-TH,th;q=0.9,en;q=0.8',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Referer': 'https://landsmaps.dol.go.th/',
+                'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                ...(bearerToken ? { 'Authorization': `Bearer ${bearerToken}` } : {}),
               }
-              let url
-              if (action === 'amphoe') {
-                url = `${BASE}/GetAmphoeByProvinceId/${params.get('provCode')}`
-              } else {
-                url = `${BASE}/GetParcelByParcelNo/${params.get('provCode')}/${params.get('ampCode')}/${params.get('deedNo')}`
+              if (userCookie) {
+                const r = await dolGet(url, { ...BASE_HEADERS, Cookie: userCookie })
+                console.log('[DOL user-cookie]', r.status, r.body.slice(0, 120))
+                if (!r.body.trim().startsWith('<')) { res.statusCode = r.status; res.setHeader('Content-Type', 'application/json'); return res.end(r.body) }
+                res.statusCode = 503; res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ error: 'INCAPSULA_BLOCK' }))
               }
-              console.log('[DOL proxy] →', url)
-              const upstream = await fetch(url, { headers: HEADERS })
-              console.log('[DOL proxy] ← status:', upstream.status)
-              const text = await upstream.text()
-              console.log('[DOL proxy] body preview:', text.slice(0, 200))
-              res.statusCode = upstream.status
-              res.setHeader('Content-Type', 'application/json')
-              res.end(text)
+              const probe = await dolGet(url, BASE_HEADERS)
+              if (!probe.body.trim().startsWith('<')) { res.statusCode = probe.status; res.setHeader('Content-Type', 'application/json'); return res.end(probe.body) }
+              const retry = await dolGet(url, { ...BASE_HEADERS, Cookie: probe.cookies })
+              if (!retry.body.trim().startsWith('<')) { res.statusCode = retry.status; res.setHeader('Content-Type', 'application/json'); return res.end(retry.body) }
+              res.statusCode = 503; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: 'INCAPSULA_BLOCK' }))
             } catch (e) {
-              console.error('[DOL proxy] ERROR:', e.message, e.cause?.message || '')
-              res.statusCode = 500
-              res.setHeader('Content-Type', 'application/json')
-              res.end(JSON.stringify({ error: e.message, cause: e.cause?.message }))
+              res.statusCode = 500; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: e.message }))
             }
           })
 

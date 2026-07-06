@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { BRAND as BASE_BRAND } from './lib/config.js'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getValuations as apiGetValuations } from './lib/api.js'
 
-const BRAND = {
-  teal: '#2DD4BF', gold: '#F59E0B', bg: '#050B18', bgCard: '#0D1B2E',
-  border: '#0F2545', textPri: '#F0F6FF', textSec: '#64748B', textMut: '#475569', success: '#10B981',
-}
+// ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
+const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981' }
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 

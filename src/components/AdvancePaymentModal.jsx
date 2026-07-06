@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { formatMoney, formatThai } from "../lib/utils.js";
 
@@ -28,8 +29,8 @@ export function AdvancePaymentModal({ customer, onClose, onSaved }) {
   const totalAmount = selected.size * (customer.amount || 0);
 
   const handleSave = async () => {
-    if (selected.size === 0) { alert("กรุณาเลือกงวดที่ต้องการชำระ"); return; }
-    if (!paidDate) { alert("กรุณาระบุวันที่ชำระ"); return; }
+    if (selected.size === 0) { showToast("กรุณาเลือกงวดที่ต้องการชำระ"); return; }
+    if (!paidDate) { showToast("กรุณาระบุวันที่ชำระ"); return; }
     setSaving(true);
     try {
       await onSaved(customer.id, Array.from(selected), {

@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
+import { showToast } from "./lib/toast.js";
+import { BRAND as BASE_BRAND } from './lib/config.js'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
@@ -11,14 +13,8 @@ import {
 import { searchGovPrice, extractPrice, recordLabel } from './lib/treasuryApi.js'
 import { THAI_PROVINCES, PROV_CODE, getAmphoeList, searchByDeed, parseDolResult } from './lib/dolApi.js'
 
-const BRAND = {
-  teal: '#2DD4BF', gold: '#F59E0B', bg: '#050B18', bgCard: '#0D1B2E',
-  border: '#0F2545', borderLt: '#162E56', textPri: '#F0F6FF',
-  textSec: '#64748B', textMut: '#475569', success: '#10B981',
-}
-
-const CSE_API_KEY = 'AIzaSyB4Aob3vFGs-J2hMMvWsprq8JXiBmlFfFg'
-const CSE_CX = 'a02753d79baa74133'
+// ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
+const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981' }
 
 const ASSESSMENT_TYPES = [
   { value: 'ขายฝาก', icon: '🔒', desc: 'รับซื้อฝาก / ได้ผลตอบแทนหลัง' },
@@ -588,7 +584,7 @@ function HistoryView({ appsScriptUrl }) {
       await apiUpdateValuationStatus(row['_rowIndex'], 'รอการพิจารณา')
       setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': 'รอการพิจารณา' } : r))
     } catch (e) {
-      alert('เกิดข้อผิดพลาด: ' + e.message)
+      showToast('เกิดข้อผิดพลาด: ' + e.message)
     } finally {
       setSendingRow(null)
     }
@@ -630,7 +626,7 @@ function HistoryView({ appsScriptUrl }) {
       ))
       setEditRow(null)
     } catch (e) {
-      alert('เกิดข้อผิดพลาด: ' + e.message)
+      showToast('เกิดข้อผิดพลาด: ' + e.message)
     } finally {
       setSaving(false)
     }
@@ -638,13 +634,14 @@ function HistoryView({ appsScriptUrl }) {
 
   const handleDelete = async (row) => {
     const rowIndex = row['_rowIndex']
-    if (!rowIndex) { alert('ไม่พบ index ของรายการ — กรุณา reload แล้วลองใหม่'); return }
+    if (!rowIndex) { showToast('ไม่พบ index ของรายการ — กรุณา reload แล้วลองใหม่'); return }
+    if (!window.confirm('ยืนยันลบรายการประเมินนี้? การลบไม่สามารถย้อนกลับได้')) return
     setDeletingIdx(rowIndex)
     try {
       await apiDeleteValuation(rowIndex)
       setRows(prev => prev.filter(r => r['_rowIndex'] !== rowIndex))
     } catch (e) {
-      alert('เกิดข้อผิดพลาด: ' + e.message)
+      showToast('เกิดข้อผิดพลาด: ' + e.message)
     } finally {
       setDeletingIdx(null)
       setConfirmRow(null)
@@ -1041,7 +1038,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
 
   async function handleGovLookup(idx) {
     const deed = form.deeds[idx]
-    if (!deed.landNo) { alert('กรุณากรอกเลขที่ดินก่อน'); return }
+    if (!deed.landNo) { showToast('กรุณากรอกเลขที่ดินก่อน'); return }
     setTrdLookup({ deedIdx: idx, loading: true, records: [], error: null })
     try {
       const { records, total } = await searchGovPrice({
@@ -1450,7 +1447,7 @@ function MapPicker({ form, update }) {
   const handleSearch = async () => {
     const parts = [form.subdistrict, form.district, form.province].filter(Boolean)
     if (parts.length === 0) {
-      alert('กรุณากรอก จังหวัด/อำเภอ/ตำบล ใน Step 1 ก่อน')
+      showToast('กรุณากรอก จังหวัด/อำเภอ/ตำบล ใน Step 1 ก่อน')
       return
     }
     setSearching(true)
@@ -1461,10 +1458,10 @@ function MapPicker({ form, update }) {
       if (data.length > 0) {
         placeMarker(parseFloat(data[0].lat), parseFloat(data[0].lon))
       } else {
-        alert('ไม่พบตำแหน่ง กรุณาคลิกบนแผนที่แทน')
+        showToast('ไม่พบตำแหน่ง กรุณาคลิกบนแผนที่แทน')
       }
     } catch {
-      alert('เกิดข้อผิดพลาดในการค้นหาตำแหน่ง')
+      showToast('เกิดข้อผิดพลาดในการค้นหาตำแหน่ง')
     } finally {
       setSearching(false)
     }
@@ -1504,7 +1501,7 @@ function MapPicker({ form, update }) {
     const lat = parseFloat(latInput)
     const lng = parseFloat(lngInput)
     if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      alert('พิกัดไม่ถูกต้อง\nละติจูด: -90 ถึง 90\nลองจิจูด: -180 ถึง 180')
+      showToast('พิกัดไม่ถูกต้อง\nละติจูด: -90 ถึง 90\nลองจิจูด: -180 ถึง 180')
       return
     }
     placeMarker(lat, lng)
@@ -2307,7 +2304,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
       })
       setSaved(true)
     } catch (e) {
-      alert('เกิดข้อผิดพลาด: ' + e.message)
+      showToast('เกิดข้อผิดพลาด: ' + e.message)
     } finally {
       setSaving(false)
     }

@@ -1,12 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import ChatPanel from "./ChatPanel.jsx";
-import ValuationPage from "./ValuationPage.jsx";
-import MapView from "./MapView.jsx";
-import InvestorPage from "./InvestorPage.jsx";
-import DashboardPage from "./DashboardPage.jsx";
-import TaxPage from "./TaxPage.jsx";
-import LegalPage from "./LegalPage.jsx";
-import ReservationPage from "./ReservationPage.jsx";
+import { showToast } from "./lib/toast.js";
 import {
   getCustomers as apiGetCustomers,
   getContractStatuses as apiGetContractStatuses,
@@ -37,7 +30,6 @@ import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
 import { MOCK_DATA } from "./lib/mockData.js";
 import { useLineNotification } from "./hooks/useLineNotification.js";
 import { Logo, Skeleton, LineButton, TypeBadge } from "./components/SharedComponents.jsx";
-import { SystemStatusPage } from "./components/SystemStatusPage.jsx";
 import { SlipModal } from "./components/SlipModal.jsx";
 import { CustomerExtraInfoSection } from "./components/CustomerExtraInfoSection.jsx";
 import { CustomerSheetEditModal } from "./components/CustomerSheetEditModal.jsx";
@@ -48,6 +40,26 @@ import { TopupModal } from "./components/TopupModal.jsx";
 import { AdvancePaymentModal } from "./components/AdvancePaymentModal.jsx";
 import { RenewContractModal } from "./components/RenewContractModal.jsx";
 
+
+// ── Code splitting: โหลดแต่ละหน้าเมื่อเปิดใช้จริง ลด bundle แรกเข้า ──
+const lazyPage = (loader) => {
+  const C = React.lazy(loader);
+  return function LazyPage(props) {
+    return (
+      <React.Suspense fallback={<div style={{ padding: 60, textAlign: "center", color: "#64748B" }}>กำลังโหลด...</div>}>
+        <C {...props} />
+      </React.Suspense>
+    );
+  };
+};
+const ValuationPage = lazyPage(() => import("./ValuationPage.jsx"));
+const MapView = lazyPage(() => import("./MapView.jsx"));
+const InvestorPage = lazyPage(() => import("./InvestorPage.jsx"));
+const DashboardPage = lazyPage(() => import("./DashboardPage.jsx"));
+const TaxPage = lazyPage(() => import("./TaxPage.jsx"));
+const LegalPage = lazyPage(() => import("./LegalPage.jsx"));
+const ReservationPage = lazyPage(() => import("./ReservationPage.jsx"));
+const SystemStatusPage = lazyPage(() => import("./components/SystemStatusPage.jsx").then((m) => ({ default: m.SystemStatusPage })));
 // Main App Component
 export default function App() {
   const [customers, setCustomers] = useState([]);
@@ -2152,7 +2164,7 @@ export default function App() {
                     setToast({ success: true, message: `ยกเลิกสัญญา ${cancelConfirm.name} แล้ว` });
                     setTimeout(() => setToast(null), 3000);
                   } catch (e) {
-                    alert('เกิดข้อผิดพลาด: ' + e.message);
+                    showToast('เกิดข้อผิดพลาด: ' + e.message);
                   } finally {
                     setCancelling(false);
                   }

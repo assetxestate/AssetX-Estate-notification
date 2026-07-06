@@ -1,4 +1,5 @@
 import React from "react";
+import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { formatThai } from "../lib/utils.js";
 import { IMGBB_KEY, IMGBB_ALBUMS } from "../lib/messages.js";
@@ -45,10 +46,10 @@ export function SlipModal({ customer, payment, existing, onSave, onDelete, onClo
           slipDeleteUrl: data.data.delete_url,
         }));
       } else {
-        alert("อัปโหลดรูปไม่สำเร็จ: " + (data.error?.message || "กรุณาลองใหม่"));
+        showToast("อัปโหลดรูปไม่สำเร็จ: " + (data.error?.message || "กรุณาลองใหม่"));
       }
     } catch (err) {
-      alert("เกิดข้อผิดพลาด: " + err.message);
+      showToast("เกิดข้อผิดพลาด: " + err.message);
     } finally {
       setUploading(false);
     }

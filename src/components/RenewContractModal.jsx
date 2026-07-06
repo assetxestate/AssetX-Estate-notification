@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { formatMoney, formatThai } from "../lib/utils.js";
 import { renewContract as apiRenewContract } from "../lib/api.js";
@@ -46,14 +47,14 @@ export function RenewContractModal({ customer, onClose, onSaved }) {
   }, [lastPayment, newEndDate, customer.freq]);
 
   const handleSave = async () => {
-    if (!newEndDate) { alert("กรุณาระบุวันครบสัญญาใหม่"); return; }
-    if (newPayments.length === 0) { alert("วันที่เลือกต้องอยู่หลังจากงวดสุดท้าย"); return; }
+    if (!newEndDate) { showToast("กรุณาระบุวันครบสัญญาใหม่"); return; }
+    if (newPayments.length === 0) { showToast("วันที่เลือกต้องอยู่หลังจากงวดสุดท้าย"); return; }
     setSaving(true);
     try {
       await apiRenewContract(customer.id, { newEndDate, newPayments });
       onSaved(newEndDate, newPayments);
     } catch (e) {
-      alert("เกิดข้อผิดพลาด: " + e.message);
+      showToast("เกิดข้อผิดพลาด: " + e.message);
     } finally {
       setSaving(false);
     }

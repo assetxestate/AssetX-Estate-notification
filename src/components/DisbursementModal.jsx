@@ -1,4 +1,5 @@
 import React from "react";
+import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { updateCustomer as apiUpdateCustomer } from "../lib/api.js";
 
@@ -59,7 +60,7 @@ export function DisbursementModal({ customer, onClose, onSaved }) {
       onSaved({ ...customer, disbursement })
       onClose()
     } catch (e) {
-      alert('เกิดข้อผิดพลาด: ' + e.message)
+      showToast('เกิดข้อผิดพลาด: ' + e.message)
     } finally {
       setSaving(false)
     }

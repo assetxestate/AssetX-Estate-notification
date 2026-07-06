@@ -21,3 +21,9 @@ files.zip
 *.txt
 
 .vercel
+
+# เอกสาร/ไฟล์ชั่วคราวที่ไม่ควรเข้า git
+*.docx
+~$*.docx
+หน้าเว็บ/
+vite.config.js.timestamp-*.mjs

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"หน้าเว็บ\")",
+      "Bash(dir src *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "WebSearch",
+      "Bash(git commit *)",
+      "Bash(node -e ' *)",
+      "Bash(git checkout *)",
+      "Bash(npm install *)",
+      "Bash(npm search *)",
+      "Bash(node -e \"const db = require\\('thai-address-database'\\); console.log\\(typeof db\\); console.log\\(Object.keys\\(db\\).slice\\(0,5\\)\\); const r = db.searchAddressByProvinceAndAmphoe\\('กรุงเทพมหานคร','พระนคร'\\); console.log\\(JSON.stringify\\(r[0]\\)\\)\")",
+      "Bash(node -e \"const db = require\\('thai-address-database'\\); const all = []; const provs = ['กรุงเทพมหานคร','เชียงใหม่','ขอนแก่น','สงขลา']; provs.forEach\\(p => { const r = db.searchAddressByProvince\\(p\\); console.log\\(p, 'count:', r.length\\) }\\)\")",
+      "Bash(node -e \"const f = require\\('thai-address-database/database/db.json'\\); console.log\\('size:', f.length, 'sample:', JSON.stringify\\(f[0]\\)\\)\")",
+      "Bash(node -e \"const f = require\\('c:/Users/jakka/AssetX-Estate-notification/node_modules/thai-address-database/database/db.json'\\); console.log\\('type:', typeof f, 'keys:', Array.isArray\\(f\\) ? 'array' : Object.keys\\(f\\).slice\\(0,5\\)\\)\")",
+      "Bash(npx vite *)",
+      "Bash(grep -v \"//\\\\|onClick\\\\|style\\\\|onChange\")",
+      "Bash(git show *)",
+      "Bash(Out-File -FilePath src/lib/dolApi.js -Encoding utf8NoBOM)",
+      "WebFetch(domain:www.semrush.com)",
+      "WebFetch(domain:baaniathailand.com)"
+    ]
+  }
+}

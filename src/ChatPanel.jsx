@@ -1,16 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
+import { BRAND as BASE_BRAND } from './lib/config.js'
 
-const BRAND = {
-  teal: "#2DD4BF",
-  bg: "#050B18",
-  bgCard: "#080F1E",
-  bgGlass: "rgba(8,15,30,0.92)",
-  border: "#0F2545",
-  borderLt: "#162E56",
-  textPri: "#F0F6FF",
-  textSec: "#64748B",
-  purple: "#7C3AED",
-};
+// ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
+const BRAND = { ...BASE_BRAND, bgGlass: 'rgba(8,15,30,0.92)' }
 
 const QUICK_QUESTIONS = [
   "สรุปภาพรวมพอร์ตโฟลิโอทั้งหมด",

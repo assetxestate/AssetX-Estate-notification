@@ -1,7 +1,8 @@
 import { parseDate, formatThai, formatThaiLong, formatMoney, fmtCal } from "./utils.js";
 
 // ── ImgBB Config ─────────────────────────────────────────────────
-export const IMGBB_KEY = "c83de7744f238eb8f1d0e87efb8bc639";
+// SECURITY: key เดิมรั่วใน git แล้ว — แนะนำ regenerate ที่ api.imgbb.com แล้วใส่ใน .env.local
+export const IMGBB_KEY = import.meta.env.VITE_IMGBB_KEY || "";
 export const IMGBB_ALBUMS = {
   "2026-3":  "k5zwF3",
   "2026-4":  "FHR9kk",

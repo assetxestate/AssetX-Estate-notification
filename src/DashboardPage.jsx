@@ -1,10 +1,8 @@
 import React, { useMemo } from 'react'
+import { BRAND as BASE_BRAND } from './lib/config.js'
 
-const BRAND = {
-  teal: '#2DD4BF', gold: '#F59E0B', bg: '#050B18', bgCard: '#080F1E',
-  border: '#0F2545', textPri: '#F0F6FF', textSec: '#64748B', textMut: '#334155',
-  orange: '#F97316', success: '#10B981', danger: '#EF4444', purple: '#7C3AED',
-}
+// ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
+const BRAND = { ...BASE_BRAND, success: '#10B981', danger: '#EF4444' }
 
 const fmt = (n) => {
   if (!n || isNaN(n)) return '0'

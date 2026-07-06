@@ -1,4 +1,5 @@
 import React from "react";
+import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { formatThai } from "../lib/utils.js";
 import { postponePayment as apiPostponePayment } from "../lib/api.js";
@@ -19,7 +20,7 @@ export function PostponeModal({ customer, payment, onSave, onClose }) {
       await apiPostponePayment(customer.id, payment.installment, newDate, note);
       onSave({ newDate, note });
     } catch (e) {
-      alert("เกิดข้อผิดพลาด: " + e.message);
+      showToast("เกิดข้อผิดพลาด: " + e.message);
     } finally {
       setSaving(false);
     }

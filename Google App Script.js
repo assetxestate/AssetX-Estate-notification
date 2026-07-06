@@ -15,7 +15,10 @@ function runBackfillSithichai() {
   );
 }
 
-const LINE_TOKEN = 'QXRCBb+4ZwejMcdd/+3Tkn5o1wJBzwRxR2nBswV+gGWqSYXA5cXr93uxzet9cTbZEwlhdsuRj4p06R+IkDKYLChwCA+MFBYjqu23YpbFhdEkiVmLh8pbQslOoSU7D9P6v9Fk+Hmbl5uZfC7ICqIsQgdB04t89/1O/w1cDnyilFU=';
+// SECURITY: อย่า hardcode token — เก็บใน Script Properties แทน
+// ตั้งค่า: GAS Editor -> Project Settings -> Script Properties -> เพิ่ม key "LINE_TOKEN"
+// (token เดิมรั่วในโค้ดแล้ว ต้อง REVOKE แล้วออกใหม่ที่ LINE Developers Console)
+const LINE_TOKEN = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
 const SPREADSHEET_ID = '1gzLzNATVHVPVcFTnIGfOIMmRFGXzQnTfqa54NHIprKo';
 const SHEET_NAME = 'DATA';
 

@@ -1,8 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { verifySession } from './_auth.js'
 
 export default async function handler(req, res) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  // CORS: อนุญาตเฉพาะ same-origin (ไม่เปิด * เพราะ endpoint นี้ส่งข้อมูลลูกค้า)
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
@@ -12,6 +12,11 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' })
+  }
+
+  // ต้องล็อกอินก่อน — กัน endpoint ที่ส่ง PII ลูกค้าไป Gemini ถูกเรียกโดยไม่ได้รับอนุญาต
+  if (!verifySession(req)) {
+    return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' })
   }
 
   try {

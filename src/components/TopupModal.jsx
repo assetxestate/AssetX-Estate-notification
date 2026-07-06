@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { formatMoney, formatThai } from "../lib/utils.js";
 import { createTopup } from "../lib/api.js";
@@ -53,9 +54,9 @@ export function TopupModal({ customer, onClose, onSaved }) {
   }, [form.topupStartDate, form.freq, form.topupEndDate]);
 
   const handleSave = async () => {
-    if (!topupAmt) { alert("กรุณากรอกจำนวนเงินที่ขอเพิ่ม"); return; }
-    if (!parseFloat(form.interestAmount)) { alert("กรุณากรอกดอกเบี้ยต่องวด"); return; }
-    if (!form.topupStartDate) { alert("กรุณาระบุวันชำระงวดแรก"); return; }
+    if (!topupAmt) { showToast("กรุณากรอกจำนวนเงินที่ขอเพิ่ม"); return; }
+    if (!parseFloat(form.interestAmount)) { showToast("กรุณากรอกดอกเบี้ยต่องวด"); return; }
+    if (!form.topupStartDate) { showToast("กรุณาระบุวันชำระงวดแรก"); return; }
     setSaving(true);
     try {
       await createTopup({
@@ -75,7 +76,7 @@ export function TopupModal({ customer, onClose, onSaved }) {
       });
       onSaved();
     } catch (e) {
-      alert("บันทึกไม่สำเร็จ: " + e.message);
+      showToast("บันทึกไม่สำเร็จ: " + e.message);
     } finally {
       setSaving(false);
     }

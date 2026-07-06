@@ -1,22 +1,34 @@
 import React, { useState } from "react";
 
-const CREDENTIALS = { username: "admin", password: "assetx" };
-
 export default function LoginPage({ onLogin }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [remember, setRemember] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (
-      username === CREDENTIALS.username &&
-      password === CREDENTIALS.password
-    ) {
-      onLogin();
-    } else {
-      setError("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+    if (submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      if (res.ok) {
+        onLogin(remember);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+      }
+    } catch {
+      setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -64,10 +76,24 @@ export default function LoginPage({ onLogin }) {
             </div>
           </div>
 
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#374151", cursor: "pointer", userSelect: "none" }}>
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              style={{ width: "15px", height: "15px", cursor: "pointer" }}
+            />
+            จำฉันไว้ในเครื่องนี้
+          </label>
+
           {error && <p style={styles.error}>{error}</p>}
 
-          <button type="submit" style={styles.submitBtn}>
-            เข้าสู่ระบบ
+          <button
+            type="submit"
+            style={{ ...styles.submitBtn, ...(submitting ? { opacity: 0.6, cursor: "not-allowed" } : {}) }}
+            disabled={submitting}
+          >
+            {submitting ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
           </button>
         </form>
       </div>

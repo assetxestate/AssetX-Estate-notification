@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { showToast } from "./lib/toast.js";
 import {
   getValuations as apiGetValuations,
   updateValuationStatus as apiUpdateValuationStatus,
@@ -125,7 +126,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
   const handleSave = async () => {
     if (savingRef.current) return;
     if (!form.customerName || !form.interestRate || !form.installmentCount || !form.payDay) {
-      alert('กรุณากรอกข้อมูลให้ครบ');
+      showToast('กรุณากรอกข้อมูลให้ครบ');
       return;
     }
     savingRef.current = true;
@@ -174,7 +175,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
       });
       onSuccess();
     } catch (e) {
-      alert('เกิดข้อผิดพลาด: ' + e.message);
+      showToast('เกิดข้อผิดพลาด: ' + e.message);
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -475,7 +476,7 @@ export default function InvestorPage({ appsScriptUrl }) {
       await apiUpdateValuationStatus(row['_rowIndex'], status);
       setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, 'สถานะ': status } : r));
     } catch (e) {
-      alert('เกิดข้อผิดพลาด: ' + e.message);
+      showToast('เกิดข้อผิดพลาด: ' + e.message);
     } finally {
       setProcessingRow(null);
     }
@@ -488,7 +489,7 @@ export default function InvestorPage({ appsScriptUrl }) {
       await apiCancelCustomer(customerId).catch(() => {});
       await updateStatus(row, 'ยกเลิก');
     } catch (e) {
-      alert('เกิดข้อผิดพลาด: ' + e.message);
+      showToast('เกิดข้อผิดพลาด: ' + e.message);
     } finally {
       setProcessingRow(null);
     }
@@ -502,7 +503,7 @@ export default function InvestorPage({ appsScriptUrl }) {
       await apiCancelCustomer(customerId).catch(() => {});
       await updateStatus(row, 'รอการพิจารณา');
     } catch (e) {
-      alert('เกิดข้อผิดพลาด: ' + e.message);
+      showToast('เกิดข้อผิดพลาด: ' + e.message);
     } finally {
       setProcessingRow(null);
     }

@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { showToast } from "./lib/toast.js";
+import { BRAND as BASE_BRAND } from './lib/config.js'
 import {
   getReservations, createReservation,
   updateReservation, deleteReservation,
 } from "./lib/api";
 
-const BRAND = {
-  teal: "#2DD4BF", gold: "#F59E0B", bg: "#050B18", bgCard: "#0D1B2E",
-  border: "#0F2545", borderLt: "#162E56", textPri: "#F0F6FF",
-  textSec: "#64748B", textMut: "#475569", success: "#10B981",
-  danger: "#EF4444", purple: "#7C3AED", orange: "#F97316", blue: "#3B82F6",
-};
+// ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
+const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981', danger: '#EF4444', blue: '#3B82F6' }
 
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH");
 const fmtDate = (d) => {
@@ -109,7 +107,7 @@ function ReservationModal({ item, onClose, onSave }) {
   }, [form.assignmentPrice, form.assignmentFee, totalCost]);
 
   const handleSave = async () => {
-    if (!form.projectName) return alert("กรุณากรอกชื่อโครงการ");
+    if (!form.projectName) return showToast("กรุณากรอกชื่อโครงการ");
     setSaving(true);
     try {
       const payload = {
@@ -124,7 +122,7 @@ function ReservationModal({ item, onClose, onSave }) {
       await onSave(payload);
       onClose();
     } catch (e) {
-      alert("บันทึกไม่สำเร็จ: " + e.message);
+      showToast("บันทึกไม่สำเร็จ: " + e.message);
     } finally {
       setSaving(false);
     }
@@ -322,7 +320,7 @@ export default function ReservationPage() {
     if (!window.confirm("ลบใบจองนี้?")) return;
     setDeleting(id);
     try { await deleteReservation(id); await load(); }
-    catch (e) { alert("ลบไม่สำเร็จ: " + e.message); }
+    catch (e) { showToast("ลบไม่สำเร็จ: " + e.message); }
     finally { setDeleting(null); }
   };
 

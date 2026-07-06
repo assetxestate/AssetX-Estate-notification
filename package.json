@@ -15,7 +15,8 @@
     "@supabase/supabase-js": "^2.102.1",
     "leaflet": "^1.9.4",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "thai-address-database": "^0.0.30"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
