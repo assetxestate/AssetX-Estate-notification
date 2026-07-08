@@ -135,7 +135,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   // Yield
   const yieldRate = totalPrincipal > 0 ? ((monthlyIncome * 12) / totalPrincipal * 100).toFixed(1) : 0
 
-  // ค่านายหน้า Advance 2% (ตั้ม & ต่าย จ่ายล่วงหน้าเข้าบริษัท) — เฉพาะเคสประเภท commission เท่านั้น
+  // ค่านายหน้า Advance 2% (จ่ายล่วงหน้าเข้าบริษัท) — เฉพาะเคสประเภท commission เท่านั้น
   const commissionCases = active.filter(c => (c.incomeType || 'commission') === 'commission')
   const interestCases = active.filter(c => c.incomeType === 'interest')
   const totalAdvance = commissionCases.reduce((s, c) => s + (c.principal || 0) * 0.02, 0)
@@ -201,7 +201,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
         <KpiCard icon="📈" label="รายได้ดอกเบี้ย/เดือน" value={`฿${fmtFull(Math.round(monthlyIncome))}`} sub={`Yield ${yieldRate}%/ปี`} color={BRAND.gold} />
         <KpiCard icon="✅" label="ดอกเบี้ยที่ชำระแล้ว" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · อ้างอิงจากสลิปโอนเงิน`} color={BRAND.success} />
         <KpiCard icon="⚠️" label="ค้างชำระ" value={overduePayments.length} sub={overduePayments.length > 0 ? `${overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย` : 'ไม่มีค้างชำระ'} color={overduePayments.length > 0 ? BRAND.danger : BRAND.success} />
-        <KpiCard icon="🏦" label="Advance 2% (ตั้ม & ต่าย)" value={`฿${fmtFull(Math.round(totalAdvance))}`} sub={`${active.length} สัญญา · 2% ของวงเงินรวม`} color={BRAND.purple} />
+        <KpiCard icon="🏦" label="Advance 2%" value={`฿${fmtFull(Math.round(totalAdvance))}`} sub={`${active.length} สัญญา · 2% ของวงเงินรวม`} color={BRAND.purple} />
       </div>
 
       {/* Charts Row */}
@@ -269,7 +269,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
 
       {/* Advance 2% Breakdown */}
       <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.purple}44`, borderRadius: 14, padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri, marginBottom: 4 }}>🏦 Advance 2% รายเคส (ตั้ม & ต่าย)</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri, marginBottom: 4 }}>🏦 Advance 2% รายเคส</div>
         <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 16 }}>เงินที่ต้องจ่ายล่วงหน้าเข้าบริษัทตามยอดวงเงินแต่ละเคส</div>
 
         {commissionCases.length > 0 && (
