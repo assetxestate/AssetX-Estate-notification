@@ -109,7 +109,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
       const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
       const payments = [];
       let installment = 1;
-      let started = false; // ยังไม่เริ่มนับจนกว่าจะเจองวดแรกที่ >= วันเริ่มสัญญา (กันงวดแรกตกก่อนวันเริ่มสัญญา)
+      let started = false; // ยังไม่เริ่มนับจนกว่าจะเจองวดแรกที่ "หลัง" วันเริ่มสัญญา (งวดแรกคืองวดถัดไปหลังเบิกจ่าย ไม่ใช่วันเบิกจ่ายเอง)
       for (let guard = 0; guard < 1000 && installment <= count; guard++) {
         for (const day of [day1, day2]) {
           if (installment > count) break;
@@ -120,7 +120,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
           const dd = String(day).padStart(2, '0');
           const ymd = `${y}-${m}-${dd}`;
           if (!started) {
-            if (ymd < startYmd) continue;
+            if (ymd <= startYmd) continue;
             started = true;
           }
           payments.push({ installment, dateStr: ymd });
