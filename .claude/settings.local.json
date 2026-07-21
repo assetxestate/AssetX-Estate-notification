@@ -21,7 +21,12 @@
       "Bash(git show *)",
       "Bash(Out-File -FilePath src/lib/dolApi.js -Encoding utf8NoBOM)",
       "WebFetch(domain:www.semrush.com)",
-      "WebFetch(domain:baaniathailand.com)"
+      "WebFetch(domain:baaniathailand.com)",
+      "Bash(git fetch *)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(npx --no-install playwright --version)",
+      "Bash(npm ls *)"
     ]
   }
 }
