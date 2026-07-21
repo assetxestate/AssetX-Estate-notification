@@ -8,7 +8,7 @@ export function SlipModal({ customer, payment, existing, onSave, onDelete, onClo
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = React.useState({
     paidDate: existing?.paidDate || today,
-    amount: existing?.amount || customer.amount || "",
+    amount: existing?.amountPaid ?? existing?.amount ?? customer.amount ?? "",
     note: existing?.note || "",
     slipUrl: existing?.slipUrl || existing?.slipImage || null,
     slipId: existing?.slipId || null,
@@ -58,9 +58,11 @@ export function SlipModal({ customer, payment, existing, onSave, onDelete, onClo
   const handleSave = () => {
     if (!form.paidDate || !form.amount) return;
     setSaving(true);
+    const amountPaid = parseFloat(form.amount);
     onSave({
       paidDate: form.paidDate,
-      amount: parseFloat(form.amount),
+      amount: amountPaid,
+      amountPaid,
       note: form.note,
       slipUrl: form.slipUrl,
       slipId: form.slipId,

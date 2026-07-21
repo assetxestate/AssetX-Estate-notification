@@ -552,7 +552,7 @@ export async function saveTopupPaymentRecord(topupId, customerId, installment, r
     paid_at: record.paidDate || record.paidAt || "",
     slip_url: record.slipUrl || "",
     slip_id: record.slipId || "",
-    amount_paid: record.amountPaid || 0,
+    amount_paid: record.amountPaid || record.amount || 0,
     note: record.note || "",
   }, { onConflict: "topup_id,installment" });
   if (error) throw error;
