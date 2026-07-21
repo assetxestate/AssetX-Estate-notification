@@ -105,10 +105,12 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
       if (!payDay2) return [];
       const [day1, day2] = [payDay, payDay2].sort((a, b) => a - b);
       const start = new Date(form.contractStartDate);
+      const startYmd = form.contractStartDate;
       const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
       const payments = [];
       let installment = 1;
-      while (installment <= count) {
+      let started = false; // ยังไม่เริ่มนับจนกว่าจะเจองวดแรกที่ >= วันเริ่มสัญญา (กันงวดแรกตกก่อนวันเริ่มสัญญา)
+      for (let guard = 0; guard < 1000 && installment <= count; guard++) {
         for (const day of [day1, day2]) {
           if (installment > count) break;
           // ห้ามใช้ toISOString() ตรงนี้ — Date คอนสตรัคเตอร์แบบตัวเลขให้เที่ยงคืนตามเวลาเครื่อง
@@ -116,7 +118,12 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
           const y = cursor.getFullYear();
           const m = String(cursor.getMonth() + 1).padStart(2, '0');
           const dd = String(day).padStart(2, '0');
-          payments.push({ installment, dateStr: `${y}-${m}-${dd}` });
+          const ymd = `${y}-${m}-${dd}`;
+          if (!started) {
+            if (ymd < startYmd) continue;
+            started = true;
+          }
+          payments.push({ installment, dateStr: ymd });
           installment++;
         }
         cursor.setMonth(cursor.getMonth() + 1);
