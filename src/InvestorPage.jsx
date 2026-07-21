@@ -177,6 +177,19 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
         valuationRowIndex: row['_rowIndex'],
       };
       const customerId = `CID${Date.now()}`;
+      // เอาโฉนดทั้งหมดจากรายการประเมิน (row.deeds) มาด้วย ไม่ใช่แค่เลขโฉนดตัวแรก
+      const customerDeeds = Array.isArray(row.deeds) && row.deeds.length > 0
+        ? row.deeds.map(d => ({
+            no: d.titleDeedNo || '',
+            area: `${d.areaRai || 0}-${d.areaNgan || 0}-${d.areaSqw || 0} ไร่`,
+            amphoe: row['อำเภอ/เขต'] || '',
+            landNo: d.landNo || '',
+            mapRef: d.mapSheet || '',
+            tambon: row['ตำบล/แขวง'] || '',
+            province: row['จังหวัด'] || '',
+            surveyPage: d.surveyPage || '',
+          }))
+        : (data.titleDeedNo ? [{ no: data.titleDeedNo }] : []);
       await apiCreateCustomer({
         customer: {
           id: customerId,
@@ -189,7 +202,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
           contractEndDate: data.contractEndDate || null,
           lineUserId: '',
           location: [data.subdistrict, data.district, data.province].filter(Boolean).join(' '),
-          deeds: data.titleDeedNo ? [{ no: data.titleDeedNo }] : [],
+          deeds: customerDeeds,
           disbursement: {
             approvedAmount: principal,
             existingDebts,
