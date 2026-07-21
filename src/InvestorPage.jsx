@@ -199,6 +199,10 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
         },
         payments: generatePayments(),
       });
+      if (row['_rowIndex']) {
+        // ปรับสถานะรายการประเมินให้ย้ายออกจากแท็บ "อนุมัติ" — ไม่งั้นจะดูเหมือนบันทึกไม่สำเร็จและถูกกดซ้ำ
+        await apiUpdateValuationStatus(row['_rowIndex'], 'สร้างสัญญาแล้ว').catch(() => {});
+      }
       onSuccess();
     } catch (e) {
       showToast('เกิดข้อผิดพลาด: ' + e.message);
