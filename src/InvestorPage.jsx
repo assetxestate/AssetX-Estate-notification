@@ -29,7 +29,7 @@ const TABS = [
   { key: 'ยกเลิก',         label: '🚫 ยกเลิก' },
 ];
 
-const FREQ_OPTIONS = ['รายเดือน', 'ราย 2 สัปดาห์'];
+const FREQ_OPTIONS = ['รายเดือน', 'ราย 2 สัปดาห์', '2 ครั้ง/เดือน'];
 
 const EMPTY_DEBT = () => ({
   id: Date.now() + Math.random(),
@@ -67,6 +67,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     installmentCount: '',
     contractStartDate: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
     payDay: '',
+    payDay2: '',
     freq: 'รายเดือน',
     lineUserId: '',
     advanceInstallments: 0,
@@ -94,21 +95,35 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     : parseFloat(companyFee.amount) || 0;
   const netDisbursement = principal - totalDebt - advanceTotal - externalFee - companyFeeAmt;
 
-  const calcEndDate = () => {
-    if (!form.contractStartDate || !form.installmentCount) return '—';
-    const d = new Date(form.contractStartDate);
-    if (form.freq === 'ราย 2 สัปดาห์') {
-      d.setDate(d.getDate() + parseInt(form.installmentCount) * 14);
-    } else {
-      d.setMonth(d.getMonth() + parseInt(form.installmentCount));
-    }
-    return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
-  };
-
   const generatePayments = () => {
     const count = parseInt(form.installmentCount);
     const payDay = parseInt(form.payDay);
     if (!form.contractStartDate || !count || !payDay) return [];
+
+    if (form.freq === '2 ครั้ง/เดือน') {
+      const payDay2 = parseInt(form.payDay2);
+      if (!payDay2) return [];
+      const [day1, day2] = [payDay, payDay2].sort((a, b) => a - b);
+      const start = new Date(form.contractStartDate);
+      const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+      const payments = [];
+      let installment = 1;
+      while (installment <= count) {
+        for (const day of [day1, day2]) {
+          if (installment > count) break;
+          // ห้ามใช้ toISOString() ตรงนี้ — Date คอนสตรัคเตอร์แบบตัวเลขให้เที่ยงคืนตามเวลาเครื่อง
+          // พอแปลงเป็น UTC ในโซนเวลา +7 จะถอยวันที่ลง 1 วัน จึงต้องประกอบสตริงจาก local date เอง
+          const y = cursor.getFullYear();
+          const m = String(cursor.getMonth() + 1).padStart(2, '0');
+          const dd = String(day).padStart(2, '0');
+          payments.push({ installment, dateStr: `${y}-${m}-${dd}` });
+          installment++;
+        }
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+      return payments;
+    }
+
     const payments = [];
     const d = new Date(form.contractStartDate);
     for (let i = 0; i < count; i++) {
@@ -123,10 +138,21 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     return payments;
   };
 
+  const calcEndDate = () => {
+    const payments = generatePayments();
+    if (payments.length === 0) return '—';
+    const last = new Date(payments[payments.length - 1].dateStr);
+    return last.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
   const handleSave = async () => {
     if (savingRef.current) return;
     if (!form.customerName || !form.interestRate || !form.installmentCount || !form.payDay) {
       showToast('กรุณากรอกข้อมูลให้ครบ');
+      return;
+    }
+    if (form.freq === '2 ครั้ง/เดือน' && !form.payDay2) {
+      showToast('กรุณากรอกวันชำระงวดที่สองของเดือน');
       return;
     }
     savingRef.current = true;
@@ -257,21 +283,27 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
               <input style={inp} type="number" value={form.installmentCount} onChange={e => up('installmentCount', e.target.value)} placeholder="เช่น 12" />
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={lbl}>วันเริ่มสัญญา *</label>
-              <input style={inp} type="date" value={form.contractStartDate} onChange={e => up('contractStartDate', e.target.value)} />
-            </div>
-            <div>
-              <label style={lbl}>วันชำระ/เดือน *</label>
-              <input style={inp} type="number" min="1" max="31" value={form.payDay} onChange={e => up('payDay', e.target.value)} placeholder="เช่น 9" />
-            </div>
-          </div>
           <div>
             <label style={lbl}>ความถี่การชำระ</label>
             <select style={inp} value={form.freq} onChange={e => up('freq', e.target.value)}>
               {FREQ_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
             </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: form.freq === '2 ครั้ง/เดือน' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lbl}>วันเริ่มสัญญา *</label>
+              <input style={inp} type="date" value={form.contractStartDate} onChange={e => up('contractStartDate', e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>{form.freq === '2 ครั้ง/เดือน' ? 'วันชำระงวดแรก *' : 'วันชำระ/เดือน *'}</label>
+              <input style={inp} type="number" min="1" max="31" value={form.payDay} onChange={e => up('payDay', e.target.value)} placeholder="เช่น 4" />
+            </div>
+            {form.freq === '2 ครั้ง/เดือน' && (
+              <div>
+                <label style={lbl}>วันชำระงวดที่สอง *</label>
+                <input style={inp} type="number" min="1" max="31" value={form.payDay2} onChange={e => up('payDay2', e.target.value)} placeholder="เช่น 19" />
+              </div>
+            )}
           </div>
           <div>
             <label style={lbl}>หักดอกเบี้ยล่วงหน้า (งวด)</label>
