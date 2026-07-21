@@ -1066,43 +1066,81 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
     if (cust.name) update('projectName', cust.name)
   }
 
-  // ── ดึงข้อมูลโฉนดจากประวัติการประเมินเดิม ─────────────────
-  const [deedPicker, setDeedPicker] = useState(null) // { query, rows, loading }
+  // ── ดึงข้อมูลโฉนดจากประวัติเดิม (ลูกค้าที่มีสัญญาแล้ว + ประวัติการประเมิน) ─────────────────
+  const [deedPicker, setDeedPicker] = useState(null) // { query, candidates, loading }
 
-  async function openDeedPicker() {
-    setDeedPicker({ query: '', rows: null, loading: true })
-    try {
-      const rows = await apiGetValuations()
-      setDeedPicker({ query: '', rows, loading: false })
-    } catch (e) {
-      setDeedPicker(null)
-      showToast('โหลดประวัติไม่สำเร็จ: ' + e.message)
+  // ตาราง customers เก็บโฉนดแบบ { no, area: "0-1-75.4 ไร่", amphoe, landNo, mapRef, tambon, province, surveyPage }
+  function parseCustomerDeedArea(areaStr) {
+    const parts = String(areaStr || '').replace(/ไร่|งาน|ตร\.?ว\.?/g, '').trim().split('-').map(s => parseFloat(s) || 0)
+    return { areaRai: parts[0] || 0, areaNgan: parts[1] || 0, areaSqw: parts[2] || 0 }
+  }
+
+  function customerToDeedCandidate(cust) {
+    if (!Array.isArray(cust.deeds) || cust.deeds.length === 0) return null
+    return {
+      key: 'cust-' + (cust.id || cust.name),
+      source: 'ลูกค้าเดิม',
+      label: cust.name,
+      subLabel: cust.type || '',
+      deeds: cust.deeds.map(d => ({
+        id: Date.now() + Math.random(),
+        titleDeedNo: d.no || '',
+        mapSheet: d.mapRef || '',
+        surveyPage: d.surveyPage || '',
+        landNo: d.landNo || '',
+        govPrice: 0,
+        ...parseCustomerDeedArea(d.area),
+      })),
+      province: cust.deeds[0]?.province || '',
+      district: cust.deeds[0]?.amphoe || '',
+      subdistrict: cust.deeds[0]?.tambon || '',
     }
   }
 
-  function applyDeedHistory(row) {
-    const clonedDeeds = Array.isArray(row.deeds) && row.deeds.length > 0
-      ? row.deeds.map(d => ({ ...d, id: Date.now() + Math.random() }))
-      : [EMPTY_DEED()]
-    update('deeds', clonedDeeds)
-    if (row['จังหวัด']) update('province', row['จังหวัด'])
-    if (row['อำเภอ/เขต']) update('district', row['อำเภอ/เขต'])
-    if (row['ตำบล/แขวง']) update('subdistrict', row['ตำบล/แขวง'])
+  // ตาราง valuations เก็บโฉนดตรงกับ shape ของฟอร์มอยู่แล้ว
+  function valuationToDeedCandidate(row) {
+    if (!Array.isArray(row.deeds) || row.deeds.length === 0) return null
+    return {
+      key: 'val-' + row._rowIndex,
+      source: 'ประวัติประเมิน',
+      label: row['ชื่อลูกค้า'] || row['รหัส/ชื่อทรัพย์'] || '—',
+      subLabel: row['วันที่ประเมิน'] || '',
+      deeds: row.deeds.map(d => ({ ...d, id: Date.now() + Math.random() })),
+      province: row['จังหวัด'] || '',
+      district: row['อำเภอ/เขต'] || '',
+      subdistrict: row['ตำบล/แขวง'] || '',
+    }
+  }
+
+  async function openDeedPicker() {
+    const fromCustomers = customers.map(customerToDeedCandidate).filter(Boolean)
+    setDeedPicker({ query: '', candidates: fromCustomers, loading: true })
+    try {
+      const rows = await apiGetValuations()
+      const fromValuations = rows.map(valuationToDeedCandidate).filter(Boolean)
+      setDeedPicker({ query: '', candidates: [...fromCustomers, ...fromValuations], loading: false })
+    } catch (e) {
+      setDeedPicker({ query: '', candidates: fromCustomers, loading: false })
+      showToast('โหลดประวัติการประเมินไม่สำเร็จ (แสดงเฉพาะข้อมูลลูกค้าเดิม): ' + e.message)
+    }
+  }
+
+  function applyDeedHistory(candidate) {
+    update('deeds', candidate.deeds.map(d => ({ ...d, id: Date.now() + Math.random() })))
+    if (candidate.province) update('province', candidate.province)
+    if (candidate.district) update('district', candidate.district)
+    if (candidate.subdistrict) update('subdistrict', candidate.subdistrict)
     setDeedPicker(null)
-    showToast('✅ ดึงข้อมูลโฉนดจาก ' + (row['รหัส/ชื่อทรัพย์'] || 'ประวัติเดิม') + ' สำเร็จ')
+    showToast('✅ ดึงข้อมูลโฉนดจาก ' + candidate.label + ' สำเร็จ')
   }
 
   const deedPickerMatches = useMemo(() => {
-    if (!deedPicker?.rows) return []
+    if (!deedPicker?.candidates) return []
     const q = deedPicker.query.trim().toLowerCase()
-    return deedPicker.rows
-      .filter(r => Array.isArray(r.deeds) && r.deeds.length > 0)
-      .filter(r => {
+    return deedPicker.candidates
+      .filter(c => {
         if (!q) return true
-        const haystack = [
-          r['ชื่อลูกค้า'], r['รหัส/ชื่อทรัพย์'], r['เลขโฉนด'],
-          ...(r.deeds || []).map(d => d.titleDeedNo),
-        ].filter(Boolean).join(' ').toLowerCase()
+        const haystack = [c.label, ...(c.deeds || []).map(d => d.titleDeedNo)].filter(Boolean).join(' ').toLowerCase()
         return haystack.includes(q)
       })
       .slice(0, 20)
@@ -1159,16 +1197,16 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
               {deedPickerMatches.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '16px 0', color: BRAND.textMut, fontSize: 12 }}>ไม่พบรายการที่มีข้อมูลโฉนด</div>
               )}
-              {deedPickerMatches.map(row => (
-                <div key={row._rowIndex} onClick={() => applyDeedHistory(row)}
+              {deedPickerMatches.map(c => (
+                <div key={c.key} onClick={() => applyDeedHistory(c)}
                   style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: BRAND.bg, cursor: 'pointer' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: BRAND.textPri }}>{row['ชื่อลูกค้า'] || row['รหัส/ชื่อทรัพย์'] || '—'}</span>
-                    <span style={{ fontSize: 10, color: BRAND.textMut, whiteSpace: 'nowrap' }}>{row['วันที่ประเมิน'] || ''}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: BRAND.textPri }}>{c.label}</span>
+                    <span style={{ fontSize: 10, color: BRAND.textMut, whiteSpace: 'nowrap' }}>{c.source === 'ลูกค้าเดิม' ? `👤 ${c.subLabel || 'ลูกค้าเดิม'}` : `📋 ${c.subLabel || 'ประวัติประเมิน'}`}</span>
                   </div>
                   <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>
-                    📄 {(row.deeds || []).map(d => d.titleDeedNo).filter(Boolean).join(', ') || row['เลขโฉนด'] || '—'}
-                    {' · '}{[row['ตำบล/แขวง'], row['อำเภอ/เขต'], row['จังหวัด']].filter(Boolean).join(' ')}
+                    📄 {c.deeds.map(d => d.titleDeedNo).filter(Boolean).join(', ') || '—'}
+                    {' · '}{[c.subdistrict, c.district, c.province].filter(Boolean).join(' ')}
                   </div>
                 </div>
               ))}
