@@ -1066,6 +1066,48 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
     if (cust.name) update('projectName', cust.name)
   }
 
+  // ── ดึงข้อมูลโฉนดจากประวัติการประเมินเดิม ─────────────────
+  const [deedPicker, setDeedPicker] = useState(null) // { query, rows, loading }
+
+  async function openDeedPicker() {
+    setDeedPicker({ query: '', rows: null, loading: true })
+    try {
+      const rows = await apiGetValuations()
+      setDeedPicker({ query: '', rows, loading: false })
+    } catch (e) {
+      setDeedPicker(null)
+      showToast('โหลดประวัติไม่สำเร็จ: ' + e.message)
+    }
+  }
+
+  function applyDeedHistory(row) {
+    const clonedDeeds = Array.isArray(row.deeds) && row.deeds.length > 0
+      ? row.deeds.map(d => ({ ...d, id: Date.now() + Math.random() }))
+      : [EMPTY_DEED()]
+    update('deeds', clonedDeeds)
+    if (row['จังหวัด']) update('province', row['จังหวัด'])
+    if (row['อำเภอ/เขต']) update('district', row['อำเภอ/เขต'])
+    if (row['ตำบล/แขวง']) update('subdistrict', row['ตำบล/แขวง'])
+    setDeedPicker(null)
+    showToast('✅ ดึงข้อมูลโฉนดจาก ' + (row['รหัส/ชื่อทรัพย์'] || 'ประวัติเดิม') + ' สำเร็จ')
+  }
+
+  const deedPickerMatches = useMemo(() => {
+    if (!deedPicker?.rows) return []
+    const q = deedPicker.query.trim().toLowerCase()
+    return deedPicker.rows
+      .filter(r => Array.isArray(r.deeds) && r.deeds.length > 0)
+      .filter(r => {
+        if (!q) return true
+        const haystack = [
+          r['ชื่อลูกค้า'], r['รหัส/ชื่อทรัพย์'], r['เลขโฉนด'],
+          ...(r.deeds || []).map(d => d.titleDeedNo),
+        ].filter(Boolean).join(' ').toLowerCase()
+        return haystack.includes(q)
+      })
+      .slice(0, 20)
+  }, [deedPicker])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
@@ -1091,6 +1133,50 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
           )}
         </Card>
       )}
+
+      {/* ดึงข้อมูลโฉนดจากประวัติเดิม */}
+      <Card style={{ borderColor: 'rgba(245,158,11,0.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold }}>📂 ดึงข้อมูลโฉนดจากประวัติเดิม <span style={{ fontSize: 11, fontWeight: 400, color: BRAND.textMut }}>(ไม่บังคับ)</span></div>
+            <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>กรณีโฉนดเดิมไม่เปลี่ยน — คัดลอกเลขโฉนด/ระวาง/เนื้อที่/ราคาประเมินรัฐจากรายการประเมินเก่าได้เลย ไม่ต้องกรอกใหม่</div>
+          </div>
+          <button onClick={openDeedPicker} disabled={deedPicker?.loading} style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: `1px solid ${BRAND.gold}`, background: 'rgba(245,158,11,0.08)', color: BRAND.gold, cursor: deedPicker?.loading ? 'wait' : 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {deedPicker?.loading ? '⏳ กำลังโหลด...' : '🔍 ค้นหาโฉนดเดิม'}
+          </button>
+        </div>
+
+        {deedPicker && !deedPicker.loading && (
+          <div style={{ marginTop: 14 }}>
+            <Inp
+              autoFocus
+              value={deedPicker.query}
+              onChange={e => setDeedPicker(p => ({ ...p, query: e.target.value }))}
+              placeholder="พิมพ์ชื่อลูกค้า / รหัสทรัพย์ / เลขโฉนด เพื่อค้นหา..."
+              style={{ marginBottom: 10 }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+              {deedPickerMatches.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '16px 0', color: BRAND.textMut, fontSize: 12 }}>ไม่พบรายการที่มีข้อมูลโฉนด</div>
+              )}
+              {deedPickerMatches.map(row => (
+                <div key={row._rowIndex} onClick={() => applyDeedHistory(row)}
+                  style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: BRAND.bg, cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: BRAND.textPri }}>{row['ชื่อลูกค้า'] || row['รหัส/ชื่อทรัพย์'] || '—'}</span>
+                    <span style={{ fontSize: 10, color: BRAND.textMut, whiteSpace: 'nowrap' }}>{row['วันที่ประเมิน'] || ''}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>
+                    📄 {(row.deeds || []).map(d => d.titleDeedNo).filter(Boolean).join(', ') || row['เลขโฉนด'] || '—'}
+                    {' · '}{[row['ตำบล/แขวง'], row['อำเภอ/เขต'], row['จังหวัด']].filter(Boolean).join(' ')}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setDeedPicker(null)} style={{ marginTop: 10, fontSize: 11, padding: '4px 10px', borderRadius: 6, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, cursor: 'pointer' }}>ยกเลิก</button>
+          </div>
+        )}
+      </Card>
 
       {/* Assessment type */}
       <Card>
