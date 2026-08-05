@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import LoginPage from './LoginPage.jsx'
+import AssessPage from './AssessPage.jsx'
 
 function Root() {
   const [isLoggedIn, setIsLoggedIn] = useState(
@@ -14,6 +15,10 @@ function Root() {
     else sessionStorage.setItem('assetx_auth', 'true')
     setIsLoggedIn(true)
   }
+
+  // หน้าประเมินออนไลน์สาธารณะ — bypass login โดยตั้งใจ ไม่ผ่าน auth gate เลย
+  if (window.location.pathname === '/assess') return <AssessPage />
+
   if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />
 
   return <App />

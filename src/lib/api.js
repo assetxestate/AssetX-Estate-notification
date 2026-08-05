@@ -272,6 +272,9 @@ export async function getValuations() {
     "สถานะ": v.status,
     "ชื่อลูกค้า": v.customer_name,
     deeds: Array.isArray(v.deeds) ? v.deeds : [],
+    contactName: v.contact_name || "",
+    contactPhone: v.contact_phone || "",
+    contactLine: v.contact_line || "",
   }));
 }
 
@@ -329,12 +332,21 @@ export async function saveValuation(data) {
     lng: data.lng != null && data.lng !== "" ? data.lng : null,
     risks: riskText,
     location_note: data.locationNote || "",
-    status: "รอดำเนินการ",
+    status: data.status || "รอดำเนินการ",
     customer_name: data.customerName || "",
     deeds: Array.isArray(data.deeds) ? data.deeds : [],
+    contact_name: data.contactName || "",
+    contact_phone: data.contactPhone || "",
+    contact_line: data.contactLine || "",
   }).select("id").single();
   if (error) throw error;
   return { success: true, rowIndex: inserted.id };
+}
+
+// รับ lead จากหน้าประเมินออนไลน์สาธารณะ (/assess) — ใช้ insert path เดียวกับ saveValuation
+// แค่บังคับ status ให้แยกจากงานประเมินภายในของพนักงาน เพื่อให้ทีมงานคัดกรองก่อนเข้า pipeline ปกติ
+export async function submitPublicAssessment(data) {
+  return saveValuation({ ...data, status: "Lead จากเว็บ" });
 }
 
 export async function updateValuation(rowIndex, data) {

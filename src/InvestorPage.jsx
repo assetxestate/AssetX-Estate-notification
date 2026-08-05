@@ -14,6 +14,7 @@ const BRAND = {
 };
 
 const STATUS_CONFIG = {
+  'Lead จากเว็บ':   { bg: 'rgba(56,189,248,0.12)',  border: 'rgba(56,189,248,0.4)', text: '#38BDF8', label: '🌐 Lead จากเว็บ' },
   'รอการพิจารณา': { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: '#F59E0B', label: '⏳ รอการพิจารณา' },
   'อนุมัติ':        { bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.4)', text: '#10B981', label: '✅ อนุมัติแล้ว' },
   'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.4)',  text: '#F87171', label: '❌ ปฏิเสธ' },
@@ -22,6 +23,7 @@ const STATUS_CONFIG = {
 };
 
 const TABS = [
+  { key: 'Lead จากเว็บ',   label: '🌐 Lead จากเว็บ' },
   { key: 'รอการพิจารณา', label: '⏳ รอตัดสินใจ' },
   { key: 'อนุมัติ',        label: '✅ อนุมัติ' },
   { key: 'ปฏิเสธ',         label: '❌ ปฏิเสธ' },
@@ -662,6 +664,15 @@ export default function InvestorPage({ appsScriptUrl }) {
                   </span>
                 </div>
 
+                {/* ข้อมูลติดต่อ — เฉพาะ lead ที่มาจากหน้าประเมินออนไลน์ */}
+                {(row.contactName || row.contactPhone || row.contactLine) && (
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12, padding: '8px 12px', borderRadius: 10, background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.2)', fontSize: 12 }}>
+                    {row.contactName && <span style={{ color: BRAND.textPri }}>👤 {row.contactName}</span>}
+                    {row.contactPhone && <span style={{ color: '#38BDF8', fontWeight: 700 }}>📞 {row.contactPhone}</span>}
+                    {row.contactLine && <span style={{ color: BRAND.textSec }}>💬 LINE: {row.contactLine}</span>}
+                  </div>
+                )}
+
                 {/* Stats grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 14 }}>
                   <StatBox label="มูลค่าตลาด" value={'฿' + fmt(row['มูลค่าตลาดรวม'])} />
@@ -696,6 +707,24 @@ export default function InvestorPage({ appsScriptUrl }) {
                 )}
 
                 {/* Action buttons */}
+                {activeTab === 'Lead จากเว็บ' && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => updateStatus(row, 'ยกเลิก')}
+                      disabled={isProcessing}
+                      style={{ flex: 1, padding: '9px', borderRadius: 10, border: '1px solid rgba(100,116,139,0.4)', background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}
+                    >
+                      🚫 ไม่ใช่ลูกค้าจริง
+                    </button>
+                    <button
+                      onClick={() => updateStatus(row, 'รอการพิจารณา')}
+                      disabled={isProcessing}
+                      style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#38BDF8,#0E7490)', color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                    >
+                      {isProcessing ? '⏳' : '✅ รับเป็นเคสจริง'}
+                    </button>
+                  </div>
+                )}
                 {activeTab === 'รอการพิจารณา' && (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button

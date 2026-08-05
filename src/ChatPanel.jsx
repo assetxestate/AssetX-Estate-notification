@@ -4,7 +4,7 @@ import { BRAND as BASE_BRAND } from './lib/config.js'
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
 const BRAND = { ...BASE_BRAND, bgGlass: 'rgba(8,15,30,0.92)' }
 
-const QUICK_QUESTIONS = [
+const DEFAULT_QUICK_QUESTIONS = [
   "สรุปภาพรวมพอร์ตโฟลิโอทั้งหมด",
   "งวดชำระที่ใกล้ครบกำหนดใน 30 วัน มีอะไรบ้าง?",
   "เงินต้นและดอกเบี้ยรวมทั้งหมดเท่าไร?",
@@ -37,7 +37,15 @@ function MarkdownText({ text }) {
   );
 }
 
-export default function ChatPanel({ customerData }) {
+export default function ChatPanel({
+  customerData,
+  apiEndpoint = "/api/chat",
+  title = "Gemini AI Assistant",
+  subtitle,
+  quickQuestions = DEFAULT_QUICK_QUESTIONS,
+  extraPayload,
+  emptyStateText = "ถามอะไรก็ได้เกี่ยวกับข้อมูลในระบบ",
+}) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -71,12 +79,13 @@ export default function ChatPanel({ customerData }) {
     setStreamText("");
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch(apiEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
           customerData,
+          ...extraPayload,
         }),
       });
 
@@ -193,10 +202,10 @@ export default function ChatPanel({ customerData }) {
               <span style={{ fontSize: 18 }}>✦</span>
               <div>
                 <div style={{ color: BRAND.textPri, fontWeight: 700, fontSize: 14 }}>
-                  Gemini AI Assistant
+                  {title}
                 </div>
                 <div style={{ color: BRAND.teal, fontSize: 11 }}>
-                  รู้ข้อมูลลูกค้าทั้งหมด {customerData?.length || 0} ราย
+                  {subtitle ?? `รู้ข้อมูลลูกค้าทั้งหมด ${customerData?.length || 0} ราย`}
                 </div>
               </div>
             </div>
@@ -232,10 +241,10 @@ export default function ChatPanel({ customerData }) {
             {messages.length === 0 && !loading && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ color: BRAND.textSec, fontSize: 12, marginBottom: 10, textAlign: "center" }}>
-                  ถามอะไรก็ได้เกี่ยวกับข้อมูลในระบบ
+                  {emptyStateText}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {QUICK_QUESTIONS.map((q, i) => (
+                  {quickQuestions.map((q, i) => (
                     <button
                       key={i}
                       onClick={() => sendMessage(q)}
