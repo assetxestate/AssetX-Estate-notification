@@ -126,7 +126,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const overduePayments = []
   active.forEach(c => {
     c.payments?.forEach(p => {
-      if (p.status === 'overdue' && !paymentRecords[c.id]?.[p.installment]) {
+      if (p.status === 'past' && !paymentRecords[c.id]?.[p.installment]) {
         overduePayments.push({ c, p })
       }
     })
