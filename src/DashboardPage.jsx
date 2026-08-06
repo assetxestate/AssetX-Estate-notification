@@ -343,6 +343,9 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                     งวดที่ {p.installment} · ครบกำหนดเดิม {new Date(originalDueStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
                     {p.postponedFrom && ` · เลื่อนเป็น ${new Date(p.dateStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}`}
                   </div>
+                  {p.postponedFrom && p.postponeNote && (
+                    <div style={{ fontSize: 11, color: BRAND.gold, marginTop: 3 }}>💬 {p.postponeNote}</div>
+                  )}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.danger }}>฿{fmtFull(c.amount)}</div>
                 <div style={{ fontSize: 11, color: BRAND.danger }}>เกิน {Math.abs(originalDiff)} วัน</div>
