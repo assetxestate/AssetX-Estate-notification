@@ -28,7 +28,14 @@
       "Bash(npx --no-install playwright --version)",
       "Bash(npm ls *)",
       "Bash(node -e \"console.log\\(new Date\\(\\).toString\\(\\)\\); console.log\\(Intl.DateTimeFormat\\(\\).resolvedOptions\\(\\).timeZone\\); console.log\\(new Date\\(2026,6,4\\).toISOString\\(\\)\\)\")",
-      "Bash(TZ=Asia/Bangkok node -e ' *)"
+      "Bash(TZ=Asia/Bangkok node -e ' *)",
+      "Bash(curl -s http://localhost:5173/assess)",
+      "Bash(curl -sI http://localhost:5173/assess)",
+      "Bash(curl -s -X POST http://localhost:5173/api/assess-chat -H 'Content-Type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"จำนองกับขายฝากต่างกันยังไง ตอบสั้นๆ 1 ประโยค\"}]}' --max-time 25)",
+      "Bash(curl -s -X POST https://assetx-estate.vercel.app/api/assess-chat -H 'Content-Type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}' --max-time 25)",
+      "Bash(curl -sv -X POST https://assetx-estate.vercel.app/api/assess-chat -H 'Content-Type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}' --max-time 25)",
+      "Bash(curl -sI https://assetx-estate.vercel.app/assess)",
+      "Bash(node -e \"console.log\\(new Date\\(\\).toLocaleString\\('th-TH', {timeZone:'Asia/Bangkok', dateStyle:'full', timeStyle:'medium'}\\)\\)\")"
     ]
   }
 }
