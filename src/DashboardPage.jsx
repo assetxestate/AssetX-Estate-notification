@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
 import { BRAND as BASE_BRAND } from './lib/config.js'
+import { getDiff } from './lib/utils.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
 const BRAND = { ...BASE_BRAND, success: '#10B981', danger: '#EF4444' }
@@ -122,12 +123,16 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
     })
   })
 
-  // ค้างชำระ
+  // ค้างชำระ — เทียบกับ "วันครบกำหนดเดิม" (ก่อนถูกเลื่อน) ไม่ใช่วันที่เลื่อนใหม่
+  // เพราะยอดยังคงค้างอยู่จริงจนกว่าจะมีการชำระ ต่อให้เลื่อนกำหนดใหม่ไปแล้วก็ตาม
   const overduePayments = []
   active.forEach(c => {
     c.payments?.forEach(p => {
-      if (p.status === 'past' && !paymentRecords[c.id]?.[p.installment]) {
-        overduePayments.push({ c, p })
+      if (paymentRecords[c.id]?.[p.installment]) return
+      const originalDueStr = p.postponedFrom || p.dateStr
+      const originalDiff = originalDueStr ? getDiff(originalDueStr, today) : null
+      if (originalDiff !== null && originalDiff < 0) {
+        overduePayments.push({ c, p, originalDueStr, originalDiff })
       }
     })
   })
@@ -330,14 +335,17 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
         <div style={{ background: BRAND.bgCard, border: `1px solid rgba(239,68,68,0.4)`, borderRadius: 14, padding: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.danger, marginBottom: 16 }}>🔴 งวดที่ค้างชำระ ({overduePayments.length} งวด)</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {overduePayments.slice(0, 10).map(({ c, p }, i) => (
+            {overduePayments.slice(0, 10).map(({ c, p, originalDueStr, originalDiff }, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: BRAND.bg }}>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri }}>{c.name}</div>
-                  <div style={{ fontSize: 11, color: BRAND.textSec }}>งวดที่ {p.installment} · {new Date(p.dateStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</div>
+                  <div style={{ fontSize: 11, color: BRAND.textSec }}>
+                    งวดที่ {p.installment} · ครบกำหนดเดิม {new Date(originalDueStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                    {p.postponedFrom && ` · เลื่อนเป็น ${new Date(p.dateStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}`}
+                  </div>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.danger }}>฿{fmtFull(c.amount)}</div>
-                <div style={{ fontSize: 11, color: BRAND.danger }}>เกิน {Math.abs(p.diff)} วัน</div>
+                <div style={{ fontSize: 11, color: BRAND.danger }}>เกิน {Math.abs(originalDiff)} วัน</div>
               </div>
             ))}
           </div>
