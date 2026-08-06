@@ -125,13 +125,17 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
 
   // ค้างชำระ — เทียบกับ "วันครบกำหนดเดิม" (ก่อนถูกเลื่อน) ไม่ใช่วันที่เลื่อนใหม่
   // เพราะยอดยังคงค้างอยู่จริงจนกว่าจะมีการชำระ ต่อให้เลื่อนกำหนดใหม่ไปแล้วก็ตาม
+  // งวดที่ครบกำหนด "วันนี้พอดี" และยังไม่เคยถูกเลื่อน — ยังไม่นับค้าง (ให้เวลาถึงสิ้นวัน)
+  // แต่ถ้าเคยถูกเลื่อนมาแล้ว (แม้จะเลื่อนตั้งแต่วันครบกำหนดเดิมพอดี) ถือว่ายอมรับแล้วว่าไม่จ่ายตรงกำหนด นับค้างทันที
   const overduePayments = []
   active.forEach(c => {
     c.payments?.forEach(p => {
       if (paymentRecords[c.id]?.[p.installment]) return
       const originalDueStr = p.postponedFrom || p.dateStr
       const originalDiff = originalDueStr ? getDiff(originalDueStr, today) : null
-      if (originalDiff !== null && originalDiff < 0) {
+      if (originalDiff === null) return
+      const isOverdue = p.postponedFrom ? originalDiff <= 0 : originalDiff < 0
+      if (isOverdue) {
         overduePayments.push({ c, p, originalDueStr, originalDiff })
       }
     })
@@ -348,7 +352,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                   )}
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.danger }}>฿{fmtFull(c.amount)}</div>
-                <div style={{ fontSize: 11, color: BRAND.danger }}>เกิน {Math.abs(originalDiff)} วัน</div>
+                <div style={{ fontSize: 11, color: BRAND.danger }}>{originalDiff === 0 ? 'ครบกำหนดวันนี้' : `เกิน ${Math.abs(originalDiff)} วัน`}</div>
               </div>
             ))}
           </div>
