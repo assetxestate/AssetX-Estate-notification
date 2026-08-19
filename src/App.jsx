@@ -1381,9 +1381,51 @@ export default function App() {
                                 const extraPrincipal = tops.reduce((s, t) => s + (t.topupAmount || 0), 0);
                                 const extraInterest = tops.reduce((s, t) => s + (t.interestAmount || 0), 0);
                                 return (
-                                  <div style={{ fontSize: 10, color: BRAND.gold, marginTop: 2, fontWeight: 600 }}>
-                                    💵 +{formatMoney(extraPrincipal)} ฿ · ดอกเบี้ยรวม {formatMoney((c.amount || 0) + extraInterest)} ฿/{c.freq}
-                                  </div>
+                                  <>
+                                    <div style={{ fontSize: 10, color: BRAND.gold, marginTop: 2, fontWeight: 600 }}>
+                                      💵 +{formatMoney(extraPrincipal)} ฿ · ดอกเบี้ยรวม {formatMoney((c.amount || 0) + extraInterest)} ฿/{c.freq}
+                                    </div>
+                                    {/* นับถอยหลังของแต่ละยอดเพิ่มวง แยกจากยอดเดิม กันสับสน/ลืม */}
+                                    {tops.map(topup => {
+                                      const tPays = (topup.payments || []).map(tp => {
+                                        const diff = getDiff(tp.dateStr, today);
+                                        const record = topup.records?.[tp.installment];
+                                        const status = record ? "paid" : payStatus(diff);
+                                        return { ...tp, diff, record, status };
+                                      });
+                                      const nextTopupPay =
+                                        tPays.find((tp) => tp.diff >= 0 && tp.status !== "paid")
+                                        || tPays.find((tp) => tp.diff >= 0)
+                                        || tPays[0];
+                                      if (!nextTopupPay) return null;
+                                      const st = P_STATUS[nextTopupPay.status];
+                                      return (
+                                        <div
+                                          key={topup.id}
+                                          style={{
+                                            display: "inline-block",
+                                            padding: "3px 10px",
+                                            borderRadius: 20,
+                                            marginTop: 4,
+                                            background: st.bg,
+                                            border: `1px solid ${st.border}`,
+                                            color: st.text,
+                                            fontSize: 11,
+                                            fontWeight: 600,
+                                          }}
+                                        >
+                                          💵 งวดเพิ่มวง {nextTopupPay.installment} •{" "}
+                                          {nextTopupPay.status === "paid"
+                                            ? "ชำระแล้ว"
+                                            : nextTopupPay.diff === 0
+                                            ? "วันนี้"
+                                            : nextTopupPay.diff > 0
+                                            ? `อีก ${nextTopupPay.diff} วัน`
+                                            : `เกิน ${Math.abs(nextTopupPay.diff)} วัน`}
+                                        </div>
+                                      );
+                                    })}
+                                  </>
                                 );
                               })()}
                               <div style={{ display: 'flex', gap: 4, marginTop: 6, justifyContent: 'flex-end' }}>
