@@ -1,4 +1,5 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { isHermesEnabled, streamHermesChat } from './_hermes.js'
+import { setSseHeaders, streamGeminiChat } from './_gemini.js'
 
 // Endpoint สาธารณะสำหรับหน้าประเมินออนไลน์ /assess — ไม่ต้องล็อกอิน (ตั้งใจ)
 // ห้ามส่งข้อมูลลูกค้าภายในระบบ (customerData) เข้ามาที่นี่เด็ดขาด — ต่างจาก api/chat.js
@@ -22,11 +23,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'ข้อความไม่ถูกต้อง' })
     }
 
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey || apiKey === 'your_gemini_api_key_here') {
-      return res.status(401).json({ error: 'กรุณาตั้งค่า GEMINI_API_KEY ใน Environment Variables' })
-    }
-
     const today = new Date().toLocaleDateString('th-TH', {
       year: 'numeric', month: 'long', day: 'numeric'
     })
@@ -48,37 +44,37 @@ export default async function handler(req, res) {
 - ห้ามเดาหรือฟันธงวงเงิน/ราคาประเมินที่แน่นอน ให้บอกว่าต้องรอทีมงานประเมินจริง
 - ห้ามขอหรือพูดถึงข้อมูลลูกค้ารายอื่นในระบบ (คุณไม่มีสิทธิ์เข้าถึงข้อมูลนั้น)`
 
-    const userMessage = messages[messages.length - 1].content
-    const history = messages.slice(0, -1).map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }))
-
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-flash-latest',
-      systemInstruction: systemPrompt,
-    })
-
-    const chat = model.startChat({ history })
-
-    res.setHeader('Content-Type', 'text/event-stream')
-    res.setHeader('Cache-Control', 'no-cache')
-    res.setHeader('Connection', 'keep-alive')
-
-    const result = await chat.sendMessageStream(userMessage)
-
-    for await (const chunk of result.stream) {
-      const text = chunk.text()
-      if (text) {
-        res.write(`data: ${JSON.stringify({ text })}\n\n`)
+    if (isHermesEnabled()) {
+      setSseHeaders(res)
+      try {
+        await streamHermesChat({
+          res,
+          messages,
+          systemPrompt,
+          context: {},
+          mode: 'public-assessment',
+        })
+        return res.end()
+      } catch (hermesError) {
+        await streamGeminiChat({
+          res,
+          messages,
+          systemPrompt,
+          completionNote: `\n\nหมายเหตุระบบ: ใช้ Gemini fallback เพราะ Hermes ล้ม/timeout: ${hermesError.message.split('\n')[0]}`,
+        })
+        return res.end()
       }
     }
 
-    res.write('data: [DONE]\n\n')
+    await streamGeminiChat({ res, messages, systemPrompt })
     res.end()
 
   } catch (err) {
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ text: `\n\nระบบ AI ตอบกลับไม่สำเร็จ: ${err.message}` })}\n\n`)
+      res.write('data: [DONE]\n\n')
+      return res.end()
+    }
     res.status(500).json({ error: err.message })
   }
 }

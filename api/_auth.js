@@ -1,5 +1,8 @@
 // Helper ออก/ตรวจ session cookie แบบเซ็นด้วย HMAC (ไฟล์ขึ้นต้น _ ไม่ถูกมองเป็น route)
 import crypto from 'crypto';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '.env.local' });
 
 const COOKIE_NAME = 'assetx_session';
 const MAX_AGE = 60 * 60 * 12; // 12 ชั่วโมง
@@ -13,7 +16,8 @@ export function createSessionCookie() {
   const payload = String(exp);
   const sig = crypto.createHmac('sha256', secret()).update(payload).digest('hex');
   const value = `${payload}.${sig}`;
-  return `${COOKIE_NAME}=${value}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${MAX_AGE}`;
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `${COOKIE_NAME}=${value}; HttpOnly${secure}; SameSite=Strict; Path=/; Max-Age=${MAX_AGE}`;
 }
 
 export function verifySession(req) {

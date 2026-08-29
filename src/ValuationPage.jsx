@@ -9,9 +9,11 @@ import {
   updateValuation as apiUpdateValuation,
   updateValuationStatus as apiUpdateValuationStatus,
   deleteValuation as apiDeleteValuation,
+  getNearbyAreaPricePoints as apiGetNearbyAreaPricePoints,
 } from './lib/api.js'
 import { searchGovPrice, extractPrice, recordLabel } from './lib/treasuryApi.js'
 import { THAI_PROVINCES, PROV_CODE, getAmphoeList, searchByDeed, parseDolResult } from './lib/dolApi.js'
+import { confidenceBand } from './lib/pricePoints.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
 const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981' }
@@ -25,6 +27,7 @@ import {
 } from './lib/valuationOptions.js'
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
+const VALUATION_DRAFT_KEY = 'assetx_valuation_draft'
 
 const INITIAL_FORM = {
   assessmentType: 'ขายฝาก', propertyType: 'ที่ดิน', propertySubtype: 'ที่ดินเปล่า (โฉนด)',
@@ -40,6 +43,55 @@ const INITIAL_FORM = {
   ltvRate: 50, linkedCustomer: '',
   lat: null, lng: null,
   requestedLoan: '', assetCode: '',
+}
+
+const TEST_VALUATION_FORM = {
+  ...INITIAL_FORM,
+  assessmentType: 'ขายฝาก',
+  propertyType: 'ที่ดิน',
+  propertySubtype: 'ที่ดินเปล่า (โฉนด)',
+  projectName: 'เคสทดสอบ บึงคำพร้อย ลำลูกกา',
+  assessorName: 'AssetX Test',
+  deeds: [{
+    id: 'test-deed-1',
+    titleDeedNo: 'TEST-001',
+    mapSheet: '',
+    surveyPage: '',
+    landNo: '',
+    areaRai: 1,
+    areaNgan: 0,
+    areaSqw: 0,
+    govPrice: 8000,
+  }],
+  province: 'ปทุมธานี',
+  district: 'ลำลูกกา',
+  subdistrict: 'บึงคำพร้อย',
+  roadType: 'ถนนซอย/ถนนชุมชน',
+  roadWidth: '6 เมตรขึ้นไป',
+  landFrontage: 'หน้ากว้างปกติ',
+  distanceFromMain: 'ไม่ทราบ',
+  zoneColor: 'ต้องตรวจสอบ',
+  soilCondition: 'ที่ดินถมแล้ว/ใช้งานได้',
+  compPrice: 12000,
+  compSource: 'ราคาเสนอจากนายหน้า/เคสทดสอบ ยังไม่ใช่ closed transaction',
+  locationNote: 'ข้อมูลตัวอย่างสำหรับทดสอบ flow ประเมินและ Hermes underwriting memo',
+  requestedLoan: 2500000,
+  lat: 13.932,
+  lng: 100.719,
+}
+
+function loadValuationDraft() {
+  try {
+    const raw = localStorage.getItem(VALUATION_DRAFT_KEY)
+    if (!raw) return { form: INITIAL_FORM, step: 1 }
+    const parsed = JSON.parse(raw)
+    return {
+      form: { ...INITIAL_FORM, ...(parsed.form || {}) },
+      step: Math.min(4, Math.max(1, Number(parsed.step) || 1)),
+    }
+  } catch {
+    return { form: INITIAL_FORM, step: 1 }
+  }
 }
 
 // ── UI Components ──────────────────────────────────────
@@ -1629,7 +1681,64 @@ function CompAdjPanel({ form, update, calc }) {
   )
 }
 
-function Step2({ form, update, calc, comps = [] }) {
+function NearbyPricePointsPanel({ points = [], loading, form, update }) {
+  const hasLocation = form.lat && form.lng
+  const avgPrice = points.length > 0
+    ? Math.round(points.reduce((sum, p) => sum + (Number(p.price_per_sqw) || 0), 0) / points.length)
+    : null
+
+  return (
+    <Card style={{ borderColor: 'rgba(45,212,191,0.3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal }}>Nearby price points</div>
+          <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>Internal comps near this pin, ordered by subtype match and distance.</div>
+        </div>
+        {avgPrice && (
+          <button
+            onClick={() => { update('compPrice', avgPrice); update('compSource', `Nearby internal price points (${points.length})`) }}
+            style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${BRAND.teal}`, background: 'rgba(45,212,191,0.12)', color: BRAND.teal, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          >
+            Use avg ฿{fmt(avgPrice)}/sqw
+          </button>
+        )}
+      </div>
+
+      {!hasLocation && (
+        <div style={{ fontSize: 12, color: BRAND.textMut, padding: '10px 0' }}>Pin the property on the map to search nearby internal price points.</div>
+      )}
+      {hasLocation && loading && (
+        <div style={{ fontSize: 12, color: BRAND.textSec, padding: '10px 0' }}>Loading nearby price points...</div>
+      )}
+      {hasLocation && !loading && points.length === 0 && (
+        <div style={{ fontSize: 12, color: BRAND.textMut, padding: '10px 0' }}>No nearby internal price points yet. Saving valuations with a pin and market price will build this database.</div>
+      )}
+      {points.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8 }}>
+          {points.map((p) => {
+            const band = confidenceBand(p.confidence_score)
+            return (
+              <button
+                key={p.id}
+                onClick={() => { update('compPrice', Number(p.price_per_sqw) || ''); update('compSource', `Nearby ${p.source_type || 'price point'} #${p.id}`) }}
+                style={{ textAlign: 'left', padding: 10, borderRadius: 8, border: `1px solid ${BRAND.border}`, background: BRAND.bg, color: BRAND.textPri, cursor: 'pointer' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: BRAND.teal }}>฿{fmt(p.price_per_sqw)}/sqw</span>
+                  <span style={{ fontSize: 10, color: band.color, whiteSpace: 'nowrap' }}>{band.label}</span>
+                </div>
+                <div style={{ fontSize: 11, color: BRAND.textSec }}>{Math.round(p.distance_m).toLocaleString('th-TH')} m · {p.property_subtype || p.property_type || 'property'}</div>
+                <div style={{ fontSize: 10, color: BRAND.textMut, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.source_note || p.source_type || 'internal comp'}</div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function Step2({ form, update, calc, comps = [], nearbyPricePoints = [], nearbyLoading = false }) {
   // ราคาอ้างอิงจากประวัติในพื้นที่เดียวกัน
   const relevantComps = comps.filter(c =>
     c['จังหวัด'] === form.province && c['ประเภทอสังหาฯ'] === form.propertyType
@@ -1774,6 +1883,7 @@ function Step2({ form, update, calc, comps = [] }) {
         <textarea value={form.locationNote} onChange={e => update('locationNote', e.target.value)} placeholder="บันทึกเพิ่มเติม เช่น สภาพพื้นที่ ทิศทาง สิ่งแวดล้อม..." style={{ width: '100%', background: BRAND.bg, border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '10px 12px', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box' }} />
       </Card>
       <CompAdjPanel form={form} update={update} calc={calc} />
+      <NearbyPricePointsPanel points={nearbyPricePoints} loading={nearbyLoading} form={form} update={update} />
       <MarketSearchPanel form={form} update={update} />
       <MapPicker form={form} update={update} />
     </div>
@@ -1864,12 +1974,42 @@ function Step3({ form, update, calc }) {
 }
 
 // ── Step 4 ─────────────────────────────────────────────
-function Step4({ form, calc, update }) {
+function Step4({ form, calc, update, underwritingMemo, underwritingLoading, underwritingError, onGenerateUnderwriting, onCopyUnderwriting }) {
   const reqLoan = parseFloat(form.requestedLoan) || 0
+  const loanToGovLtv = calc.govPriceTotal > 0 ? (reqLoan / calc.govPriceTotal) * 100 : 0
   const reqLtv = calc.marketValue > 0 ? (reqLoan / calc.marketValue) * 100 : 0
   const reqLtvVsFsv = calc.fsv > 0 ? (reqLoan / calc.fsv) * 100 : 0
   const isOverLimit = reqLoan > calc.recommendedLoan
   const reqColor = reqLoan === 0 ? BRAND.textSec : isOverLimit ? '#EF4444' : BRAND.success
+  const formatLtv = (value, base) => base > 0 ? `${value.toFixed(2)}%` : '—'
+  const formatCushion = (base) => {
+    if (!reqLoan || !base) return '—'
+    const diff = base - reqLoan
+    return `${diff >= 0 ? 'เหลือกันชน' : 'เกินฐานราคา'} ฿${fmt(Math.abs(diff))}`
+  }
+  const ltvCompareRows = [
+    {
+      label: 'เทียบราคาประเมินราชการ',
+      base: calc.govPriceTotal,
+      unit: calc.weightedGovPrice,
+      ltv: loanToGovLtv,
+      note: 'ฐานอ้างอิงราชการ',
+    },
+    {
+      label: 'เทียบราคาซื้อขาย/ตลาดจริง',
+      base: calc.marketValue,
+      unit: calc.effectiveMarketPrice,
+      ltv: reqLtv,
+      note: form.compPrice ? 'ใช้ราคา Comp/ตลาดที่กรอก' : 'ใช้ราคาตลาดจากสูตรประเมิน',
+    },
+    {
+      label: 'เทียบ Forced Sale Value',
+      base: calc.fsv,
+      unit: calc.totalSqw > 0 ? calc.fsv / calc.totalSqw : 0,
+      ltv: reqLtvVsFsv,
+      note: `ฐานขายเร็ว ${Math.round(calc.fsvRate * 100)}% ของราคาตลาด`,
+    },
+  ]
   return (
     <div id="print-area" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
@@ -1960,6 +2100,69 @@ function Step4({ form, calc, update }) {
           </Card>
 
           {/* วงเงินที่ลูกค้าเสนอขอ */}
+          <Card style={{ borderColor: underwritingMemo ? 'rgba(45,212,191,0.35)' : BRAND.border }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: BRAND.gold }}>Hermes Underwriting Memo</div>
+                <div style={{ fontSize: 10, color: BRAND.textSec, marginTop: 3 }}>วิเคราะห์ MV/QSV/FSV, LTV, ความเสี่ยง และเงื่อนไขอนุมัติ</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={onGenerateUnderwriting}
+                  disabled={underwritingLoading}
+                  style={{
+                    padding: '9px 12px',
+                    borderRadius: 8,
+                    border: '1px solid rgba(45,212,191,0.45)',
+                    background: underwritingLoading ? 'rgba(45,212,191,0.08)' : 'rgba(45,212,191,0.16)',
+                    color: underwritingLoading ? BRAND.textSec : BRAND.teal,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: underwritingLoading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {underwritingLoading ? 'กำลังประเมินด้วย AI...' : 'ประเมินด้วย AI'}
+                </button>
+              </div>
+            </div>
+            {underwritingError && (
+              <div style={{ padding: 10, borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#FCA5A5', fontSize: 11, marginBottom: 10 }}>
+                {underwritingError}
+              </div>
+            )}
+            {underwritingMemo ? (
+              <>
+                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.65, maxHeight: 520, overflow: 'auto', padding: 12, borderRadius: 8, background: '#050B18', border: `1px solid ${BRAND.border}`, color: BRAND.textPri, fontSize: 12 }}>
+                  {underwritingMemo}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={onCopyUnderwriting}
+                    disabled={underwritingLoading}
+                    style={{
+                      padding: '9px 12px',
+                      borderRadius: 8,
+                      border: `1px solid ${underwritingLoading ? BRAND.border : 'rgba(245,158,11,0.45)'}`,
+                      background: underwritingLoading ? 'rgba(148,163,184,0.06)' : 'rgba(245,158,11,0.12)',
+                      color: underwritingLoading ? BRAND.textMut : BRAND.gold,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: underwritingLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    คัดลอก Memo
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: 12, borderRadius: 8, background: '#050B18', border: `1px solid ${BRAND.border}`, color: BRAND.textSec, fontSize: 11 }}>
+                กดปุ่มเพื่อให้ Hermes วิเคราะห์หลักประกันจากข้อมูลประเมินปัจจุบันและ nearby price points
+              </div>
+            )}
+          </Card>
+
           <Card style={{ borderColor: reqLoan > 0 ? `${reqColor}50` : BRAND.border }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>🙋 วงเงินที่ลูกค้าเสนอขอ</div>
             <Label>ระบุวงเงินที่ลูกค้าต้องการ (บาท)</Label>
@@ -1973,6 +2176,29 @@ function Step4({ form, calc, update }) {
 
             {reqLoan > 0 && (
               <>
+                <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.28)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: BRAND.gold, marginBottom: 8 }}>สรุปเทียบวงเงินขายฝากกับฐานราคา</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.95fr 0.7fr 1fr', gap: 8, paddingBottom: 6, borderBottom: `1px solid ${BRAND.border}`, fontSize: 10, color: BRAND.textSec }}>
+                    <div>ฐานราคา</div>
+                    <div style={{ textAlign: 'right' }}>มูลค่ารวม</div>
+                    <div style={{ textAlign: 'right' }}>LTV</div>
+                    <div style={{ textAlign: 'right' }}>ส่วนต่าง</div>
+                  </div>
+                  {ltvCompareRows.map((row) => (
+                    <div key={row.label} style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.95fr 0.7fr 1fr', gap: 8, padding: '8px 0', borderBottom: `1px solid ${BRAND.border}`, alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.textPri }}>{row.label}</div>
+                        <div style={{ fontSize: 9, color: BRAND.textMut }}>{row.unit ? `${fmt(row.unit)} บาท/ตร.ว. · ${row.note}` : row.note}</div>
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.textPri, textAlign: 'right' }}>฿{fmt(row.base)}</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: row.ltv > 75 ? '#EF4444' : row.ltv > 60 ? '#F59E0B' : BRAND.success, textAlign: 'right' }}>{formatLtv(row.ltv, row.base)}</div>
+                      <div style={{ fontSize: 10, color: row.base >= reqLoan ? BRAND.success : '#EF4444', textAlign: 'right' }}>{formatCushion(row.base)}</div>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 8, fontSize: 10, color: BRAND.textSec }}>
+                    วงเงินขายฝากที่นำมาเทียบ: ฿{fmt(reqLoan)} · วงเงินแนะนำจากระบบ: ฿{fmt(calc.recommendedLoan)}
+                  </div>
+                </div>
                 {/* ตารางเปรียบเทียบ */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
                   {[
@@ -2070,12 +2296,18 @@ function fixLeafletIcons() {
 
 // ── Main ───────────────────────────────────────────────
 export default function ValuationPage({ onBack, appsScriptUrl, customers = [] }) {
+  const initialDraft = useMemo(() => loadValuationDraft(), [])
   const [view, setView] = useState('form')
-  const [step, setStep] = useState(1)
-  const [form, setForm] = useState(INITIAL_FORM)
+  const [step, setStep] = useState(initialDraft.step)
+  const [form, setForm] = useState(initialDraft.form)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [comps, setComps] = useState([])
+  const [nearbyPricePoints, setNearbyPricePoints] = useState([])
+  const [nearbyLoading, setNearbyLoading] = useState(false)
+  const [underwritingMemo, setUnderwritingMemo] = useState('')
+  const [underwritingLoading, setUnderwritingLoading] = useState(false)
+  const [underwritingError, setUnderwritingError] = useState('')
   const [valuationSeq, setValuationSeq] = useState(1)
   const compsLoadedRef = useRef(false)
   const seqLoadedRef = useRef(false)
@@ -2084,6 +2316,14 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   const updateDeed = (idx, key, val) => setForm(prev => ({ ...prev, deeds: prev.deeds.map((d, i) => i === idx ? { ...d, [key]: val } : d) }))
   const addDeed = () => setForm(prev => ({ ...prev, deeds: [...prev.deeds, EMPTY_DEED()] }))
   const removeDeed = (idx) => setForm(prev => ({ ...prev, deeds: prev.deeds.filter((_, i) => i !== idx) }))
+
+  useEffect(() => {
+    localStorage.setItem(VALUATION_DRAFT_KEY, JSON.stringify({
+      form,
+      step,
+      updatedAt: new Date().toISOString(),
+    }))
+  }, [form, step])
 
   // โหลด sequence number จากจำนวนประเมินทั้งหมด
   useEffect(() => {
@@ -2115,7 +2355,118 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
       .catch(() => {})
   }, [step])
 
+  useEffect(() => {
+    if (step !== 2 || !form.lat || !form.lng) {
+      setNearbyPricePoints([])
+      return
+    }
+    let cancelled = false
+    setNearbyLoading(true)
+    apiGetNearbyAreaPricePoints({
+      lat: form.lat,
+      lng: form.lng,
+      province: form.province,
+      propertyType: form.propertyType,
+      propertySubtype: form.propertySubtype,
+      radiusM: 5000,
+      limit: 8,
+    })
+      .then(points => { if (!cancelled) setNearbyPricePoints(points) })
+      .catch(() => { if (!cancelled) setNearbyPricePoints([]) })
+      .finally(() => { if (!cancelled) setNearbyLoading(false) })
+    return () => { cancelled = true }
+  }, [step, form.lat, form.lng, form.province, form.propertyType, form.propertySubtype])
+
   const calc = useMemo(() => computeValuation(form), [form])
+
+  const handleGenerateUnderwriting = async () => {
+    if (underwritingLoading) return
+    setUnderwritingLoading(true)
+    setUnderwritingError('')
+    setUnderwritingMemo('')
+    try {
+      const res = await fetch('/api/underwrite-valuation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          valuation: { ...form, ...calc },
+          nearbyPricePoints,
+          missingFields: [
+            !form.lat || !form.lng ? 'พิกัด' : '',
+            !form.compPrice ? 'ราคาซื้อขาย/Comp ตลาดจริง' : '',
+            !form.roadWidth ? 'ความกว้างถนน' : '',
+            !form.zoneColor ? 'ผังเมือง' : '',
+            !form.requestedLoan ? 'วงเงินขายฝากที่ลูกค้าขอ' : '',
+          ].filter(Boolean),
+          instructions: 'จัดทำ preliminary internal underwriting memo สำหรับทีม AssetX',
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'สร้าง Underwriting Memo ไม่สำเร็จ')
+      }
+
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('ไม่สามารถอ่านผลลัพธ์จาก Hermes ได้')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split(/\r?\n/)
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6).trim()
+          if (!data || data === '[DONE]') continue
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.text) setUnderwritingMemo(prev => prev + parsed.text)
+          } catch {
+            setUnderwritingMemo(prev => prev + data)
+          }
+        }
+      }
+    } catch (e) {
+      setUnderwritingError(e.message)
+      showToast('สร้าง Underwriting Memo ไม่สำเร็จ: ' + e.message)
+    } finally {
+      setUnderwritingLoading(false)
+    }
+  }
+
+  const handleCopyUnderwriting = async () => {
+    const text = underwritingMemo.trim()
+    if (!text) {
+      showToast('ยังไม่มี Underwriting Memo ให้คัดลอก')
+      return
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+      } else {
+        const textarea = document.createElement('textarea')
+        textarea.value = text
+        textarea.setAttribute('readonly', '')
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+      }
+      showToast('คัดลอก Underwriting Memo แล้ว', 'success')
+    } catch (e) {
+      showToast('คัดลอก Memo ไม่สำเร็จ: ' + e.message)
+    }
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -2192,7 +2543,26 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
     win.document.close()
   }
 
-  const handleReset = () => { setForm(INITIAL_FORM); setStep(1); setSaved(false) }
+  const handleReset = () => {
+    localStorage.removeItem(VALUATION_DRAFT_KEY)
+    setForm(INITIAL_FORM)
+    setStep(1)
+    setSaved(false)
+    setUnderwritingMemo('')
+    setUnderwritingError('')
+  }
+
+  const handleLoadTestCase = () => {
+    setForm({
+      ...TEST_VALUATION_FORM,
+      assessmentDate: new Date().toISOString().split('T')[0],
+    })
+    setStep(4)
+    setSaved(false)
+    setUnderwritingMemo('')
+    setUnderwritingError('')
+    showToast('โหลดเคสทดสอบแล้ว ไปที่ Step 4 ได้เลย')
+  }
 
   const btn = (primary, ghost) => ({
     padding: '12px 20px', borderRadius: 10, border: ghost ? `1px solid ${BRAND.border}` : 'none',
@@ -2215,6 +2585,12 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
           <button onClick={() => setView('history')} style={{ ...btn(false), background: view === 'history' ? 'rgba(45,212,191,0.15)' : BRAND.border, color: view === 'history' ? BRAND.teal : BRAND.textSec, border: view === 'history' ? `1px solid ${BRAND.teal}` : 'none' }}>
             📂 ประวัติการประเมิน
           </button>
+          <button onClick={handleLoadTestCase} style={{ ...btn(false), border: `1px solid ${BRAND.teal}`, background: 'rgba(45,212,191,0.08)', color: BRAND.teal }}>
+            โหลดเคสทดสอบ
+          </button>
+          <span style={{ alignSelf: 'center', fontSize: 11, color: BRAND.textSec }}>
+            บันทึกดราฟต์อัตโนมัติ
+          </span>
           <button onClick={onBack} style={{ ...btn(false), marginLeft: 'auto' }}>← กลับหน้าหลัก</button>
         </div>
 
@@ -2226,9 +2602,20 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
           <>
             <Stepper step={step} />
             {step === 1 && <Step1 form={form} update={update} updateDeed={updateDeed} addDeed={addDeed} removeDeed={removeDeed} customers={customers} assetCode={form.assetCode} />}
-            {step === 2 && <Step2 form={form} update={update} calc={calc} comps={comps} />}
+            {step === 2 && <Step2 form={form} update={update} calc={calc} comps={comps} nearbyPricePoints={nearbyPricePoints} nearbyLoading={nearbyLoading} />}
             {step === 3 && <Step3 form={form} update={update} calc={calc} />}
-            {step === 4 && <Step4 form={form} calc={calc} update={update} />}
+            {step === 4 && (
+              <Step4
+                form={form}
+                calc={calc}
+                update={update}
+                underwritingMemo={underwritingMemo}
+                underwritingLoading={underwritingLoading}
+                underwritingError={underwritingError}
+                onGenerateUnderwriting={handleGenerateUnderwriting}
+                onCopyUnderwriting={handleCopyUnderwriting}
+              />
+            )}
 
             <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24, gap: 10, flexWrap: 'wrap' }}>
               <button onClick={() => setStep(s => s - 1)} disabled={step === 1} style={{ ...btn(false), opacity: step === 1 ? 0.4 : 1 }}>← ย้อนกลับ</button>

@@ -101,6 +101,37 @@ CREATE TABLE IF NOT EXISTS valuations (
   created_at            TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── 5.1 ตารางฐานราคาเปรียบเทียบรายจุด / พื้นที่ ─────────────────────────
+CREATE TABLE IF NOT EXISTS area_price_points (
+  id                          SERIAL PRIMARY KEY,
+  valuation_id                INT REFERENCES valuations(id) ON DELETE SET NULL,
+  source_type                 TEXT DEFAULT 'manual_comp',
+  province                    TEXT DEFAULT '',
+  district                    TEXT DEFAULT '',
+  subdistrict                 TEXT DEFAULT '',
+  lat                         NUMERIC,
+  lng                         NUMERIC,
+  radius_m                    NUMERIC DEFAULT 1000,
+  property_type               TEXT DEFAULT '',
+  property_subtype            TEXT DEFAULT '',
+  land_area_sqw               NUMERIC DEFAULT 0,
+  price_per_sqw               NUMERIC DEFAULT 0,
+  total_price                 NUMERIC DEFAULT 0,
+  transaction_or_listing_date DATE,
+  source_url                  TEXT DEFAULT '',
+  source_note                 TEXT DEFAULT '',
+  confidence_score            NUMERIC DEFAULT 60,
+  verified_by                 TEXT DEFAULT '',
+  created_at                  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at                  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS area_price_points_location_idx
+  ON area_price_points (province, district, subdistrict, property_type);
+
+CREATE INDEX IF NOT EXISTS area_price_points_lat_lng_idx
+  ON area_price_points (lat, lng);
+
 -- ── Migration: เพิ่ม disbursement column (run ถ้า table มีอยู่แล้ว) ──
 -- ALTER TABLE customers ADD COLUMN IF NOT EXISTS disbursement JSONB DEFAULT '{}';
 
@@ -122,6 +153,7 @@ ALTER TABLE payments          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payment_records   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contract_statuses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE valuations        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE area_price_points ENABLE ROW LEVEL SECURITY;
 ALTER TABLE destinations      ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "allow_all" ON customers         FOR ALL USING (true) WITH CHECK (true);
@@ -129,4 +161,5 @@ CREATE POLICY "allow_all" ON payments          FOR ALL USING (true) WITH CHECK (
 CREATE POLICY "allow_all" ON payment_records   FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON contract_statuses FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON valuations        FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON area_price_points FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON destinations      FOR ALL USING (true) WITH CHECK (true);

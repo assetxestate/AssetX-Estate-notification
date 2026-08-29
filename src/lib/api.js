@@ -3,6 +3,7 @@
 // ทุก component ที่เคย fetch(APPS_SCRIPT_URL) ให้ import จากที่นี่
 // ============================================================
 import { supabase } from "./supabase";
+import { haversineDistanceMeters } from "./pricePoints";
 
 // ── Customers ─────────────────────────────────────────────────
 
@@ -340,7 +341,69 @@ export async function saveValuation(data) {
     contact_line: data.contactLine || "",
   }).select("id").single();
   if (error) throw error;
+  await saveAreaPricePointFromValuation(inserted.id, data).catch(() => {});
   return { success: true, rowIndex: inserted.id };
+}
+
+export async function saveAreaPricePointFromValuation(valuationId, data) {
+  const lat = data.lat != null && data.lat !== "" ? Number(data.lat) : null;
+  const lng = data.lng != null && data.lng !== "" ? Number(data.lng) : null;
+  const pricePerSqw = Number(data.effectiveMarketPrice) || Number(data.compPrice) || 0;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || pricePerSqw <= 0) {
+    return { success: false, skipped: true };
+  }
+
+  const { error } = await supabase.from("area_price_points").insert({
+    valuation_id: valuationId || null,
+    source_type: "assetx_valuation",
+    province: data.province || "",
+    district: data.district || "",
+    subdistrict: data.subdistrict || "",
+    lat,
+    lng,
+    radius_m: 1000,
+    property_type: data.propertyType || "",
+    property_subtype: data.propertySubtype || "",
+    land_area_sqw: data.totalSqw || 0,
+    price_per_sqw: pricePerSqw,
+    total_price: data.marketValue || 0,
+    transaction_or_listing_date: data.assessmentDate || null,
+    source_note: data.compSource || data.projectName || "AssetX valuation",
+    confidence_score: Number(data.propertyScore) || 60,
+    verified_by: data.assessorName || "",
+  });
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function getNearbyAreaPricePoints({ lat, lng, province, propertyType, propertySubtype, radiusM = 5000, limit = 8 }) {
+  const centerLat = Number(lat);
+  const centerLng = Number(lng);
+  if (!Number.isFinite(centerLat) || !Number.isFinite(centerLng)) return [];
+
+  let query = supabase
+    .from("area_price_points")
+    .select("*")
+    .eq("province", province || "")
+    .limit(300);
+
+  if (propertyType) query = query.eq("property_type", propertyType);
+
+  const { data, error } = await query;
+  if (error) return [];
+
+  return (data || [])
+    .map((row) => ({
+      ...row,
+      distance_m: haversineDistanceMeters(centerLat, centerLng, row.lat, row.lng),
+      subtype_match: propertySubtype && row.property_subtype === propertySubtype,
+    }))
+    .filter((row) => row.distance_m != null && row.distance_m <= radiusM)
+    .sort((a, b) => {
+      if (a.subtype_match !== b.subtype_match) return a.subtype_match ? -1 : 1;
+      return a.distance_m - b.distance_m;
+    })
+    .slice(0, limit);
 }
 
 // รับ lead จากหน้าประเมินออนไลน์สาธารณะ (/assess) — ใช้ insert path เดียวกับ saveValuation

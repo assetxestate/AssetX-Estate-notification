@@ -1,7 +1,10 @@
 // Serverless auth — ตรวจรหัสผ่านฝั่งเซิร์ฟเวอร์ ไม่ให้ credential หลุดใน bundle
 // ตั้งค่า ENV บน Vercel: APP_USERNAME, APP_PASSWORD
 import crypto from 'crypto'
+import dotenv from 'dotenv'
 import { createSessionCookie } from './_auth.js'
+
+dotenv.config({ path: '.env.local' })
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

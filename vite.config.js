@@ -1,7 +1,97 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { execFile } from 'node:child_process'
+import { promises as fs } from 'node:fs'
 import https from 'node:https'
+import os from 'node:os'
+import path from 'node:path'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
+
+async function runHermesCli(prompt, env) {
+  const tmpPath = path.join(os.tmpdir(), `assetx-hermes-underwrite-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`)
+  await fs.writeFile(tmpPath, prompt, 'utf8')
+
+  try {
+    const hermesBin = env.HERMES_CLI_PATH || 'hermes'
+    const args = [
+      'chat',
+      '--query-file',
+      tmpPath,
+      '--oneshot',
+      '--ignore-rules',
+      '--in',
+      process.cwd(),
+      '--source',
+      'tool',
+      '--run-budget',
+      String(env.HERMES_AGENT_RUN_BUDGET_SECONDS || 120),
+      '--max-turns',
+      String(env.HERMES_AGENT_MAX_TURNS || 2),
+    ]
+    if (env.HERMES_AGENT_PROVIDER) args.push('--provider', env.HERMES_AGENT_PROVIDER)
+    if (env.HERMES_AGENT_MODEL) args.push('--model', env.HERMES_AGENT_MODEL)
+
+    let stdout = ''
+    let stderr = ''
+    try {
+      const result = await execFileAsync(hermesBin, args, {
+        cwd: process.cwd(),
+        env: { ...process.env, ...env },
+        timeout: Number(env.HERMES_CLI_TIMEOUT_MS || env.HERMES_AGENT_TIMEOUT_MS || 90000),
+        maxBuffer: 1024 * 1024 * 8,
+        windowsHide: true,
+      })
+      stdout = result.stdout
+      stderr = result.stderr
+    } catch (err) {
+      const details = [
+        err.message,
+        err.stdout ? `stdout:\n${String(err.stdout).slice(-2000)}` : '',
+        err.stderr ? `stderr:\n${String(err.stderr).slice(-2000)}` : '',
+      ].filter(Boolean).join('\n\n')
+      throw new Error(details)
+    }
+
+    const text = String(stdout || '').trim()
+    if (text) return text
+    throw new Error(String(stderr || 'Hermes CLI did not return output').trim())
+  } finally {
+    await fs.rm(tmpPath, { force: true }).catch(() => {})
+  }
+}
+
+async function runGeminiUnderwriting(prompt, systemPrompt, env) {
+  const apiKey = env.GEMINI_API_KEY
+  if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+    throw new Error('Hermes failed and GEMINI_API_KEY is not configured for fallback')
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const models = (env.GEMINI_UNDERWRITE_MODELS || env.GEMINI_UNDERWRITE_MODEL || 'gemini-flash-latest')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean)
+  const errors = []
+
+  for (const modelName of models) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: systemPrompt,
+      })
+      const result = await model.generateContent(prompt)
+      const text = result.response.text()
+      return `${text}\n\nหมายเหตุระบบ: สร้างด้วย Gemini fallback รุ่น ${modelName}`
+    } catch (err) {
+      errors.push(`${modelName}: ${err.message}`)
+    }
+  }
+
+  throw new Error(`Hermes failed and all Gemini fallback models failed:\n${errors.join('\n')}`)
+}
 
 function dolGet(urlStr, headers) {
   return new Promise((resolve, reject) => {
@@ -52,6 +142,212 @@ export default defineConfig(({ mode }) => {
       {
         name: 'gemini-api-dev',
         configureServer(server) {
+          server.middlewares.use('/api/login', async (req, res) => {
+            if (req.method !== 'POST') {
+              res.statusCode = 405
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Method Not Allowed' }))
+              return
+            }
+
+            let body = ''
+            req.on('data', chunk => body += chunk)
+            req.on('end', () => {
+              try {
+                const { username, password } = JSON.parse(body || '{}')
+                const ok = String(username ?? '') === String(env.APP_USERNAME ?? '') &&
+                  String(password ?? '') === String(env.APP_PASSWORD ?? '')
+
+                res.setHeader('Content-Type', 'application/json')
+                if (!env.APP_USERNAME || !env.APP_PASSWORD) {
+                  res.statusCode = 500
+                  res.end(JSON.stringify({ error: 'ยังไม่ได้ตั้งค่า APP_USERNAME / APP_PASSWORD' }))
+                  return
+                }
+
+                if (!ok) {
+                  res.statusCode = 401
+                  res.end(JSON.stringify({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' }))
+                  return
+                }
+
+                res.statusCode = 200
+                res.end(JSON.stringify({ ok: true }))
+              } catch (e) {
+                res.statusCode = 400
+                res.setHeader('Content-Type', 'application/json')
+                res.end(JSON.stringify({ error: 'ข้อมูลล็อกอินไม่ถูกต้อง' }))
+              }
+            })
+          })
+
+          server.middlewares.use('/api/underwrite-valuation', async (req, res) => {
+            if (req.method !== 'POST') {
+              res.statusCode = 405
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Method Not Allowed' }))
+              return
+            }
+
+            let body = ''
+            req.on('data', chunk => body += chunk)
+            req.on('end', async () => {
+              try {
+                const context = JSON.parse(body || '{}')
+                const transport = (env.HERMES_AGENT_TRANSPORT || '').toLowerCase()
+                const useCli = transport === 'cli' || env.HERMES_AGENT_URL === 'cli'
+                const systemPrompt = `คุณคือ underwriting memo generator ของ AssetX Estate
+
+กฎสำคัญ:
+- ใช้ข้อมูล JSON ที่ส่งมาใน prompt นี้เท่านั้น ไม่ต้องเรียก tool ไม่ต้องอ่านไฟล์ ไม่ต้องค้นเว็บ
+- ตอบภาษาไทยล้วน ยกเว้นคำย่อ MV, QSV, FSV, NRV, LTV, DD
+- เลือก final decision เพียง 1 ค่า: ACCEPT, ACCEPT WITH CONDITIONS, RENEGOTIATE AMOUNT / TERMS, หรือ DECLINE
+- แยก MV / QSV / FSV / NRV
+- แสดง liquidity score, stress test, Safe / Recommended / Maximum exposure
+- ระบุ legal/DD risks และ conditions precedent
+- ถ้าข้อมูลไม่ครบ ให้ระบุว่าไม่ทราบ / ต้องตรวจสอบ และลด confidence
+- ผลลัพธ์เป็น preliminary internal underwriting memo ไม่ใช่รายงานประเมินรับรองหรือคำแนะนำกฎหมาย`
+                const userPrompt = `จัดทำ underwriting memo จากข้อมูล AssetX นี้
+
+${JSON.stringify(context, null, 2)}`
+                if (!useCli && !env.HERMES_AGENT_URL) {
+                  const output = await runGeminiUnderwriting(userPrompt, systemPrompt, env)
+                  res.statusCode = 200
+                  res.setHeader('Content-Type', 'text/event-stream')
+                  res.setHeader('Cache-Control', 'no-cache')
+                  res.setHeader('Connection', 'keep-alive')
+                  res.write(`data: ${JSON.stringify({ text: `${output}\n\nหมายเหตุระบบ: ใช้ Gemini fallback เพราะยังไม่ได้ตั้งค่า HERMES_AGENT_URL` })}\n\n`)
+                  res.write('data: [DONE]\n\n')
+                  res.end()
+                  return
+                }
+
+                if (useCli) {
+                  res.statusCode = 200
+                  res.setHeader('Content-Type', 'text/event-stream')
+                  res.setHeader('Cache-Control', 'no-cache')
+                  res.setHeader('Connection', 'keep-alive')
+
+                  let output = ''
+                  try {
+                    output = await runHermesCli(`${systemPrompt}\n\n${userPrompt}`, env)
+                  } catch (cliError) {
+                    output = await runGeminiUnderwriting(
+                      `${userPrompt}\n\nหมายเหตุระบบ: Hermes CLI ไม่ตอบภายในเวลาที่กำหนด จึงใช้ Gemini fallback เพื่อไม่ให้ workflow สะดุด`,
+                      systemPrompt,
+                      env
+                    )
+                    output += `\n\nหมายเหตุระบบ: ใช้ Gemini fallback เพราะ Hermes CLI ล้ม/timeout: ${cliError.message.split('\n')[0]}`
+                  }
+                  res.write(`data: ${JSON.stringify({ text: output })}\n\n`)
+                  res.write('data: [DONE]\n\n')
+                  res.end()
+                  return
+                }
+
+                const format = (env.HERMES_AGENT_FORMAT || 'openai').toLowerCase()
+                const hermesBody = format === 'generic'
+                  ? {
+                      source: 'assetx-estate',
+                      mode: 'assetx-underwriting',
+                      stream: true,
+                      system: systemPrompt,
+                      messages: [{ role: 'user', content: userPrompt }],
+                      context,
+                      input: userPrompt,
+                    }
+                  : {
+                      model: env.HERMES_AGENT_MODEL || 'hermes',
+                      stream: true,
+                      messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt },
+                      ],
+                      metadata: { source: 'assetx-estate', mode: 'assetx-underwriting' },
+                      assetx_context: context,
+                    }
+
+                try {
+                  const headers = { 'Content-Type': 'application/json' }
+                  if (env.HERMES_AGENT_API_KEY) headers.Authorization = `Bearer ${env.HERMES_AGENT_API_KEY}`
+
+                  const upstream = await fetch(env.HERMES_AGENT_URL, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(hermesBody),
+                  })
+
+                  if (!upstream.ok) {
+                    const text = await upstream.text().catch(() => '')
+                    throw new Error(`Hermes agent ${upstream.status}: ${text || upstream.statusText}`)
+                  }
+
+                  res.statusCode = 200
+                  res.setHeader('Content-Type', 'text/event-stream')
+                  res.setHeader('Cache-Control', 'no-cache')
+                  res.setHeader('Connection', 'keep-alive')
+
+                  const contentType = upstream.headers.get('content-type') || ''
+                  if (contentType.includes('text/event-stream')) {
+                    const reader = upstream.body.getReader()
+                    const decoder = new TextDecoder()
+                    let buffer = ''
+                    while (true) {
+                      const { value, done } = await reader.read()
+                      if (done) break
+                      buffer += decoder.decode(value, { stream: true })
+                      const lines = buffer.split(/\r?\n/)
+                      buffer = lines.pop() || ''
+                      for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue
+                        const data = line.slice(6).trim()
+                        if (!data) continue
+                        if (data === '[DONE]') {
+                          res.write('data: [DONE]\n\n')
+                          res.end()
+                          return
+                        }
+                        try {
+                          const parsed = JSON.parse(data)
+                          const text = parsed.text || parsed.delta || parsed.content || parsed.message?.content || parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || ''
+                          if (text) res.write(`data: ${JSON.stringify({ text })}\n\n`)
+                        } catch {
+                          res.write(`data: ${JSON.stringify({ text: data })}\n\n`)
+                        }
+                      }
+                    }
+                    res.write('data: [DONE]\n\n')
+                    res.end()
+                    return
+                  }
+
+                  const parsed = await upstream.json().catch(async () => ({ text: await upstream.text() }))
+                  const text = parsed.text || parsed.output_text || parsed.content || parsed.message?.content || parsed.choices?.[0]?.message?.content || ''
+                  res.write(`data: ${JSON.stringify({ text: String(text) })}\n\n`)
+                  res.write('data: [DONE]\n\n')
+                  res.end()
+                } catch (hermesError) {
+                  const output = await runGeminiUnderwriting(
+                    `${userPrompt}\n\nหมายเหตุระบบ: Hermes ไม่ตอบภายในเวลาที่กำหนด จึงใช้ Gemini fallback เพื่อไม่ให้ workflow สะดุด`,
+                    systemPrompt,
+                    env
+                  )
+                  res.statusCode = 200
+                  res.setHeader('Content-Type', 'text/event-stream')
+                  res.setHeader('Cache-Control', 'no-cache')
+                  res.setHeader('Connection', 'keep-alive')
+                  res.write(`data: ${JSON.stringify({ text: `${output}\n\nหมายเหตุระบบ: ใช้ Gemini fallback เพราะ Hermes ล้ม/timeout: ${hermesError.message.split('\n')[0]}` })}\n\n`)
+                  res.write('data: [DONE]\n\n')
+                  res.end()
+                }
+              } catch (e) {
+                res.statusCode = 500
+                res.setHeader('Content-Type', 'application/json')
+                res.end(JSON.stringify({ error: e.message }))
+              }
+            })
+          })
+
           server.middlewares.use('/api/landsmaps', async (req, res) => {
             try {
               const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?') + 1) : ''
