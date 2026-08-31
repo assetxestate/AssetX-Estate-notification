@@ -45,17 +45,23 @@ const INITIAL_FORM = {
   requestedLoan: '', assetCode: '',
 }
 
+const createInitialForm = () => ({
+  ...INITIAL_FORM,
+  deeds: INITIAL_FORM.deeds.map(deed => ({ ...deed })),
+  comps: INITIAL_FORM.comps.map(comp => ({ ...comp })),
+})
+
 function loadValuationDraft() {
   try {
     const raw = localStorage.getItem(VALUATION_DRAFT_KEY)
-    if (!raw) return { form: INITIAL_FORM, step: 1 }
+    if (!raw) return { form: createInitialForm(), step: 1 }
     const parsed = JSON.parse(raw)
     return {
-      form: { ...INITIAL_FORM, ...(parsed.form || {}) },
+      form: { ...createInitialForm(), ...(parsed.form || {}) },
       step: Math.min(4, Math.max(1, Number(parsed.step) || 1)),
     }
   } catch {
-    return { form: INITIAL_FORM, step: 1 }
+    return { form: createInitialForm(), step: 1 }
   }
 }
 
@@ -2510,8 +2516,9 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
 
   const handleReset = () => {
     localStorage.removeItem(VALUATION_DRAFT_KEY)
-    setForm(INITIAL_FORM)
+    setForm(createInitialForm())
     setStep(1)
+    setView('form')
     setSaved(false)
     setUnderwritingMemo('')
     setUnderwritingError('')
@@ -2532,7 +2539,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
       <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px' }}>
         {/* Top Nav */}
         <div className="no-print" style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <button onClick={() => setView('form')} style={{ ...btn(view === 'form'), background: view === 'form' ? BRAND.gold : BRAND.border, color: view === 'form' ? '#000' : BRAND.textSec }}>
+          <button onClick={handleReset} style={{ ...btn(view === 'form'), background: view === 'form' ? BRAND.gold : BRAND.border, color: view === 'form' ? '#000' : BRAND.textSec }}>
             📋 ประเมินใหม่
           </button>
           <button onClick={() => setView('history')} style={{ ...btn(false), background: view === 'history' ? 'rgba(45,212,191,0.15)' : BRAND.border, color: view === 'history' ? BRAND.teal : BRAND.textSec, border: view === 'history' ? `1px solid ${BRAND.teal}` : 'none' }}>
