@@ -19,12 +19,13 @@ import { confidenceBand } from './lib/pricePoints.js'
 const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981' }
 
 import {
-  ASSESSMENT_TYPES, PROPERTY_TYPES, PROPERTY_SUBTYPES, PROVINCES,
+  ASSESSMENT_TYPES, PROPERTY_TYPES, PROPERTY_SUBTYPES,
   ASSESSMENT_CODE, PROVINCE_CODE, SUBTYPE_CODE, generateAssetCode,
   ROAD_TYPE_OPTIONS, ROAD_WIDTH_OPTIONS, FRONTAGE_OPTIONS, ZONE_OPTIONS, SOIL_OPTIONS,
   FLOOD_LEVELS, TITLE_TYPES, RISK_FACTORS, BASE_FSV_RATE, RISK_BANDS, COMP_ADJ,
   EMPTY_DEED, computeValuation,
 } from './lib/valuationOptions.js'
+import { ADDRESS_PROVINCES, getDistrictsByProvince, getSubdistrictsByDistrict } from './lib/thaiAddress.js'
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 const VALUATION_DRAFT_KEY = 'assetx_valuation_draft'
@@ -766,6 +767,29 @@ function HistoryView({ appsScriptUrl }) {
 // ── Step 1 ─────────────────────────────────────────────
 function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, assetCode }) {
   const subtypes = PROPERTY_SUBTYPES[form.propertyType] || ['อื่นๆ']
+  const provinceChoices = form.province && !ADDRESS_PROVINCES.includes(form.province)
+    ? [form.province, ...ADDRESS_PROVINCES]
+    : ADDRESS_PROVINCES
+  const districtOptions = useMemo(() => getDistrictsByProvince(form.province), [form.province])
+  const subdistrictOptions = useMemo(() => getSubdistrictsByDistrict(form.province, form.district), [form.province, form.district])
+  const districtChoices = form.district && !districtOptions.includes(form.district)
+    ? [form.district, ...districtOptions]
+    : districtOptions
+  const subdistrictChoices = form.subdistrict && !subdistrictOptions.includes(form.subdistrict)
+    ? [form.subdistrict, ...subdistrictOptions]
+    : subdistrictOptions
+  const lockedSelectStyle = { opacity: 0.55, cursor: 'not-allowed' }
+
+  const handleProvinceSelect = (province) => {
+    update('province', province)
+    update('district', '')
+    update('subdistrict', '')
+  }
+
+  const handleDistrictSelect = (district) => {
+    update('district', district)
+    update('subdistrict', '')
+  }
 
   // ── กรมธนารักษ์ lookup ────────────────────────────────
   const [trdLookup, setTrdLookup] = useState(null)
@@ -1199,13 +1223,30 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
         <Card>
           <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>📍 ที่ตั้ง</div>
           <Label>จังหวัด</Label>
-          <Sel value={form.province} onChange={e => update('province', e.target.value)} style={{ marginBottom: 10 }}>
-            {PROVINCES.map(p => <option key={p}>{p}</option>)}
+          <Sel value={form.province} onChange={e => handleProvinceSelect(e.target.value)} style={{ marginBottom: 10 }}>
+            <option value="">— เลือกจังหวัด —</option>
+            {provinceChoices.map(p => <option key={p} value={p}>{p}</option>)}
           </Sel>
           <Label>อำเภอ / เขต</Label>
-          <Inp value={form.district} onChange={e => update('district', e.target.value)} placeholder="เช่น มีนบุรี" style={{ marginBottom: 10 }} />
+          <Sel
+            value={form.district}
+            onChange={e => handleDistrictSelect(e.target.value)}
+            disabled={!form.province}
+            style={{ marginBottom: 10, ...(!form.province ? lockedSelectStyle : {}) }}
+          >
+            <option value="">{form.province ? '— เลือกอำเภอ / เขต —' : 'เลือกจังหวัดก่อน'}</option>
+            {districtChoices.map(d => <option key={d} value={d}>{d}</option>)}
+          </Sel>
           <Label>ตำบล / แขวง</Label>
-          <Inp value={form.subdistrict} onChange={e => update('subdistrict', e.target.value)} placeholder="เช่น มีนบุรี" />
+          <Sel
+            value={form.subdistrict}
+            onChange={e => update('subdistrict', e.target.value)}
+            disabled={!form.province || !form.district}
+            style={!form.province || !form.district ? lockedSelectStyle : {}}
+          >
+            <option value="">{form.district ? '— เลือกตำบล / แขวง —' : 'เลือกอำเภอก่อน'}</option>
+            {subdistrictChoices.map(s => <option key={s} value={s}>{s}</option>)}
+          </Sel>
         </Card>
       </div>
 
