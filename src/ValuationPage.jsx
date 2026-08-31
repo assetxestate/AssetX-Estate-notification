@@ -45,41 +45,6 @@ const INITIAL_FORM = {
   requestedLoan: '', assetCode: '',
 }
 
-const TEST_VALUATION_FORM = {
-  ...INITIAL_FORM,
-  assessmentType: 'ขายฝาก',
-  propertyType: 'ที่ดิน',
-  propertySubtype: 'ที่ดินเปล่า (โฉนด)',
-  projectName: 'เคสทดสอบ บึงคำพร้อย ลำลูกกา',
-  assessorName: 'AssetX Test',
-  deeds: [{
-    id: 'test-deed-1',
-    titleDeedNo: 'TEST-001',
-    mapSheet: '',
-    surveyPage: '',
-    landNo: '',
-    areaRai: 1,
-    areaNgan: 0,
-    areaSqw: 0,
-    govPrice: 8000,
-  }],
-  province: 'ปทุมธานี',
-  district: 'ลำลูกกา',
-  subdistrict: 'บึงคำพร้อย',
-  roadType: 'ถนนซอย/ถนนชุมชน',
-  roadWidth: '6 เมตรขึ้นไป',
-  landFrontage: 'หน้ากว้างปกติ',
-  distanceFromMain: 'ไม่ทราบ',
-  zoneColor: 'ต้องตรวจสอบ',
-  soilCondition: 'ที่ดินถมแล้ว/ใช้งานได้',
-  compPrice: 12000,
-  compSource: 'ราคาเสนอจากนายหน้า/เคสทดสอบ ยังไม่ใช่ closed transaction',
-  locationNote: 'ข้อมูลตัวอย่างสำหรับทดสอบ flow ประเมินและ Hermes underwriting memo',
-  requestedLoan: 2500000,
-  lat: 13.932,
-  lng: 100.719,
-}
-
 function loadValuationDraft() {
   try {
     const raw = localStorage.getItem(VALUATION_DRAFT_KEY)
@@ -2552,18 +2517,6 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
     setUnderwritingError('')
   }
 
-  const handleLoadTestCase = () => {
-    setForm({
-      ...TEST_VALUATION_FORM,
-      assessmentDate: new Date().toISOString().split('T')[0],
-    })
-    setStep(4)
-    setSaved(false)
-    setUnderwritingMemo('')
-    setUnderwritingError('')
-    showToast('โหลดเคสทดสอบแล้ว ไปที่ Step 4 ได้เลย')
-  }
-
   const btn = (primary, ghost) => ({
     padding: '12px 20px', borderRadius: 10, border: ghost ? `1px solid ${BRAND.border}` : 'none',
     fontWeight: 700, fontSize: 13, cursor: 'pointer',
@@ -2584,9 +2537,6 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
           </button>
           <button onClick={() => setView('history')} style={{ ...btn(false), background: view === 'history' ? 'rgba(45,212,191,0.15)' : BRAND.border, color: view === 'history' ? BRAND.teal : BRAND.textSec, border: view === 'history' ? `1px solid ${BRAND.teal}` : 'none' }}>
             📂 ประวัติการประเมิน
-          </button>
-          <button onClick={handleLoadTestCase} style={{ ...btn(false), border: `1px solid ${BRAND.teal}`, background: 'rgba(45,212,191,0.08)', color: BRAND.teal }}>
-            โหลดเคสทดสอบ
           </button>
           <span style={{ alignSelf: 'center', fontSize: 11, color: BRAND.textSec }}>
             บันทึกดราฟต์อัตโนมัติ
