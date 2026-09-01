@@ -70,10 +70,12 @@ async function runGeminiUnderwriting(prompt, systemPrompt, env) {
   }
 
   const genAI = new GoogleGenerativeAI(apiKey)
-  const models = (env.GEMINI_UNDERWRITE_MODELS || env.GEMINI_UNDERWRITE_MODEL || 'gemini-flash-latest')
+  const fallbackModels = 'gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-pro-preview'
+  const models = `${env.GEMINI_UNDERWRITE_MODELS || env.GEMINI_UNDERWRITE_MODEL || ''},${fallbackModels}`
     .split(',')
     .map((name) => name.trim())
     .filter(Boolean)
+    .filter((name, index, list) => list.indexOf(name) === index)
   const errors = []
 
   for (const modelName of models) {
@@ -462,7 +464,7 @@ ${JSON.stringify(customerData, null, 2)}
 
                 const genAI = new GoogleGenerativeAI(apiKey)
                 const model = genAI.getGenerativeModel({
-                  model: 'gemini-flash-latest',
+                  model: 'gemini-3.6-flash',
                   systemInstruction: systemPrompt,
                 })
 
@@ -551,7 +553,7 @@ ${JSON.stringify(customerData, null, 2)}
 
                 const genAI = new GoogleGenerativeAI(apiKey)
                 const model = genAI.getGenerativeModel({
-                  model: 'gemini-flash-latest',
+                  model: 'gemini-3.6-flash',
                   systemInstruction: systemPrompt,
                 })
 

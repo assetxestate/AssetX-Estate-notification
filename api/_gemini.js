@@ -1,13 +1,14 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const DEFAULT_CHAT_MODELS = 'gemini-flash-latest'
-const DEFAULT_UNDERWRITE_MODELS = 'gemini-flash-latest'
+const DEFAULT_CHAT_MODELS = 'gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-pro-preview'
+const DEFAULT_UNDERWRITE_MODELS = 'gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-pro-preview'
 
 function getConfiguredModels(primaryEnvName, fallback) {
-  return (process.env[primaryEnvName] || process.env.GEMINI_MODEL || fallback)
+  const configured = process.env[primaryEnvName] || process.env.GEMINI_MODEL || ''
+  return [...new Set(`${configured},${fallback}`
     .split(',')
     .map((name) => name.trim())
-    .filter(Boolean)
+    .filter(Boolean))]
 }
 
 function getGeminiClient() {
