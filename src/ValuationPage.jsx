@@ -1515,9 +1515,12 @@ function MapPicker({ form, update }) {
 }
 
 // ── Market Search Panel ─────────────────────────────────
-function MarketSearchPanel({ form, update }) {
+function MarketSearchPanel({ form, update, calc }) {
   const [manualPrice, setManualPrice] = useState('')
   const [manualSource, setManualSource] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+  const [aiResult, setAiResult] = useState(null)
 
   const location = [form.district, form.province].filter(Boolean).join(' ')
   const type = form.propertyType || 'ที่ดิน'
@@ -1563,6 +1566,42 @@ function MarketSearchPanel({ form, update }) {
     },
   ]
 
+  const applyComp = (price, source) => {
+    if (!price) return
+    update('compPrice', Math.round(Number(price)))
+    update('compSource', source || 'Tavily market comp')
+  }
+
+  const handleAiSearch = async () => {
+    setAiLoading(true)
+    setAiError('')
+    setAiResult(null)
+
+    try {
+      const res = await fetch('/api/market-comps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          valuation: {
+            ...form,
+            totalSqw: calc?.totalSqw,
+          },
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || 'ค้นหา Comp ด้วย AI ไม่สำเร็จ')
+      }
+      setAiResult(data)
+    } catch (e) {
+      const message = e.message || 'ค้นหา Comp ด้วย AI ไม่สำเร็จ'
+      setAiError(message)
+      showToast('ค้นหา Comp ด้วย AI ไม่สำเร็จ: ' + message)
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   return (
     <Card style={{ borderColor: 'rgba(45,212,191,0.3)' }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 4 }}>🔍 ค้นหาราคาตลาดจริง</div>
@@ -1570,6 +1609,120 @@ function MarketSearchPanel({ form, update }) {
         กดปุ่มด้านล่างเพื่อดูราคาตลาดจริง → จดราคา → กรอกใน "Comp" ด้านบน
         {location && <span style={{ color: BRAND.teal }}> ({type} · {location})</span>}
       </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: 12, borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'rgba(45,212,191,0.06)', marginBottom: 12 }}>
+        <button
+          onClick={handleAiSearch}
+          disabled={aiLoading}
+          style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: aiLoading ? BRAND.border : BRAND.teal, color: aiLoading ? BRAND.textMut : '#000', fontSize: 12, fontWeight: 800, cursor: aiLoading ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
+        >
+          {aiLoading ? 'กำลังหา Comp...' : 'หา Comp ด้วย AI'}
+        </button>
+        <div style={{ flex: 1, minWidth: 220, fontSize: 11, color: BRAND.textSec }}>
+          ใช้จังหวัด/อำเภอ/ตำบล ประเภททรัพย์ ขนาดที่ดิน และปัจจัยทำเลที่กรอกไว้ เพื่อค้นหาราคาประกาศใกล้เคียงผ่าน Tavily
+        </div>
+      </div>
+
+      {aiError && (
+        <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: '#fca5a5', fontSize: 11, marginBottom: 12 }}>
+          {aiError}
+        </div>
+      )}
+
+      {aiResult && (
+        <div style={{ border: `1px solid rgba(45,212,191,0.25)`, borderRadius: 10, padding: 12, background: 'rgba(15,23,42,0.45)', marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, color: BRAND.textMut, marginBottom: 3 }}>คำค้นที่ใช้</div>
+              <div style={{ fontSize: 12, color: BRAND.textPri }}>{aiResult.query}</div>
+            </div>
+            {aiResult.priceSummary && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'เฉลี่ย', value: aiResult.priceSummary.average },
+                  { label: 'มัธยฐาน', value: aiResult.priceSummary.median },
+                ].map(item => (
+                  <button
+                    key={item.label}
+                    onClick={() => applyComp(item.value, `Tavily ${item.label} (${aiResult.priceSummary.sampleSize} sources)`)}
+                    disabled={aiResult.priceSummary.usesFallbackSamples}
+                    style={{ padding: '7px 10px', borderRadius: 8, border: `1px solid rgba(45,212,191,0.35)`, background: aiResult.priceSummary.usesFallbackSamples ? BRAND.border : 'rgba(45,212,191,0.12)', color: aiResult.priceSummary.usesFallbackSamples ? BRAND.textMut : BRAND.teal, fontSize: 11, fontWeight: 800, cursor: aiResult.priceSummary.usesFallbackSamples ? 'not-allowed' : 'pointer' }}
+                  >
+                    {aiResult.priceSummary.usesFallbackSamples ? `${item.label}ต้องตรวจ` : `ใช้${item.label} ฿${fmt(item.value)}`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {aiResult.recency && (
+            <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 10 }}>
+              กรองข้อมูลอัปเดตช่วง {aiResult.recency.startDate} ถึง {aiResult.recency.endDate}
+              {aiResult.priceSummary?.usesFallbackSamples && <span style={{ color: BRAND.gold }}> · ตัวอย่างที่ครบเกณฑ์ยังไม่พอ จึงแสดงราคาจากแหล่งที่พบราคาไว้ให้ตรวจเอง</span>}
+            </div>
+          )}
+
+          {aiResult.answer && (
+            <div style={{ fontSize: 12, lineHeight: 1.6, color: BRAND.textSec, marginBottom: 10 }}>
+              {aiResult.answer}
+            </div>
+          )}
+
+          {aiResult.priceSummary && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(120px, 1fr))', gap: 8, marginBottom: 10 }}>
+              {[
+                ['ต่ำสุด', aiResult.priceSummary.low],
+                ['มัธยฐาน', aiResult.priceSummary.median],
+                ['สูงสุด', aiResult.priceSummary.high],
+                ['ผ่านเกณฑ์', `${aiResult.priceSummary.qualifiedSampleSize || 0}/${aiResult.priceSummary.sampleSize}`],
+              ].map(([label, value]) => (
+                <div key={label} style={{ border: `1px solid ${BRAND.border}`, borderRadius: 8, padding: 8, background: BRAND.bg }}>
+                  <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 4 }}>{label}</div>
+                  <div style={{ fontSize: 13, color: BRAND.textPri, fontWeight: 800 }}>{label === 'ผ่านเกณฑ์' ? value : `฿${fmt(value)}`}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+            {(aiResult.sources || []).map(source => (
+              <div key={source.url || source.title} style={{ border: `1px solid ${BRAND.border}`, borderRadius: 8, padding: 10, background: BRAND.bg }}>
+                <a href={source.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', color: BRAND.textPri, fontSize: 12, fontWeight: 700, textDecoration: 'none', marginBottom: 6 }}>
+                  {source.title || 'แหล่งข้อมูล'} ↗
+                </a>
+                <div style={{ fontSize: 11, lineHeight: 1.5, color: BRAND.textSec, marginBottom: 8 }}>
+                  {source.content || 'ไม่มีสรุปจากแหล่งนี้'}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, fontWeight: 800, color: source.quality === 'strong' ? '#042f2e' : source.quality === 'usable' ? '#111827' : '#fecaca', background: source.quality === 'strong' ? BRAND.teal : source.quality === 'usable' ? BRAND.gold : 'rgba(239,68,68,0.12)', border: `1px solid ${source.quality === 'weak' ? 'rgba(239,68,68,0.35)' : 'transparent'}` }}>
+                    {source.quality === 'strong' ? 'ข้อมูลครบ' : source.quality === 'usable' ? 'พอใช้' : 'ต้องตรวจเพิ่ม'} · {source.qualityScore}
+                  </span>
+                  {source.publishedDate && <span style={{ fontSize: 10, color: BRAND.textMut }}>อัปเดต {source.publishedDate}</span>}
+                  {!source.publishedDate && source.extractedYear && <span style={{ fontSize: 10, color: BRAND.textMut }}>พบปี {source.extractedYear}</span>}
+                </div>
+                {source.missing?.length > 0 && (
+                  <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 8 }}>
+                    ขาด: {source.missing.slice(0, 3).join(', ')}
+                  </div>
+                )}
+                {source.pricePerSqw && (
+                  <button
+                    onClick={() => applyComp(source.pricePerSqw, source.title || source.url)}
+                    disabled={source.quality === 'weak'}
+                    style={{ padding: '6px 10px', borderRadius: 8, border: 'none', background: source.quality === 'weak' ? BRAND.border : BRAND.gold, color: source.quality === 'weak' ? BRAND.textMut : '#111827', fontSize: 11, fontWeight: 800, cursor: source.quality === 'weak' ? 'not-allowed' : 'pointer' }}
+                  >
+                    {source.quality === 'weak' ? 'ยังไม่แนะนำให้ใช้' : `ใช้ราคานี้ ฿${fmt(source.pricePerSqw)}/ตร.ว.`}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 10, color: BRAND.textMut, marginTop: 10 }}>
+            {aiResult.note}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
         {portals.map(p => (
@@ -1900,7 +2053,7 @@ function Step2({ form, update, calc, comps = [], nearbyPricePoints = [], nearbyL
       </Card>
       <CompAdjPanel form={form} update={update} calc={calc} />
       <NearbyPricePointsPanel points={nearbyPricePoints} loading={nearbyLoading} form={form} update={update} />
-      <MarketSearchPanel form={form} update={update} />
+      <MarketSearchPanel form={form} update={update} calc={calc} />
       <MapPicker form={form} update={update} />
     </div>
   )

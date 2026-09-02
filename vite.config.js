@@ -7,6 +7,7 @@ import https from 'node:https'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import { fetchMarketComps } from './api/_marketComps.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -179,6 +180,36 @@ export default defineConfig(({ mode }) => {
                 res.statusCode = 400
                 res.setHeader('Content-Type', 'application/json')
                 res.end(JSON.stringify({ error: 'ข้อมูลล็อกอินไม่ถูกต้อง' }))
+              }
+            })
+          })
+
+          server.middlewares.use('/api/market-comps', async (req, res) => {
+            if (req.method !== 'POST') {
+              res.statusCode = 405
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Method Not Allowed' }))
+              return
+            }
+
+            let body = ''
+            req.on('data', chunk => body += chunk)
+            req.on('end', async () => {
+              res.setHeader('Content-Type', 'application/json; charset=utf-8')
+              try {
+                const payload = JSON.parse(body || '{}')
+                const result = await fetchMarketComps({
+                  valuation: payload.valuation || {},
+                  apiKey: env.TAVILY_API_KEY,
+                })
+                res.statusCode = 200
+                res.end(JSON.stringify({ success: true, ...result }))
+              } catch (e) {
+                res.statusCode = 500
+                res.end(JSON.stringify({
+                  success: false,
+                  error: e.message || 'ค้นหาราคาตลาดไม่สำเร็จ',
+                }))
               }
             })
           })
