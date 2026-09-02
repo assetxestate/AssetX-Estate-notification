@@ -43,6 +43,71 @@ function extractPricePerSqw(text) {
   return null
 }
 
+function extractTotalPrice(text) {
+  const normalized = compactText(text)
+  const millionMatch = normalized.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:ล้าน|ลบ\.?|ล้านบาท)/i)
+  if (millionMatch) {
+    const price = toNumber(millionMatch[1])
+    if (price && price >= 0.1 && price <= 1000) return Math.round(price * 1000000)
+  }
+
+  const patterns = [
+    /(?:ราคา|ขาย|ราคารวม)\s*(\d[\d,]*(?:\.\d+)?)\s*(?:บาท|บ\.?)/i,
+    /(\d[\d,]*(?:\.\d+)?)\s*(?:บาท|บ\.?)\s*(?:ขาย|ราคารวม)?/i,
+  ]
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern)
+    const price = match ? toNumber(match[1]) : null
+    if (price && price >= 100000 && price <= 1000000000) return Math.round(price)
+  }
+  return null
+}
+
+function extractAreaSqw(text) {
+  const normalized = compactText(text)
+  const raiMatch = normalized.match(/(\d[\d,]*(?:\.\d+)?)\s*ไร่(?:\s*(\d[\d,]*(?:\.\d+)?)\s*งาน)?(?:\s*(\d[\d,]*(?:\.\d+)?)\s*(?:ตร\.?\s*ว\.?|ตารางวา))?/i)
+  if (raiMatch) {
+    const rai = toNumber(raiMatch[1]) || 0
+    const ngan = toNumber(raiMatch[2]) || 0
+    const sqw = toNumber(raiMatch[3]) || 0
+    const total = (rai * 400) + (ngan * 100) + sqw
+    if (total > 0 && total <= 100000) return Math.round(total)
+  }
+
+  const sqwMatch = normalized.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:ตร\.?\s*ว\.?|ตารางวา)/i)
+  const sqw = sqwMatch ? toNumber(sqwMatch[1]) : null
+  if (sqw && sqw > 0 && sqw <= 100000) return Math.round(sqw)
+  return null
+}
+
+function derivePricePerSqw(text, valuation = {}) {
+  const directPrice = extractPricePerSqw(text)
+  const listingAreaSqw = extractAreaSqw(text)
+  if (directPrice) {
+    return { pricePerSqw: directPrice, totalPrice: null, listingAreaSqw, priceBasis: 'direct_per_sqw' }
+  }
+
+  const totalPrice = extractTotalPrice(text)
+  const totalSqw = toNumber(valuation.totalSqw)
+  const areaForDerive = listingAreaSqw || (normalizedIncludesArea(text, totalSqw) ? totalSqw : null)
+  if (totalPrice && areaForDerive && areaForDerive > 0) {
+    return {
+      pricePerSqw: Math.round(totalPrice / areaForDerive),
+      totalPrice,
+      listingAreaSqw: areaForDerive,
+      priceBasis: 'derived_from_total_price',
+    }
+  }
+
+  return { pricePerSqw: null, totalPrice, listingAreaSqw, priceBasis: totalPrice ? 'total_price_only' : 'unknown' }
+}
+
+function normalizedIncludesArea(text, totalSqw) {
+  if (!totalSqw) return false
+  return compactText(text).includes(`${Math.round(totalSqw)} ตารางวา`) ||
+    compactText(text).includes(`${Math.round(totalSqw)} ตร.ว`)
+}
+
 function hasAny(text, keywords = []) {
   return keywords.some(keyword => text.includes(keyword))
 }
@@ -72,7 +137,10 @@ function classifyTargetBasis(valuation = {}) {
 
 function classifySourceBasis(text) {
   const content = compactText(text, 4000)
-  const vacantLandSignals = ['ที่ดินเปล่า', 'ขายที่ดินเปล่า', 'ที่ดินว่าง', 'เปล่า', 'ถมแล้ว', 'ยังไม่ปลูกสร้าง']
+  const vacantLandSignals = [
+    'ที่ดินเปล่า', 'ขายที่ดินเปล่า', 'ที่ดินว่าง', 'ขายที่ดิน', 'ที่นา', 'ขายนา',
+    'ที่ไร่', 'ที่สวน', 'สวนเกษตร', 'เปล่า', 'ถมแล้ว', 'ยังไม่ปลูกสร้าง',
+  ]
   const condoSignals = ['คอนโด', 'อาคารชุด', 'ห้องชุด', 'ตร.ม.', 'ตารางเมตร']
   const buildingSignals = [
     'บ้านเดี่ยว', 'บ้านแฝด', 'ทาวน์เฮ้าส์', 'ทาวน์โฮม', 'ตึกแถว', 'อาคารพาณิชย์',
@@ -118,13 +186,14 @@ function scoreSource(item, valuation = {}) {
   const subdistrict = compactText(valuation.subdistrict)
   const targetBasis = classifyTargetBasis(valuation)
   const sourceBasis = classifySourceBasis(content)
+  const price = derivePricePerSqw(content, valuation)
 
   const checks = {
-    hasPrice: !!extractPricePerSqw(content),
+    hasPrice: !!price.pricePerSqw,
     hasProvince: province ? content.includes(province) : false,
     hasDistrict: district ? content.includes(district) : false,
     hasSubdistrict: subdistrict ? content.includes(subdistrict) : false,
-    hasArea: hasAny(content, ['ตร.ว', 'ตารางวา', 'ไร่', 'งาน', 'เนื้อที่', 'พื้นที่']),
+    hasArea: !!price.listingAreaSqw || hasAny(content, ['ตร.ว', 'ตารางวา', 'ไร่', 'งาน', 'เนื้อที่', 'พื้นที่']),
     hasRoadOrAccess: hasAny(content, ['ถนน', 'ซอย', 'ทางเข้า', 'หน้ากว้าง', 'ติดถนน']),
     hasPlotDetail: hasAny(content, ['โฉนด', 'เลขที่ดิน', 'ระวาง', 'พิกัด', 'ละติจูด', 'ลองจิจูด', 'แผนที่']),
     hasRecentSignal: !!item.published_date || !!item.publishedDate || !extractedYear || extractedYear >= currentYear - 1,
@@ -159,7 +228,7 @@ function scoreSource(item, valuation = {}) {
 
   const quality = checks.basisMatches ? (score >= 70 ? 'strong' : score >= 48 ? 'usable' : 'weak') : 'weak'
   const comparisonRole = checks.basisMatches ? 'primary_comp' : (checks.isNearbyComparison ? 'nearby_cross_basis' : 'review_only')
-  return { score, quality, checks, missing, extractedYear, targetBasis, sourceBasis, comparisonRole }
+  return { score, quality, checks, missing, extractedYear, targetBasis, sourceBasis, comparisonRole, price }
 }
 
 function buildQuery(valuation = {}) {
@@ -179,6 +248,11 @@ function buildQuery(valuation = {}) {
     condo: 'คอนโด อาคารชุด ห้องชุด ราคาต่อตารางเมตร',
     unknown: '',
   }[targetBasis.key]
+  const priceTerms = targetBasis.key === 'land_only'
+    ? 'บาทต่อตารางวา ราคาที่ดิน'
+    : targetBasis.key === 'condo'
+      ? 'ราคาขาย คอนโด ตารางเมตร'
+      : 'ราคาขาย ราคารวม เนื้อที่ ตารางวา'
 
   return compactText([
     'ราคาตลาดล่าสุด',
@@ -188,9 +262,34 @@ function buildQuery(valuation = {}) {
     location,
     area,
     road,
-    'บาทต่อตารางวา',
-    'เนื้อที่ โฉนด พิกัด ถนน แผนที่',
+    priceTerms,
+    'เนื้อที่ โฉนด ถนน แผนที่',
     '2568 2569',
+  ].filter(Boolean).join(' '))
+}
+
+function buildRelaxedQuery(valuation = {}) {
+  const targetBasis = classifyTargetBasis(valuation)
+  const location = [
+    valuation.district ? `อ.${valuation.district}` : '',
+    valuation.province || '',
+  ].filter(Boolean).join(' ')
+  const subtype = valuation.propertySubtype || valuation.propertyType || 'อสังหาริมทรัพย์'
+  const area = valuation.totalSqw ? `${Math.round(Number(valuation.totalSqw))} ตารางวา` : ''
+  const relaxedTerms = {
+    land_only: 'ขายที่ดิน ที่ดินเปล่า ราคาที่ดิน',
+    land_with_building: 'ขายบ้านพร้อมที่ดิน ขายที่ดินพร้อมสิ่งปลูกสร้าง',
+    improved_property: 'ขายบ้าน บ้านพร้อมที่ดิน ราคาขาย',
+    condo: 'ขายคอนโด อาคารชุด ราคาขาย',
+    unknown: 'ขายอสังหาริมทรัพย์ ราคาขาย',
+  }[targetBasis.key]
+
+  return compactText([
+    relaxedTerms,
+    subtype,
+    location,
+    area,
+    'ประกาศขายล่าสุด 2568 2569',
   ].filter(Boolean).join(' '))
 }
 
@@ -205,7 +304,10 @@ function summarizeResults(results = [], valuation = {}) {
       content: compactText(item.content || item.raw_content, 520),
       score: item.score || null,
       publishedDate: item.published_date || item.publishedDate || null,
-      pricePerSqw: extractPricePerSqw(content),
+      pricePerSqw: quality.price.pricePerSqw,
+      totalPrice: quality.price.totalPrice,
+      listingAreaSqw: quality.price.listingAreaSqw,
+      priceBasis: quality.price.priceBasis,
       qualityScore: quality.score,
       quality: quality.quality,
       qualityChecks: quality.checks,
@@ -251,18 +353,7 @@ function summarizeResults(results = [], valuation = {}) {
   }
 }
 
-export async function fetchMarketComps({
-  valuation = {},
-  apiKey = process.env.TAVILY_API_KEY,
-  recencyDays = DEFAULT_RECENCY_DAYS,
-} = {}) {
-  if (!apiKey) {
-    throw new Error('ยังไม่ได้ตั้งค่า TAVILY_API_KEY บน server')
-  }
-
-  const query = buildQuery(valuation)
-  const startDate = daysAgo(recencyDays)
-  const endDate = formatDate(new Date())
+async function runTavilySearch({ apiKey, query, startDate, endDate }) {
   const response = await fetch(TAVILY_SEARCH_URL, {
     method: 'POST',
     headers: {
@@ -290,10 +381,35 @@ export async function fetchMarketComps({
   if (!response.ok) {
     throw new Error(data?.error || data?.message || data?.detail?.error || `Tavily API ${response.status}`)
   }
+  return data
+}
 
-  const summary = summarizeResults(data.results || [], valuation)
+export async function fetchMarketComps({
+  valuation = {},
+  apiKey = process.env.TAVILY_API_KEY,
+  recencyDays = DEFAULT_RECENCY_DAYS,
+} = {}) {
+  if (!apiKey) {
+    throw new Error('ยังไม่ได้ตั้งค่า TAVILY_API_KEY บน server')
+  }
+
+  const query = buildQuery(valuation)
+  const startDate = daysAgo(recencyDays)
+  const endDate = formatDate(new Date())
+  let data = await runTavilySearch({ apiKey, query, startDate, endDate })
+  let summary = summarizeResults(data.results || [], valuation)
+  let fallbackQuery = null
+
+  if (!summary.priceSummary) {
+    fallbackQuery = buildRelaxedQuery(valuation)
+    data = await runTavilySearch({ apiKey, query: fallbackQuery, startDate, endDate })
+    summary = summarizeResults(data.results || [], valuation)
+  }
+
   return {
     query,
+    fallbackQuery,
+    searchMode: fallbackQuery ? 'relaxed' : 'strict',
     recency: {
       days: recencyDays,
       startDate,

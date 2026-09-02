@@ -1658,7 +1658,13 @@ function MarketSearchPanel({ form, update, calc }) {
           {aiResult.recency && (
             <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 10 }}>
               เทียบตามประเภทย่อย: {aiResult.targetBasis?.label || form.propertySubtype || 'ไม่ระบุ'} · กรองข้อมูลอัปเดตช่วง {aiResult.recency.startDate} ถึง {aiResult.recency.endDate}
+              {aiResult.searchMode === 'relaxed' && <span style={{ color: BRAND.gold }}> · ใช้การค้นแบบกว้างขึ้นเพราะรอบแรกไม่พบราคาที่ดึงมาใช้ได้</span>}
               {aiResult.priceSummary?.usesFallbackSamples && <span style={{ color: BRAND.gold }}> · ตัวอย่างที่ครบเกณฑ์ยังไม่พอ จึงแสดงราคาจากแหล่งที่พบราคาไว้ให้ตรวจเอง</span>}
+            </div>
+          )}
+          {aiResult.fallbackQuery && (
+            <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 10 }}>
+              คำค้นสำรอง: {aiResult.fallbackQuery}
             </div>
           )}
           {aiResult.nearbyDifferentBasisSources?.length > 0 && (
@@ -1688,6 +1694,11 @@ function MarketSearchPanel({ form, update, calc }) {
               ))}
             </div>
           )}
+          {!aiResult.priceSummary && (
+            <div style={{ padding: 12, borderRadius: 8, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)', color: BRAND.gold, fontSize: 11, marginBottom: 10 }}>
+              ยังไม่พบราคาที่ดึงมาใช้คำนวณได้จากผลค้นนี้ ให้ตรวจแหล่งข้อมูลด้านล่าง หรือกรอก Comp เองจากเว็บประกาศ/แลนด์แมพ
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
             {(aiResult.sources || []).map(source => (
@@ -1704,6 +1715,7 @@ function MarketSearchPanel({ form, update, calc }) {
                   </span>
                   {source.comparisonRole === 'nearby_cross_basis' && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.gold, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}>เทียบทำเล คนละประเภท</span>}
                   {source.assetBasis?.label && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: source.qualityChecks?.basisMatches ? BRAND.teal : BRAND.gold, border: `1px solid ${source.qualityChecks?.basisMatches ? 'rgba(45,212,191,0.35)' : 'rgba(245,158,11,0.35)'}`, background: source.qualityChecks?.basisMatches ? 'rgba(45,212,191,0.08)' : 'rgba(245,158,11,0.08)' }}>{source.assetBasis.label}</span>}
+                  {source.priceBasis === 'derived_from_total_price' && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.teal, border: '1px solid rgba(45,212,191,0.35)', background: 'rgba(45,212,191,0.08)' }}>คำนวณจากราคารวม ฿{fmt(source.totalPrice)} / {fmt(source.listingAreaSqw)} ตร.ว.</span>}
                   {source.publishedDate && <span style={{ fontSize: 10, color: BRAND.textMut }}>อัปเดต {source.publishedDate}</span>}
                   {!source.publishedDate && source.extractedYear && <span style={{ fontSize: 10, color: BRAND.textMut }}>พบปี {source.extractedYear}</span>}
                 </div>
@@ -1724,6 +1736,11 @@ function MarketSearchPanel({ form, update, calc }) {
               </div>
             ))}
           </div>
+          {(aiResult.sources || []).length === 0 && (
+            <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${BRAND.border}`, background: BRAND.bg, color: BRAND.textSec, fontSize: 11 }}>
+              Tavily ไม่พบแหล่งข้อมูลที่ตรงกับคำค้นนี้ ลองใช้ปุ่มเว็บประกาศด้านล่างหรือลดความละเอียดจากตำบลเป็นอำเภอ
+            </div>
+          )}
 
           <div style={{ fontSize: 10, color: BRAND.textMut, marginTop: 10 }}>
             {aiResult.note}
