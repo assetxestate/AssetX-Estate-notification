@@ -1,8 +1,17 @@
-import React, { useState } from 'react'
+import React, { Suspense, lazy, useState } from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
-import LoginPage from './LoginPage.jsx'
-import AssessPage from './AssessPage.jsx'
+
+const App = lazy(() => import('./App.jsx'))
+const LoginPage = lazy(() => import('./LoginPage.jsx'))
+const AssessPage = lazy(() => import('./AssessPage.jsx'))
+
+function PageLoading() {
+  return (
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#050814', color: '#94A3B8' }}>
+      กำลังโหลด...
+    </div>
+  )
+}
 
 function Root() {
   const [isLoggedIn, setIsLoggedIn] = useState(
@@ -26,6 +35,8 @@ function Root() {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <Root />
+    <Suspense fallback={<PageLoading />}>
+      <Root />
+    </Suspense>
   </React.StrictMode>
 )
