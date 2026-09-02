@@ -47,6 +47,67 @@ function hasAny(text, keywords = []) {
   return keywords.some(keyword => text.includes(keyword))
 }
 
+function classifyTargetBasis(valuation = {}) {
+  const subtype = compactText(valuation.propertySubtype)
+  const propertyType = compactText(valuation.propertyType)
+
+  if (propertyType.includes('คอนโด') || subtype.includes('คอนโด') || subtype.includes('อาคารชุด')) {
+    return { key: 'condo', label: 'อาคารชุด / คอนโด' }
+  }
+  if (subtype.includes('ที่ดินเปล่า')) {
+    return { key: 'land_only', label: 'ที่ดินเปล่า' }
+  }
+  if (subtype.includes('พร้อมสิ่งปลูกสร้าง')) {
+    return { key: 'land_with_building', label: 'ที่ดินพร้อมสิ่งปลูกสร้าง' }
+  }
+  if (
+    propertyType.includes('ที่อยู่อาศัย') ||
+    propertyType.includes('พาณิชยกรรม') ||
+    hasAny(subtype, ['บ้าน', 'ทาวน์', 'ตึกแถว', 'อาคาร', 'สำนักงาน', 'ศูนย์การค้า'])
+  ) {
+    return { key: 'improved_property', label: subtype || propertyType || 'ทรัพย์พร้อมสิ่งปลูกสร้าง' }
+  }
+  return { key: 'unknown', label: subtype || propertyType || 'ไม่ระบุประเภททรัพย์ย่อย' }
+}
+
+function classifySourceBasis(text) {
+  const content = compactText(text, 4000)
+  const vacantLandSignals = ['ที่ดินเปล่า', 'ขายที่ดินเปล่า', 'ที่ดินว่าง', 'เปล่า', 'ถมแล้ว', 'ยังไม่ปลูกสร้าง']
+  const condoSignals = ['คอนโด', 'อาคารชุด', 'ห้องชุด', 'ตร.ม.', 'ตารางเมตร']
+  const buildingSignals = [
+    'บ้านเดี่ยว', 'บ้านแฝด', 'ทาวน์เฮ้าส์', 'ทาวน์โฮม', 'ตึกแถว', 'อาคารพาณิชย์',
+    'อาคาร', 'โกดัง', 'โรงงาน', 'สำนักงาน', 'หอพัก', 'รีสอร์ท', 'สิ่งปลูกสร้าง',
+    'พร้อมบ้าน', 'พร้อมอาคาร', 'บ้านพร้อมที่ดิน',
+  ]
+
+  const hasCondo = hasAny(content, condoSignals)
+  const hasBuilding = hasAny(content, buildingSignals)
+  const hasVacantLand = hasAny(content, vacantLandSignals)
+
+  if (hasCondo) return { key: 'condo', label: 'อาคารชุด / คอนโด' }
+  if (hasBuilding) return { key: 'includes_building', label: 'อาจรวมสิ่งปลูกสร้าง' }
+  if (hasVacantLand) return { key: 'land_only', label: 'ที่ดินเปล่า' }
+  return { key: 'unclear', label: 'ยังไม่ชัดเจน' }
+}
+
+function basisMatches(targetBasis, sourceBasis) {
+  if (targetBasis.key === 'unknown') return sourceBasis.key !== 'condo'
+  if (targetBasis.key === 'land_only') return sourceBasis.key === 'land_only'
+  if (targetBasis.key === 'condo') return sourceBasis.key === 'condo'
+  if (targetBasis.key === 'land_with_building' || targetBasis.key === 'improved_property') {
+    return sourceBasis.key === 'includes_building' || sourceBasis.key === 'unclear'
+  }
+  return false
+}
+
+function isNearbyComparisonCandidate(content, checks) {
+  return (
+    checks.hasSubdistrict ||
+    (checks.hasDistrict && checks.hasPlotDetail) ||
+    hasAny(content, ['ติดกัน', 'ใกล้เคียง', 'ใกล้', 'ข้างเคียง', 'บริเวณเดียวกัน', 'แปลงข้าง', 'แปลงติด'])
+  )
+}
+
 function scoreSource(item, valuation = {}) {
   const content = compactText([item.title, item.content, item.raw_content].filter(Boolean).join(' '), 4000)
   const lowerUrl = String(item.url || '').toLowerCase()
@@ -55,6 +116,8 @@ function scoreSource(item, valuation = {}) {
   const province = compactText(valuation.province)
   const district = compactText(valuation.district)
   const subdistrict = compactText(valuation.subdistrict)
+  const targetBasis = classifyTargetBasis(valuation)
+  const sourceBasis = classifySourceBasis(content)
 
   const checks = {
     hasPrice: !!extractPricePerSqw(content),
@@ -66,7 +129,10 @@ function scoreSource(item, valuation = {}) {
     hasPlotDetail: hasAny(content, ['โฉนด', 'เลขที่ดิน', 'ระวาง', 'พิกัด', 'ละติจูด', 'ลองจิจูด', 'แผนที่']),
     hasRecentSignal: !!item.published_date || !!item.publishedDate || !extractedYear || extractedYear >= currentYear - 1,
     isListingSite: /(ddproperty|fazwaz|hipflat|livinginsider|baania|kaidee|dotproperty|prakardproperty|propertyhub|zmyhome|teedin108|landsmaps)/.test(lowerUrl),
+    basisMatches: basisMatches(targetBasis, sourceBasis),
+    basisClear: sourceBasis.key !== 'unclear',
   }
+  checks.isNearbyComparison = isNearbyComparisonCandidate(content, checks)
 
   const score =
     (checks.hasPrice ? 30 : 0) +
@@ -77,7 +143,9 @@ function scoreSource(item, valuation = {}) {
     (checks.hasRoadOrAccess ? 8 : 0) +
     (checks.hasPlotDetail ? 8 : 0) +
     (checks.hasRecentSignal ? 4 : -18) +
-    (checks.isListingSite ? 2 : 0)
+    (checks.isListingSite ? 2 : 0) +
+    (checks.basisMatches ? 16 : -28) +
+    (checks.basisClear ? 4 : -8)
 
   const missing = []
   if (!checks.hasPrice) missing.push('ไม่มีราคาต่อ ตร.ว.')
@@ -86,12 +154,16 @@ function scoreSource(item, valuation = {}) {
   if (!checks.hasArea) missing.push('ไม่พบขนาดที่ดิน')
   if (!checks.hasPlotDetail) missing.push('รายละเอียดแปลงยังไม่ครบ')
   if (!checks.hasRecentSignal) missing.push('อาจเป็นข้อมูลเก่า')
+  if (!checks.basisClear) missing.push('ไม่ชัดว่าเป็นที่ดินเปล่าหรือรวมสิ่งปลูกสร้าง')
+  if (!checks.basisMatches) missing.push(`ประเภทไม่ตรงกับ ${targetBasis.label}`)
 
-  const quality = score >= 70 ? 'strong' : score >= 48 ? 'usable' : 'weak'
-  return { score, quality, checks, missing, extractedYear }
+  const quality = checks.basisMatches ? (score >= 70 ? 'strong' : score >= 48 ? 'usable' : 'weak') : 'weak'
+  const comparisonRole = checks.basisMatches ? 'primary_comp' : (checks.isNearbyComparison ? 'nearby_cross_basis' : 'review_only')
+  return { score, quality, checks, missing, extractedYear, targetBasis, sourceBasis, comparisonRole }
 }
 
 function buildQuery(valuation = {}) {
+  const targetBasis = classifyTargetBasis(valuation)
   const location = [
     valuation.subdistrict ? `ต.${valuation.subdistrict}` : '',
     valuation.district ? `อ.${valuation.district}` : '',
@@ -100,10 +172,19 @@ function buildQuery(valuation = {}) {
   const type = valuation.propertySubtype || valuation.propertyType || 'ที่ดิน'
   const area = valuation.totalSqw ? `${Math.round(Number(valuation.totalSqw))} ตารางวา` : ''
   const road = valuation.roadType || ''
+  const basisTerms = {
+    land_only: 'ที่ดินเปล่า ไม่มีสิ่งปลูกสร้าง land only',
+    land_with_building: 'ที่ดินพร้อมสิ่งปลูกสร้าง บ้านพร้อมที่ดิน',
+    improved_property: 'บ้านพร้อมที่ดิน อาคารพร้อมที่ดิน',
+    condo: 'คอนโด อาคารชุด ห้องชุด ราคาต่อตารางเมตร',
+    unknown: '',
+  }[targetBasis.key]
+
   return compactText([
     'ราคาตลาดล่าสุด',
     'ประกาศขายปัจจุบัน',
     type,
+    basisTerms,
     location,
     area,
     road,
@@ -114,6 +195,7 @@ function buildQuery(valuation = {}) {
 }
 
 function summarizeResults(results = [], valuation = {}) {
+  const targetBasis = classifyTargetBasis(valuation)
   const sources = results.slice(0, 12).map((item) => {
     const content = compactText([item.title, item.content, item.raw_content].filter(Boolean).join(' '))
     const quality = scoreSource(item, valuation)
@@ -129,6 +211,8 @@ function summarizeResults(results = [], valuation = {}) {
       qualityChecks: quality.checks,
       missing: quality.missing,
       extractedYear: quality.extractedYear,
+      assetBasis: quality.sourceBasis,
+      comparisonRole: quality.comparisonRole,
     }
   }).sort((a, b) => b.qualityScore - a.qualityScore)
 
@@ -136,7 +220,13 @@ function summarizeResults(results = [], valuation = {}) {
     source.pricePerSqw &&
     source.quality !== 'weak' &&
     source.qualityChecks.hasRecentSignal &&
-    source.qualityChecks.hasArea
+    source.qualityChecks.hasArea &&
+    source.qualityChecks.basisMatches
+  ))
+  const nearbyDifferentBasisSources = sources.filter(source => (
+    source.comparisonRole === 'nearby_cross_basis' &&
+    source.pricePerSqw &&
+    source.qualityChecks.hasRecentSignal
   ))
 
   const priceSources = qualifiedSources.length ? qualifiedSources : sources.filter(source => source.pricePerSqw)
@@ -145,8 +235,10 @@ function summarizeResults(results = [], valuation = {}) {
   const avg = sorted.length ? Math.round(sorted.reduce((sum, n) => sum + n, 0) / sorted.length) : null
 
   return {
+    targetBasis,
     sources,
     qualifiedSources,
+    nearbyDifferentBasisSources,
     priceSummary: sorted.length ? {
       low: sorted[0],
       median: sorted[Math.floor(sorted.length / 2)],

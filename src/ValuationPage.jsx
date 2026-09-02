@@ -1657,8 +1657,13 @@ function MarketSearchPanel({ form, update, calc }) {
 
           {aiResult.recency && (
             <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 10 }}>
-              กรองข้อมูลอัปเดตช่วง {aiResult.recency.startDate} ถึง {aiResult.recency.endDate}
+              เทียบตามประเภทย่อย: {aiResult.targetBasis?.label || form.propertySubtype || 'ไม่ระบุ'} · กรองข้อมูลอัปเดตช่วง {aiResult.recency.startDate} ถึง {aiResult.recency.endDate}
               {aiResult.priceSummary?.usesFallbackSamples && <span style={{ color: BRAND.gold }}> · ตัวอย่างที่ครบเกณฑ์ยังไม่พอ จึงแสดงราคาจากแหล่งที่พบราคาไว้ให้ตรวจเอง</span>}
+            </div>
+          )}
+          {aiResult.nearbyDifferentBasisSources?.length > 0 && (
+            <div style={{ fontSize: 10, color: BRAND.gold, marginBottom: 10 }}>
+              พบข้อมูลทำเลใกล้เคียงแต่คนละประเภท {aiResult.nearbyDifferentBasisSources.length} รายการ เก็บไว้เทียบบริบทเท่านั้น ไม่รวมในราคาเฉลี่ย/มัธยฐาน
             </div>
           )}
 
@@ -1697,6 +1702,8 @@ function MarketSearchPanel({ form, update, calc }) {
                   <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, fontWeight: 800, color: source.quality === 'strong' ? '#042f2e' : source.quality === 'usable' ? '#111827' : '#fecaca', background: source.quality === 'strong' ? BRAND.teal : source.quality === 'usable' ? BRAND.gold : 'rgba(239,68,68,0.12)', border: `1px solid ${source.quality === 'weak' ? 'rgba(239,68,68,0.35)' : 'transparent'}` }}>
                     {source.quality === 'strong' ? 'ข้อมูลครบ' : source.quality === 'usable' ? 'พอใช้' : 'ต้องตรวจเพิ่ม'} · {source.qualityScore}
                   </span>
+                  {source.comparisonRole === 'nearby_cross_basis' && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.gold, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}>เทียบทำเล คนละประเภท</span>}
+                  {source.assetBasis?.label && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: source.qualityChecks?.basisMatches ? BRAND.teal : BRAND.gold, border: `1px solid ${source.qualityChecks?.basisMatches ? 'rgba(45,212,191,0.35)' : 'rgba(245,158,11,0.35)'}`, background: source.qualityChecks?.basisMatches ? 'rgba(45,212,191,0.08)' : 'rgba(245,158,11,0.08)' }}>{source.assetBasis.label}</span>}
                   {source.publishedDate && <span style={{ fontSize: 10, color: BRAND.textMut }}>อัปเดต {source.publishedDate}</span>}
                   {!source.publishedDate && source.extractedYear && <span style={{ fontSize: 10, color: BRAND.textMut }}>พบปี {source.extractedYear}</span>}
                 </div>
@@ -1708,10 +1715,10 @@ function MarketSearchPanel({ form, update, calc }) {
                 {source.pricePerSqw && (
                   <button
                     onClick={() => applyComp(source.pricePerSqw, source.title || source.url)}
-                    disabled={source.quality === 'weak'}
-                    style={{ padding: '6px 10px', borderRadius: 8, border: 'none', background: source.quality === 'weak' ? BRAND.border : BRAND.gold, color: source.quality === 'weak' ? BRAND.textMut : '#111827', fontSize: 11, fontWeight: 800, cursor: source.quality === 'weak' ? 'not-allowed' : 'pointer' }}
+                    disabled={source.quality === 'weak' || !source.qualityChecks?.basisMatches}
+                    style={{ padding: '6px 10px', borderRadius: 8, border: 'none', background: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.border : BRAND.gold, color: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.textMut : '#111827', fontSize: 11, fontWeight: 800, cursor: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'not-allowed' : 'pointer' }}
                   >
-                    {source.quality === 'weak' ? 'ยังไม่แนะนำให้ใช้' : `ใช้ราคานี้ ฿${fmt(source.pricePerSqw)}/ตร.ว.`}
+                    {source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'ยังไม่แนะนำให้ใช้' : `ใช้ราคานี้ ฿${fmt(source.pricePerSqw)}/ตร.ว.`}
                   </button>
                 )}
               </div>
