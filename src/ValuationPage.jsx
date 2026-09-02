@@ -1314,8 +1314,8 @@ function MapPicker({ form, update }) {
   const markerRef = useRef(null)
   const [searching, setSearching] = useState(false)
   const [geocoding, setGeocoding] = useState(false)
-  const [latInput, setLatInput] = useState(form.lat != null ? String(form.lat) : '')
-  const [lngInput, setLngInput] = useState(form.lng != null ? String(form.lng) : '')
+  const formatCoordPair = (lat, lng) => lat != null && lng != null ? `${lat}, ${lng}` : ''
+  const [coordInput, setCoordInput] = useState(() => formatCoordPair(form.lat, form.lng))
   const mapHeight = typeof window !== 'undefined' && window.innerWidth < 640 ? 260 : 320
 
   useEffect(() => {
@@ -1337,8 +1337,7 @@ function MapPicker({ form, update }) {
       const { lat, lng } = e.latlng
       update('lat', lat)
       update('lng', lng)
-      setLatInput(lat.toFixed(6))
-      setLngInput(lng.toFixed(6))
+      setCoordInput(formatCoordPair(lat.toFixed(6), lng.toFixed(6)))
       if (markerRef.current) {
         markerRef.current.setLatLng([lat, lng])
       } else {
@@ -1403,8 +1402,7 @@ function MapPicker({ form, update }) {
     if (!mapInstanceRef.current) return
     update('lat', lat)
     update('lng', lng)
-    setLatInput(String(lat))
-    setLngInput(String(lng))
+    setCoordInput(formatCoordPair(lat, lng))
     mapInstanceRef.current.setView([lat, lng], 15)
     if (markerRef.current) {
       markerRef.current.setLatLng([lat, lng])
@@ -1429,21 +1427,29 @@ function MapPicker({ form, update }) {
     setGeocoding(false)
   }
 
+  const parseCoordPair = (value) => {
+    const matches = String(value || '').match(/-?\d+(?:\.\d+)?/g) || []
+    if (matches.length < 2) return null
+    const lat = Number(matches[0])
+    const lng = Number(matches[1])
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+    return { lat, lng }
+  }
+
   const handleCoordConfirm = () => {
-    const lat = parseFloat(latInput)
-    const lng = parseFloat(lngInput)
-    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      showToast('พิกัดไม่ถูกต้อง\nละติจูด: -90 ถึง 90\nลองจิจูด: -180 ถึง 180')
+    const pair = parseCoordPair(coordInput)
+    if (!pair || pair.lat < -90 || pair.lat > 90 || pair.lng < -180 || pair.lng > 180) {
+      showToast('พิกัดไม่ถูกต้อง\nวางได้เช่น 16.3395405|103.43032410 หรือ 16.3395405, 103.43032410')
       return
     }
-    placeMarker(lat, lng)
+    setCoordInput(formatCoordPair(pair.lat, pair.lng))
+    placeMarker(pair.lat, pair.lng)
   }
 
   const handleClear = () => {
     update('lat', null)
     update('lng', null)
-    setLatInput('')
-    setLngInput('')
+    setCoordInput('')
     if (markerRef.current) {
       markerRef.current.remove()
       markerRef.current = null
@@ -1455,28 +1461,25 @@ function MapPicker({ form, update }) {
       <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 12 }}>🗺️ ปักหมุดสถานที่ทรัพย์สิน</div>
 
       {/* ช่องกรอกพิกัดด้วยมือ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) auto', gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
         <div>
-          <Label>ละติจูด (Latitude)</Label>
+          <Label>พิกัด Latitude / Longitude</Label>
           <Inp
-            type="number" step="any"
-            value={latInput}
-            onChange={e => setLatInput(e.target.value)}
+            value={coordInput}
+            onChange={e => setCoordInput(e.target.value)}
+            onPaste={e => {
+              const text = e.clipboardData?.getData('text') || ''
+              const pair = parseCoordPair(text)
+              if (pair) {
+                e.preventDefault()
+                setCoordInput(formatCoordPair(pair.lat, pair.lng))
+              }
+            }}
             onKeyDown={e => e.key === 'Enter' && handleCoordConfirm()}
-            placeholder="เช่น 13.75398"
+            placeholder="เช่น 16.3395405|103.43032410"
           />
         </div>
-        <div>
-          <Label>ลองจิจูด (Longitude)</Label>
-          <Inp
-            type="number" step="any"
-            value={lngInput}
-            onChange={e => setLngInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleCoordConfirm()}
-            placeholder="เช่น 100.50144"
-          />
-        </div>
-        <button onClick={handleCoordConfirm} style={{ padding: '9px 14px', borderRadius: 8, border: `1px solid ${BRAND.teal}`, background: 'rgba(45,212,191,0.12)', color: BRAND.teal, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        <button onClick={handleCoordConfirm} style={{ padding: '9px 18px', borderRadius: 8, border: `1px solid ${BRAND.teal}`, background: 'rgba(45,212,191,0.12)', color: BRAND.teal, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
           📍 ยืนยัน
         </button>
       </div>
@@ -1504,7 +1507,7 @@ function MapPicker({ form, update }) {
       <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 6 }}>
         {geocoding
           ? <span style={{ color: BRAND.teal }}>⏳ กำลังดึงที่อยู่จากพิกัด...</span>
-          : '💡 กรอกพิกัดในช่องด้านบน / คลิกบนแผนที่ / หรือกด "ค้นหาจากที่อยู่" — เติมจังหวัด/อำเภอ/ตำบลอัตโนมัติ'
+          : '💡 วางพิกัดจาก LandsMaps ได้ในช่องเดียว เช่น 16.3395405|103.43032410 / คลิกบนแผนที่ / หรือกด "ค้นหาจากที่อยู่"'
         }
       </div>
     </Card>
