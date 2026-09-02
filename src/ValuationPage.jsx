@@ -26,6 +26,7 @@ import {
   EMPTY_DEED, computeValuation,
 } from './lib/valuationOptions.js'
 import { ADDRESS_PROVINCES, getDistrictsByProvince, getSubdistrictsByDistrict } from './lib/thaiAddress.js'
+import { buildUnderwritingPolicy } from './lib/underwritingPolicy.js'
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 const VALUATION_DRAFT_KEY = 'assetx_valuation_draft'
@@ -1903,7 +1904,61 @@ function Step2({ form, update, calc, comps = [], nearbyPricePoints = [], nearbyL
 }
 
 // ── Step 3 ─────────────────────────────────────────────
-function Step3({ form, update, calc }) {
+function PolicyGatePanel({ policy, compact = false }) {
+  if (!policy) return null
+  const visibleFlags = policy.activeFlags.slice(0, compact ? 3 : 6)
+  const visibleConditions = policy.conditions.slice(0, compact ? 4 : 8)
+  return (
+    <Card style={{ borderColor: `${policy.decision.color}55`, background: compact ? 'rgba(15,23,42,0.35)' : BRAND.bgCard }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: BRAND.gold }}>Underwriting Policy Gate</div>
+          <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>{policy.decision.reason}</div>
+        </div>
+        <div style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${policy.decision.color}66`, background: `${policy.decision.color}18`, color: policy.decision.color, fontSize: 12, fontWeight: 800 }}>
+          {policy.decision.status}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+        {[
+          ['Safe', policy.exposureBands.safe],
+          ['Recommended', policy.exposureBands.recommended],
+          ['Maximum', policy.exposureBands.maximum],
+        ].map(([label, value]) => (
+          <div key={label} style={{ padding: 10, borderRadius: 8, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
+            <div style={{ fontSize: 10, color: BRAND.textSec }}>{label} exposure</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: label === 'Recommended' ? BRAND.teal : BRAND.textPri }}>฿{fmt(value)}</div>
+          </div>
+        ))}
+      </div>
+
+      {visibleFlags.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#FCA5A5', marginBottom: 6 }}>Red flags</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {visibleFlags.map((flag) => (
+              <span key={flag.key} style={{ padding: '4px 8px', borderRadius: 8, background: 'rgba(239,68,68,0.09)', border: '1px solid rgba(239,68,68,0.3)', color: '#FCA5A5', fontSize: 11 }}>
+                {flag.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.teal, marginBottom: 6 }}>Conditions precedent</div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {visibleConditions.map((condition) => (
+            <div key={condition} style={{ fontSize: 11, color: BRAND.textSec, lineHeight: 1.45 }}>• {condition}</div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function Step3({ form, update, calc, policy }) {
   const { riskScore, riskBand } = calc
   const scoreColor = riskScore <= 15 ? '#10B981' : riskScore <= 30 ? '#84CC16' : riskScore <= 50 ? '#F59E0B' : riskScore <= 70 ? '#F97316' : '#EF4444'
   return (
@@ -1981,12 +2036,14 @@ function Step3({ form, update, calc }) {
           <span>75% — สูงสุด</span>
         </div>
       </Card>
+
+      <PolicyGatePanel policy={policy} />
     </div>
   )
 }
 
 // ── Step 4 ─────────────────────────────────────────────
-function Step4({ form, calc, update, underwritingMemo, underwritingLoading, underwritingError, onGenerateUnderwriting, onCopyUnderwriting }) {
+function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoading, underwritingError, onGenerateUnderwriting, onCopyUnderwriting }) {
   const reqLoan = parseFloat(form.requestedLoan) || 0
   const loanToGovLtv = calc.govPriceTotal > 0 ? (reqLoan / calc.govPriceTotal) * 100 : 0
   const reqLtv = calc.marketValue > 0 ? (reqLoan / calc.marketValue) * 100 : 0
@@ -2110,6 +2167,8 @@ function Step4({ form, calc, update, underwritingMemo, underwritingLoading, unde
               <div style={{ fontSize: 22, fontWeight: 800, color: BRAND.teal }}>฿{fmt(calc.recommendedLoan)}</div>
             </div>
           </Card>
+
+          <PolicyGatePanel policy={policy} compact />
 
           {/* วงเงินที่ลูกค้าเสนอขอ */}
           <Card style={{ borderColor: underwritingMemo ? 'rgba(45,212,191,0.35)' : BRAND.border }}>
@@ -2390,6 +2449,10 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   }, [step, form.lat, form.lng, form.province, form.propertyType, form.propertySubtype])
 
   const calc = useMemo(() => computeValuation(form), [form])
+  const underwritingPolicy = useMemo(
+    () => buildUnderwritingPolicy(form, calc, nearbyPricePoints),
+    [form, calc, nearbyPricePoints]
+  )
 
   const handleGenerateUnderwriting = async () => {
     if (underwritingLoading) return
@@ -2402,14 +2465,9 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           valuation: { ...form, ...calc },
+          underwritingPolicy,
           nearbyPricePoints,
-          missingFields: [
-            !form.lat || !form.lng ? 'พิกัด' : '',
-            !form.compPrice ? 'ราคาซื้อขาย/Comp ตลาดจริง' : '',
-            !form.roadWidth ? 'ความกว้างถนน' : '',
-            !form.zoneColor ? 'ผังเมือง' : '',
-            !form.requestedLoan ? 'วงเงินขายฝากที่ลูกค้าขอ' : '',
-          ].filter(Boolean),
+          missingFields: underwritingPolicy.missingFields,
           instructions: 'จัดทำ preliminary internal underwriting memo สำหรับทีม AssetX',
         }),
       })
@@ -2601,12 +2659,13 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
             <Stepper step={step} />
             {step === 1 && <Step1 form={form} update={update} updateDeed={updateDeed} addDeed={addDeed} removeDeed={removeDeed} customers={customers} assetCode={form.assetCode} />}
             {step === 2 && <Step2 form={form} update={update} calc={calc} comps={comps} nearbyPricePoints={nearbyPricePoints} nearbyLoading={nearbyLoading} />}
-            {step === 3 && <Step3 form={form} update={update} calc={calc} />}
+            {step === 3 && <Step3 form={form} update={update} calc={calc} policy={underwritingPolicy} />}
             {step === 4 && (
               <Step4
                 form={form}
                 calc={calc}
                 update={update}
+                policy={underwritingPolicy}
                 underwritingMemo={underwritingMemo}
                 underwritingLoading={underwritingLoading}
                 underwritingError={underwritingError}

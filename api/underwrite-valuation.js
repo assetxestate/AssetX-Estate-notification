@@ -5,6 +5,7 @@ import { setSseHeaders, streamGeminiText } from './_gemini.js'
 function sanitizeValuationContext(input = {}) {
   const {
     valuation = {},
+    underwritingPolicy = {},
     nearbyPricePoints = [],
     documents = [],
     missingFields = [],
@@ -13,6 +14,7 @@ function sanitizeValuationContext(input = {}) {
 
   return {
     valuation,
+    underwriting_policy: underwritingPolicy && typeof underwritingPolicy === 'object' ? underwritingPolicy : {},
     nearby_price_points: Array.isArray(nearbyPricePoints) ? nearbyPricePoints.slice(0, 12) : [],
     documents: Array.isArray(documents) ? documents.slice(0, 20) : [],
     missing_fields: Array.isArray(missingFields) ? missingFields : [],
@@ -28,6 +30,8 @@ function buildUserPrompt(context) {
 - เลือก final decision เพียง 1 ค่า
 - แยก MV / QSV / FSV / NRV
 - แสดง Safe / Recommended / Maximum exposure
+- ใช้ underwriting_policy เป็น policy gate ภายใน: decision, red flags, exposure bands, conditions precedent
+- ถ้า underwriting_policy มี decision เป็น Hold / Legal DD หรือ Reduce Exposure ให้ถือเป็นข้อจำกัดสำคัญใน memo
 - ระบุ legal/DD risks และ conditions precedent
 - ถ้าข้อมูลไม่พอ ให้ระบุว่าไม่ทราบ / ต้องตรวจสอบ
 

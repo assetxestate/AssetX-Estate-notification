@@ -4,6 +4,11 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 
+const CONTRACT_REMINDER_DAYS = {
+  'ขายฝาก': [180, 150, 90, 60, 30, 7, 3, 0],
+  'จำนอง': [60, 30, 7, 3, 0],
+};
+
 function todayMidnight() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -48,15 +53,21 @@ function buildEarlyMsg(name, installment, amount, freq, dateStr, days) {
   ].join('\n');
 }
 
-function buildContractMsg(name, principal, amount, contractEndDate) {
+function buildContractMsg(name, type, principal, amount, contractEndDate, daysLeft) {
+  const timing = daysLeft === 0 ? 'วันนี้' : `ในอีก ${daysLeft} วัน`;
+  const principalAmount = Number(principal) || 0;
+  const interestAmount = Number(amount) || 0;
+  const legalNote = type === 'ขายฝาก'
+    ? 'กรุณาตรวจแผนไถ่ถอน/ขยายสัญญาให้เรียบร้อยก่อนครบกำหนด'
+    : 'กรุณาตรวจแผนชำระหนี้และเอกสารสัญญาก่อนเข้าสู่ขั้นตอนติดตาม';
   return [
-    `📜 แจ้งเตือนครบกำหนดสัญญาขายฝาก`, ``,
+    `📜 แจ้งเตือนครบกำหนดสัญญา${type || ''}`, ``,
     `เรียน คุณ${name}`,
-    `สัญญาขายฝากของท่านจะครบกำหนด`,
-    `ในอีก 5 เดือน วันที่ ${formatThaiDate(contractEndDate)}`, ``,
-    `💰 เงินต้น: ${Number(principal).toLocaleString('th-TH')} บาท`,
-    `💳 สินไถ่รวม: ${Number(principal + amount).toLocaleString('th-TH')} บาท`, ``,
-    `กรุณาเตรียมการไถ่ถอนภายในกำหนด`,
+    `สัญญา${type || ''}ของท่านจะครบกำหนด${timing}`,
+    `วันที่ ${formatThaiDate(contractEndDate)}`, ``,
+    `💰 เงินต้น: ${principalAmount.toLocaleString('th-TH')} บาท`,
+    `💳 สินไถ่รวม: ${(principalAmount + interestAmount).toLocaleString('th-TH')} บาท`, ``,
+    legalNote,
     `หนังสือ Notice ได้จัดส่งทางไปรษณีย์แล้ว`,
     `— AssetX Estate —`,
   ].join('\n');
@@ -134,14 +145,15 @@ export default async function handler(req, res) {
       }
     }
 
-    // แจ้งเตือนครบกำหนดสัญญาขายฝาก (5 เดือนล่วงหน้า)
+    // แจ้งเตือนครบกำหนดสัญญาตาม policy threshold
     for (const c of customers) {
       if (closedIds.has(c.id) || !c.line_user_id) continue;
-      if (c.type !== 'ขายฝาก' || !c.contract_end_date) continue;
+      if (!c.contract_end_date) continue;
+      const reminderDays = CONTRACT_REMINDER_DAYS[c.type] || [30, 7, 3, 0];
       const cDiff = diffDays(c.contract_end_date, today);
-      if (cDiff === 150) {
+      if (reminderDays.includes(cDiff)) {
         try {
-          await sendLine(c.line_user_id, buildContractMsg(c.name, c.principal, c.amount, c.contract_end_date));
+          await sendLine(c.line_user_id, buildContractMsg(c.name, c.type, c.principal, c.amount, c.contract_end_date, cDiff));
           sentCount++;
         } catch (e) {
           errors.push(`${c.name} (ครบกำหนดสัญญา): ${e.message}`);
