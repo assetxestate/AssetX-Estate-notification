@@ -11,7 +11,6 @@ export async function getCustomers() {
   const { data: custRows, error: custErr } = await supabase
     .from("customers")
     .select("*")
-    .eq("is_cancelled", false)
     .order("created_at", { ascending: true });
   if (custErr) throw custErr;
 
@@ -44,6 +43,7 @@ export async function getCustomers() {
     lineUserId: c.line_user_id,
     location: c.location,
     deeds: typeof c.deeds === "string" ? c.deeds : JSON.stringify(c.deeds || []),
+    isCancelled: c.is_cancelled === true,
     incomeType: c.income_type || 'commission',
     disbursement: c.disbursement || {},
     payments: payMap[c.id] || [],

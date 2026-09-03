@@ -10,6 +10,49 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : null
 }
 
+function isThaiLatLng(lat, lng) {
+  return lat >= 5 && lat <= 21 && lng >= 97 && lng <= 106
+}
+
+function normalizeThaiCoordinatePair(a, b) {
+  const first = toNumber(a)
+  const second = toNumber(b)
+  if (!Number.isFinite(first) || !Number.isFinite(second)) return null
+  if (isThaiLatLng(first, second)) return { lat: first, lng: second }
+  if (isThaiLatLng(second, first)) return { lat: second, lng: first }
+  return null
+}
+
+function extractCoordinates(text) {
+  const normalized = compactText(text, 6000)
+  const patterns = [
+    /(-?\d{1,3}\.\d{2,})\s*[,|]\s*(-?\d{1,3}\.\d{2,})/g,
+    /(-?\d{1,3}\.\d{2,})\s+(-?\d{1,3}\.\d{2,})/g,
+    /(?:lat|latitude|ละติจูด)[^\d-]*(-?\d{1,3}\.\d{2,}).{0,40}?(?:lng|lon|longitude|ลองจิจูด)[^\d-]*(-?\d{1,3}\.\d{2,})/gi,
+  ]
+
+  for (const pattern of patterns) {
+    for (const match of normalized.matchAll(pattern)) {
+      const pair = normalizeThaiCoordinatePair(match[1], match[2])
+      if (pair) return pair
+    }
+  }
+  return null
+}
+
+function distanceKmBetween(a, b) {
+  if (!a || !b) return null
+  const toRad = value => value * Math.PI / 180
+  const earthKm = 6371
+  const dLat = toRad(b.lat - a.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const lat1 = toRad(a.lat)
+  const lat2 = toRad(b.lat)
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * earthKm * Math.asin(Math.sqrt(h))
+}
+
 function formatDate(date) {
   return date.toISOString().slice(0, 10)
 }
@@ -295,9 +338,12 @@ function buildRelaxedQuery(valuation = {}) {
 
 function summarizeResults(results = [], valuation = {}) {
   const targetBasis = classifyTargetBasis(valuation)
+  const subjectCoordinates = normalizeThaiCoordinatePair(valuation.lat, valuation.lng)
   const sources = results.slice(0, 12).map((item) => {
-    const content = compactText([item.title, item.content, item.raw_content].filter(Boolean).join(' '))
+    const content = compactText([item.title, item.url, item.content, item.raw_content].filter(Boolean).join(' '))
     const quality = scoreSource(item, valuation)
+    const coordinates = extractCoordinates(content)
+    const distanceKm = subjectCoordinates && coordinates ? distanceKmBetween(subjectCoordinates, coordinates) : null
     return {
       title: compactText(item.title, 160),
       url: item.url,
@@ -315,8 +361,18 @@ function summarizeResults(results = [], valuation = {}) {
       extractedYear: quality.extractedYear,
       assetBasis: quality.sourceBasis,
       comparisonRole: quality.comparisonRole,
+      coordinates,
+      distanceKm: Number.isFinite(distanceKm) ? Number(distanceKm.toFixed(3)) : null,
+      distanceM: Number.isFinite(distanceKm) ? Math.round(distanceKm * 1000) : null,
     }
-  }).sort((a, b) => b.qualityScore - a.qualityScore)
+  }).sort((a, b) => {
+    const aHasDistance = Number.isFinite(a.distanceKm)
+    const bHasDistance = Number.isFinite(b.distanceKm)
+    if (aHasDistance && bHasDistance) return a.distanceKm - b.distanceKm
+    if (aHasDistance) return -1
+    if (bHasDistance) return 1
+    return b.qualityScore - a.qualityScore
+  })
 
   const qualifiedSources = sources.filter(source => (
     source.pricePerSqw &&
@@ -338,6 +394,8 @@ function summarizeResults(results = [], valuation = {}) {
 
   return {
     targetBasis,
+    subjectCoordinates,
+    distanceSorted: !!subjectCoordinates,
     sources,
     qualifiedSources,
     nearbyDifferentBasisSources,

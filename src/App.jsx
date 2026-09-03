@@ -425,7 +425,7 @@ export default function App() {
         ...c,
         deeds: parseDeeds(c.deeds),
         isClosed: contractStatuses[c.id]?.status === 'ปิดแล้ว',
-        isVoided: contractStatuses[c.id]?.status === 'ยกเลิก',
+        isVoided: contractStatuses[c.id]?.status !== 'ปิดแล้ว' && (c.isCancelled || contractStatuses[c.id]?.status === 'ยกเลิก'),
         payments: (c.payments || []).map((p) => {
           const diff = getDiff(p.dateStr, today);
           const record = paymentRecords[c.id]?.[p.installment];
@@ -2201,7 +2201,7 @@ export default function App() {
                   setCancelling(true);
                   try {
                     await apiCancelCustomer(cancelConfirm.id);
-                    setCustomers(prev => prev.filter(c => c.id !== cancelConfirm.id));
+                    setCustomers(prev => prev.map(c => c.id === cancelConfirm.id ? { ...c, isCancelled: true } : c));
                     setCancelConfirm(null);
                     setToast({ success: true, message: `ยกเลิกสัญญา ${cancelConfirm.name} แล้ว` });
                     setTimeout(() => setToast(null), 3000);

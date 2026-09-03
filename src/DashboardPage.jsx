@@ -149,6 +149,9 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const commissionCases = active.filter(c => (c.incomeType || 'commission') === 'commission')
   const interestCases = active.filter(c => c.incomeType === 'interest')
   const totalAdvance = commissionCases.reduce((s, c) => s + (c.principal || 0) * 0.02, 0)
+  const closedCommissionCases = customers.filter(c => c.isClosed && !c.isVoided && (c.incomeType || 'commission') === 'commission')
+  const closedAdvance = closedCommissionCases.reduce((s, c) => s + (c.principal || 0) * 0.02, 0)
+  const stackedAdvance = totalAdvance + closedAdvance
 
   // ── กราฟรายได้ 6 เดือนย้อนหลัง ──────────────────────────
   const monthlyChart = useMemo(() => {
@@ -211,7 +214,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
         <KpiCard icon="📈" label="รายได้ดอกเบี้ย/เดือน" value={`฿${fmtFull(Math.round(monthlyIncome))}`} sub={`Yield ${yieldRate}%/ปี`} color={BRAND.gold} />
         <KpiCard icon="✅" label="ดอกเบี้ยที่ชำระแล้ว" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · อ้างอิงจากสลิปโอนเงิน`} color={BRAND.success} />
         <KpiCard icon="⚠️" label="ค้างชำระ" value={`฿${fmtFull(overdueAmount)}`} sub={overduePayments.length > 0 ? `${overduePayments.length} งวด · ${overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย` : 'ไม่มีค้างชำระ'} color={overduePayments.length > 0 ? BRAND.danger : BRAND.success} />
-        <KpiCard icon="🏦" label="Advance 2%" value={`฿${fmtFull(Math.round(totalAdvance))}`} sub={`${active.length} สัญญา · 2% ของวงเงินรวม`} color={BRAND.purple} />
+        <KpiCard icon="🏦" label="Advance 2%" value={`฿${fmtFull(Math.round(stackedAdvance))}`} sub={`${commissionCases.length} active + ${closedCommissionCases.length} ปิดแล้ว · 2% ของวงเงินรวม`} color={BRAND.purple} />
       </div>
 
       {/* Charts Row */}
@@ -329,8 +332,32 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
           </div>
         )}
 
-        {commissionCases.length === 0 && interestCases.length === 0 && (
-          <div style={{ fontSize: 12, color: BRAND.textMut, textAlign: 'center', padding: '12px 0' }}>ไม่มีสัญญา active</div>
+        {closedCommissionCases.length > 0 && (
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px dashed ${BRAND.border}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.textMut, marginBottom: 8 }}>ปิดสัญญาแล้ว (เก็บไว้ตรวจย้อนหลัง)</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {closedCommissionCases.map(c => (
+                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: 'rgba(15,23,42,.45)', border: `1px solid ${BRAND.border}`, opacity: .72 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textSec, textDecoration: 'line-through' }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: BRAND.textMut }}>{c.type} · วงเงิน ฿{fmtFull(c.principal)}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 10, color: BRAND.textMut }}>Advance 2%</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textSec }}>฿{fmtFull(Math.round((c.principal || 0) * 0.02))}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(148,163,184,.12)', border: `1px solid ${BRAND.border}`, display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: BRAND.textSec }}>รวม Advance เคสปิดแล้ว</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: BRAND.textSec }}>฿{fmtFull(Math.round(closedAdvance))}</span>
+            </div>
+          </div>
+        )}
+
+        {commissionCases.length === 0 && interestCases.length === 0 && closedCommissionCases.length === 0 && (
+          <div style={{ fontSize: 12, color: BRAND.textMut, textAlign: 'center', padding: '12px 0' }}>ไม่มีข้อมูล Advance 2%</div>
         )}
       </div>
 

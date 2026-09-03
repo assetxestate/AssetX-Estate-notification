@@ -1658,6 +1658,7 @@ function MarketSearchPanel({ form, update, calc }) {
           {aiResult.recency && (
             <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 10 }}>
               เทียบตามประเภทย่อย: {aiResult.targetBasis?.label || form.propertySubtype || 'ไม่ระบุ'} · กรองข้อมูลอัปเดตช่วง {aiResult.recency.startDate} ถึง {aiResult.recency.endDate}
+              {aiResult.distanceSorted && <span style={{ color: BRAND.teal }}> · เรียงจากพิกัดใกล้ทรัพย์ที่สุดเมื่อพบพิกัดในแหล่งข้อมูล</span>}
               {aiResult.searchMode === 'relaxed' && <span style={{ color: BRAND.gold }}> · ใช้การค้นแบบกว้างขึ้นเพราะรอบแรกไม่พบราคาที่ดึงมาใช้ได้</span>}
               {aiResult.priceSummary?.usesFallbackSamples && <span style={{ color: BRAND.gold }}> · ตัวอย่างที่ครบเกณฑ์ยังไม่พอ จึงแสดงราคาจากแหล่งที่พบราคาไว้ให้ตรวจเอง</span>}
             </div>
@@ -1716,6 +1717,8 @@ function MarketSearchPanel({ form, update, calc }) {
                   {source.comparisonRole === 'nearby_cross_basis' && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.gold, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}>เทียบทำเล คนละประเภท</span>}
                   {source.assetBasis?.label && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: source.qualityChecks?.basisMatches ? BRAND.teal : BRAND.gold, border: `1px solid ${source.qualityChecks?.basisMatches ? 'rgba(45,212,191,0.35)' : 'rgba(245,158,11,0.35)'}`, background: source.qualityChecks?.basisMatches ? 'rgba(45,212,191,0.08)' : 'rgba(245,158,11,0.08)' }}>{source.assetBasis.label}</span>}
                   {source.priceBasis === 'derived_from_total_price' && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.teal, border: '1px solid rgba(45,212,191,0.35)', background: 'rgba(45,212,191,0.08)' }}>คำนวณจากราคารวม ฿{fmt(source.totalPrice)} / {fmt(source.listingAreaSqw)} ตร.ว.</span>}
+                  {Number.isFinite(source.distanceM) && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.textPri, border: `1px solid ${BRAND.border}`, background: 'rgba(255,255,255,0.04)' }}>ห่าง {source.distanceM < 1000 ? `${fmt(source.distanceM)} ม.` : `${source.distanceKm.toLocaleString('th-TH', { maximumFractionDigits: 2 })} กม.`}</span>}
+                  {aiResult.distanceSorted && !Number.isFinite(source.distanceM) && <span style={{ fontSize: 10, color: BRAND.textMut }}>ไม่พบพิกัดในแหล่งนี้</span>}
                   {source.publishedDate && <span style={{ fontSize: 10, color: BRAND.textMut }}>อัปเดต {source.publishedDate}</span>}
                   {!source.publishedDate && source.extractedYear && <span style={{ fontSize: 10, color: BRAND.textMut }}>พบปี {source.extractedYear}</span>}
                 </div>
