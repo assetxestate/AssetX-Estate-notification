@@ -94,7 +94,7 @@ function DonutChart({ segments }) {
 // ── Main Dashboard ───────────────────────────────────────
 export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const today = new Date()
-  const active = customers.filter(c => !c.isClosed && !c.isVoided)
+  const active = customers.filter(c => !c.isClosed && !c.isVoided && !c.isHiddenDraft)
 
   // ── KPIs ────────────────────────────────────────────────
   const totalPrincipal = active.reduce((s, c) => s + (c.principal || 0), 0)

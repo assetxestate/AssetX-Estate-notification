@@ -116,6 +116,24 @@ export async function cancelCustomer(customerId) {
   return { success: true };
 }
 
+export async function voidContract(customerId, customerName) {
+  const now = new Date().toISOString();
+  const { error: custErr } = await supabase
+    .from("customers")
+    .update({ is_cancelled: true, updated_at: now })
+    .eq("id", customerId);
+  if (custErr) throw custErr;
+
+  const { error: statusErr } = await supabase.from("contract_statuses").upsert({
+    customer_id: customerId,
+    status: "ยกเลิก",
+    customer_name: customerName || "",
+    updated_at: now,
+  });
+  if (statusErr) throw statusErr;
+  return { success: true };
+}
+
 // ── Contract Statuses ─────────────────────────────────────────
 
 export async function getContractStatuses() {

@@ -11,7 +11,7 @@ import {
   getDestinations as apiGetDestinations,
   updateCustomer as apiUpdateCustomer,
   postponePayment as apiPostponePayment,
-  cancelCustomer as apiCancelCustomer,
+  voidContract as apiVoidContract,
   getTopups as apiGetTopups,
   createTopup as apiCreateTopup,
   deleteTopup as apiDeleteTopup,
@@ -425,7 +425,8 @@ export default function App() {
         ...c,
         deeds: parseDeeds(c.deeds),
         isClosed: contractStatuses[c.id]?.status === 'ปิดแล้ว',
-        isVoided: contractStatuses[c.id]?.status !== 'ปิดแล้ว' && (c.isCancelled || contractStatuses[c.id]?.status === 'ยกเลิก'),
+        isVoided: contractStatuses[c.id]?.status === 'ยกเลิก',
+        isHiddenDraft: c.isCancelled && !contractStatuses[c.id]?.status,
         payments: (c.payments || []).map((p) => {
           const diff = getDiff(p.dateStr, today);
           const record = paymentRecords[c.id]?.[p.installment];
@@ -438,11 +439,15 @@ export default function App() {
       })),
     [customers, today, paymentRecords, contractStatuses]
   );
+  const activeCustomers = useMemo(
+    () => enriched.filter((c) => !c.isClosed && !c.isVoided && !c.isHiddenDraft),
+    [enriched]
+  );
 
   const payAlerts = useMemo(() => {
     const r = [];
     enriched.forEach((c) => {
-      if (c.isClosed || c.isVoided) return;
+      if (c.isClosed || c.isVoided || c.isHiddenDraft) return;
       c.payments.forEach((p) => {
         if (p.status === "today" || p.status === "soon") r.push({ c, p });
       });
@@ -453,7 +458,7 @@ export default function App() {
   const overdueAlerts = useMemo(() => {
     const r = [];
     enriched.forEach((c) => {
-      if (c.isClosed || c.isVoided) return;
+      if (c.isClosed || c.isVoided || c.isHiddenDraft) return;
       c.payments.forEach((p) => {
         if (p.status === "past") r.push({ c, p });
       });
@@ -464,7 +469,7 @@ export default function App() {
   const contractAlerts = useMemo(
     () =>
       enriched
-        .filter((c) => !c.isClosed && !c.isVoided && c.contractDiff !== null && c.contractDiff <= 180)
+        .filter((c) => !c.isClosed && !c.isVoided && !c.isHiddenDraft && c.contractDiff !== null && c.contractDiff <= 180)
         .sort((a, b) => a.contractDiff - b.contractDiff),
     [enriched]
   );
@@ -478,7 +483,9 @@ export default function App() {
             if (!c.isClosed && !c.isVoided) return null;
             return c;
           }
+          if (c.isClosed) return null;
           if (c.isVoided) return null; // ซ่อนลูกค้าที่ถูกยกเลิก (ยกเว้นในแท็บ "ปิด/ยกเลิกสัญญา")
+          if (c.isHiddenDraft) return null;
           if (filter === "mortgage" && c.type !== "จำนอง") return null;
           if (filter === "sell" && c.type !== "ขายฝาก") return null;
           let pays = c.payments;
@@ -496,7 +503,7 @@ export default function App() {
     [enriched, filter]
   );
 
-  const totalPrincipal = enriched.reduce((s, c) => s + (c.principal || 0), 0);
+  const totalPrincipal = activeCustomers.reduce((s, c) => s + (c.principal || 0), 0);
 
   const copy = (text) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -664,7 +671,7 @@ export default function App() {
               className={`tab ${mainTab === "customers" ? "active" : ""}`}
               onClick={() => setMainTab("customers")}
             >
-              👥 ลูกค้า ({enriched.length})
+              👥 ลูกค้า ({activeCustomers.length})
             </button>
             <button
               className={`tab ${mainTab === "payment" ? "active" : ""}`}
@@ -791,7 +798,7 @@ export default function App() {
                   <div
                     style={{ fontSize: 24, fontWeight: 700, color: BRAND.teal }}
                   >
-                    {enriched.length}
+                    {activeCustomers.length}
                   </div>
                 </div>
                 <div
@@ -2200,7 +2207,8 @@ export default function App() {
                 onClick={async () => {
                   setCancelling(true);
                   try {
-                    await apiCancelCustomer(cancelConfirm.id);
+                    await apiVoidContract(cancelConfirm.id, cancelConfirm.name);
+                    setContractStatuses(prev => ({ ...prev, [cancelConfirm.id]: { status: 'ยกเลิก', customerName: cancelConfirm.name } }));
                     setCustomers(prev => prev.map(c => c.id === cancelConfirm.id ? { ...c, isCancelled: true } : c));
                     setCancelConfirm(null);
                     setToast({ success: true, message: `ยกเลิกสัญญา ${cancelConfirm.name} แล้ว` });
