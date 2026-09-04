@@ -27,6 +27,11 @@ import {
 } from './lib/valuationOptions.js'
 import { ADDRESS_PROVINCES, getDistrictsByProvince, getSubdistrictsByDistrict } from './lib/thaiAddress.js'
 import { buildUnderwritingPolicy } from './lib/underwritingPolicy.js'
+import {
+  VALUATION_IMAGE_LIMIT,
+  deleteValuationPropertyImage,
+  uploadValuationPropertyImage,
+} from './lib/valuationImages.js'
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 const VALUATION_DRAFT_KEY = 'assetx_valuation_draft'
@@ -45,6 +50,7 @@ const INITIAL_FORM = {
   ltvRate: 50, linkedCustomer: '',
   lat: null, lng: null,
   requestedLoan: '', assetCode: '',
+  propertyImages: [],
 }
 
 const createInitialForm = () => ({
@@ -583,6 +589,7 @@ function HistoryView({ appsScriptUrl }) {
             <div style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 16 }}>
               {detailRow['ประเภทการประเมิน']} • {detailRow['ประเภทย่อย']} • {detailRow['จังหวัด']} • วันที่บันทึก: {detailRow['วันที่บันทึก']}
             </div>
+            <PropertyImageGallery images={detailRow.propertyImages} compact />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginBottom: 16 }}>
               {[['มูลค่าตลาด', `฿${fmt(detailRow['มูลค่าตลาดรวม'])}`], ['FSV (80%)', `฿${fmt(detailRow['FSV (80%)'])}`], ['วงเงินแนะนำ', `฿${fmt(detailRow['วงเงินแนะนำ'])}`], ['Property Score', `${detailRow['Property Score']}/100`], ['วงเงินที่ลูกค้าขอ', `฿${fmt(detailRow['วงเงินที่ลูกค้าขอ'])}`], ['LTV ลูกค้า (%)', `${detailRow['LTV ลูกค้า (% ต่อตลาด)'] || '—'}%`]].map(([k, v]) => (
                 <div key={k} style={{ background: BRAND.bg, borderRadius: 8, padding: '8px 12px' }}>
@@ -756,6 +763,16 @@ function HistoryView({ appsScriptUrl }) {
                   </div>
                 )
               })()}
+              {(row.propertyImages || []).length > 0 && (
+                <div style={{ padding: '8px 12px', borderRadius: 8, background: BRAND.bg, border: `1px solid ${BRAND.border}`, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: BRAND.textSec }}>📷 {(row.propertyImages || []).length} รูป</span>
+                  {(row.propertyImages || []).filter(img => img?.url).slice(0, 5).map((image, idx) => (
+                    <a key={image.path || image.url || idx} href={image.url} target="_blank" rel="noopener noreferrer" style={{ width: 46, height: 34, borderRadius: 6, overflow: 'hidden', border: `1px solid ${BRAND.border}`, display: 'block', background: '#050B18' }}>
+                      <img src={image.url} alt={`รูปทรัพย์ ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </Card>
@@ -794,6 +811,8 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
 
   // ── กรมธนารักษ์ lookup ────────────────────────────────
   const [trdLookup, setTrdLookup] = useState(null)
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageError, setImageError] = useState('')
 
   // ── กรมที่ดิน DOL lookup ──────────────────────────────
   const [dolSearch, setDolSearch] = useState(null) // { deedIdx, provCode, ampCode, amphoeList, loading, error }
@@ -855,6 +874,55 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
     if (!cust) return
     if (cust.type === 'ขายฝาก' || cust.type === 'จำนอง') update('assessmentType', cust.type)
     if (cust.name) update('projectName', cust.name)
+  }
+
+  const handleImageSelect = async (event) => {
+    const files = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (files.length === 0) return
+
+    const currentImages = Array.isArray(form.propertyImages) ? form.propertyImages : []
+    const slots = Math.max(0, VALUATION_IMAGE_LIMIT - currentImages.length)
+    if (slots === 0) {
+      showToast(`แนบรูปได้สูงสุด ${VALUATION_IMAGE_LIMIT} รูปต่อรายการประเมิน`)
+      return
+    }
+
+    setImageUploading(true)
+    setImageError('')
+    const uploaded = []
+    try {
+      for (const file of files.slice(0, slots)) {
+        const image = await uploadValuationPropertyImage(file, {
+          assetCode: form.assetCode || assetCode,
+          projectName: form.projectName,
+          assessmentDate: form.assessmentDate,
+        })
+        uploaded.push(image)
+      }
+      if (uploaded.length > 0) {
+        update('propertyImages', [...currentImages, ...uploaded])
+        showToast(`อัปโหลดรูปทรัพย์ ${uploaded.length} รูปแล้ว`, 'success')
+      }
+      if (files.length > slots) {
+        showToast(`แนบได้อีก ${slots} รูป จึงข้ามรูปที่เกินจากจำนวนสูงสุด`)
+      }
+    } catch (e) {
+      setImageError(e.message)
+      showToast(e.message)
+    } finally {
+      setImageUploading(false)
+    }
+  }
+
+  const handleRemoveImage = async (image) => {
+    const images = Array.isArray(form.propertyImages) ? form.propertyImages : []
+    update('propertyImages', images.filter(item => item.path !== image.path && item.url !== image.url))
+    try {
+      await deleteValuationPropertyImage(image)
+    } catch (e) {
+      showToast('ลบไฟล์รูปจาก Storage ไม่สำเร็จ: ' + e.message)
+    }
   }
 
   // ── ดึงข้อมูลโฉนดจากประวัติเดิม (ลูกค้าที่มีสัญญาแล้ว + ประวัติการประเมิน) ─────────────────
@@ -1036,6 +1104,76 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
         <Sel value={form.propertySubtype} onChange={e => update('propertySubtype', e.target.value)}>
           {subtypes.map(s => <option key={s}>{s}</option>)}
         </Sel>
+      </Card>
+
+      <Card style={{ borderColor: 'rgba(45,212,191,0.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal }}>📷 รูปภาพทรัพย์ประกอบการประเมิน</div>
+            <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>
+              ระบบจะบีบอัดรูปก่อนเก็บใน Supabase Storage และนำไปแสดงในผลประเมิน
+            </div>
+          </div>
+          <label style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: `1px solid ${imageUploading ? BRAND.border : BRAND.teal}`,
+            background: imageUploading ? 'rgba(148,163,184,0.08)' : 'rgba(45,212,191,0.10)',
+            color: imageUploading ? BRAND.textMut : BRAND.teal,
+            fontSize: 12,
+            fontWeight: 800,
+            cursor: imageUploading ? 'wait' : 'pointer',
+            whiteSpace: 'nowrap',
+          }}>
+            {imageUploading ? 'กำลังอัปโหลด...' : '+ แนบรูป'}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={imageUploading}
+              onChange={handleImageSelect}
+              style={{ display: 'none' }}
+            />
+          </label>
+        </div>
+
+        {imageError && (
+          <div style={{ padding: 10, borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#FCA5A5', fontSize: 11, marginBottom: 10 }}>
+            {imageError}
+          </div>
+        )}
+
+        {(form.propertyImages || []).length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))', gap: 10 }}>
+            {(form.propertyImages || []).map((image, idx) => (
+              <div key={image.path || image.url || idx} style={{ border: `1px solid ${BRAND.border}`, borderRadius: 8, overflow: 'hidden', background: BRAND.bg }}>
+                <a href={image.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', aspectRatio: '4 / 3', background: '#050B18' }}>
+                  <img src={image.url} alt={`รูปทรัพย์ ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </a>
+                <div style={{ padding: 8 }}>
+                  <div style={{ fontSize: 11, color: BRAND.textPri, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    รูปที่ {idx + 1}
+                  </div>
+                  <div style={{ fontSize: 10, color: BRAND.textMut, marginTop: 2 }}>
+                    {image.width || '-'}×{image.height || '-'} px
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(image)}
+                    disabled={imageUploading}
+                    style={{ width: '100%', marginTop: 6, padding: '5px 8px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: '#FCA5A5', fontSize: 10, cursor: imageUploading ? 'not-allowed' : 'pointer' }}
+                  >
+                    ลบรูป
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: 12, borderRadius: 8, background: '#050B18', border: `1px dashed ${BRAND.border}`, color: BRAND.textSec, fontSize: 12, textAlign: 'center' }}>
+            ยังไม่มีรูปแนบ
+          </div>
+        )}
       </Card>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -1521,6 +1659,10 @@ function MarketSearchPanel({ form, update, calc }) {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
   const [aiResult, setAiResult] = useState(null)
+  const [urlInput, setUrlInput] = useState('')
+  const [urlLoading, setUrlLoading] = useState(false)
+  const [urlError, setUrlError] = useState('')
+  const [urlResult, setUrlResult] = useState(null)
 
   const location = [form.district, form.province].filter(Boolean).join(' ')
   const type = form.propertyType || 'ที่ดิน'
@@ -1599,6 +1741,42 @@ function MarketSearchPanel({ form, update, calc }) {
       showToast('ค้นหา Comp ด้วย AI ไม่สำเร็จ: ' + message)
     } finally {
       setAiLoading(false)
+    }
+  }
+
+  const handleUrlAnalyze = async () => {
+    const url = urlInput.trim()
+    if (!url) {
+      showToast('กรุณาวาง URL ที่ต้องการให้ Tavily อ่าน')
+      return
+    }
+
+    setUrlLoading(true)
+    setUrlError('')
+    setUrlResult(null)
+    try {
+      const res = await fetch('/api/market-comp-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          valuation: {
+            ...form,
+            totalSqw: calc?.totalSqw,
+          },
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || 'อ่าน URL ด้วย Tavily ไม่สำเร็จ')
+      }
+      setUrlResult(data)
+    } catch (e) {
+      const message = e.message || 'อ่าน URL ด้วย Tavily ไม่สำเร็จ'
+      setUrlError(message)
+      showToast('อ่าน URL ด้วย Tavily ไม่สำเร็จ: ' + message)
+    } finally {
+      setUrlLoading(false)
     }
   }
 
@@ -1750,6 +1928,93 @@ function MarketSearchPanel({ form, update, calc }) {
           </div>
         </div>
       )}
+
+      <div style={{ border: `1px solid rgba(245,158,11,0.25)`, borderRadius: 10, padding: 12, background: 'rgba(245,158,11,0.05)', marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: BRAND.gold, marginBottom: 4 }}>อ่าน Comp จาก URL ที่สนใจ</div>
+        <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 10 }}>
+          วางลิงก์ประกาศหรือหน้ารายละเอียดทรัพย์ที่เปิดดูแล้ว ให้ Tavily อ่านเฉพาะหน้านั้นและสรุปข้อมูลราคา/เนื้อที่/ประเภททรัพย์
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) auto', gap: 8, alignItems: 'center' }}>
+          <input
+            value={urlInput}
+            onChange={e => setUrlInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleUrlAnalyze()}
+            placeholder="วาง URL จาก DDproperty / Livinginsider / LandsMaps / เว็บประกาศ..."
+            style={{ width: '100%', background: '#050B18', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 12, padding: '9px 10px', outline: 'none', boxSizing: 'border-box' }}
+          />
+          <button
+            type="button"
+            onClick={handleUrlAnalyze}
+            disabled={urlLoading || !urlInput.trim()}
+            style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: urlLoading || !urlInput.trim() ? BRAND.border : BRAND.gold, color: urlLoading || !urlInput.trim() ? BRAND.textMut : '#111827', fontSize: 12, fontWeight: 800, cursor: urlLoading || !urlInput.trim() ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+          >
+            {urlLoading ? 'กำลังอ่าน...' : 'อ่าน URL นี้'}
+          </button>
+        </div>
+
+        {urlError && (
+          <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: '#fca5a5', fontSize: 11 }}>
+            {urlError}
+          </div>
+        )}
+
+        {urlResult?.source && (() => {
+          const source = urlResult.source
+          return (
+            <div style={{ marginTop: 12, border: `1px solid ${BRAND.border}`, borderRadius: 8, padding: 10, background: BRAND.bg }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                <a href={source.url} target="_blank" rel="noopener noreferrer" style={{ color: BRAND.textPri, fontSize: 12, fontWeight: 800, textDecoration: 'none' }}>
+                  {source.title || 'หน้าที่ Tavily อ่าน'} ↗
+                </a>
+                <span style={{ fontSize: 10, color: source.quality === 'strong' ? BRAND.teal : source.quality === 'usable' ? BRAND.gold : '#FCA5A5' }}>
+                  {source.quality === 'strong' ? 'ข้อมูลครบ' : source.quality === 'usable' ? 'พอใช้' : 'ต้องตรวจเพิ่ม'} · {source.qualityScore}
+                </span>
+              </div>
+              {source.facts?.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {source.facts.map(fact => (
+                    <span key={fact} style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.teal, border: '1px solid rgba(45,212,191,0.30)', background: 'rgba(45,212,191,0.08)' }}>{fact}</span>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: BRAND.textSec, lineHeight: 1.55, marginBottom: 8 }}>
+                {source.content || 'Tavily อ่านเนื้อหาจากหน้านี้ได้ แต่ไม่มีข้อความพอสรุป'}
+              </div>
+              {source.reviewPoints?.length > 0 && (
+                <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 8 }}>
+                  ต้องตรวจเพิ่ม: {source.reviewPoints.join(', ')}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: source.pricePerSqw && source.qualityChecks?.basisMatches ? BRAND.teal : BRAND.gold, marginBottom: 8 }}>
+                {source.recommendation}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {source.pricePerSqw && (
+                  <button
+                    type="button"
+                    onClick={() => applyComp(source.pricePerSqw, source.title || source.url)}
+                    disabled={source.quality === 'weak' || !source.qualityChecks?.basisMatches}
+                    style={{ padding: '7px 10px', borderRadius: 8, border: 'none', background: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.border : BRAND.gold, color: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.textMut : '#111827', fontSize: 11, fontWeight: 800, cursor: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'not-allowed' : 'pointer' }}
+                  >
+                    {source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'ยังไม่แนะนำให้ใช้' : `ใช้ราคานี้ ฿${fmt(source.pricePerSqw)}/ตร.ว.`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualSource(source.title || source.url)
+                    if (source.pricePerSqw) setManualPrice(String(source.pricePerSqw))
+                  }}
+                  style={{ padding: '7px 10px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  ส่งไปช่องกรอกเอง
+                </button>
+              </div>
+              <div style={{ fontSize: 10, color: BRAND.textMut, marginTop: 8 }}>{urlResult.note}</div>
+            </div>
+          )
+        })()}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
         {portals.map(p => (
@@ -2225,6 +2490,24 @@ function Step3({ form, update, calc, policy }) {
   )
 }
 
+function PropertyImageGallery({ images = [], compact = false }) {
+  const visibleImages = Array.isArray(images) ? images.filter(img => img?.url).slice(0, compact ? 4 : 8) : []
+  if (visibleImages.length === 0) return null
+
+  return (
+    <Card style={{ borderColor: 'rgba(45,212,191,0.3)', padding: compact ? 12 : 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 10 }}>📷 รูปภาพทรัพย์ ({images.length} รูป)</div>
+      <div style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(4, 1fr)' : 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+        {visibleImages.map((image, idx) => (
+          <a key={image.path || image.url || idx} href={image.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', aspectRatio: '4 / 3', borderRadius: 8, overflow: 'hidden', border: `1px solid ${BRAND.border}`, background: '#050B18' }}>
+            <img src={image.url} alt={`รูปทรัพย์ ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          </a>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
 // ── Step 4 ─────────────────────────────────────────────
 function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoading, underwritingError, onGenerateUnderwriting, onCopyUnderwriting }) {
   const reqLoan = parseFloat(form.requestedLoan) || 0
@@ -2288,6 +2571,8 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
           โฉนดเลขที่ {form.deeds.map(d => d.titleDeedNo).filter(Boolean).join(', ') || '—'} ({form.deeds.length} แปลง) | {form.subdistrict ? `ต.${form.subdistrict} ` : ''}{form.district ? `อ.${form.district} ` : ''}{form.province}
         </div>
       </div>
+
+      <PropertyImageGallery images={form.propertyImages} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
         {[

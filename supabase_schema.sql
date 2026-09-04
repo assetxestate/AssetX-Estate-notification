@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS valuations (
   location_note         TEXT DEFAULT '',
   status                TEXT DEFAULT 'รอดำเนินการ',
   customer_name         TEXT DEFAULT '',
+  property_images       JSONB DEFAULT '[]',
   created_at            TIMESTAMPTZ DEFAULT NOW()
 );
 

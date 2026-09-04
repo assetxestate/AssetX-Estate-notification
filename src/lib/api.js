@@ -291,6 +291,7 @@ export async function getValuations() {
     "สถานะ": v.status,
     "ชื่อลูกค้า": v.customer_name,
     deeds: Array.isArray(v.deeds) ? v.deeds : [],
+    propertyImages: Array.isArray(v.property_images) ? v.property_images : [],
     contactName: v.contact_name || "",
     contactPhone: v.contact_phone || "",
     contactLine: v.contact_line || "",
@@ -354,6 +355,7 @@ export async function saveValuation(data) {
     status: data.status || "รอดำเนินการ",
     customer_name: data.customerName || "",
     deeds: Array.isArray(data.deeds) ? data.deeds : [],
+    property_images: Array.isArray(data.propertyImages) && data.propertyImages.length > 0 ? data.propertyImages : undefined,
     contact_name: data.contactName || "",
     contact_phone: data.contactPhone || "",
     contact_line: data.contactLine || "",
@@ -467,6 +469,7 @@ export async function updateValuation(rowIndex, data) {
     if (data[jsKey] !== undefined) updates[dbKey] = data[jsKey];
   });
   if (data.deeds !== undefined) updates.deeds = data.deeds;
+  if (data.propertyImages !== undefined) updates.property_images = data.propertyImages;
 
   const { error } = await supabase.from("valuations").update(updates).eq("id", rowIndex);
   if (error) throw error;

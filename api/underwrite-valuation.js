@@ -33,6 +33,7 @@ function buildUserPrompt(context) {
 - ใช้ underwriting_policy เป็น policy gate ภายใน: decision, red flags, exposure bands, conditions precedent
 - ถ้า underwriting_policy มี decision เป็น Hold / Legal DD หรือ Reduce Exposure ให้ถือเป็นข้อจำกัดสำคัญใน memo
 - ระบุ legal/DD risks และ conditions precedent
+- ถ้ามี valuation.propertyImages ให้ใช้เป็นรายการภาพประกอบ/หลักฐานตรวจทรัพย์ และระบุสิ่งที่ควรตรวจจากภาพ หากเปิดดูภาพจริงไม่ได้ให้บอกว่า "ต้องตรวจภาพจริงโดยผู้ประเมิน"
 - ถ้าข้อมูลไม่พอ ให้ระบุว่าไม่ทราบ / ต้องตรวจสอบ
 
 ข้อมูล:

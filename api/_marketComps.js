@@ -1,4 +1,5 @@
 const TAVILY_SEARCH_URL = 'https://api.tavily.com/search'
+const TAVILY_EXTRACT_URL = 'https://api.tavily.com/extract'
 const DEFAULT_RECENCY_DAYS = 365
 
 function compactText(value, max = 1800) {
@@ -143,6 +144,18 @@ function derivePricePerSqw(text, valuation = {}) {
   }
 
   return { pricePerSqw: null, totalPrice, listingAreaSqw, priceBasis: totalPrice ? 'total_price_only' : 'unknown' }
+}
+
+function extractContactOrListingSignals(text) {
+  const content = compactText(text, 5000)
+  return {
+    hasMap: hasAny(content, ['แผนที่', 'พิกัด', 'google map', 'google maps', 'lat', 'latitude', 'ละติจูด']),
+    hasRoad: hasAny(content, ['ถนน', 'ซอย', 'ทางเข้า', 'ติดถนน', 'หน้ากว้าง']),
+    hasDeed: hasAny(content, ['โฉนด', 'นส.4', 'เลขที่ดิน', 'ระวาง']),
+    hasBuilding: hasAny(content, ['บ้าน', 'อาคาร', 'ตึกแถว', 'โกดัง', 'โรงงาน', 'สำนักงาน', 'สิ่งปลูกสร้าง']),
+    hasArea: hasAny(content, ['ตร.ว', 'ตารางวา', 'ไร่', 'งาน', 'เนื้อที่', 'พื้นที่']),
+    hasPrice: hasAny(content, ['ราคา', 'บาท', 'ล้าน']),
+  }
 }
 
 function normalizedIncludesArea(text, totalSqw) {
@@ -442,6 +455,97 @@ async function runTavilySearch({ apiKey, query, startDate, endDate }) {
   return data
 }
 
+async function runTavilyExtract({ apiKey, url }) {
+  const response = await fetch(TAVILY_EXTRACT_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      urls: [url],
+      extract_depth: 'advanced',
+      include_images: true,
+      include_favicon: true,
+      format: 'markdown',
+      timeout: 30,
+    }),
+  })
+
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || data?.detail?.error || `Tavily Extract API ${response.status}`)
+  }
+  return data
+}
+
+function normalizeUrl(value) {
+  const url = new URL(String(value || '').trim())
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('รองรับเฉพาะ URL แบบ http/https')
+  }
+  return url.toString()
+}
+
+function summarizeExtractedUrl(result = {}, valuation = {}) {
+  const rawContent = compactText(result.raw_content || result.content || '', 12000)
+  const content = compactText([result.title, result.url, rawContent].filter(Boolean).join(' '), 12000)
+  const quality = scoreSource({
+    title: result.title,
+    url: result.url,
+    content,
+    raw_content: rawContent,
+  }, valuation)
+  const coordinates = extractCoordinates(content)
+  const subjectCoordinates = normalizeThaiCoordinatePair(valuation.lat, valuation.lng)
+  const distanceKm = subjectCoordinates && coordinates ? distanceKmBetween(subjectCoordinates, coordinates) : null
+  const listingSignals = extractContactOrListingSignals(content)
+
+  const facts = [
+    quality.price.totalPrice ? `พบราคารวมประมาณ ฿${quality.price.totalPrice.toLocaleString('th-TH')}` : null,
+    quality.price.pricePerSqw ? `ประเมินได้ประมาณ ฿${quality.price.pricePerSqw.toLocaleString('th-TH')}/ตร.ว.` : null,
+    quality.price.listingAreaSqw ? `พบเนื้อที่ประมาณ ${quality.price.listingAreaSqw.toLocaleString('th-TH')} ตร.ว.` : null,
+    quality.sourceBasis?.label ? `ประเภทจากหน้าเว็บ: ${quality.sourceBasis.label}` : null,
+    quality.extractedYear ? `พบปีข้อมูล ${quality.extractedYear}` : null,
+    Number.isFinite(distanceKm) ? `พบพิกัด ห่างจากทรัพย์ที่ประเมินประมาณ ${(distanceKm < 1 ? `${Math.round(distanceKm * 1000)} ม.` : `${distanceKm.toFixed(2)} กม.`)}` : null,
+  ].filter(Boolean)
+
+  const reviewPoints = [
+    ...quality.missing,
+    !listingSignals.hasRoad ? 'ควรตรวจถนน/ทางเข้า/หน้ากว้างจากหน้าเว็บหรือแผนที่เพิ่ม' : null,
+    !listingSignals.hasDeed ? 'ควรตรวจเลขโฉนด/ตำแหน่งแปลงจากแหล่งทางการเพิ่ม' : null,
+  ].filter(Boolean)
+
+  return {
+    title: compactText(result.title, 180),
+    url: result.url,
+    content: compactText(rawContent, 1200),
+    images: Array.isArray(result.images) ? result.images.slice(0, 8) : [],
+    favicon: result.favicon || null,
+    pricePerSqw: quality.price.pricePerSqw,
+    totalPrice: quality.price.totalPrice,
+    listingAreaSqw: quality.price.listingAreaSqw,
+    priceBasis: quality.price.priceBasis,
+    qualityScore: quality.score,
+    quality: quality.quality,
+    qualityChecks: quality.checks,
+    missing: quality.missing,
+    extractedYear: quality.extractedYear,
+    assetBasis: quality.sourceBasis,
+    targetBasis: quality.targetBasis,
+    comparisonRole: quality.comparisonRole,
+    coordinates,
+    distanceKm: Number.isFinite(distanceKm) ? Number(distanceKm.toFixed(3)) : null,
+    distanceM: Number.isFinite(distanceKm) ? Math.round(distanceKm * 1000) : null,
+    listingSignals,
+    facts,
+    reviewPoints: reviewPoints.slice(0, 6),
+    recommendation: quality.price.pricePerSqw && quality.checks.basisMatches && quality.quality !== 'weak'
+      ? 'ใช้เป็น Comp เบื้องต้นได้ แต่ต้องตรวจแปลงจริง/สถานะประกาศก่อนอนุมัติ'
+      : 'เก็บเป็นข้อมูลประกอบหรือรายการต้องตรวจเพิ่ม ยังไม่ควรใช้เป็นราคาอนุมัติทันที',
+  }
+}
+
 export async function fetchMarketComps({
   valuation = {},
   apiKey = process.env.TAVILY_API_KEY,
@@ -477,5 +581,32 @@ export async function fetchMarketComps({
     searchedAt: new Date().toISOString(),
     ...summary,
     note: 'คัดกรองเบื้องต้นด้วยความสดของข้อมูลและความครบของรายละเอียดแปลงแล้ว แต่ข้อมูลเว็บส่วนใหญ่ยังเป็นราคาประกาศขาย ไม่ใช่ราคาซื้อขายจริง ควรตรวจซ้ำก่อนใช้อนุมัติ',
+  }
+}
+
+export async function fetchMarketCompUrl({
+  url,
+  valuation = {},
+  apiKey = process.env.TAVILY_API_KEY,
+} = {}) {
+  if (!apiKey) {
+    throw new Error('ยังไม่ได้ตั้งค่า TAVILY_API_KEY บน server')
+  }
+
+  const normalizedUrl = normalizeUrl(url)
+  const data = await runTavilyExtract({ apiKey, url: normalizedUrl })
+  const result = (data.results || []).find(item => item.url) || null
+  const failed = (data.failed_results || data.failedResults || [])[0]
+
+  if (!result) {
+    throw new Error(failed?.error || failed?.message || 'Tavily อ่าน URL นี้ไม่สำเร็จ')
+  }
+
+  return {
+    url: normalizedUrl,
+    extractedAt: new Date().toISOString(),
+    source: summarizeExtractedUrl(result, valuation),
+    failedResults: data.failed_results || data.failedResults || [],
+    note: 'สรุปจาก URL ที่ระบุแบบเจาะจงผ่าน Tavily Extract ข้อมูลยังเป็นประกาศ/เนื้อหาหน้าเว็บ ควรตรวจสถานะประกาศและแปลงจริงก่อนใช้อนุมัติ',
   }
 }
