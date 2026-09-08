@@ -1663,6 +1663,10 @@ function MarketSearchPanel({ form, update, calc }) {
   const [urlLoading, setUrlLoading] = useState(false)
   const [urlError, setUrlError] = useState('')
   const [urlResult, setUrlResult] = useState(null)
+  const displayedAiSources = (aiResult?.sources || []).filter(source => (
+    !source.qualityChecks?.isOutOfArea &&
+    (!source.qualityChecks?.strictAreaRequired || source.qualityChecks?.locationStrictMatch)
+  ))
 
   const location = [form.district, form.province].filter(Boolean).join(' ')
   const type = form.propertyType || 'ที่ดิน'
@@ -1851,6 +1855,11 @@ function MarketSearchPanel({ form, update, calc }) {
               พบข้อมูลทำเลใกล้เคียงแต่คนละประเภท {aiResult.nearbyDifferentBasisSources.length} รายการ เก็บไว้เทียบบริบทเท่านั้น ไม่รวมในราคาเฉลี่ย/มัธยฐาน
             </div>
           )}
+          {aiResult.filteredOutOfAreaCount > 0 && (
+            <div style={{ fontSize: 10, color: '#FCA5A5', marginBottom: 10 }}>
+              ตัดผลลัพธ์นอกพื้นที่ที่ระบุออกแล้ว {aiResult.filteredOutOfAreaCount} รายการ
+            </div>
+          )}
 
           {aiResult.answer && (
             <div style={{ fontSize: 12, lineHeight: 1.6, color: BRAND.textSec, marginBottom: 10 }}>
@@ -1880,7 +1889,7 @@ function MarketSearchPanel({ form, update, calc }) {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
-            {(aiResult.sources || []).map(source => (
+            {displayedAiSources.map(source => (
               <div key={source.url || source.title} style={{ border: `1px solid ${BRAND.border}`, borderRadius: 8, padding: 10, background: BRAND.bg }}>
                 <a href={source.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', color: BRAND.textPri, fontSize: 12, fontWeight: 700, textDecoration: 'none', marginBottom: 6 }}>
                   {source.title || 'แหล่งข้อมูล'} ↗
@@ -1917,7 +1926,7 @@ function MarketSearchPanel({ form, update, calc }) {
               </div>
             ))}
           </div>
-          {(aiResult.sources || []).length === 0 && (
+          {displayedAiSources.length === 0 && (
             <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${BRAND.border}`, background: BRAND.bg, color: BRAND.textSec, fontSize: 11 }}>
               Tavily ไม่พบแหล่งข้อมูลที่ตรงกับคำค้นนี้ ลองใช้ปุ่มเว็บประกาศด้านล่างหรือลดความละเอียดจากตำบลเป็นอำเภอ
             </div>

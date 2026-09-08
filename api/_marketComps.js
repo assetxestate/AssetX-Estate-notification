@@ -6,6 +6,76 @@ function compactText(value, max = 1800) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max)
 }
 
+function normalizePlace(value) {
+  return compactText(value, 240)
+    .toLowerCase()
+    .replace(/(?:จังหวัด|จ\.|อำเภอ|อ\.|เขต|ตำบล|ต\.|แขวง)/g, '')
+    .replace(/[()\[\]{}'"“”‘’.,:;|/\\\-–—_\s]/g, '')
+}
+
+function includesPlace(text, place) {
+  const target = normalizePlace(place)
+  if (!target) return false
+  return normalizePlace(text).includes(target)
+}
+
+function targetLocationTokens(valuation = {}) {
+  return {
+    province: compactText(valuation.province),
+    district: compactText(valuation.district),
+    subdistrict: compactText(valuation.subdistrict),
+  }
+}
+
+function knownNearbyLocationConflicts(valuation = {}) {
+  const province = normalizePlace(valuation.province)
+  const district = normalizePlace(valuation.district)
+  const conflicts = []
+
+  if (province === normalizePlace('เพชรบุรี')) {
+    conflicts.push('ประจวบ', 'ประจวบคีรีขันธ์')
+    if (district === normalizePlace('ชะอำ')) {
+      conflicts.push('หัวหิน', 'ปราณบุรี', 'สามร้อยยอด')
+    }
+  }
+
+  if (province === normalizePlace('ประจวบคีรีขันธ์')) {
+    conflicts.push('เพชรบุรี')
+  }
+
+  return [...new Set(conflicts)]
+}
+
+function assessLocationMatch(content, valuation = {}) {
+  const target = targetLocationTokens(valuation)
+  const strictAreaRequired = !!(target.subdistrict || target.district)
+  const hasProvince = target.province ? includesPlace(content, target.province) : false
+  const hasDistrict = target.district ? includesPlace(content, target.district) : false
+  const hasSubdistrict = target.subdistrict ? includesPlace(content, target.subdistrict) : false
+  const conflicts = knownNearbyLocationConflicts(valuation)
+    .filter(place => includesPlace(content, place))
+
+  const required = [
+    target.province ? hasProvince : true,
+    target.district ? hasDistrict : true,
+    target.subdistrict ? hasSubdistrict : true,
+  ]
+  const strictMatch = required.every(Boolean) && conflicts.length === 0
+  const districtMatch = (!target.province || hasProvince) && (!target.district || hasDistrict) && conflicts.length === 0
+
+  return {
+    ...target,
+    strictAreaRequired,
+    hasProvince,
+    hasDistrict,
+    hasSubdistrict,
+    conflicts,
+    strictMatch,
+    districtMatch,
+    isOutOfArea: conflicts.length > 0 || (strictAreaRequired ? !strictMatch : !districtMatch),
+  }
+}
+
 function toNumber(value) {
   const n = Number(String(value || '').replace(/,/g, ''))
   return Number.isFinite(n) ? n : null
@@ -233,7 +303,7 @@ function isNearbyComparisonCandidate(content, checks) {
 }
 
 function scoreSource(item, valuation = {}) {
-  const content = compactText([item.title, item.content, item.raw_content].filter(Boolean).join(' '), 4000)
+  const content = compactText([item.title, item.url, item.content, item.raw_content].filter(Boolean).join(' '), 4000)
   const lowerUrl = String(item.url || '').toLowerCase()
   const extractedYear = extractYear(content)
   const currentYear = new Date().getFullYear()
@@ -243,12 +313,16 @@ function scoreSource(item, valuation = {}) {
   const targetBasis = classifyTargetBasis(valuation)
   const sourceBasis = classifySourceBasis(content)
   const price = derivePricePerSqw(content, valuation)
+  const location = assessLocationMatch(content, valuation)
 
   const checks = {
     hasPrice: !!price.pricePerSqw,
-    hasProvince: province ? content.includes(province) : false,
-    hasDistrict: district ? content.includes(district) : false,
-    hasSubdistrict: subdistrict ? content.includes(subdistrict) : false,
+    hasProvince: location.hasProvince,
+    hasDistrict: location.hasDistrict,
+    hasSubdistrict: location.hasSubdistrict,
+    locationStrictMatch: location.strictMatch,
+    locationDistrictMatch: location.districtMatch,
+    isOutOfArea: location.isOutOfArea,
     hasArea: !!price.listingAreaSqw || hasAny(content, ['ตร.ว', 'ตารางวา', 'ไร่', 'งาน', 'เนื้อที่', 'พื้นที่']),
     hasRoadOrAccess: hasAny(content, ['ถนน', 'ซอย', 'ทางเข้า', 'หน้ากว้าง', 'ติดถนน']),
     hasPlotDetail: hasAny(content, ['โฉนด', 'เลขที่ดิน', 'ระวาง', 'พิกัด', 'ละติจูด', 'ลองจิจูด', 'แผนที่']),
@@ -257,13 +331,15 @@ function scoreSource(item, valuation = {}) {
     basisMatches: basisMatches(targetBasis, sourceBasis),
     basisClear: sourceBasis.key !== 'unclear',
   }
-  checks.isNearbyComparison = isNearbyComparisonCandidate(content, checks)
+  checks.isNearbyComparison = !location.isOutOfArea && isNearbyComparisonCandidate(content, checks)
 
   const score =
     (checks.hasPrice ? 30 : 0) +
     (checks.hasProvince ? 12 : 0) +
     (checks.hasDistrict ? 14 : 0) +
     (checks.hasSubdistrict ? 12 : 0) +
+    (checks.locationStrictMatch ? 18 : 0) +
+    (checks.isOutOfArea ? -80 : 0) +
     (checks.hasArea ? 10 : 0) +
     (checks.hasRoadOrAccess ? 8 : 0) +
     (checks.hasPlotDetail ? 8 : 0) +
@@ -276,15 +352,16 @@ function scoreSource(item, valuation = {}) {
   if (!checks.hasPrice) missing.push('ไม่มีราคาต่อ ตร.ว.')
   if (district && !checks.hasDistrict) missing.push('ไม่พบอำเภอ/เขตตรงกัน')
   if (subdistrict && !checks.hasSubdistrict) missing.push('ไม่พบตำบล/แขวงตรงกัน')
+  if (location.conflicts.length) missing.push(`พบพื้นที่นอกเขต: ${location.conflicts.join(', ')}`)
   if (!checks.hasArea) missing.push('ไม่พบขนาดที่ดิน')
   if (!checks.hasPlotDetail) missing.push('รายละเอียดแปลงยังไม่ครบ')
   if (!checks.hasRecentSignal) missing.push('อาจเป็นข้อมูลเก่า')
   if (!checks.basisClear) missing.push('ไม่ชัดว่าเป็นที่ดินเปล่าหรือรวมสิ่งปลูกสร้าง')
   if (!checks.basisMatches) missing.push(`ประเภทไม่ตรงกับ ${targetBasis.label}`)
 
-  const quality = checks.basisMatches ? (score >= 70 ? 'strong' : score >= 48 ? 'usable' : 'weak') : 'weak'
-  const comparisonRole = checks.basisMatches ? 'primary_comp' : (checks.isNearbyComparison ? 'nearby_cross_basis' : 'review_only')
-  return { score, quality, checks, missing, extractedYear, targetBasis, sourceBasis, comparisonRole, price }
+  const quality = checks.basisMatches && !checks.isOutOfArea ? (score >= 70 ? 'strong' : score >= 48 ? 'usable' : 'weak') : 'weak'
+  const comparisonRole = checks.isOutOfArea ? 'out_of_area' : (checks.basisMatches ? 'primary_comp' : (checks.isNearbyComparison ? 'nearby_cross_basis' : 'review_only'))
+  return { score, quality, checks, missing, extractedYear, targetBasis, sourceBasis, comparisonRole, price, location }
 }
 
 function buildQuery(valuation = {}) {
@@ -352,7 +429,7 @@ function buildRelaxedQuery(valuation = {}) {
 function summarizeResults(results = [], valuation = {}) {
   const targetBasis = classifyTargetBasis(valuation)
   const subjectCoordinates = normalizeThaiCoordinatePair(valuation.lat, valuation.lng)
-  const sources = results.slice(0, 12).map((item) => {
+  const allSources = results.slice(0, 12).map((item) => {
     const content = compactText([item.title, item.url, item.content, item.raw_content].filter(Boolean).join(' '))
     const quality = scoreSource(item, valuation)
     const coordinates = extractCoordinates(content)
@@ -387,6 +464,9 @@ function summarizeResults(results = [], valuation = {}) {
     return b.qualityScore - a.qualityScore
   })
 
+  const outOfAreaSources = allSources.filter(source => source.comparisonRole === 'out_of_area')
+  const sources = allSources.filter(source => source.comparisonRole !== 'out_of_area')
+
   const qualifiedSources = sources.filter(source => (
     source.pricePerSqw &&
     source.quality !== 'weak' &&
@@ -410,6 +490,9 @@ function summarizeResults(results = [], valuation = {}) {
     subjectCoordinates,
     distanceSorted: !!subjectCoordinates,
     sources,
+    outOfAreaSources,
+    filteredOutOfAreaCount: outOfAreaSources.length,
+    sourceTotalBeforeAreaFilter: allSources.length,
     qualifiedSources,
     nearbyDifferentBasisSources,
     priceSummary: sorted.length ? {
@@ -561,8 +644,9 @@ export async function fetchMarketComps({
   let data = await runTavilySearch({ apiKey, query, startDate, endDate })
   let summary = summarizeResults(data.results || [], valuation)
   let fallbackQuery = null
+  const strictAreaRequired = !!(valuation.subdistrict || valuation.district)
 
-  if (!summary.priceSummary) {
+  if (!summary.priceSummary && !strictAreaRequired) {
     fallbackQuery = buildRelaxedQuery(valuation)
     data = await runTavilySearch({ apiKey, query: fallbackQuery, startDate, endDate })
     summary = summarizeResults(data.results || [], valuation)
@@ -577,7 +661,7 @@ export async function fetchMarketComps({
       startDate,
       endDate,
     },
-    answer: compactText(data.answer, 1200),
+    answer: summary.filteredOutOfAreaCount ? '' : compactText(data.answer, 1200),
     searchedAt: new Date().toISOString(),
     ...summary,
     note: 'คัดกรองเบื้องต้นด้วยความสดของข้อมูลและความครบของรายละเอียดแปลงแล้ว แต่ข้อมูลเว็บส่วนใหญ่ยังเป็นราคาประกาศขาย ไม่ใช่ราคาซื้อขายจริง ควรตรวจซ้ำก่อนใช้อนุมัติ',
