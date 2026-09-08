@@ -1665,7 +1665,7 @@ function MarketSearchPanel({ form, update, calc }) {
   const [urlResult, setUrlResult] = useState(null)
   const displayedAiSources = (aiResult?.sources || []).filter(source => (
     !source.qualityChecks?.isOutOfArea &&
-    (!source.qualityChecks?.strictAreaRequired || source.qualityChecks?.locationStrictMatch)
+    (!source.qualityChecks?.strictAreaRequired || source.qualityChecks?.locationAcceptableMatch)
   ))
 
   const location = [form.district, form.province].filter(Boolean).join(' ')
@@ -1904,6 +1904,8 @@ function MarketSearchPanel({ form, update, calc }) {
                   {source.comparisonRole === 'nearby_cross_basis' && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.gold, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}>เทียบทำเล คนละประเภท</span>}
                   {source.assetBasis?.label && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: source.qualityChecks?.basisMatches ? BRAND.teal : BRAND.gold, border: `1px solid ${source.qualityChecks?.basisMatches ? 'rgba(45,212,191,0.35)' : 'rgba(245,158,11,0.35)'}`, background: source.qualityChecks?.basisMatches ? 'rgba(45,212,191,0.08)' : 'rgba(245,158,11,0.08)' }}>{source.assetBasis.label}</span>}
                   {source.priceBasis === 'derived_from_total_price' && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.teal, border: '1px solid rgba(45,212,191,0.35)', background: 'rgba(45,212,191,0.08)' }}>คำนวณจากราคารวม ฿{fmt(source.totalPrice)} / {fmt(source.listingAreaSqw)} ตร.ว.</span>}
+                  {source.qualityChecks?.locationStrictMatch && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.teal, border: '1px solid rgba(45,212,191,0.35)', background: 'rgba(45,212,191,0.08)' }}>ตรงตำบล</span>}
+                  {!source.qualityChecks?.locationStrictMatch && source.qualityChecks?.locationDistrictMatch && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.gold, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}>ตรงอำเภอ</span>}
                   {Number.isFinite(source.distanceM) && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.textPri, border: `1px solid ${BRAND.border}`, background: 'rgba(255,255,255,0.04)' }}>ห่าง {source.distanceM < 1000 ? `${fmt(source.distanceM)} ม.` : `${source.distanceKm.toLocaleString('th-TH', { maximumFractionDigits: 2 })} กม.`}</span>}
                   {aiResult.distanceSorted && !Number.isFinite(source.distanceM) && <span style={{ fontSize: 10, color: BRAND.textMut }}>ไม่พบพิกัดในแหล่งนี้</span>}
                   {source.publishedDate && <span style={{ fontSize: 10, color: BRAND.textMut }}>อัปเดต {source.publishedDate}</span>}

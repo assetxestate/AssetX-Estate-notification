@@ -62,6 +62,7 @@ function assessLocationMatch(content, valuation = {}) {
   ]
   const strictMatch = required.every(Boolean) && conflicts.length === 0
   const districtMatch = (!target.province || hasProvince) && (!target.district || hasDistrict) && conflicts.length === 0
+  const acceptableAreaMatch = strictMatch || districtMatch
 
   return {
     ...target,
@@ -72,7 +73,8 @@ function assessLocationMatch(content, valuation = {}) {
     conflicts,
     strictMatch,
     districtMatch,
-    isOutOfArea: conflicts.length > 0 || (strictAreaRequired ? !strictMatch : !districtMatch),
+    acceptableAreaMatch,
+    isOutOfArea: conflicts.length > 0 || (strictAreaRequired ? !acceptableAreaMatch : !districtMatch),
   }
 }
 
@@ -322,6 +324,7 @@ function scoreSource(item, valuation = {}) {
     hasSubdistrict: location.hasSubdistrict,
     locationStrictMatch: location.strictMatch,
     locationDistrictMatch: location.districtMatch,
+    locationAcceptableMatch: location.acceptableAreaMatch,
     isOutOfArea: location.isOutOfArea,
     hasArea: !!price.listingAreaSqw || hasAny(content, ['ตร.ว', 'ตารางวา', 'ไร่', 'งาน', 'เนื้อที่', 'พื้นที่']),
     hasRoadOrAccess: hasAny(content, ['ถนน', 'ซอย', 'ทางเข้า', 'หน้ากว้าง', 'ติดถนน']),
@@ -338,7 +341,7 @@ function scoreSource(item, valuation = {}) {
     (checks.hasProvince ? 12 : 0) +
     (checks.hasDistrict ? 14 : 0) +
     (checks.hasSubdistrict ? 12 : 0) +
-    (checks.locationStrictMatch ? 18 : 0) +
+    (checks.locationStrictMatch ? 18 : checks.locationDistrictMatch ? 8 : 0) +
     (checks.isOutOfArea ? -80 : 0) +
     (checks.hasArea ? 10 : 0) +
     (checks.hasRoadOrAccess ? 8 : 0) +
@@ -351,7 +354,7 @@ function scoreSource(item, valuation = {}) {
   const missing = []
   if (!checks.hasPrice) missing.push('ไม่มีราคาต่อ ตร.ว.')
   if (district && !checks.hasDistrict) missing.push('ไม่พบอำเภอ/เขตตรงกัน')
-  if (subdistrict && !checks.hasSubdistrict) missing.push('ไม่พบตำบล/แขวงตรงกัน')
+  if (subdistrict && !checks.hasSubdistrict) missing.push(checks.locationDistrictMatch ? 'ไม่พบตำบล/แขวงในประกาศ แต่ตรงอำเภอ/จังหวัด' : 'ไม่พบตำบล/แขวงตรงกัน')
   if (location.conflicts.length) missing.push(`พบพื้นที่นอกเขต: ${location.conflicts.join(', ')}`)
   if (!checks.hasArea) missing.push('ไม่พบขนาดที่ดิน')
   if (!checks.hasPlotDetail) missing.push('รายละเอียดแปลงยังไม่ครบ')
@@ -361,7 +364,8 @@ function scoreSource(item, valuation = {}) {
 
   const quality = checks.basisMatches && !checks.isOutOfArea ? (score >= 70 ? 'strong' : score >= 48 ? 'usable' : 'weak') : 'weak'
   const comparisonRole = checks.isOutOfArea ? 'out_of_area' : (checks.basisMatches ? 'primary_comp' : (checks.isNearbyComparison ? 'nearby_cross_basis' : 'review_only'))
-  return { score, quality, checks, missing, extractedYear, targetBasis, sourceBasis, comparisonRole, price, location }
+  const locationMatchLevel = checks.locationStrictMatch ? 'subdistrict' : checks.locationDistrictMatch ? 'district' : 'none'
+  return { score, quality, checks, missing, extractedYear, targetBasis, sourceBasis, comparisonRole, price, location, locationMatchLevel }
 }
 
 function buildQuery(valuation = {}) {
