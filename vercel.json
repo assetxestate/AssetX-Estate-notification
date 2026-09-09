@@ -9,6 +9,7 @@
   },
   "rewrites": [
     { "source": "/api/chat", "destination": "/api/chat" },
+    { "source": "/api/telegram-webhook", "destination": "/api/telegram-webhook" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [

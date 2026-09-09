@@ -265,9 +265,11 @@ function classifyTargetBasis(valuation = {}) {
 
 function classifySourceBasis(text) {
   const content = compactText(text, 4000)
+  const lead = compactText(text, 320)
   const vacantLandSignals = [
     'ที่ดินเปล่า', 'ขายที่ดินเปล่า', 'ที่ดินว่าง', 'ขายที่ดิน', 'ที่นา', 'ขายนา',
-    'ที่ไร่', 'ที่สวน', 'สวนเกษตร', 'เปล่า', 'ถมแล้ว', 'ยังไม่ปลูกสร้าง',
+    'ที่ดิน สำหรับ ขาย', 'ที่ดินสำหรับขาย', 'ที่ไร่', 'ที่สวน', 'สวนเกษตร',
+    'เปล่า', 'ถมแล้ว', 'ยังไม่ปลูกสร้าง',
   ]
   const condoSignals = ['คอนโด', 'อาคารชุด', 'ห้องชุด', 'ตร.ม.', 'ตารางเมตร']
   const buildingSignals = [
@@ -279,7 +281,10 @@ function classifySourceBasis(text) {
   const hasCondo = hasAny(content, condoSignals)
   const hasBuilding = hasAny(content, buildingSignals)
   const hasVacantLand = hasAny(content, vacantLandSignals)
+  const leadHasVacantLand = hasAny(lead, vacantLandSignals)
+  const leadHasBuilding = hasAny(lead, buildingSignals)
 
+  if (leadHasVacantLand && !leadHasBuilding) return { key: 'land_only', label: 'ที่ดินเปล่า' }
   if (hasCondo) return { key: 'condo', label: 'อาคารชุด / คอนโด' }
   if (hasBuilding) return { key: 'includes_building', label: 'อาจรวมสิ่งปลูกสร้าง' }
   if (hasVacantLand) return { key: 'land_only', label: 'ที่ดินเปล่า' }
@@ -412,7 +417,6 @@ function buildRelaxedQuery(valuation = {}) {
     valuation.province || '',
   ].filter(Boolean).join(' ')
   const subtype = valuation.propertySubtype || valuation.propertyType || 'อสังหาริมทรัพย์'
-  const area = valuation.totalSqw ? `${Math.round(Number(valuation.totalSqw))} ตารางวา` : ''
   const relaxedTerms = {
     land_only: 'ขายที่ดิน ที่ดินเปล่า ราคาที่ดิน',
     land_with_building: 'ขายบ้านพร้อมที่ดิน ขายที่ดินพร้อมสิ่งปลูกสร้าง',
@@ -425,7 +429,7 @@ function buildRelaxedQuery(valuation = {}) {
     relaxedTerms,
     subtype,
     location,
-    area,
+    'ตร.ว. ตารางวา ไร่ ราคา',
     'ประกาศขายล่าสุด 2568 2569',
   ].filter(Boolean).join(' '))
 }
@@ -512,27 +516,31 @@ function summarizeResults(results = [], valuation = {}) {
 }
 
 async function runTavilySearch({ apiKey, query, startDate, endDate }) {
+  const body = {
+    query,
+    search_depth: 'advanced',
+    chunks_per_source: 3,
+    topic: 'general',
+    max_results: 12,
+    include_answer: 'advanced',
+    include_raw_content: 'text',
+    include_favicon: true,
+    country: 'thailand',
+    language: 'th',
+    filter_by_language: false,
+  }
+  if (startDate && endDate) {
+    body.start_date = startDate
+    body.end_date = endDate
+  }
+
   const response = await fetch(TAVILY_SEARCH_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      query,
-      search_depth: 'advanced',
-      chunks_per_source: 3,
-      topic: 'general',
-      start_date: startDate,
-      end_date: endDate,
-      max_results: 12,
-      include_answer: 'advanced',
-      include_raw_content: 'text',
-      include_favicon: true,
-      country: 'thailand',
-      language: 'th',
-      filter_by_language: false,
-    }),
+    body: JSON.stringify(body),
   })
 
   const data = await response.json().catch(() => ({}))
@@ -648,22 +656,30 @@ export async function fetchMarketComps({
   let data = await runTavilySearch({ apiKey, query, startDate, endDate })
   let summary = summarizeResults(data.results || [], valuation)
   let fallbackQuery = null
-  const strictAreaRequired = !!(valuation.subdistrict || valuation.district)
+  let dateFilterApplied = true
 
-  if (!summary.priceSummary && !strictAreaRequired) {
+  if (!summary.priceSummary) {
     fallbackQuery = buildRelaxedQuery(valuation)
     data = await runTavilySearch({ apiKey, query: fallbackQuery, startDate, endDate })
     summary = summarizeResults(data.results || [], valuation)
   }
 
+  if (!summary.priceSummary) {
+    fallbackQuery = fallbackQuery || buildRelaxedQuery(valuation)
+    data = await runTavilySearch({ apiKey, query: fallbackQuery })
+    summary = summarizeResults(data.results || [], valuation)
+    dateFilterApplied = false
+  }
+
   return {
     query,
     fallbackQuery,
-    searchMode: fallbackQuery ? 'relaxed' : 'strict',
+    searchMode: fallbackQuery ? (dateFilterApplied ? 'relaxed' : 'relaxed_no_date') : 'strict',
     recency: {
       days: recencyDays,
       startDate,
       endDate,
+      dateFilterApplied,
     },
     answer: summary.filteredOutOfAreaCount ? '' : compactText(data.answer, 1200),
     searchedAt: new Date().toISOString(),

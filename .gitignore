@@ -21,6 +21,7 @@ files.zip
 *.txt
 
 .vercel
+.local/
 
 # เอกสาร/ไฟล์ชั่วคราวที่ไม่ควรเข้า git
 *.docx

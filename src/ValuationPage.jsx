@@ -1839,9 +1839,10 @@ function MarketSearchPanel({ form, update, calc }) {
 
           {aiResult.recency && (
             <div style={{ fontSize: 10, color: BRAND.textMut, marginBottom: 10 }}>
-              เทียบตามประเภทย่อย: {aiResult.targetBasis?.label || form.propertySubtype || 'ไม่ระบุ'} · กรองข้อมูลอัปเดตช่วง {aiResult.recency.startDate} ถึง {aiResult.recency.endDate}
+              เทียบตามประเภทย่อย: {aiResult.targetBasis?.label || form.propertySubtype || 'ไม่ระบุ'} · {aiResult.recency.dateFilterApplied === false ? `ค้นแบบไม่บังคับวันที่ หลังรอบกรองช่วง ${aiResult.recency.startDate} ถึง ${aiResult.recency.endDate} ไม่พบราคาที่ใช้ได้` : `กรองข้อมูลอัปเดตช่วง ${aiResult.recency.startDate} ถึง ${aiResult.recency.endDate}`}
               {aiResult.distanceSorted && <span style={{ color: BRAND.teal }}> · เรียงจากพิกัดใกล้ทรัพย์ที่สุดเมื่อพบพิกัดในแหล่งข้อมูล</span>}
-              {aiResult.searchMode === 'relaxed' && <span style={{ color: BRAND.gold }}> · ใช้การค้นแบบกว้างขึ้นเพราะรอบแรกไม่พบราคาที่ดึงมาใช้ได้</span>}
+              {(aiResult.searchMode === 'relaxed' || aiResult.searchMode === 'relaxed_no_date') && <span style={{ color: BRAND.gold }}> · ใช้การค้นแบบกว้างขึ้นเพราะรอบแรกไม่พบราคาที่ดึงมาใช้ได้</span>}
+              {aiResult.searchMode === 'relaxed_no_date' && <span style={{ color: BRAND.gold }}> · บางเว็บประกาศไม่มีวันที่อัปเดต จึงต้องตรวจสถานะประกาศด้วยตนเอง</span>}
               {aiResult.priceSummary?.usesFallbackSamples && <span style={{ color: BRAND.gold }}> · ตัวอย่างที่ครบเกณฑ์ยังไม่พอ จึงแสดงราคาจากแหล่งที่พบราคาไว้ให้ตรวจเอง</span>}
             </div>
           )}
