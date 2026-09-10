@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { BRAND as BASE_BRAND } from './lib/config.js'
 import { getDiff } from './lib/utils.js'
 
@@ -13,6 +13,21 @@ const fmt = (n) => {
 }
 const fmtFull = (n) => Number(n || 0).toLocaleString('th-TH')
 const thMonth = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+const dayMs = 1000 * 60 * 60 * 24
+
+const getCustomerPaymentRecord = (paymentRecords, customerId, installment) => (
+  paymentRecords?.[customerId]?.[installment] || paymentRecords?.[String(customerId)]?.[installment]
+)
+
+const getPlaceLabel = (customer) => customer.fullLabel?.split('(')[1]?.replace(')', '') || customer.locationNote || 'รอตรวจข้อมูลทรัพย์'
+
+const riskWorkItems = [
+  'ตรวจสัญญา โฉนด ภาระผูกพัน และยอดค้าง',
+  'เตรียมหนังสือแจ้งเตือน/Notice ให้ฝ่ายกฎหมายตรวจ',
+  'ทำ Asset Fact Sheet พร้อมรูป พิกัด จุดเด่น และข้อจำกัด',
+  'ประเมินราคาตลาด และตั้งกรอบขายด่วนต่ำกว่าตลาด 15-30%',
+  'ส่งข้อมูลให้ทีมการตลาด นายหน้าท้องถิ่น และกลุ่มนักลงทุน',
+]
 
 // ── KPI Card ────────────────────────────────────────────
 function KpiCard({ icon, label, value, sub, color, bg }) {
@@ -91,10 +106,41 @@ function DonutChart({ segments }) {
   )
 }
 
+function SectionToggle({ open, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: `1px solid ${BRAND.border}`,
+        background: open ? 'rgba(45,212,191,.12)' : 'rgba(148,163,184,.08)',
+        color: open ? BRAND.teal : BRAND.textSec,
+        borderRadius: 8,
+        padding: '6px 10px',
+        fontSize: 11,
+        fontWeight: 700,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {open ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+    </button>
+  )
+}
+
 // ── Main Dashboard ───────────────────────────────────────
 export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const today = new Date()
   const active = customers.filter(c => !c.isClosed && !c.isVoided && !c.isHiddenDraft)
+  const [expandedSections, setExpandedSections] = useState({
+    liquidation: false,
+    riskContracts: false,
+    advance: false,
+    overdue: false,
+  })
+  const toggleSection = (key) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }))
+  }
 
   // ── KPIs ────────────────────────────────────────────────
   const totalPrincipal = active.reduce((s, c) => s + (c.principal || 0), 0)
@@ -194,6 +240,78 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
     return { ...c, diffDays }
   }).sort((a, b) => a.diffDays - b.diffDays)
 
+  // ── ทรัพย์เสี่ยงหลุด / Pre-Marketing ─────────────────────
+  const liquidationRiskProfiles = active.map(c => {
+    if (c.type !== 'ขายฝาก') return null
+
+    const payments = c.payments || []
+    const overdue = payments.filter(p => {
+      if (getCustomerPaymentRecord(paymentRecords, c.id, p.installment)) return false
+      const dueStr = p.postponedFrom || p.dateStr
+      const diff = dueStr ? getDiff(dueStr, today) : null
+      if (diff === null) return false
+      return p.postponedFrom ? diff <= 0 : diff < 0
+    })
+    const postponed = payments.filter(p => p.postponedFrom)
+    const end = c.contractEndDate ? new Date(c.contractEndDate) : null
+    const diffDays = end ? Math.ceil((end - today) / dayMs) : null
+    const maxOverdueDays = overdue.reduce((max, p) => {
+      const dueStr = p.postponedFrom || p.dateStr
+      const diff = dueStr ? getDiff(dueStr, today) : 0
+      return Math.max(max, Math.abs(Math.min(diff || 0, 0)))
+    }, 0)
+
+    const name = `${c.name || ''} ${c.fullLabel || ''}`
+    const manualHighRisk = name.includes('ชลากร')
+    const manualWatch = name.includes('สริตา')
+    const inPreMarketingWindow = diffDays !== null && diffDays >= 0 && diffDays <= 60
+    const inPreparationWindow = diffDays !== null && diffDays >= 0 && diffDays <= 180
+
+    let level = ''
+    let label = ''
+    let color = BRAND.textSec
+    let action = ''
+
+    if (manualHighRisk || overdue.length >= 2 || maxOverdueDays >= 14) {
+      level = 'critical'
+      label = 'เสี่ยงสูงมาก'
+      color = BRAND.danger
+      action = 'เร่งรวมเอกสารและเตรียม Notice'
+    } else if (manualWatch || postponed.length >= 2 || overdue.length >= 1 || inPreMarketingWindow) {
+      level = 'watch'
+      label = 'เฝ้าระวัง'
+      color = BRAND.gold
+      action = inPreMarketingWindow ? 'เริ่ม Pre-Marketing' : 'ยืนยันแผนชำระและเตรียมแฟ้มทรัพย์'
+    } else if (inPreparationWindow) {
+      level = 'prepare'
+      label = 'เตรียมพร้อม'
+      color = BRAND.teal
+      action = 'สำรวจข้อมูลทรัพย์ล่วงหน้า'
+    } else {
+      return null
+    }
+
+    return {
+      ...c,
+      level,
+      label,
+      color,
+      action,
+      diffDays,
+      overdueCount: overdue.length,
+      postponedCount: postponed.length,
+      maxOverdueDays,
+      placeLabel: getPlaceLabel(c),
+    }
+  }).filter(Boolean).sort((a, b) => {
+    const rank = { critical: 0, watch: 1, prepare: 2 }
+    return (rank[a.level] - rank[b.level]) || ((a.diffDays ?? 9999) - (b.diffDays ?? 9999))
+  })
+
+  const highLiquidationRiskCount = liquidationRiskProfiles.filter(c => c.level === 'critical').length
+  const watchLiquidationRiskCount = liquidationRiskProfiles.filter(c => c.level === 'watch').length
+  const preMarketingCount = liquidationRiskProfiles.filter(c => c.diffDays !== null && c.diffDays >= 0 && c.diffDays <= 60 && (c.overdueCount > 0 || c.postponedCount > 0)).length
+
   // ── FSV vs วงเงิน (ความเสี่ยง) ──────────────────────────
   const collectionRate = monthlyIncome > 0 ? Math.round((collectedThisMonth / monthlyIncome) * 100) : 0
 
@@ -247,12 +365,96 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
         </div>
       </div>
 
+      {/* Liquidation Risk / Pre-Marketing */}
+      <div style={{ background: BRAND.bgCard, border: `1px solid rgba(239,68,68,0.35)`, borderRadius: 14, padding: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: expandedSections.liquidation ? 16 : 0, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri, marginBottom: 4 }}>🚩 ทรัพย์เสี่ยงหลุด / Pre-Marketing</div>
+            <div style={{ fontSize: 11, color: BRAND.textSec }}>
+              คัดกรองเคสขายฝากที่เริ่มค้าง เลื่อนชำระ หรือเข้าใกล้ช่วงเตรียมการตลาดล่วงหน้า
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(86px, 1fr))', gap: 8, minWidth: 280 }}>
+              <div style={{ padding: '8px 10px', borderRadius: 10, background: 'rgba(239,68,68,.10)', border: '1px solid rgba(239,68,68,.32)' }}>
+                <div style={{ fontSize: 10, color: BRAND.textSec }}>เสี่ยงสูงมาก</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: BRAND.danger }}>{highLiquidationRiskCount}</div>
+              </div>
+              <div style={{ padding: '8px 10px', borderRadius: 10, background: 'rgba(245,158,11,.10)', border: '1px solid rgba(245,158,11,.32)' }}>
+                <div style={{ fontSize: 10, color: BRAND.textSec }}>เฝ้าระวัง</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: BRAND.gold }}>{watchLiquidationRiskCount}</div>
+              </div>
+              <div style={{ padding: '8px 10px', borderRadius: 10, background: 'rgba(45,212,191,.10)', border: '1px solid rgba(45,212,191,.30)' }}>
+                <div style={{ fontSize: 10, color: BRAND.textSec }}>Pre-Marketing</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: BRAND.teal }}>{preMarketingCount}</div>
+              </div>
+            </div>
+            <SectionToggle open={expandedSections.liquidation} onClick={() => toggleSection('liquidation')} />
+          </div>
+        </div>
+
+        {expandedSections.liquidation && (liquidationRiskProfiles.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {liquidationRiskProfiles.map(c => (
+                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '12px 14px', borderRadius: 10, background: BRAND.bg, border: `1px solid ${c.color}55` }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri }}>{c.name}</span>
+                      <span style={{ fontSize: 10, color: c.color, padding: '2px 7px', borderRadius: 999, border: `1px solid ${c.color}66`, background: `${c.color}18` }}>{c.label}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: BRAND.textSec }}>
+                      {c.placeLabel} · วงเงิน ฿{fmtFull(c.principal)} · ค้าง {c.overdueCount} งวด · เลื่อน {c.postponedCount} งวด
+                    </div>
+                    <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 4 }}>
+                      กรอบขายด่วน: ประเมินจากราคาตลาดแล้วลด 15-30% หลังสำรวจทรัพย์จริง
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', minWidth: 116 }}>
+                    <div style={{ fontSize: 10, color: BRAND.textSec }}>ครบกำหนดไถ่ถอน</div>
+                    <div style={{ fontSize: 12, color: BRAND.textPri }}>{c.contractEndDate ? new Date(c.contractEndDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}</div>
+                    <div style={{ fontSize: 11, color: c.color, marginTop: 4 }}>{c.diffDays === null ? 'รอตรวจวันครบกำหนด' : `อีก ${Math.max(c.diffDays, 0)} วัน`}</div>
+                    <div style={{ marginTop: 8, padding: '4px 8px', borderRadius: 8, background: `${c.color}18`, border: `1px solid ${c.color}44`, fontSize: 10, fontWeight: 700, color: c.color }}>
+                      {c.action}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(15,23,42,.45)', border: `1px solid ${BRAND.border}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textPri, marginBottom: 10 }}>Checklist เตรียมระบายทรัพย์</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {riskWorkItems.map((item, i) => (
+                  <div key={item} style={{ display: 'grid', gridTemplateColumns: '20px 1fr', gap: 8, alignItems: 'start' }}>
+                    <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(45,212,191,.12)', border: '1px solid rgba(45,212,191,.35)', color: BRAND.teal, fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{i + 1}</div>
+                    <div style={{ fontSize: 11, color: BRAND.textSec, lineHeight: 1.45 }}>{item}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${BRAND.border}`, fontSize: 10, color: BRAND.textMut, lineHeight: 1.45 }}>
+                หมายเหตุ: ก่อนส่งหนังสือหรือดำเนินการกระทบสิทธิ ให้ตรวจสัญญาและเอกสารจริงกับฝ่ายกฎหมายก่อนทุกครั้ง
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '18px 0', textAlign: 'center', color: BRAND.textMut, fontSize: 12 }}>
+            ยังไม่พบเคสขายฝากที่เข้าเงื่อนไขเตรียม Pre-Marketing
+          </div>
+        ))}
+      </div>
+
       {/* Risk Table */}
       <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 14, padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri, marginBottom: 4 }}>🚨 สัญญาที่ต้องระวัง (ครบกำหนดใน 90 วัน)</div>
-        <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 16 }}>{riskContracts.length > 0 ? `${riskContracts.length} รายการ` : 'ไม่มีสัญญาใกล้ครบกำหนด ✅'}</div>
-        {riskContracts.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri, marginBottom: 4 }}>🚨 สัญญาที่ต้องระวัง (ครบกำหนดใน 90 วัน)</div>
+            <div style={{ fontSize: 11, color: BRAND.textSec }}>{riskContracts.length > 0 ? `${riskContracts.length} รายการ` : 'ไม่มีสัญญาใกล้ครบกำหนด ✅'}</div>
+          </div>
+          <SectionToggle open={expandedSections.riskContracts} onClick={() => toggleSection('riskContracts')} />
+        </div>
+        {expandedSections.riskContracts && riskContracts.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
             {riskContracts.map(c => {
               const urgColor = c.diffDays <= 30 ? BRAND.danger : c.diffDays <= 60 ? BRAND.gold : BRAND.textSec
               return (
@@ -282,9 +484,18 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
 
       {/* Advance 2% Breakdown */}
       <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.purple}44`, borderRadius: 14, padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri, marginBottom: 4 }}>🏦 Advance 2% รายเคส</div>
-        <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 16 }}>เงินที่ต้องจ่ายล่วงหน้าเข้าบริษัทตามยอดวงเงินแต่ละเคส</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: expandedSections.advance ? 16 : 0 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri, marginBottom: 4 }}>🏦 Advance 2% รายเคส</div>
+            <div style={{ fontSize: 11, color: BRAND.textSec }}>
+              รวม ฿{fmtFull(Math.round(stackedAdvance))} · active {commissionCases.length + interestCases.length} ราย · ปิดแล้ว {closedCommissionCases.length} ราย
+            </div>
+          </div>
+          <SectionToggle open={expandedSections.advance} onClick={() => toggleSection('advance')} />
+        </div>
 
+        {expandedSections.advance && (
+        <>
         {commissionCases.length > 0 && (
           <div style={{ marginBottom: interestCases.length > 0 ? 16 : 0 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.purple, marginBottom: 8 }}>รับค่าคอมมิชชั่น (มี Advance 2%)</div>
@@ -359,12 +570,23 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
         {commissionCases.length === 0 && interestCases.length === 0 && closedCommissionCases.length === 0 && (
           <div style={{ fontSize: 12, color: BRAND.textMut, textAlign: 'center', padding: '12px 0' }}>ไม่มีข้อมูล Advance 2%</div>
         )}
+        </>
+        )}
       </div>
 
       {/* Overdue */}
       {overduePayments.length > 0 && (
         <div style={{ background: BRAND.bgCard, border: `1px solid rgba(239,68,68,0.4)`, borderRadius: 14, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.danger, marginBottom: 16 }}>🔴 งวดที่ค้างชำระ ({overduePayments.length} งวด)</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: expandedSections.overdue ? 16 : 0 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.danger, marginBottom: 4 }}>🔴 งวดที่ค้างชำระ</div>
+              <div style={{ fontSize: 11, color: BRAND.textSec }}>
+                {overduePayments.length} งวด · {overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย · รวม ฿{fmtFull(overdueAmount)}
+              </div>
+            </div>
+            <SectionToggle open={expandedSections.overdue} onClick={() => toggleSection('overdue')} />
+          </div>
+          {expandedSections.overdue && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {overduePayments.slice(0, 10).map(({ c, p, originalDueStr, originalDiff }, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: BRAND.bg }}>
@@ -383,6 +605,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
 
