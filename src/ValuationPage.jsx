@@ -12,7 +12,6 @@ import {
   getNearbyAreaPricePoints as apiGetNearbyAreaPricePoints,
 } from './lib/api.js'
 import { searchGovPrice, extractPrice, recordLabel } from './lib/treasuryApi.js'
-import { THAI_PROVINCES, PROV_CODE, getAmphoeList, searchByDeed, parseDolResult } from './lib/dolApi.js'
 import { confidenceBand } from './lib/pricePoints.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
@@ -29,22 +28,12 @@ import { ADDRESS_PROVINCES, getDistrictsByProvince, getSubdistrictsByDistrict } 
 import { buildUnderwritingPolicy } from './lib/underwritingPolicy.js'
 import {
   VALUATION_IMAGE_LIMIT,
-  compressValuationImage,
   deleteValuationPropertyImage,
   uploadValuationPropertyImage,
 } from './lib/valuationImages.js'
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 const VALUATION_DRAFT_KEY = 'assetx_valuation_draft'
-
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '')
-    reader.onerror = () => reject(new Error('อ่านไฟล์รูปไม่สำเร็จ'))
-    reader.readAsDataURL(file)
-  })
-}
 
 const INITIAL_FORM = {
   assessmentType: 'ขายฝาก', propertyType: 'ที่ดิน', propertySubtype: 'ที่ดินเปล่า (โฉนด)',
@@ -823,40 +812,6 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
   const [trdLookup, setTrdLookup] = useState(null)
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState('')
-  const [deedOcr, setDeedOcr] = useState(null)
-
-  // ── กรมที่ดิน DOL lookup ──────────────────────────────
-  const [dolSearch, setDolSearch] = useState(null) // { deedIdx, provCode, ampCode, amphoeList, loading, error }
-
-  async function openDolSearch(idx) {
-    const deed = form.deeds[idx]
-    const provCode = PROV_CODE[form.province] || ''
-    setDolSearch({ deedIdx: idx, provCode, ampCode: '', amphoeList: null, loading: false, error: null, deedNo: deed.titleDeedNo || '' })
-    // โหลดรายการอำเภอ
-    if (provCode) {
-      const list = await getAmphoeList(provCode)
-      setDolSearch(p => p ? { ...p, amphoeList: list } : p)
-    }
-  }
-
-  async function handleDolSearch() {
-    if (!dolSearch) return
-    setDolSearch(p => ({ ...p, loading: true, error: null }))
-    try {
-      const raw = await searchByDeed({ provCode: dolSearch.provCode, ampCode: dolSearch.ampCode, deedNo: dolSearch.deedNo })
-      const parsed = parseDolResult(raw)
-      const idx = dolSearch.deedIdx
-      // auto-fill ทุก field ของโฉนด
-      setForm(prev => ({
-        ...prev,
-        deeds: prev.deeds.map((d, i) => i === idx ? { ...d, ...parsed } : d)
-      }))
-      setDolSearch(null)
-    } catch (e) {
-      setDolSearch(p => ({ ...p, loading: false, error: e.message }))
-    }
-  }
-
   async function handleGovLookup(idx) {
     const deed = form.deeds[idx]
     if (!deed.landNo) { showToast('กรุณากรอกเลขที่ดินก่อน'); return }
@@ -875,54 +830,6 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
       }
     } catch (e) {
       setTrdLookup({ deedIdx: idx, loading: false, records: [], total: 0, error: e.message })
-    }
-  }
-
-  async function handleDeedOcr(idx, event) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      showToast('กรุณาเลือกรูปหน้าโฉนดเป็นไฟล์รูปภาพ')
-      return
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      showToast('รูปใหญ่เกินไป กรุณาลดขนาดรูปให้ไม่เกิน 20MB')
-      return
-    }
-
-    setDeedOcr({ deedIdx: idx, loading: true, error: null })
-    try {
-      const { blob } = await compressValuationImage(file)
-      const imageBase64 = await readFileAsBase64(blob)
-      const response = await fetch('/api/deed-ocr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, mimeType: 'image/jpeg' }),
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'อ่านรูปโฉนดไม่สำเร็จ')
-      }
-
-      const parsed = data.deed || {}
-      const fields = ['titleDeedNo', 'landNo', 'mapSheet', 'surveyPage', 'areaRai', 'areaNgan', 'areaSqw']
-      fields.forEach((key) => {
-        const value = parsed[key]
-        if (value !== '' && value !== null && value !== undefined) updateDeed(idx, key, value)
-      })
-
-      const warnings = Array.isArray(parsed.warnings) && parsed.warnings.length > 0
-        ? ` (${parsed.warnings.slice(0, 2).join(', ')})`
-        : ''
-      const confidence = Number(parsed.confidence || 0)
-      showToast(confidence && confidence < 0.65
-        ? `อ่านรูปโฉนดแล้ว แต่ควรตรวจซ้ำ${warnings}`
-        : `อ่านรูปโฉนดและเติมข้อมูลแล้ว${warnings}`)
-      setDeedOcr({ deedIdx: idx, loading: false, error: null })
-    } catch (e) {
-      setDeedOcr({ deedIdx: idx, loading: false, error: e.message })
-      showToast(e.message || 'อ่านรูปโฉนดไม่สำเร็จ')
     }
   }
 
@@ -1308,31 +1215,9 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                       <Label style={{ margin: 0 }}>เลขโฉนดที่ดิน</Label>
                       <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        <input
-                          id={`deed-ocr-${idx}`}
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleDeedOcr(idx, e)}
-                          style={{ display: 'none' }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => document.getElementById(`deed-ocr-${idx}`)?.click()}
-                          disabled={deedOcr?.deedIdx === idx && deedOcr?.loading}
-                          style={{ fontSize: 10, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(245,158,11,0.55)', background: 'rgba(245,158,11,0.08)', color: BRAND.gold, cursor: deedOcr?.deedIdx === idx && deedOcr?.loading ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
-                        >
-                          {deedOcr?.deedIdx === idx && deedOcr?.loading ? '⏳ กำลังอ่าน...' : '📷 อ่านหน้าโฉนด'}
-                        </button>
-                        <button type="button" onClick={() => openDolSearch(idx)}
-                          style={{ fontSize: 10, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(45,212,191,0.5)', background: 'rgba(45,212,191,0.08)', color: BRAND.teal, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                          🏛️ ดึงข้อมูลกรมที่ดิน
-                        </button>
                       </div>
                     </div>
                     <Inp value={deed.titleDeedNo} onChange={e => updateDeed(idx, 'titleDeedNo', e.target.value)} placeholder="เช่น 89062" />
-                    {deedOcr?.deedIdx === idx && deedOcr?.error && (
-                      <div style={{ fontSize: 10, color: '#FCA5A5', marginTop: 4 }}>{deedOcr.error}</div>
-                    )}
                   </div>
                   <div>
                     <Label>เลขที่ดิน</Label>
@@ -1468,58 +1353,6 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
         </Card>
       </div>
 
-      {/* ── DOL Search Modal ── */}
-      {dolSearch && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#0D1B2E', border: '1px solid rgba(45,212,191,0.4)', borderRadius: 12, padding: 24, width: 380, maxWidth: '90vw' }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: BRAND.teal, marginBottom: 16 }}>🏛️ ค้นหาข้อมูลจากกรมที่ดิน</div>
-            <div style={{ marginBottom: 12 }}>
-              <Label>จังหวัด</Label>
-              <select value={dolSearch.provCode}
-                onChange={async e => {
-                  const code = e.target.value
-                  setDolSearch(p => ({ ...p, provCode: code, ampCode: '', amphoeList: null }))
-                  const list = await getAmphoeList(code)
-                  setDolSearch(p => p ? { ...p, amphoeList: list } : p)
-                }}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13 }}>
-                <option value="">— เลือกจังหวัด —</option>
-                {THAI_PROVINCES.map(p => <option key={p.code} value={p.code}>{p.name}</option>)}
-              </select>
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <Label>รหัสอำเภอ (2 หลัก)</Label>
-              <input value={dolSearch.ampCode}
-                onChange={e => setDolSearch(p => ({ ...p, ampCode: e.target.value }))}
-                placeholder="เช่น 01 = เมือง, 02 = อำเภอถัดไป"
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13, boxSizing: 'border-box' }} />
-              <div style={{ fontSize: 10, color: BRAND.textSec, marginTop: 3 }}>ดูรหัสจาก landsmaps.dol.go.th → เลือกจังหวัด → อำเภอที่ขึ้นต้นด้วย 01, 02...</div>
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <Label>เลขโฉนดที่ดิน</Label>
-              <input value={dolSearch.deedNo}
-                onChange={e => setDolSearch(p => ({ ...p, deedNo: e.target.value }))}
-                placeholder="เช่น 34337"
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #162E56', background: '#050B18', color: '#F0F6FF', fontSize: 13, boxSizing: 'border-box' }} />
-            </div>
-            {dolSearch.error && (
-              <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#FCA5A5', fontSize: 12, marginBottom: 12 }}>
-                ❌ {dolSearch.error}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={handleDolSearch} disabled={dolSearch.loading || !dolSearch.provCode || !dolSearch.ampCode || !dolSearch.deedNo}
-                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: (dolSearch.loading || !dolSearch.provCode || !dolSearch.ampCode || !dolSearch.deedNo) ? BRAND.border : BRAND.teal, color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                {dolSearch.loading ? '⏳ กำลังค้นหา...' : '🔍 ค้นหา'}
-              </button>
-              <button onClick={() => setDolSearch(null)}
-                style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #162E56', background: 'transparent', color: BRAND.textSec, fontSize: 13, cursor: 'pointer' }}>
-                ยกเลิก
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -61,7 +61,7 @@ const LegalPage = lazyPage(() => import("./LegalPage.jsx"));
 const ReservationPage = lazyPage(() => import("./ReservationPage.jsx"));
 const SystemStatusPage = lazyPage(() => import("./components/SystemStatusPage.jsx").then((m) => ({ default: m.SystemStatusPage })));
 // Main App Component
-export default function App() {
+export default function App({ onLogout }) {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -623,18 +623,21 @@ export default function App() {
                 🏠 ประเมิน
               </button>
               <button
-                onClick={fetchData}
+                onClick={onLogout}
                 className="btn"
+                title="ออกจากระบบ"
                 style={{
-                  background: BRAND.border,
-                  border: "none",
+                  background: "rgba(239,68,68,0.12)",
+                  border: "1px solid rgba(239,68,68,0.35)",
                   padding: "6px 12px",
                   borderRadius: 8,
-                  color: BRAND.textSec,
+                  color: "#FCA5A5",
                   fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
                 }}
               >
-                🔄
+                ออกจากระบบ
               </button>
             </div>
           </div>
