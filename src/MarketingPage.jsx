@@ -111,12 +111,43 @@ const seedDrafts = [
 ]
 
 const pipelineJobs = [
-  ['Hermes/Tavily สำรวจตลาด', 'พร้อมต่อ API', 'อ่านข่าว ทำเล ดอกเบี้ย และประกาศขายที่เกี่ยวข้อง'],
+  ['Supabase workspace sync', 'ใช้งานได้', 'บันทึกโพสต์ ไอเดีย และคิวงานของหน้า Marketing ลง marketing_workspaces'],
+  ['Tavily Trend Radar', 'ใช้งานได้เมื่อมีคีย์', 'อ่านข่าว ทำเล ดอกเบี้ย และประกาศขายที่เกี่ยวข้องเพื่อสร้างไอเดีย'],
   ['ดึงเคสจากระบบหลังบ้าน', 'ออกแบบแล้ว', 'ดึงสัญญาครบกำหนด ลูกค้าค้างชำระ และ lead ล่าสุด'],
   ['จัดอันดับไอเดียวันนี้', 'พร้อมใช้แบบ mock', 'ให้คะแนนจากความเร่งด่วน ความเสี่ยง และโอกาสทางยอดขาย'],
   ['ร่างคอนเทนต์', 'ใช้งานได้', 'ใช้ template fallback เพื่อลดเครดิต และต่อโมเดลเมื่อจำเป็น'],
   ['ตรวจความเสี่ยง', 'ใช้งานได้บางส่วน', 'ตรวจคำสัญญาเกินจริง ข้อมูลส่วนตัว และความเสี่ยงทางกฎหมาย'],
   ['ส่งเข้ารออนุมัติ', 'ใช้งานได้', 'ให้เจ้าของงานเลือกอนุมัติ แก้ หรือพักไว้ก่อนโพสต์'],
+]
+
+const inboxCases = [
+  {
+    id: 'legal-sale-with-redemption',
+    source: 'Facebook Comment',
+    risk: 'สูง',
+    intent: 'กฎหมาย/สัญญา',
+    question: 'ถ้าขายฝากไว้แล้วอยากไถ่ก่อนครบกำหนด ต้องจ่ายดอกครบตามสัญญาไหม',
+    suggestedReply: 'เบื้องต้นผู้ขายฝากควรตรวจข้อความในสัญญาและกฎหมายที่เกี่ยวข้องก่อนสรุปยอดสินไถ่ครับ หากเป็นกรณีขายฝากที่ดินเพื่อเกษตรกรรมหรือที่อยู่อาศัย อาจมีหลักเรื่องสิทธิไถ่ก่อนกำหนดและการคำนวณสินไถ่ตามสัดส่วนเวลา แนะนำส่งสำเนาสัญญาและวันครบกำหนดให้ทีมงานตรวจเบื้องต้นก่อนนัดหมายครับ\n\nหมายเหตุ: คำตอบนี้เป็นข้อมูลทั่วไป ไม่ใช่คำปรึกษากฎหมายเฉพาะกรณี',
+    action: 'ให้คนตรวจก่อนตอบ',
+  },
+  {
+    id: 'lead-owner-liquidity',
+    source: 'LINE OA',
+    risk: 'กลาง',
+    intent: 'Lead เจ้าของทรัพย์',
+    question: 'มีโฉนดที่ดินต่างจังหวัด อยากได้เงินก้อนแต่ยังไม่อยากขายขาด ทำได้ไหม',
+    suggestedReply: 'สามารถส่งข้อมูลเบื้องต้นให้ทีมประเมินได้ครับ ได้แก่ จังหวัด/อำเภอ/ตำบล ประเภททรัพย์ เนื้อที่ และรูปหน้าโฉนดที่ปิดข้อมูลสำคัญบางส่วน ทีมงานจะช่วยดูทางเลือกเบื้องต้น เช่น จำนอง ขายฝาก หรือแนวทางขายทรัพย์ โดยยังไม่ฟันธงวงเงินจนกว่าจะตรวจเอกสารและทำเลจริงครับ',
+    action: 'ตอบได้หลังตรวจข้อความ',
+  },
+  {
+    id: 'investor-deal',
+    source: 'TikTok Inbox',
+    risk: 'ต่ำ',
+    intent: 'นักลงทุน',
+    question: 'มีทรัพย์ราคาดีให้ลงทุนไหม ขอแบบต่ำกว่าตลาด',
+    suggestedReply: 'AssetX Estate จะคัดทรัพย์จากข้อมูลเอกสารสิทธิ์ ทำเล ทางเข้า ภาระผูกพัน และราคาตลาดก่อนนำเสนอครับ หากสนใจรับรายการทรัพย์สำหรับนักลงทุน สามารถฝากประเภททรัพย์ งบประมาณ และพื้นที่ที่สนใจไว้ได้ ทีมงานจะคัดข้อมูลที่เหมาะสมให้ตรวจต่อครับ',
+    action: 'ตอบได้',
+  },
 ]
 
 function loadWorkspace() {
@@ -128,11 +159,12 @@ function loadWorkspace() {
       posts: Array.isArray(stored.posts) ? stored.posts : [],
       savedIdeas: Array.isArray(stored.savedIdeas) ? stored.savedIdeas : [],
       radarIdeas: Array.isArray(stored.radarIdeas) ? stored.radarIdeas : [],
+      metrics: Array.isArray(stored.metrics) ? stored.metrics : [],
       hiddenPostIds: Array.isArray(stored.hiddenPostIds) ? stored.hiddenPostIds : [],
       manualIdea: stored.manualIdea || '',
     }
   } catch {
-    return { studio: defaultStudio, generated: null, posts: [], savedIdeas: [], radarIdeas: [], hiddenPostIds: [], manualIdea: '' }
+    return { studio: defaultStudio, generated: null, posts: [], savedIdeas: [], radarIdeas: [], metrics: [], hiddenPostIds: [], manualIdea: '' }
   }
 }
 
@@ -148,6 +180,7 @@ function normalizeWorkspace(workspace = {}) {
     posts: Array.isArray(workspace.posts) ? workspace.posts : [],
     savedIdeas: Array.isArray(workspace.savedIdeas) ? workspace.savedIdeas : [],
     radarIdeas: Array.isArray(workspace.radarIdeas) ? workspace.radarIdeas : [],
+    metrics: Array.isArray(workspace.metrics) ? workspace.metrics : [],
     hiddenPostIds: Array.isArray(workspace.hiddenPostIds) ? workspace.hiddenPostIds : [],
     manualIdea: workspace.manualIdea || '',
   }
@@ -159,6 +192,7 @@ function hasWorkspaceContent(workspace) {
     workspace?.posts?.length ||
     workspace?.savedIdeas?.length ||
     workspace?.radarIdeas?.length ||
+    workspace?.metrics?.length ||
     workspace?.hiddenPostIds?.length ||
     workspace?.manualIdea?.trim(),
   )
@@ -201,6 +235,7 @@ export default function MarketingPage({ onBack }) {
   const [libraryFilter, setLibraryFilter] = useState('active')
   const [librarySort, setLibrarySort] = useState('newest')
   const [previewChannel, setPreviewChannel] = useState('facebook')
+  const [metricForm, setMetricForm] = useState({ title: '', channel: 'Facebook', leads: 0, qualified: 0, appointments: 0, notes: '' })
   const [cloudReady, setCloudReady] = useState(false)
   const [syncStatus, setSyncStatus] = useState('กำลังเชื่อม Supabase')
   const [radarLoading, setRadarLoading] = useState(false)
@@ -379,6 +414,31 @@ export default function MarketingPage({ onBack }) {
     }
   }
 
+  const addMetricRecord = () => {
+    const title = metricForm.title.trim()
+    if (!title) {
+      notify('กรุณากรอกชื่อโพสต์หรือแคมเปญ', 'error')
+      return
+    }
+    const record = {
+      id: Date.now(),
+      ...metricForm,
+      title,
+      leads: Number(metricForm.leads) || 0,
+      qualified: Number(metricForm.qualified) || 0,
+      appointments: Number(metricForm.appointments) || 0,
+      createdAt: new Date().toISOString(),
+    }
+    save({ ...workspace, metrics: [record, ...(workspace.metrics || [])] })
+    setMetricForm({ title: '', channel: 'Facebook', leads: 0, qualified: 0, appointments: 0, notes: '' })
+    notify('บันทึกผลโพสต์แล้ว')
+  }
+
+  const deleteMetricRecord = (id) => {
+    save({ ...workspace, metrics: (workspace.metrics || []).filter((item) => item.id !== id) })
+    notify('ลบผลโพสต์แล้ว')
+  }
+
   const copyText = (text) => navigator.clipboard?.writeText(text || '').then(() => notify('คัดลอกแล้ว')).catch(() => notify('คัดลอกไม่สำเร็จ', 'error'))
 
   return (
@@ -432,7 +492,7 @@ export default function MarketingPage({ onBack }) {
           </div>
         </header>
         <div className="mx-notice">
-          <span>Studio เลือกสไตล์และการจัดวางได้แล้ว Trend Radar เตรียมต่อ Hermes + Tavily เพื่อหาไอเดียจากตลาดจริง</span>
+          <span>Studio พร้อมสร้างคอนเทนต์ · Trend Radar ใช้ Tavily ได้เมื่อคีย์พร้อม · Workspace sync กับ Supabase แล้ว</span>
         </div>
         {view === 'ideas' && (
           <IdeasView
@@ -484,9 +544,17 @@ export default function MarketingPage({ onBack }) {
           />
         )}
         {view === 'calendar' && <CalendarView posts={approvedDrafts} />}
-        {view === 'metrics' && <MetricsView />}
+        {view === 'metrics' && (
+          <MetricsView
+            metrics={workspace.metrics || []}
+            form={metricForm}
+            onFormChange={setMetricForm}
+            onAdd={addMetricRecord}
+            onDelete={deleteMetricRecord}
+          />
+        )}
         {view === 'pipeline' && <PipelineView />}
-        {view === 'inbox' && <InboxView />}
+        {view === 'inbox' && <InboxView onCopy={copyText} onCreate={generateContent} />}
         {toast && <div className={`mx-toast ${toast.type === 'error' ? 'error' : ''}`}>{toast.message}</div>}
       </main>
     </div>
@@ -528,9 +596,20 @@ function IdeasView({
         {ideas.map((idea) => (
           <article className="mx-idea-card" key={idea.id}>
             <div className="mx-idea-top"><span>{idea.type}</span><strong>คะแนน {idea.score}</strong></div>
-            <h2>{idea.title}</h2>
+            <h2>
+              {idea.url ? (
+                <a className="mx-idea-title-link" href={idea.url} target="_blank" rel="noreferrer">
+                  {idea.title}
+                </a>
+              ) : idea.title}
+            </h2>
             <p>{idea.angle}</p>
-            <div className="mx-tags"><span>{idea.source}</span><span>{idea.audience}</span><span>{idea.status}</span></div>
+            <div className="mx-tags">
+              <span>{idea.source}</span>
+              <span>{idea.audience}</span>
+              <span>{idea.status}</span>
+              {idea.url && <a href={idea.url} target="_blank" rel="noreferrer">เปิดแหล่งข่าว</a>}
+            </div>
             <div className="mx-card-actions">
               <button className="mx-primary" onClick={() => onCreate(idea.title, idea)}>เริ่มทำคอนเทนต์</button>
               <button className="mx-ghost" onClick={() => onSaveIdea(idea)}>เก็บไว้ก่อน</button>
@@ -902,7 +981,16 @@ function CalendarView({ posts = [] }) {
   )
 }
 
-function MetricsView() {
+function MetricsView({ metrics, form, onFormChange, onAdd, onDelete }) {
+  const totals = metrics.reduce((acc, item) => ({
+    leads: acc.leads + (Number(item.leads) || 0),
+    qualified: acc.qualified + (Number(item.qualified) || 0),
+    appointments: acc.appointments + (Number(item.appointments) || 0),
+  }), { leads: 0, qualified: 0, appointments: 0 })
+  const leadToAppointment = totals.leads ? Math.round((totals.appointments / totals.leads) * 100) : 0
+  const barData = metrics.slice(0, 12).reverse()
+  const maxLeads = Math.max(1, ...barData.map((item) => Number(item.leads) || 0))
+
   return (
     <section className="mx-content">
       <div className="mx-page-head">
@@ -910,13 +998,37 @@ function MetricsView() {
         <div className="mx-range"><button>7 วัน</button><button>14 วัน</button><button>30 วัน</button></div>
       </div>
       <div className="mx-metric-grid">
-        <MetricCard label="Lead ใหม่" value="18" delta="+12%" />
-        <MetricCard label="Lead คุณภาพ" value="7" delta="+4" />
-        <MetricCard label="นัดหมาย" value="3" delta="สัปดาห์นี้" />
-        <MetricCard label="เคสประเมิน" value="5" delta="รอดำเนินการ" />
+        <MetricCard label="Lead ใหม่" value={totals.leads} delta={`${metrics.length} โพสต์`} />
+        <MetricCard label="Lead คุณภาพ" value={totals.qualified} delta="จากที่กรอกเอง" />
+        <MetricCard label="นัดหมาย" value={totals.appointments} delta={`${leadToAppointment}% ของ lead`} />
+        <MetricCard label="โพสต์ที่บันทึกผล" value={metrics.length} delta="manual tracking" />
+      </div>
+      <div className="mx-metrics-layout">
+        <article className="mx-metric-form">
+          <h2 className="mx-section-title">บันทึกผลโพสต์</h2>
+          <label>ชื่อโพสต์ / แคมเปญ<input value={form.title} onChange={(event) => onFormChange({ ...form, title: event.target.value })} placeholder="เช่น ขายฝากกับจำนองต่างกันอย่างไร" /></label>
+          <label>ช่องทาง<select value={form.channel} onChange={(event) => onFormChange({ ...form, channel: event.target.value })}><option>Facebook</option><option>LINE OA</option><option>TikTok / Reels</option><option>Website</option></select></label>
+          <div className="mx-metric-inputs">
+            <label>Lead<input type="number" min="0" value={form.leads} onChange={(event) => onFormChange({ ...form, leads: event.target.value })} /></label>
+            <label>คุณภาพ<input type="number" min="0" value={form.qualified} onChange={(event) => onFormChange({ ...form, qualified: event.target.value })} /></label>
+            <label>นัดหมาย<input type="number" min="0" value={form.appointments} onChange={(event) => onFormChange({ ...form, appointments: event.target.value })} /></label>
+          </div>
+          <label>หมายเหตุ<textarea value={form.notes} onChange={(event) => onFormChange({ ...form, notes: event.target.value })} placeholder="เช่น ได้ lead จากเจ้าของที่ดิน 2 ราย / คำถามเรื่องขายฝากเยอะ" /></label>
+          <button className="mx-primary" onClick={onAdd}>บันทึกผล</button>
+        </article>
+        <div className="mx-list">
+          <h2 className="mx-section-title">ผลลัพธ์ล่าสุด</h2>
+          {metrics.length === 0 && <div className="mx-empty">ยังไม่มีข้อมูลผลโพสต์ ลองบันทึกจากโพสต์ที่ลงจริงแล้วเพื่อดูแนวโน้ม lead</div>}
+          {metrics.map((item) => (
+            <article className="mx-row-card" key={item.id}>
+              <div><strong>{item.title}</strong><span>{item.channel} · Lead {item.leads} · คุณภาพ {item.qualified} · นัด {item.appointments}</span></div>
+              <button className="mx-mini-button danger" onClick={() => onDelete(item.id)}>ลบ</button>
+            </article>
+          ))}
+        </div>
       </div>
       <div className="mx-chart-card">
-        <div className="mx-bars">{[42, 56, 34, 70, 62, 84, 68, 76, 52, 88, 64, 72].map((height, index) => <span style={{ height: `${height}%` }} key={index} />)}</div>
+        <div className="mx-bars">{(barData.length ? barData : [{ leads: 1 }]).map((item, index) => <span title={item.title || 'ยังไม่มีข้อมูล'} style={{ height: `${Math.max(8, ((Number(item.leads) || 0) / maxLeads) * 100)}%` }} key={item.id || index} />)}</div>
         <p>จุดนี้จะใช้ overlay วันที่โพสต์กับจำนวน lead เพื่อดูว่าคอนเทนต์ไหนช่วยขยับผลลัพธ์จริง</p>
       </div>
     </section>
@@ -934,11 +1046,53 @@ function PipelineView() {
   )
 }
 
-function InboxView() {
+function InboxView({ onCopy, onCreate }) {
+  const [activeId, setActiveId] = useState(inboxCases[0]?.id)
+  const selected = inboxCases.find((item) => item.id === activeId) || inboxCases[0]
+  const riskClass = selected.risk === 'สูง' ? 'high' : selected.risk === 'กลาง' ? 'medium' : 'low'
+
   return (
     <section className="mx-content">
-      <div className="mx-page-head"><div><div className="mx-kicker">ตอบคอมเมนต์ เฟส 3</div><h1>กล่องข้อความสำหรับเคสที่ AI ตอบเองไม่ได้</h1><p>ยังไม่เปิดใช้จริงจนกว่าจะต่อ permission จาก Meta/LINE และกำหนดกติกาความเสี่ยงทางกฎหมายให้ชัด</p></div></div>
-      <div className="mx-empty">เฟสนี้จะเก็บคำถามเรื่องวงเงิน สัญญา จำนอง ขายฝาก และคำถามเสี่ยง เพื่อให้คนตรวจคำตอบก่อนส่งจริง</div>
+      <div className="mx-page-head">
+        <div>
+          <div className="mx-kicker">ตอบคอมเมนต์ เฟส 3</div>
+          <h1>กล่องข้อความสำหรับเคสที่ AI ตอบเองไม่ได้</h1>
+          <p>ตอนนี้เป็น workflow จำลองสำหรับทีมตอบแชท: แยกความเสี่ยง ร่างคำตอบ และส่งหัวข้อกลับไปทำคอนเทนต์ได้</p>
+        </div>
+      </div>
+      <div className="mx-inbox-layout">
+        <div className="mx-inbox-list">
+          {inboxCases.map((item) => (
+            <button className={`mx-inbox-item ${item.id === activeId ? 'active' : ''}`} key={item.id} onClick={() => setActiveId(item.id)}>
+              <div><strong>{item.intent}</strong><span>{item.source}</span></div>
+              <em className={`risk-${item.risk === 'สูง' ? 'high' : item.risk === 'กลาง' ? 'medium' : 'low'}`}>{item.risk}</em>
+              <p>{item.question}</p>
+            </button>
+          ))}
+        </div>
+        <article className="mx-inbox-detail">
+          <div className="mx-review-head">
+            <div>
+              <div className="mx-kicker">{selected.source} · {selected.intent}</div>
+              <h2>{selected.question}</h2>
+            </div>
+            <span className={`mx-risk ${riskClass}`}>ความเสี่ยง{selected.risk}</span>
+          </div>
+          <div className="mx-inbox-meta">
+            <span>สถานะ: {selected.action}</span>
+            <span>กติกา: ห้ามฟันธงวงเงิน/ผลทางกฎหมายเฉพาะเคส</span>
+          </div>
+          <ContentBlock title="ร่างคำตอบที่ปลอดภัย" value={selected.suggestedReply} onCopy={() => onCopy(selected.suggestedReply)} />
+          <div className="mx-card-actions end">
+            <button className="mx-primary" onClick={() => onCopy(selected.suggestedReply)}>คัดลอกคำตอบ</button>
+            <button className="mx-secondary" onClick={() => onCreate(`ทำคอนเทนต์ตอบคำถาม: ${selected.question}`, {
+              audience: selected.intent,
+              angle: selected.question,
+              channel: selected.source.includes('LINE') ? 'LINE OA' : 'Facebook',
+            })}>ทำเป็นโพสต์</button>
+          </div>
+        </article>
+      </div>
     </section>
   )
 }
@@ -1029,9 +1183,13 @@ const styles = `
   .mx-idea-top { display: flex; justify-content: space-between; align-items: center; color: #647894; font-size: 12px; font-weight: 800; }
   .mx-idea-top strong { color: #0f8f83; }
   .mx-idea-card h2 { margin: 0; font-size: 18px; line-height: 1.35; color: #13243c; letter-spacing: 0; }
+  .mx-idea-title-link { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }
+  .mx-idea-title-link:hover { color: #1f65c8; border-bottom-color: #8ab8f6; }
   .mx-idea-card p { margin: 0; color: #51647f; font-size: 13px; line-height: 1.6; }
   .mx-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
-  .mx-tags span { border: 1px solid #d7e5f6; background: #f6faff; color: #446181; border-radius: 999px; padding: 5px 8px; font-size: 11px; font-weight: 800; }
+  .mx-tags span, .mx-tags a { border: 1px solid #d7e5f6; background: #f6faff; color: #446181; border-radius: 999px; padding: 5px 8px; font-size: 11px; font-weight: 800; text-decoration: none; }
+  .mx-tags a { color: #1f65c8; background: #edf6ff; border-color: #b8d8ff; }
+  .mx-tags a:hover { background: #dfefff; }
   .mx-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .mx-card-actions.end { justify-content: flex-end; margin-top: 14px; }
   .mx-stepper { height: 70px; display: flex; justify-content: center; align-items: center; gap: 28px; border-bottom: 1px solid #e1e8f1; margin-bottom: 22px; }
@@ -1110,6 +1268,21 @@ const styles = `
   .mx-row-card span, .mx-pipe-card span { color: #71849f; font-size: 13px; }
   .mx-row-actions { display: flex !important; grid-template-columns: none !important; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .mx-pipe-card em { font-style: normal; color: #0f8f83; background: #ecfdf5; border: 1px solid #9bdaca; border-radius: 999px; padding: 6px 10px; font-weight: 900; white-space: nowrap; }
+  .mx-inbox-layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .mx-inbox-list { display: grid; gap: 9px; }
+  .mx-inbox-item { text-align: left; border: 1px solid #d8e3f2; background: rgba(255,255,255,.95); border-radius: 13px; padding: 13px; display: grid; grid-template-columns: 1fr auto; gap: 8px; cursor: pointer; color: #17243b; box-shadow: 0 14px 34px rgba(31,75,138,.06); }
+  .mx-inbox-item.active, .mx-inbox-item:hover { border-color: #8ab8f6; background: #f3f8ff; }
+  .mx-inbox-item div { display: grid; gap: 3px; }
+  .mx-inbox-item strong { color: #143355; }
+  .mx-inbox-item span { color: #71849f; font-size: 12px; font-weight: 800; }
+  .mx-inbox-item p { grid-column: 1 / -1; margin: 0; color: #51647f; font-size: 13px; line-height: 1.5; }
+  .mx-inbox-item em, .mx-risk { font-style: normal; border-radius: 999px; padding: 6px 9px; font-size: 12px; font-weight: 900; white-space: nowrap; align-self: start; }
+  .risk-high, .mx-risk.high { color: #b42318; background: #fff1f0; border: 1px solid #ffb8b0; }
+  .risk-medium, .mx-risk.medium { color: #a15c00; background: #fff8e8; border: 1px solid #f2c874; }
+  .risk-low, .mx-risk.low { color: #047857; background: #ecfdf5; border: 1px solid #95d9c8; }
+  .mx-inbox-detail { border: 1px solid #d8e3f2; background: rgba(255,255,255,.96); border-radius: 14px; padding: 16px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
+  .mx-inbox-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .mx-inbox-meta span { border: 1px solid #d7e5f6; background: #f6faff; color: #446181; border-radius: 999px; padding: 6px 9px; font-size: 12px; font-weight: 800; }
   .mx-calendar { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 8px; }
   .mx-day { min-height: 96px; border: 1px solid #d8e3f2; background: #fff; border-radius: 12px; padding: 10px; display: grid; align-content: start; gap: 8px; }
   .mx-day.has { border-color: #8ab8f6; background: #f3f8ff; }
@@ -1124,10 +1297,16 @@ const styles = `
   .mx-metric-card span { color: #71849f; font-size: 12px; font-weight: 900; }
   .mx-metric-card strong { font-size: 30px; color: #14243c; }
   .mx-metric-card em { color: #0f8f83; font-style: normal; font-weight: 900; }
+  .mx-metrics-layout { display: grid; grid-template-columns: minmax(320px, .85fr) minmax(0, 1.15fr); gap: 14px; margin-bottom: 14px; align-items: start; }
+  .mx-metric-form { border: 1px solid #d8e3f2; background: rgba(255,255,255,.96); border-radius: 14px; padding: 16px; display: grid; gap: 12px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
+  .mx-metric-form label { display: grid; gap: 6px; color: #60738f; font-size: 12px; font-weight: 900; }
+  .mx-metric-form input, .mx-metric-form select, .mx-metric-form textarea { border: 1px solid #d8e3f2; background: #fff; color: #243651; border-radius: 10px; padding: 10px 11px; font: inherit; font-size: 13px; outline: 0; }
+  .mx-metric-form textarea { min-height: 84px; resize: vertical; }
+  .mx-metric-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .mx-chart-card { padding: 18px; }
   .mx-bars { height: 240px; display: flex; align-items: end; gap: 10px; padding: 16px; border-radius: 12px; background: linear-gradient(180deg, #f5f9ff, #eef5ff); }
   .mx-bars span { flex: 1; min-width: 10px; border-radius: 8px 8px 0 0; background: linear-gradient(180deg, #2f73d8, #21a6a1); }
   .mx-chart-card p { color: #71849f; font-size: 13px; margin: 12px 0 0; }
-  @media (max-width: 980px) { .mx-page { grid-template-columns: 1fr; } .mx-sidebar { border-right: 0; border-bottom: 1px solid #d8e3f2; } .mx-topbar { position: static; } .mx-generated-grid, .mx-approval-layout, .mx-library-split { grid-template-columns: 1fr; } }
-  @media (max-width: 720px) { .mx-topbar, .mx-page-head, .mx-row-card, .mx-pipe-card { align-items: stretch; flex-direction: column; } .mx-top-actions, .mx-card-actions, .mx-range { flex-wrap: wrap; } .mx-manual, .mx-prompt-box { grid-template-columns: 1fr; } .mx-calendar { grid-template-columns: repeat(2, 1fr); } .mx-stepper { justify-content: flex-start; overflow-x: auto; gap: 14px; } }
+  @media (max-width: 980px) { .mx-page { grid-template-columns: 1fr; } .mx-sidebar { border-right: 0; border-bottom: 1px solid #d8e3f2; } .mx-topbar { position: static; } .mx-generated-grid, .mx-approval-layout, .mx-library-split, .mx-inbox-layout, .mx-metrics-layout { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { .mx-topbar, .mx-page-head, .mx-row-card, .mx-pipe-card { align-items: stretch; flex-direction: column; } .mx-top-actions, .mx-card-actions, .mx-range { flex-wrap: wrap; } .mx-manual, .mx-prompt-box, .mx-metric-inputs { grid-template-columns: 1fr; } .mx-calendar { grid-template-columns: repeat(2, 1fr); } .mx-stepper { justify-content: flex-start; overflow-x: auto; gap: 14px; } }
 `
