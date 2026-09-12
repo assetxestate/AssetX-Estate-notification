@@ -46,7 +46,7 @@ function Root() {
 
   if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />
 
-  return <App onLogout={handleLogout} />
+  return <App initialView={window.location.pathname === '/marketing' ? 'marketing' : 'main'} onLogout={handleLogout} />
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

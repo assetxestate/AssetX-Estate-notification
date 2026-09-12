@@ -22,6 +22,8 @@ files.zip
 
 .vercel
 .local/
+.agents/
+Hermes/
 
 # เอกสาร/ไฟล์ชั่วคราวที่ไม่ควรเข้า git
 *.docx

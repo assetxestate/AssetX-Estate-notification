@@ -56,12 +56,13 @@ const ValuationPage = lazyPage(() => import("./ValuationPage.jsx"));
 const MapView = lazyPage(() => import("./MapView.jsx"));
 const InvestorPage = lazyPage(() => import("./InvestorPage.jsx"));
 const DashboardPage = lazyPage(() => import("./DashboardPage.jsx"));
+const MarketingPage = lazyPage(() => import("./MarketingPage.jsx"));
 const TaxPage = lazyPage(() => import("./TaxPage.jsx"));
 const LegalPage = lazyPage(() => import("./LegalPage.jsx"));
 const ReservationPage = lazyPage(() => import("./ReservationPage.jsx"));
 const SystemStatusPage = lazyPage(() => import("./components/SystemStatusPage.jsx").then((m) => ({ default: m.SystemStatusPage })));
 // Main App Component
-export default function App({ onLogout }) {
+export default function App({ initialView = "main", onLogout }) {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -85,10 +86,15 @@ export default function App({ onLogout }) {
   const [disbursementModal, setDisbursementModal] = React.useState(null); // customer object
   const [toast, setToast] = useState(null);
   const [apiConnected, setApiConnected] = useState(false);
-  const [currentView, setCurrentView] = useState("main");
+  const [currentView, setCurrentView] = useState(initialView);
   const [triggerActive, setTriggerActive] = useState(
     () => localStorage.getItem("assetx_trigger_active") === "true"
   );
+  const openView = (view) => {
+    setCurrentView(view);
+    const nextPath = view === "marketing" ? "/marketing" : "/";
+    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
+  };
 
   // ── User ID Management + Real-time Sync ────────────────────
   const [targetUserId, setTargetUserId] = useState(
@@ -520,6 +526,15 @@ export default function App({ onLogout }) {
     }
   };
 
+  if (currentView === "marketing") {
+    return (
+      <>
+        <style>{styles}</style>
+        <MarketingPage onBack={() => openView("main")} />
+      </>
+    );
+  }
+
   return (
     <>
       <style>{styles}</style>
@@ -608,7 +623,7 @@ export default function App({ onLogout }) {
                 </span>
               </div>
               <button
-                onClick={() => setCurrentView(v => v === "valuation" ? "main" : "valuation")}
+                onClick={() => openView(currentView === "valuation" ? "main" : "valuation")}
                 style={{
                   background: currentView === "valuation" ? "rgba(45,212,191,0.15)" : "rgba(245,158,11,0.12)",
                   border: `1px solid ${currentView === "valuation" ? BRAND.teal : BRAND.gold}`,
@@ -621,6 +636,21 @@ export default function App({ onLogout }) {
                 }}
               >
                 🏠 ประเมิน
+              </button>
+              <button
+                onClick={() => openView(currentView === "marketing" ? "main" : "marketing")}
+                style={{
+                  background: currentView === "marketing" ? "rgba(45,212,191,0.15)" : "rgba(124,58,237,0.12)",
+                  border: `1px solid ${currentView === "marketing" ? BRAND.teal : BRAND.purple}`,
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  color: currentView === "marketing" ? BRAND.teal : BRAND.purpleLt,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                การตลาด
               </button>
               <button
                 onClick={onLogout}
@@ -646,10 +676,14 @@ export default function App({ onLogout }) {
         {/* Valuation Page */}
         {currentView === "valuation" && (
           <ValuationPage
-            onBack={() => setCurrentView("main")}
+            onBack={() => openView("main")}
             appsScriptUrl={APPS_SCRIPT_URL}
             customers={enriched}
           />
+        )}
+
+        {currentView === "marketing" && (
+          <MarketingPage onBack={() => openView("main")} />
         )}
 
         {/* Content */}

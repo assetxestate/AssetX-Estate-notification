@@ -696,6 +696,28 @@ export async function getDestinations() {
   return data;
 }
 
+// ── Marketing OS workspace ───────────────────────────────────
+
+export async function getMarketingWorkspace(id = "default") {
+  const { data, error } = await supabase
+    .from("marketing_workspaces")
+    .select("payload,updated_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+export async function saveMarketingWorkspace(payload, id = "default") {
+  const { error } = await supabase.from("marketing_workspaces").upsert({
+    id,
+    payload,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+  return { success: true };
+}
+
 // ── LINE (ยังส่งผ่าน GAS เพราะ LINE API ต้องการ server-side token) ──
 export async function sendLineMessage(destinationId, message) {
   const GAS_URL = import.meta.env.VITE_GAS_URL;
