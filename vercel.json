@@ -5,6 +5,12 @@
   "functions": {
     "api/chat.js": {
       "maxDuration": 30
+    },
+    "api/marketing-image.js": {
+      "maxDuration": 30
+    },
+    "api/marketing-video.js": {
+      "maxDuration": 60
     }
   },
   "rewrites": [

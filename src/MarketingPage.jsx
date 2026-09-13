@@ -113,6 +113,7 @@ const seedDrafts = [
 const pipelineJobs = [
   ['Supabase workspace sync', 'ใช้งานได้', 'บันทึกโพสต์ ไอเดีย และคิวงานของหน้า Marketing ลง marketing_workspaces'],
   ['Tavily Trend Radar', 'ใช้งานได้เมื่อมีคีย์', 'อ่านข่าว ทำเล ดอกเบี้ย และประกาศขายที่เกี่ยวข้องเพื่อสร้างไอเดีย'],
+  ['Creative Radar / Reference Vault', 'ใช้งานได้', 'เปิดแหล่งสำรวจ Meta, TikTok, Pinterest และบันทึก reference เพื่อถอด pattern เป็น brief ของ AssetX'],
   ['ดึงเคสจากระบบหลังบ้าน', 'ออกแบบแล้ว', 'ดึงสัญญาครบกำหนด ลูกค้าค้างชำระ และ lead ล่าสุด'],
   ['จัดอันดับไอเดียวันนี้', 'พร้อมใช้แบบ mock', 'ให้คะแนนจากความเร่งด่วน ความเสี่ยง และโอกาสทางยอดขาย'],
   ['ร่างคอนเทนต์', 'ใช้งานได้', 'ใช้ template fallback เพื่อลดเครดิต และต่อโมเดลเมื่อจำเป็น'],
@@ -150,6 +151,94 @@ const inboxCases = [
   },
 ]
 
+const assetxVisualStyles = [
+  {
+    id: 'assetx-premium-realistic',
+    name: 'AssetX Premium Realistic',
+    badge: 'ค่าเริ่มต้น',
+    description: 'ภาพสมจริง พรีเมี่ยม สะอาด น่าเชื่อถือ เหมาะกับแบรนด์ที่ปรึกษาอสังหาริมทรัพย์และหลักประกัน',
+    prompt: 'Photorealistic premium Thai real-estate advisory brand. Editorial commercial photography, natural daylight, clean composition, premium but approachable, deep navy and teal accents, subtle warm highlights, crisp details, trustworthy financial advisory mood.',
+    scenes: 'Clean executive desk, land deed folder with all details obscured, cadastral map without readable private data, calculator, tablet map interface, modern Thai property context, professional hands reviewing documents, no identifiable real person.',
+  },
+  {
+    id: 'assetx-field-survey',
+    name: 'Field Survey Premium',
+    badge: 'ทรัพย์/ที่ดิน',
+    description: 'ภาพลงพื้นที่ดูทรัพย์และทำเล เหมาะกับโพสต์ประเมินที่ดินและนักลงทุน',
+    prompt: 'Photorealistic premium field survey style. Real Thai land and property inspection mood, clean sunlight, cinematic documentary look, professional survey team details without identifiable faces, refined teal and navy brand accents.',
+    scenes: 'Land plot entrance, road access, map tablet, survey notebook, measuring tape, property boundary atmosphere, realistic Thai provincial environment, no exact address signs, no deed numbers.',
+  },
+  {
+    id: 'assetx-investor-brief',
+    name: 'Investor Brief',
+    badge: 'นักลงทุน',
+    description: 'ภาพประชุมและสรุปข้อมูล เหมาะกับคอนเทนต์นักลงทุน/ทรัพย์ราคาดี',
+    prompt: 'Photorealistic premium investor briefing style. Modern meeting table, clean financial advisory setting, sophisticated lighting, calm confidence, premium Thai real-estate investment mood, deep navy and teal palette.',
+    scenes: 'Investment brief papers, anonymized property photos, tablet dashboard, coffee, calculator, minimal charts without readable sensitive text, professional hands only.',
+  },
+]
+
+const referenceSources = [
+  {
+    id: 'meta-ads',
+    name: 'Meta Ads Library',
+    type: 'โฆษณา Facebook / Instagram',
+    strength: 'ดู hook, ภาพปก, carousel, CTA และข้อความโฆษณาของตลาดจริง',
+    searchUrl: (query) => `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TH&media_type=all&q=${encodeURIComponent(query)}&search_type=keyword_unordered`,
+  },
+  {
+    id: 'tiktok-top-ads',
+    name: 'TikTok Creative Center',
+    type: 'วิดีโอสั้น / Top Ads',
+    strength: 'ดู hook 3 วินาทีแรก, script, pacing และ visual angle สำหรับ Reels/TikTok',
+    searchUrl: () => 'https://ads.tiktok.com/business/creativecenter/inspiration/topads/pc/en?period=30&region=TH',
+  },
+  {
+    id: 'pinterest-trends',
+    name: 'Pinterest Trends',
+    type: 'Moodboard / Visual trend',
+    strength: 'หา mood, keyword, layout และ direction ของภาพอสังหา/บ้าน/ที่ดิน',
+    searchUrl: (query) => `https://trends.pinterest.com/?geo=TH&q=${encodeURIComponent(query)}`,
+  },
+  {
+    id: 'pinterest-search',
+    name: 'Pinterest Search',
+    type: 'Visual reference',
+    strength: 'เก็บไอเดีย composition, โทนสี และ mood ของภาพโดยไม่ลอกภาพเดิม',
+    searchUrl: (query) => `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(query)}`,
+  },
+  {
+    id: 'google-creative',
+    name: 'Google Image / Web',
+    type: 'ภาพและบทความ',
+    strength: 'หา reference กว้าง ๆ จากคีย์เวิร์ดไทยและอังกฤษ',
+    searchUrl: (query) => `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`,
+  },
+]
+
+const referenceStarterQueries = [
+  'ขายฝาก โฉนด ที่ดิน เงินก้อน',
+  'จำนอง ที่ดิน ประเมินทรัพย์',
+  'real estate investment Thailand',
+  'property loan collateral ad',
+  'distressed asset real estate investor',
+  'land investment social media ad',
+]
+
+const defaultReferenceForm = {
+  title: '',
+  url: '',
+  sourceId: 'meta-ads',
+  hook: '',
+  visualPattern: '',
+  contentAngle: '',
+  audience: 'เจ้าของทรัพย์',
+  channel: 'Facebook',
+  risk: 'medium',
+  tags: 'ขายฝาก, โฉนด, lead',
+  notes: '',
+}
+
 function loadWorkspace() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
@@ -159,12 +248,27 @@ function loadWorkspace() {
       posts: Array.isArray(stored.posts) ? stored.posts : [],
       savedIdeas: Array.isArray(stored.savedIdeas) ? stored.savedIdeas : [],
       radarIdeas: Array.isArray(stored.radarIdeas) ? stored.radarIdeas : [],
+      references: Array.isArray(stored.references) ? stored.references : [],
+      referenceForm: { ...defaultReferenceForm, ...(stored.referenceForm || {}) },
+      referenceQuery: stored.referenceQuery || referenceStarterQueries[0],
       metrics: Array.isArray(stored.metrics) ? stored.metrics : [],
       hiddenPostIds: Array.isArray(stored.hiddenPostIds) ? stored.hiddenPostIds : [],
       manualIdea: stored.manualIdea || '',
     }
   } catch {
-    return { studio: defaultStudio, generated: null, posts: [], savedIdeas: [], radarIdeas: [], metrics: [], hiddenPostIds: [], manualIdea: '' }
+    return {
+      studio: defaultStudio,
+      generated: null,
+      posts: [],
+      savedIdeas: [],
+      radarIdeas: [],
+      references: [],
+      referenceForm: defaultReferenceForm,
+      referenceQuery: referenceStarterQueries[0],
+      metrics: [],
+      hiddenPostIds: [],
+      manualIdea: '',
+    }
   }
 }
 
@@ -180,6 +284,9 @@ function normalizeWorkspace(workspace = {}) {
     posts: Array.isArray(workspace.posts) ? workspace.posts : [],
     savedIdeas: Array.isArray(workspace.savedIdeas) ? workspace.savedIdeas : [],
     radarIdeas: Array.isArray(workspace.radarIdeas) ? workspace.radarIdeas : [],
+    references: Array.isArray(workspace.references) ? workspace.references : [],
+    referenceForm: { ...defaultReferenceForm, ...(workspace.referenceForm || {}) },
+    referenceQuery: workspace.referenceQuery || referenceStarterQueries[0],
     metrics: Array.isArray(workspace.metrics) ? workspace.metrics : [],
     hiddenPostIds: Array.isArray(workspace.hiddenPostIds) ? workspace.hiddenPostIds : [],
     manualIdea: workspace.manualIdea || '',
@@ -192,8 +299,10 @@ function hasWorkspaceContent(workspace) {
     workspace?.posts?.length ||
     workspace?.savedIdeas?.length ||
     workspace?.radarIdeas?.length ||
+    workspace?.references?.length ||
     workspace?.metrics?.length ||
     workspace?.hiddenPostIds?.length ||
+    workspace?.referenceQuery?.trim() ||
     workspace?.manualIdea?.trim(),
   )
 }
@@ -227,6 +336,63 @@ function buildChannelPreview(post, channel) {
   return `${caption}\n\n#AssetXEstate #ขายฝาก #จำนอง #ประเมินทรัพย์`
 }
 
+function sourceFromId(id) {
+  return referenceSources.find((source) => source.id === id) || referenceSources[0]
+}
+
+function hostFromUrl(url = '') {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
+function normalizeTags(value = '') {
+  return String(value)
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
+function buildReferenceBrief(reference) {
+  const source = sourceFromId(reference.sourceId)
+  const tags = Array.isArray(reference.tags) ? reference.tags.join(', ') : reference.tags
+  return [
+    `Reference: ${reference.title}`,
+    `Source: ${source.name}${reference.url ? ` (${reference.url})` : ''}`,
+    `Audience: ${reference.audience || 'เจ้าของทรัพย์'}`,
+    `Channel: ${reference.channel || 'Facebook'}`,
+    `Hook ที่น่าสนใจ: ${reference.hook || 'ยังไม่ระบุ'}`,
+    `Pattern ภาพ/วิดีโอ: ${reference.visualPattern || 'ยังไม่ระบุ'}`,
+    `Angle ที่ควรทำในแบบ AssetX: ${reference.contentAngle || 'ถอดเป็นคอนเทนต์ให้ความรู้ที่ไม่สัญญาเกินจริง'}`,
+    `Tags: ${tags || '-'}`,
+    '',
+    'AssetX rule:',
+    '- ใช้ reference เพื่อเรียนรู้ pattern เท่านั้น ห้ามลอกภาพ/โลโก้/ข้อความคู่แข่ง',
+    '- ไม่ใส่ข้อมูลส่วนตัว เลขโฉนด เบอร์โทร ที่อยู่ หรือภาพลูกค้าจริง',
+    '- ไม่สัญญาว่าอนุมัติแน่นอน ได้เงินทันที หรือรับประกันผลตอบแทน',
+    '- โทนภาพ: สมจริง พรีเมี่ยม สะอาด น่าเชื่อถือ มีสี navy/teal ของ AssetX',
+  ].join('\n')
+}
+
+function referenceToIdea(reference) {
+  const source = sourceFromId(reference.sourceId)
+  return {
+    id: `ref-idea-${reference.id}`,
+    source: `Reference · ${source.name}`,
+    type: 'Creative Reference',
+    score: reference.risk === 'low' ? 86 : reference.risk === 'high' ? 70 : 80,
+    title: reference.title,
+    angle: reference.contentAngle || reference.hook || 'นำ reference นี้มาถอดเป็นคอนเทนต์ในภาษาของ AssetX',
+    audience: reference.audience || 'เจ้าของทรัพย์',
+    channel: reference.channel || 'Facebook',
+    status: 'ถอด pattern แล้ว',
+    url: reference.url || '',
+  }
+}
+
 export default function MarketingPage({ onBack }) {
   const [workspace, setWorkspace] = useState(loadWorkspace)
   const [view, setView] = useState('ideas')
@@ -236,6 +402,10 @@ export default function MarketingPage({ onBack }) {
   const [librarySort, setLibrarySort] = useState('newest')
   const [previewChannel, setPreviewChannel] = useState('facebook')
   const [metricForm, setMetricForm] = useState({ title: '', channel: 'Facebook', leads: 0, qualified: 0, appointments: 0, notes: '' })
+  const [visualStyleId, setVisualStyleId] = useState('assetx-premium-realistic')
+  const [mediaLoading, setMediaLoading] = useState(null)
+  const [mediaResult, setMediaResult] = useState(null)
+  const [selectedReferenceId, setSelectedReferenceId] = useState(null)
   const [cloudReady, setCloudReady] = useState(false)
   const [syncStatus, setSyncStatus] = useState('กำลังเชื่อม Supabase')
   const [radarLoading, setRadarLoading] = useState(false)
@@ -255,8 +425,10 @@ export default function MarketingPage({ onBack }) {
     approvals: pendingDrafts.length,
     ready: approvedDrafts.length,
     saved: workspace.savedIdeas.length,
+    references: workspace.references?.length || 0,
     library: allDrafts.length + workspace.savedIdeas.length,
   }
+  const selectedReference = (workspace.references || []).find((item) => item.id === selectedReferenceId) || (workspace.references || [])[0]
 
   const save = (next) => {
     setWorkspace(next)
@@ -392,6 +564,57 @@ export default function MarketingPage({ onBack }) {
     notify(exists ? 'ไอเดียนี้อยู่ในคลังแล้ว' : 'เก็บไอเดียไว้ในผลงานทั้งหมดแล้ว')
   }
 
+  const updateReferenceForm = (patch) => {
+    save({ ...workspace, referenceForm: { ...workspace.referenceForm, ...patch } })
+  }
+
+  const addReference = () => {
+    const form = { ...defaultReferenceForm, ...(workspace.referenceForm || {}) }
+    const title = form.title.trim()
+    if (!title) {
+      notify('กรุณาใส่ชื่อ reference หรือหัวข้อที่เจอ', 'error')
+      return
+    }
+    const reference = {
+      id: Date.now(),
+      title,
+      url: form.url.trim(),
+      sourceId: form.sourceId,
+      hook: form.hook.trim(),
+      visualPattern: form.visualPattern.trim(),
+      contentAngle: form.contentAngle.trim(),
+      audience: form.audience.trim() || 'เจ้าของทรัพย์',
+      channel: form.channel.trim() || 'Facebook',
+      risk: form.risk || 'medium',
+      tags: normalizeTags(form.tags),
+      notes: form.notes.trim(),
+      createdAt: new Date().toISOString(),
+    }
+    save({
+      ...workspace,
+      references: [reference, ...(workspace.references || [])],
+      referenceForm: { ...defaultReferenceForm, sourceId: form.sourceId, audience: form.audience, channel: form.channel, tags: form.tags },
+    })
+    setSelectedReferenceId(reference.id)
+    notify('บันทึก reference แล้ว')
+  }
+
+  const deleteReference = (id) => {
+    save({ ...workspace, references: (workspace.references || []).filter((item) => item.id !== id) })
+    if (selectedReferenceId === id) setSelectedReferenceId(null)
+    notify('ลบ reference แล้ว')
+  }
+
+  const createFromReference = (reference) => {
+    const brief = buildReferenceBrief(reference)
+    generateContent(`${reference.title}\n\n${brief}`, referenceToIdea(reference))
+    notify('ส่ง reference เข้า Studio แล้ว')
+  }
+
+  const saveReferenceAsIdea = (reference) => {
+    saveIdeaForLater(referenceToIdea(reference))
+  }
+
   const loadTrendRadar = async () => {
     setRadarLoading(true)
     try {
@@ -439,6 +662,56 @@ export default function MarketingPage({ onBack }) {
     notify('ลบผลโพสต์แล้ว')
   }
 
+  const generateMedia = async (type, brief) => {
+    setMediaLoading(`${type}:${brief.id}`)
+    try {
+      const visualStyle = assetxVisualStyles.find((style) => style.id === visualStyleId) || assetxVisualStyles[0]
+      const prompt = type === 'video'
+        ? (brief.videoScript || brief.imagePrompt || brief.title)
+        : (brief.imagePrompt || brief.title)
+      const res = await fetch(type === 'video' ? '/api/marketing-video' : '/api/marketing-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          styleProfile: visualStyle,
+          aspectRatio: type === 'video' ? '9:16' : '1:1',
+          imageSize: '1K',
+          resolution: '720p',
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success) {
+        if (data.fallbackPrompt) {
+          setMediaResult({
+            id: Date.now(),
+            type: 'prompt',
+            targetType: type,
+            title: brief.title,
+            prompt: data.fallbackPrompt,
+            model: data.code || 'Prompt fallback',
+          })
+          notify(data.error || 'โควต้าเต็ม จึงเตรียม prompt พร้อมนำไปใช้แทน', 'error')
+          return
+        }
+        throw new Error(data.error || (type === 'video' ? 'สร้างวิดีโอไม่สำเร็จ' : 'สร้างรูปไม่สำเร็จ'))
+      }
+      setMediaResult({
+        id: Date.now(),
+        type,
+        title: brief.title,
+        dataUrl: data.dataUrl,
+        mimeType: data.mimeType,
+        model: data.model,
+      })
+      notify(type === 'video' ? 'สร้างวิดีโอแล้ว' : 'สร้างรูปแล้ว')
+    } catch (err) {
+      notify(err.message || 'สร้างสื่อไม่สำเร็จ', 'error')
+    } finally {
+      setMediaLoading(null)
+    }
+  }
+
   const copyText = (text) => navigator.clipboard?.writeText(text || '').then(() => notify('คัดลอกแล้ว')).catch(() => notify('คัดลอกไม่สำเร็จ', 'error'))
 
   return (
@@ -460,6 +733,7 @@ export default function MarketingPage({ onBack }) {
           <NavButton active={view === 'calendar'} label="ปฏิทินโพสต์" onClick={() => setView('calendar')} />
         </NavSection>
         <NavSection title="สร้าง">
+          <NavButton active={view === 'references'} label="สำรวจ Reference" count={dashboardCounts.references} onClick={() => setView('references')} />
           <NavButton active={view === 'gallery'} label="ห้องภาพ" onClick={() => setView('gallery')} />
         </NavSection>
         <NavSection title="แบรนด์ของฉัน">
@@ -492,7 +766,7 @@ export default function MarketingPage({ onBack }) {
           </div>
         </header>
         <div className="mx-notice">
-          <span>Studio พร้อมสร้างคอนเทนต์ · Trend Radar ใช้ Tavily ได้เมื่อคีย์พร้อม · Workspace sync กับ Supabase แล้ว</span>
+          <span>Studio พร้อมสร้างคอนเทนต์ · Creative Radar เก็บ reference ได้ · Workspace sync กับ Supabase แล้ว</span>
         </div>
         {view === 'ideas' && (
           <IdeasView
@@ -524,7 +798,38 @@ export default function MarketingPage({ onBack }) {
           <ApprovalsView drafts={pendingDrafts} selected={selectedDraft} onSelect={setSelectedId} onUpdate={updatePost} onCopy={copyText} />
         )}
         {view === 'queue' && <QueueView posts={approvedDrafts} onCreate={() => setView('ideas')} onUpdate={updatePost} />}
-        {view === 'gallery' && <GalleryView drafts={allDrafts} generated={workspace.generated} />}
+        {view === 'references' && (
+          <ReferenceRadarView
+            query={workspace.referenceQuery || referenceStarterQueries[0]}
+            sources={referenceSources}
+            starterQueries={referenceStarterQueries}
+            form={{ ...defaultReferenceForm, ...(workspace.referenceForm || {}) }}
+            references={workspace.references || []}
+            selectedReference={selectedReference}
+            onQueryChange={(referenceQuery) => save({ ...workspace, referenceQuery })}
+            onFormChange={updateReferenceForm}
+            onAdd={addReference}
+            onSelect={setSelectedReferenceId}
+            onDelete={deleteReference}
+            onCopy={(reference) => copyText(buildReferenceBrief(reference))}
+            onCreate={createFromReference}
+            onSaveIdea={saveReferenceAsIdea}
+          />
+        )}
+        {view === 'gallery' && (
+          <GalleryView
+            drafts={allDrafts}
+            generated={workspace.generated}
+            mediaLoading={mediaLoading}
+            mediaResult={mediaResult}
+            visualStyles={assetxVisualStyles}
+            visualStyleId={visualStyleId}
+            onVisualStyleChange={setVisualStyleId}
+            onCopy={copyText}
+            onGenerateImage={(brief) => generateMedia('image', brief)}
+            onGenerateVideo={(brief) => generateMedia('video', brief)}
+          />
+        )}
         {view === 'brand' && <BrandBrainView />}
         {view === 'library' && (
           <LibraryView
@@ -558,6 +863,172 @@ export default function MarketingPage({ onBack }) {
         {toast && <div className={`mx-toast ${toast.type === 'error' ? 'error' : ''}`}>{toast.message}</div>}
       </main>
     </div>
+  )
+}
+
+function ReferenceRadarView({
+  query,
+  sources,
+  starterQueries,
+  form,
+  references,
+  selectedReference,
+  onQueryChange,
+  onFormChange,
+  onAdd,
+  onSelect,
+  onDelete,
+  onCopy,
+  onCreate,
+  onSaveIdea,
+}) {
+  const activeSource = sourceFromId(form.sourceId)
+  return (
+    <section className="mx-content">
+      <div className="mx-page-head">
+        <div>
+          <div className="mx-kicker">Creative Radar</div>
+          <h1>สำรวจตลาด เก็บ Reference แล้วถอดเป็นภาษาภาพของ AssetX</h1>
+          <p>ใช้แหล่งจริงเพื่อดู pattern ของโฆษณา/ภาพ/วิดีโอ แล้วบันทึกเฉพาะ insight ที่นำมาสร้างงานใหม่ได้อย่างปลอดภัย</p>
+        </div>
+      </div>
+
+      <div className="mx-reference-hero">
+        <div className="mx-reference-search">
+          <label>
+            คำค้นสำหรับสำรวจ
+            <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="เช่น ขายฝาก โฉนด ที่ดิน เงินก้อน" />
+          </label>
+          <div className="mx-query-chips">
+            {starterQueries.map((item) => (
+              <button key={item} onClick={() => onQueryChange(item)}>{item}</button>
+            ))}
+          </div>
+        </div>
+        <div className="mx-source-grid">
+          {sources.map((source) => (
+            <a className="mx-source-card" key={source.id} href={source.searchUrl(query)} target="_blank" rel="noreferrer">
+              <span>{source.type}</span>
+              <strong>{source.name}</strong>
+              <p>{source.strength}</p>
+              <em>เปิดแหล่งสำรวจ</em>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      <div className="mx-reference-layout">
+        <article className="mx-reference-form">
+          <div className="mx-section-head">
+            <div>
+              <div className="mx-kicker">Reference Vault</div>
+              <h2>บันทึกสิ่งที่เจอจากตลาด</h2>
+            </div>
+            <a className="mx-mini-button" href={activeSource.searchUrl(query)} target="_blank" rel="noreferrer">เปิด {activeSource.name}</a>
+          </div>
+          <label>
+            หัวข้อ / ชื่อ reference
+            <input value={form.title} onChange={(event) => onFormChange({ title: event.target.value })} placeholder="เช่น Hook โฆษณาเจ้าของที่ดินต้องการเงินก้อน" />
+          </label>
+          <label>
+            URL แหล่งที่มา
+            <input value={form.url} onChange={(event) => onFormChange({ url: event.target.value })} placeholder="วางลิงก์โฆษณา ข่าว หรือหน้า reference" />
+          </label>
+          <div className="mx-form-grid">
+            <label>
+              แหล่งข้อมูล
+              <select value={form.sourceId} onChange={(event) => onFormChange({ sourceId: event.target.value })}>
+                {sources.map((source) => <option value={source.id} key={source.id}>{source.name}</option>)}
+              </select>
+            </label>
+            <label>
+              ความเสี่ยง
+              <select value={form.risk} onChange={(event) => onFormChange({ risk: event.target.value })}>
+                <option value="low">ต่ำ ใช้เป็นแรงบันดาลใจได้</option>
+                <option value="medium">กลาง ต้องปรับภาษา/ภาพ</option>
+                <option value="high">สูง ห้ามใกล้เคียงต้นฉบับ</option>
+              </select>
+            </label>
+          </div>
+          <div className="mx-form-grid">
+            <label>
+              กลุ่มเป้าหมาย
+              <input value={form.audience} onChange={(event) => onFormChange({ audience: event.target.value })} />
+            </label>
+            <label>
+              ช่องทาง
+              <input value={form.channel} onChange={(event) => onFormChange({ channel: event.target.value })} />
+            </label>
+          </div>
+          <label>
+            Hook ที่น่าสนใจ
+            <textarea value={form.hook} onChange={(event) => onFormChange({ hook: event.target.value })} placeholder="ประโยคเปิด / pain point / คำถามที่ดึงความสนใจ" />
+          </label>
+          <label>
+            Pattern ภาพหรือวิดีโอ
+            <textarea value={form.visualPattern} onChange={(event) => onFormChange({ visualPattern: event.target.value })} placeholder="เช่น โต๊ะเอกสาร โฉนดถูกปิดข้อมูล แผนที่ แสงธรรมชาติ โทนพรีเมี่ยม" />
+          </label>
+          <label>
+            Angle ที่ควรทำในแบบ AssetX
+            <textarea value={form.contentAngle} onChange={(event) => onFormChange({ contentAngle: event.target.value })} placeholder="แปลงเป็นแนวคิดของเรา ไม่ลอกข้อความเดิม" />
+          </label>
+          <label>
+            Tags
+            <input value={form.tags} onChange={(event) => onFormChange({ tags: event.target.value })} placeholder="ขายฝาก, โฉนด, นักลงทุน" />
+          </label>
+          <label>
+            หมายเหตุ
+            <textarea value={form.notes} onChange={(event) => onFormChange({ notes: event.target.value })} placeholder="ข้อควรระวัง หรือสิ่งที่อยากลองกับแบรนด์เรา" />
+          </label>
+          <button className="mx-primary" onClick={onAdd}>บันทึก Reference</button>
+        </article>
+
+        <div className="mx-reference-side">
+          <article className="mx-pattern-panel">
+            <div className="mx-kicker">Pattern Extractor</div>
+            <h2>{selectedReference ? selectedReference.title : 'ยังไม่มี reference ที่เลือก'}</h2>
+            {selectedReference ? (
+              <>
+                <div className="mx-reference-meta">
+                  <span>{sourceFromId(selectedReference.sourceId).name}</span>
+                  {selectedReference.url && <span>{hostFromUrl(selectedReference.url)}</span>}
+                  <span className={`risk-${selectedReference.risk}`}>{selectedReference.risk === 'high' ? 'เสี่ยงสูง' : selectedReference.risk === 'low' ? 'เสี่ยงต่ำ' : 'เสี่ยงกลาง'}</span>
+                </div>
+                <ContentBlock title="Brief พร้อมใช้" value={buildReferenceBrief(selectedReference)} onCopy={() => onCopy(selectedReference)} collapsed />
+                <div className="mx-card-actions">
+                  <button className="mx-primary" onClick={() => onCreate(selectedReference)}>ส่งเข้า Studio</button>
+                  <button className="mx-secondary" onClick={() => onSaveIdea(selectedReference)}>เก็บเป็นไอเดีย</button>
+                  {selectedReference.url && <a className="mx-secondary as-link" href={selectedReference.url} target="_blank" rel="noreferrer">อ่านต้นทาง</a>}
+                </div>
+              </>
+            ) : (
+              <p>เริ่มจากเปิดแหล่งสำรวจด้านบน แล้วบันทึก reference แรกเพื่อให้ระบบถอด brief ให้</p>
+            )}
+          </article>
+
+          <div className="mx-reference-list">
+            {references.length === 0 && <div className="mx-empty">ยังไม่มี reference ในคลัง ลองเปิด Meta Ads Library หรือ TikTok Creative Center แล้วบันทึก insight แรกเข้ามาได้เลย</div>}
+            {references.map((reference) => (
+              <article className={`mx-reference-item ${selectedReference?.id === reference.id ? 'active' : ''}`} key={reference.id}>
+                <button onClick={() => onSelect(reference.id)}>
+                  <span>{sourceFromId(reference.sourceId).name}</span>
+                  <strong>{reference.title}</strong>
+                  <p>{reference.contentAngle || reference.hook || reference.visualPattern || 'ยังไม่ได้ถอด pattern'}</p>
+                </button>
+                <div className="mx-reference-tags">
+                  {(reference.tags || []).map((tag) => <span key={tag}>{tag}</span>)}
+                </div>
+                <div className="mx-card-actions">
+                  <button className="mx-mini-button" onClick={() => onCreate(reference)}>ทำคอนเทนต์</button>
+                  <button className="mx-mini-button" onClick={() => onCopy(reference)}>คัดลอก brief</button>
+                  <button className="mx-mini-button danger" onClick={() => onDelete(reference.id)}>ลบ</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -761,37 +1232,110 @@ function QueueView({ posts, onCreate, onUpdate }) {
   )
 }
 
-function GalleryView({ drafts, generated }) {
+function GalleryView({
+  drafts,
+  generated,
+  mediaLoading,
+  mediaResult,
+  visualStyles,
+  visualStyleId,
+  onVisualStyleChange,
+  onCopy,
+  onGenerateImage,
+  onGenerateVideo,
+}) {
   const briefs = [
     ...(generated ? [{
       id: 'generated',
       title: generated.headline,
       imagePrompt: generated.imagePrompt,
+      videoScript: generated.videoScript,
       source: 'โพสต์ที่กำลังร่าง',
     }] : []),
     ...drafts.filter((post) => post.imagePrompt).map((post) => ({
       id: post.id,
       title: post.title,
       imagePrompt: post.imagePrompt,
+      videoScript: post.videoScript,
       source: post.channel || 'AssetX',
     })),
   ]
+  const selectedStyle = visualStyles.find((style) => style.id === visualStyleId) || visualStyles[0]
   return (
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
           <div className="mx-kicker">ห้องภาพ</div>
-          <h1>บรีฟภาพและเทมเพลตที่พร้อมส่งต่อให้ทีมออกแบบ</h1>
-          <p>รอบนี้เก็บเป็นบรีฟก่อน ยังไม่ยิง API สร้างภาพจริง เพื่อคุมเครดิตและคุณภาพข้อความไทยบนภาพ</p>
+          <h1>สร้างภาพและวิดีโอจากบรีฟคอนเทนต์</h1>
+          <p>ใช้ Gemini ฝั่ง server เพื่อสร้างรูป/วิดีโอจริง โดยไม่ส่ง API key ไปฝั่งเว็บ และยังห้ามใส่ข้อมูลส่วนตัวในภาพ</p>
         </div>
       </div>
+      <div className="mx-visual-system">
+        <div className="mx-visual-copy">
+          <div className="mx-kicker">AssetX Visual System</div>
+          <h2>โทนภาพหลัก: สมจริง พรีเมี่ยม น่าเชื่อถือ</h2>
+          <p>ใช้ reference เป็นแรงบันดาลใจได้ แต่ผลลัพธ์ต้องเป็นภาพใหม่ในภาษาภาพของ AssetX: สะอาด โปร่ง ข้อมูลครบแต่ไม่เปิดเผยข้อมูลลูกค้า และไม่มีข้อความไทยฝังในภาพ</p>
+          <div className="mx-workflow-steps">
+            <span>1 เลือกบรีฟ</span>
+            <span>2 เลือกสไตล์</span>
+            <span>3 สร้างภาพ/วิดีโอ</span>
+            <span>4 ตรวจความเสี่ยง</span>
+            <span>5 ดาวน์โหลดไปใช้</span>
+          </div>
+        </div>
+        <div className="mx-style-grid">
+          {visualStyles.map((style) => (
+            <button className={`mx-style-card ${style.id === visualStyleId ? 'active' : ''}`} key={style.id} onClick={() => onVisualStyleChange(style.id)}>
+              <span>{style.badge}</span>
+              <strong>{style.name}</strong>
+              <em>{style.description}</em>
+            </button>
+          ))}
+        </div>
+      </div>
+      {mediaResult && (
+        <article className="mx-media-result">
+          <div>
+            <div className="mx-kicker">ผลลัพธ์ล่าสุด · {mediaResult.model}</div>
+            <h2>{mediaResult.title}</h2>
+          </div>
+          {mediaResult.type === 'prompt' ? (
+            <>
+              <div className="mx-quota-note">
+                โควต้า Gemini ยังไม่พร้อมสร้างไฟล์จริง ระบบเตรียม prompt แบบครบกฎแบรนด์ไว้ให้แล้ว สามารถคัดลอกไปใช้กับเครื่องมืออื่น เช่น Firefly, Midjourney, Runway หรือกลับมาลองใหม่หลัง quota พร้อม
+              </div>
+              <pre className="mx-fallback-prompt">{mediaResult.prompt}</pre>
+              <button className="mx-primary media-download" onClick={() => onCopy(mediaResult.prompt)}>คัดลอก Prompt</button>
+            </>
+          ) : (
+            <>
+              {mediaResult.type === 'video'
+                ? <video src={mediaResult.dataUrl} controls playsInline />
+                : <img src={mediaResult.dataUrl} alt={mediaResult.title} />}
+              <a className="mx-primary media-download" href={mediaResult.dataUrl} download={`assetx-${mediaResult.type}-${mediaResult.id}.${mediaResult.type === 'video' ? 'mp4' : 'jpg'}`}>ดาวน์โหลด</a>
+            </>
+          )}
+        </article>
+      )}
       <div className="mx-brief-grid">
         {briefs.map((brief) => (
           <article className="mx-brief-card" key={brief.id}>
-            <div className="mx-preview-poster compact"><span>AssetX</span><strong>{brief.title}</strong><small>{brief.source}</small></div>
+            <div className="mx-preview-poster compact"><span>{selectedStyle.name}</span><strong>{brief.title}</strong><small>{brief.source}</small></div>
             <div>
               <strong>{brief.title}</strong>
               <p>{brief.imagePrompt}</p>
+              <div className="mx-visual-note">
+                <span>Style</span>
+                <p>{selectedStyle.scenes}</p>
+              </div>
+            </div>
+            <div className="mx-card-actions">
+              <button className="mx-primary" onClick={() => onGenerateImage(brief)} disabled={mediaLoading === `image:${brief.id}`}>
+                {mediaLoading === `image:${brief.id}` ? 'กำลังสร้างรูป...' : 'สร้างรูปจริง'}
+              </button>
+              <button className="mx-secondary" onClick={() => onGenerateVideo(brief)} disabled={mediaLoading === `video:${brief.id}`}>
+                {mediaLoading === `video:${brief.id}` ? 'กำลังสร้างวิดีโอ...' : 'สร้างวิดีโอ 9:16'}
+              </button>
             </div>
           </article>
         ))}
@@ -1219,6 +1763,60 @@ const styles = `
   .mx-brief-card p, .mx-brand-rule p { margin: 8px 0 0; color: #51647f; font-size: 13px; line-height: 1.65; }
   .mx-brief-card p { max-height: 154px; overflow: auto; padding-right: 4px; }
   .mx-preview-poster strong { color: #fff; }
+  .mx-visual-system { border: 1px solid #bfd5f2; background: radial-gradient(circle at 100% 0%, rgba(33,166,161,.14), transparent 28%), linear-gradient(180deg, #ffffff, #f3f8ff); border-radius: 18px; padding: 16px; margin-bottom: 16px; display: grid; grid-template-columns: minmax(280px, .9fr) minmax(0, 1.1fr); gap: 14px; box-shadow: 0 20px 50px rgba(31,75,138,.10); }
+  .mx-visual-copy h2 { margin: 3px 0 8px; color: #12243d; font-size: 22px; line-height: 1.35; letter-spacing: 0; }
+  .mx-visual-copy p { margin: 0; color: #51647f; font-size: 13px; line-height: 1.7; }
+  .mx-workflow-steps { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+  .mx-workflow-steps span { border: 1px solid #d7e5f6; background: #fff; color: #27466f; border-radius: 999px; padding: 6px 9px; font-size: 11px; font-weight: 900; }
+  .mx-style-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+  .mx-style-card { border: 1px solid #d8e3f2; background: rgba(255,255,255,.88); border-radius: 14px; padding: 12px; text-align: left; display: grid; gap: 7px; cursor: pointer; color: #14243c; }
+  .mx-style-card.active { border-color: #2f73d8; background: #eef6ff; box-shadow: inset 0 0 0 1px rgba(47,115,216,.18); }
+  .mx-style-card span { color: #0f8f83; font-size: 11px; font-weight: 900; }
+  .mx-style-card strong { color: #143355; }
+  .mx-style-card em { color: #60738f; font-size: 12px; line-height: 1.45; font-style: normal; }
+  .mx-visual-note { border: 1px solid #e0e8f2; background: #fbfdff; border-radius: 10px; padding: 10px; margin-top: 10px; }
+  .mx-visual-note span { display: block; color: #1d3f78; font-size: 11px; font-weight: 900; margin-bottom: 4px; }
+  .mx-visual-note p { margin: 0; max-height: 88px; font-size: 12px; }
+  .mx-media-result { border: 1px solid #bfd5f2; background: linear-gradient(180deg, #fff, #f4f8ff); border-radius: 16px; padding: 16px; margin-bottom: 16px; display: grid; gap: 14px; box-shadow: 0 20px 50px rgba(31,75,138,.10); }
+  .mx-media-result h2 { margin: 3px 0 0; color: #14243c; font-size: 20px; line-height: 1.35; letter-spacing: 0; }
+  .mx-media-result img, .mx-media-result video { width: min(100%, 760px); max-height: 640px; object-fit: contain; border-radius: 14px; border: 1px solid #d8e3f2; background: #fff; justify-self: start; }
+  .mx-media-result video { max-height: 720px; background: #07111f; }
+  .mx-media-result .media-download { width: fit-content; text-decoration: none; display: inline-flex; }
+  .mx-quota-note { border: 1px solid #f2c874; background: #fff8e8; color: #8a4d00; border-radius: 12px; padding: 12px; font-size: 13px; line-height: 1.6; font-weight: 800; }
+  .mx-fallback-prompt { margin: 0; white-space: pre-wrap; border: 1px solid #d8e3f2; background: #fbfdff; color: #243651; border-radius: 12px; padding: 12px; font: inherit; font-size: 12px; line-height: 1.7; max-height: 360px; overflow: auto; }
+  .mx-reference-hero { border: 1px solid #bfd5f2; background: radial-gradient(circle at 100% 0%, rgba(33,166,161,.14), transparent 34%), linear-gradient(180deg, #fff, #f3f8ff); border-radius: 18px; padding: 16px; margin-bottom: 16px; display: grid; gap: 14px; box-shadow: 0 20px 50px rgba(31,75,138,.10); }
+  .mx-reference-search label, .mx-reference-form label { display: grid; gap: 6px; color: #60738f; font-size: 12px; font-weight: 900; }
+  .mx-reference-search input, .mx-reference-form input, .mx-reference-form select, .mx-reference-form textarea { border: 1px solid #d8e3f2; background: #fff; color: #243651; border-radius: 10px; padding: 10px 11px; font: inherit; font-size: 13px; outline: 0; }
+  .mx-reference-search input:focus, .mx-reference-form input:focus, .mx-reference-form select:focus, .mx-reference-form textarea:focus { border-color: #8ab8f6; box-shadow: 0 0 0 3px rgba(47,115,216,.10); }
+  .mx-reference-form textarea { min-height: 78px; resize: vertical; }
+  .mx-query-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .mx-query-chips button { border: 1px solid #d7e5f6; background: #fff; color: #245ca8; border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 900; cursor: pointer; }
+  .mx-source-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+  .mx-source-card { border: 1px solid #d8e3f2; background: rgba(255,255,255,.92); border-radius: 14px; padding: 13px; display: grid; gap: 7px; text-decoration: none; color: #14243c; min-height: 160px; }
+  .mx-source-card:hover { border-color: #8ab8f6; transform: translateY(-1px); box-shadow: 0 14px 32px rgba(31,75,138,.10); }
+  .mx-source-card span { color: #0f8f83; font-size: 11px; font-weight: 900; }
+  .mx-source-card strong { color: #143355; font-size: 15px; }
+  .mx-source-card p { margin: 0; color: #60738f; font-size: 12px; line-height: 1.55; }
+  .mx-source-card em { margin-top: auto; color: #1f65c8; font-style: normal; font-size: 12px; font-weight: 900; }
+  .mx-reference-layout { display: grid; grid-template-columns: minmax(320px, .86fr) minmax(0, 1.14fr); gap: 14px; align-items: start; }
+  .mx-reference-form, .mx-pattern-panel, .mx-reference-item { border: 1px solid #d8e3f2; background: rgba(255,255,255,.96); border-radius: 14px; padding: 16px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
+  .mx-reference-form { display: grid; gap: 12px; }
+  .mx-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 2px; }
+  .mx-section-head h2, .mx-pattern-panel h2 { margin: 3px 0 0; color: #14243c; font-size: 19px; line-height: 1.35; letter-spacing: 0; }
+  .mx-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .mx-reference-side { display: grid; gap: 12px; }
+  .mx-pattern-panel { display: grid; gap: 10px; }
+  .mx-pattern-panel p { margin: 0; color: #60738f; font-size: 13px; line-height: 1.7; }
+  .mx-reference-meta, .mx-reference-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mx-reference-meta span, .mx-reference-tags span { border: 1px solid #d7e5f6; background: #f6faff; color: #446181; border-radius: 999px; padding: 5px 8px; font-size: 11px; font-weight: 800; }
+  .mx-reference-list { display: grid; gap: 10px; }
+  .mx-reference-item { display: grid; gap: 10px; padding: 13px; }
+  .mx-reference-item.active { border-color: #8ab8f6; background: #f3f8ff; }
+  .mx-reference-item > button { border: 0; background: transparent; text-align: left; padding: 0; cursor: pointer; display: grid; gap: 5px; color: #14243c; }
+  .mx-reference-item > button span { color: #60738f; font-size: 12px; font-weight: 900; }
+  .mx-reference-item > button strong { color: #143355; font-size: 15px; line-height: 1.4; }
+  .mx-reference-item > button p { margin: 0; color: #51647f; font-size: 13px; line-height: 1.55; }
+  .mx-secondary.as-link { text-decoration: none; display: inline-flex; align-items: center; }
   .mx-library-split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 14px; align-items: start; }
   .mx-filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 14px; border: 1px solid #d8e3f2; background: rgba(255,255,255,.88); border-radius: 14px; padding: 12px; box-shadow: 0 14px 36px rgba(31,75,138,.06); }
   .mx-filter-bar label { display: grid; gap: 6px; color: #60738f; font-size: 12px; font-weight: 900; min-width: 180px; }
@@ -1307,6 +1905,6 @@ const styles = `
   .mx-bars { height: 240px; display: flex; align-items: end; gap: 10px; padding: 16px; border-radius: 12px; background: linear-gradient(180deg, #f5f9ff, #eef5ff); }
   .mx-bars span { flex: 1; min-width: 10px; border-radius: 8px 8px 0 0; background: linear-gradient(180deg, #2f73d8, #21a6a1); }
   .mx-chart-card p { color: #71849f; font-size: 13px; margin: 12px 0 0; }
-  @media (max-width: 980px) { .mx-page { grid-template-columns: 1fr; } .mx-sidebar { border-right: 0; border-bottom: 1px solid #d8e3f2; } .mx-topbar { position: static; } .mx-generated-grid, .mx-approval-layout, .mx-library-split, .mx-inbox-layout, .mx-metrics-layout { grid-template-columns: 1fr; } }
-  @media (max-width: 720px) { .mx-topbar, .mx-page-head, .mx-row-card, .mx-pipe-card { align-items: stretch; flex-direction: column; } .mx-top-actions, .mx-card-actions, .mx-range { flex-wrap: wrap; } .mx-manual, .mx-prompt-box, .mx-metric-inputs { grid-template-columns: 1fr; } .mx-calendar { grid-template-columns: repeat(2, 1fr); } .mx-stepper { justify-content: flex-start; overflow-x: auto; gap: 14px; } }
+  @media (max-width: 980px) { .mx-page { grid-template-columns: 1fr; } .mx-sidebar { border-right: 0; border-bottom: 1px solid #d8e3f2; } .mx-topbar { position: static; } .mx-generated-grid, .mx-approval-layout, .mx-library-split, .mx-inbox-layout, .mx-metrics-layout, .mx-visual-system, .mx-reference-layout { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { .mx-topbar, .mx-page-head, .mx-row-card, .mx-pipe-card { align-items: stretch; flex-direction: column; } .mx-top-actions, .mx-card-actions, .mx-range { flex-wrap: wrap; } .mx-manual, .mx-prompt-box, .mx-metric-inputs, .mx-form-grid { grid-template-columns: 1fr; } .mx-calendar { grid-template-columns: repeat(2, 1fr); } .mx-stepper { justify-content: flex-start; overflow-x: auto; gap: 14px; } }
 `
