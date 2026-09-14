@@ -10,10 +10,13 @@
       "maxDuration": 30
     },
     "api/marketing-video.js": {
-      "maxDuration": 60
+      "maxDuration": 30
     },
     "api/marketing-references.js": {
       "maxDuration": 30
+    },
+    "api/marketing-knowledge-save.js": {
+      "maxDuration": 10
     }
   },
   "rewrites": [

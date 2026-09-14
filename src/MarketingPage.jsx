@@ -329,6 +329,7 @@ function loadWorkspace() {
       savedIdeas: Array.isArray(stored.savedIdeas) ? stored.savedIdeas : [],
       radarIdeas: Array.isArray(stored.radarIdeas) ? stored.radarIdeas : [],
       references: Array.isArray(stored.references) ? stored.references : [],
+      knowledgeNotes: Array.isArray(stored.knowledgeNotes) ? stored.knowledgeNotes : [],
       referenceForm: { ...defaultReferenceForm, ...(stored.referenceForm || {}) },
       referenceQuery: stored.referenceQuery || referenceStarterQueries[0],
       posterCopy: { ...defaultPosterCopy, ...(stored.posterCopy || {}) },
@@ -345,6 +346,7 @@ function loadWorkspace() {
       savedIdeas: [],
       radarIdeas: [],
       references: [],
+      knowledgeNotes: [],
       referenceForm: defaultReferenceForm,
       referenceQuery: referenceStarterQueries[0],
       posterCopy: defaultPosterCopy,
@@ -369,6 +371,7 @@ function normalizeWorkspace(workspace = {}) {
     savedIdeas: Array.isArray(workspace.savedIdeas) ? workspace.savedIdeas : [],
     radarIdeas: Array.isArray(workspace.radarIdeas) ? workspace.radarIdeas : [],
     references: Array.isArray(workspace.references) ? workspace.references : [],
+    knowledgeNotes: Array.isArray(workspace.knowledgeNotes) ? workspace.knowledgeNotes : [],
     referenceForm: { ...defaultReferenceForm, ...(workspace.referenceForm || {}) },
     referenceQuery: workspace.referenceQuery || referenceStarterQueries[0],
     posterCopy: { ...defaultPosterCopy, ...(workspace.posterCopy || {}) },
@@ -386,6 +389,7 @@ function hasWorkspaceContent(workspace) {
     workspace?.savedIdeas?.length ||
     workspace?.radarIdeas?.length ||
     workspace?.references?.length ||
+    workspace?.knowledgeNotes?.length ||
     workspace?.mediaAssets?.length ||
     workspace?.metrics?.length ||
     workspace?.hiddenPostIds?.length ||
@@ -442,6 +446,198 @@ function normalizeTags(value = '') {
     .map((tag) => tag.trim())
     .filter(Boolean)
     .slice(0, 8)
+}
+
+function safeSlug(value = 'assetx-knowledge') {
+  const slug = String(value)
+    .toLowerCase()
+    .replace(/https?:\/\//g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 70)
+  return slug || 'assetx-knowledge'
+}
+
+function mdEscape(value = '') {
+  return String(value || '').replace(/\r\n/g, '\n').trim()
+}
+
+function yamlString(value = '') {
+  return `"${String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+function uniqueByKey(items = [], getKey) {
+  const seen = new Set()
+  return items.filter((item) => {
+    const key = getKey(item)
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function referenceToKnowledgeNote(reference, context = {}) {
+  const source = sourceFromId(reference.sourceId)
+  const tags = Array.isArray(reference.tags) ? reference.tags : normalizeTags(reference.tags || '')
+  const title = mdEscape(reference.title || 'Untitled reference')
+  const createdAt = reference.createdAt || new Date().toISOString()
+  return {
+    id: `kb-ref-${reference.id || Date.now()}`,
+    kind: 'creative-reference',
+    title,
+    sourceName: source.name,
+    sourceUrl: reference.url || '',
+    query: context.query || '',
+    audience: reference.audience || '',
+    channel: reference.channel || '',
+    risk: reference.risk || 'medium',
+    summary: reference.hook || reference.contentAngle || reference.visualPattern || '',
+    keyFindings: [
+      reference.hook ? `Hook: ${reference.hook}` : '',
+      reference.visualPattern ? `Visual pattern: ${reference.visualPattern}` : '',
+      reference.contentAngle ? `AssetX angle: ${reference.contentAngle}` : '',
+    ].filter(Boolean),
+    implications: [
+      'ใช้เป็นแรงบันดาลใจเพื่อถอด pattern เท่านั้น ไม่คัดลอกภาพ ข้อความ โลโก้ หรือ claims ของต้นทาง',
+      'นำ insight ไปทำคอนเทนต์ AssetX ที่ให้ความรู้ ชวนตรวจเอกสาร และไม่สัญญาผลลัพธ์เกินจริง',
+    ],
+    contentIdeas: [
+      reference.contentAngle || reference.hook || 'แปลง reference นี้เป็นโพสต์ให้ความรู้ของ AssetX',
+    ],
+    caveats: [
+      'ห้ามเก็บข้อมูลลูกค้าจริง เลขโฉนด เบอร์โทร ที่อยู่ หรือข้อมูลส่วนบุคคล',
+      reference.risk === 'high' ? 'ความเสี่ยงสูง: ห้ามทำภาพหรือข้อความใกล้เคียงต้นฉบับ' : 'ตรวจความเสี่ยงด้านกฎหมาย/โฆษณาก่อนเผยแพร่',
+    ],
+    tags: ['assetx', 'marketing', 'reference', ...tags],
+    createdAt,
+  }
+}
+
+function ideaToKnowledgeNote(idea, context = {}) {
+  const title = mdEscape(idea.title || 'Untitled market radar')
+  const createdAt = idea.createdAt || new Date().toISOString()
+  return {
+    id: `kb-radar-${idea.id || Date.now()}`,
+    kind: 'market-radar',
+    title,
+    sourceName: idea.source || 'Tavily Trend Radar',
+    sourceUrl: idea.url || '',
+    query: context.query || '',
+    audience: idea.audience || '',
+    channel: idea.channel || '',
+    risk: 'medium',
+    summary: idea.angle || '',
+    keyFindings: [
+      idea.angle || '',
+      idea.score ? `Priority score: ${idea.score}` : '',
+    ].filter(Boolean),
+    implications: [
+      'ใช้เป็นหัวข้อสำรวจตลาดหรือคอนเทนต์ให้ความรู้สำหรับ AssetX',
+      'ตรวจแหล่งข่าวจริงก่อนใช้เป็นข้อเท็จจริงในโพสต์หรือคำแนะนำลูกค้า',
+    ],
+    contentIdeas: [
+      `ทำโพสต์อธิบาย: ${title}`,
+      `ทำ short video hook จากประเด็นนี้สำหรับ ${idea.audience || 'กลุ่มเป้าหมาย AssetX'}`,
+    ],
+    caveats: [
+      'ข้อมูลตลาดจากเว็บเป็น preliminary research ต้องตรวจซ้ำกับแหล่งทางการหรือผู้เชี่ยวชาญก่อนใช้อ้างอิง',
+      'หลีกเลี่ยงข้อความรับประกันอนุมัติ วงเงิน ราคาขาย หรือผลตอบแทน',
+    ],
+    tags: ['assetx', 'marketing', 'market-radar', 'tavily'],
+    createdAt,
+  }
+}
+
+function formatKnowledgeNoteMarkdown(note) {
+  const tags = (note.tags || []).map((tag) => String(tag).replace(/^#/, '').trim()).filter(Boolean)
+  return [
+    '---',
+    `title: ${yamlString(note.title)}`,
+    `created: ${yamlString(note.createdAt)}`,
+    `type: ${yamlString(note.kind)}`,
+    `source: ${yamlString(note.sourceName)}`,
+    note.sourceUrl ? `url: ${yamlString(note.sourceUrl)}` : '',
+    note.query ? `query: ${yamlString(note.query)}` : '',
+    note.audience ? `audience: ${yamlString(note.audience)}` : '',
+    note.channel ? `channel: ${yamlString(note.channel)}` : '',
+    `risk: ${yamlString(note.risk || 'medium')}`,
+    `tags: [${tags.map(yamlString).join(', ')}]`,
+    '---',
+    '',
+    `# ${note.title}`,
+    '',
+    '## Executive Summary',
+    mdEscape(note.summary) || '-',
+    '',
+    '## Key Findings',
+    ...(note.keyFindings || ['-']).map((item) => `- ${mdEscape(item) || '-'}`),
+    '',
+    '## Business Implications For AssetX Estate',
+    ...(note.implications || ['-']).map((item) => `- ${mdEscape(item) || '-'}`),
+    '',
+    '## Marketing / Content Ideas',
+    ...(note.contentIdeas || ['-']).map((item) => `- ${mdEscape(item) || '-'}`),
+    '',
+    '## Legal / Compliance Caveats',
+    ...(note.caveats || ['-']).map((item) => `- ${mdEscape(item) || '-'}`),
+    '',
+    '## Sources',
+    note.sourceUrl ? `- [${note.sourceName || 'Source'}](${note.sourceUrl})` : `- ${note.sourceName || 'Internal note'}`,
+    '',
+    '## Follow-up Questions',
+    '- ข้อมูลนี้ควรต่อยอดเป็นโพสต์ให้ความรู้ โพสต์หา lead หรือสคริปต์วิดีโอแบบใด',
+    '- มีแหล่งข้อมูลทางการหรือแหล่งข่าวอื่นที่ควรตรวจซ้ำหรือไม่',
+    '- Hermes ควรใช้ insight นี้กับกลุ่มเป้าหมายใดก่อน',
+    '',
+  ].filter((line) => line !== '').join('\n')
+}
+
+function buildObsidianExport(notes = [], context = {}) {
+  const exportDate = new Date().toISOString()
+  const title = `AssetX Marketing Knowledge Export - ${exportDate.slice(0, 10)}`
+  const uniqueNotes = uniqueByKey(notes, (note) => note.sourceUrl || `${note.kind}:${note.title}`)
+  return [
+    '---',
+    `title: ${yamlString(title)}`,
+    `created: ${yamlString(exportDate)}`,
+    'type: "assetx-marketing-knowledge-export"',
+    'tags: ["assetx", "marketing", "knowledge-base", "hermes", "obsidian"]',
+    context.query ? `query: ${yamlString(context.query)}` : '',
+    '---',
+    '',
+    `# ${title}`,
+    '',
+    'Obsidian-ready knowledge base export จาก AssetX Marketing OS',
+    '',
+    '## Hermes Usage',
+    '- ใช้โน้ตนี้เป็น market/context memory สำหรับ Hermes',
+    '- ให้ Hermes อ้างอิงเฉพาะ insight ที่มี source และหลีกเลี่ยงการสรุปเป็นข้อเท็จจริงถ้ายังไม่ได้ตรวจซ้ำ',
+    '- ห้ามใช้ข้อมูลนี้แทนคำปรึกษากฎหมายหรือการประเมินทรัพย์เฉพาะเคส',
+    '',
+    '## Index',
+    ...uniqueNotes.map((note, index) => `${index + 1}. [[${safeSlug(note.title)}|${note.title}]] - ${note.kind}`),
+    '',
+    '---',
+    '',
+    ...uniqueNotes.flatMap((note) => [
+      `<!-- obsidian-note: ${safeSlug(note.title)} -->`,
+      formatKnowledgeNoteMarkdown(note),
+      '---',
+      '',
+    ]),
+  ].filter((line) => line !== '').join('\n')
+}
+
+function downloadMarkdown(filename, content) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 
 function buildReferenceBrief(reference) {
@@ -726,6 +922,7 @@ export default function MarketingPage({ onBack }) {
     ready: approvedDrafts.length,
     saved: workspace.savedIdeas.length,
     references: workspace.references?.length || 0,
+    knowledge: workspace.knowledgeNotes?.length || 0,
     library: allDrafts.length + workspace.savedIdeas.length,
   }
   const selectedReference = (workspace.references || []).find((item) => item.id === selectedReferenceId) || (workspace.references || [])[0]
@@ -933,9 +1130,13 @@ export default function MarketingPage({ onBack }) {
       const existingKeys = new Set((workspace.references || []).map((item) => item.url || item.title))
       const fresh = incoming.filter((item) => !existingKeys.has(item.url || item.title))
       const nextReferences = [...fresh, ...(workspace.references || [])]
-      save({ ...workspace, references: nextReferences })
+      const nextKnowledgeNotes = uniqueByKey([
+        ...fresh.map((item) => referenceToKnowledgeNote(item, { query: workspace.referenceQuery || referenceStarterQueries[0] })),
+        ...(workspace.knowledgeNotes || []),
+      ], (note) => note.sourceUrl || `${note.kind}:${note.title}`)
+      save({ ...workspace, references: nextReferences, knowledgeNotes: nextKnowledgeNotes })
       if (fresh[0]) setSelectedReferenceId(fresh[0].id)
-      notify(fresh.length ? `ดึง reference ใหม่แล้ว ${fresh.length} รายการ` : 'รายการที่พบอยู่ในคลังแล้ว')
+      notify(fresh.length ? `ดึง reference ใหม่แล้ว ${fresh.length} รายการ และเก็บเป็น knowledge note แล้ว` : 'รายการที่พบอยู่ในคลังแล้ว')
     } catch (err) {
       notify(err.message || 'ดึง Creative Radar ไม่สำเร็จ', 'error')
     } finally {
@@ -955,8 +1156,12 @@ export default function MarketingPage({ onBack }) {
       if (!res.ok || !data.success) throw new Error(data.error || 'ดึง Trend Radar ไม่สำเร็จ')
       const nextIdeas = Array.isArray(data.ideas) ? data.ideas : []
       if (!nextIdeas.length) throw new Error('Tavily ยังไม่พบประเด็นที่นำมาใช้ได้')
-      save({ ...workspace, radarIdeas: nextIdeas })
-      notify(`ดึง Trend Radar แล้ว ${nextIdeas.length} หัวข้อ`)
+      const nextKnowledgeNotes = uniqueByKey([
+        ...nextIdeas.map((item) => ideaToKnowledgeNote(item, { query: data.query || '' })),
+        ...(workspace.knowledgeNotes || []),
+      ], (note) => note.sourceUrl || `${note.kind}:${note.title}`)
+      save({ ...workspace, radarIdeas: nextIdeas, knowledgeNotes: nextKnowledgeNotes })
+      notify(`ดึง Trend Radar แล้ว ${nextIdeas.length} หัวข้อ และเก็บเป็น knowledge note แล้ว`)
       setShowAllIdeas(true)
     } catch (err) {
       notify(err.message || 'ดึง Trend Radar ไม่สำเร็จ', 'error')
@@ -1121,6 +1326,40 @@ export default function MarketingPage({ onBack }) {
 
   const copyText = (text) => navigator.clipboard?.writeText(text || '').then(() => notify('คัดลอกแล้ว')).catch(() => notify('คัดลอกไม่สำเร็จ', 'error'))
 
+  const exportKnowledgeBase = () => {
+    const notes = workspace.knowledgeNotes || []
+    if (!notes.length) {
+      notify('ยังไม่มี knowledge note ให้ส่งออก กดสำรวจด้วย Tavily ก่อน', 'error')
+      return
+    }
+    const content = buildObsidianExport(notes, { query: workspace.referenceQuery || '' })
+    const filename = `${new Date().toISOString().slice(0, 10)}-assetx-marketing-knowledge.md`
+    downloadMarkdown(filename, content)
+    notify('ส่งออก Markdown สำหรับ Obsidian แล้ว')
+  }
+
+  const saveKnowledgeBaseToObsidian = async () => {
+    const notes = workspace.knowledgeNotes || []
+    if (!notes.length) {
+      notify('ยังไม่มี knowledge note ให้บันทึก กดสำรวจด้วย Tavily ก่อน', 'error')
+      return
+    }
+    try {
+      const filename = `${new Date().toISOString().slice(0, 10)}-assetx-marketing-knowledge.md`
+      const content = buildObsidianExport(notes, { query: workspace.referenceQuery || '' })
+      const res = await fetch('/api/marketing-knowledge-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, content }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success) throw new Error(data.error || 'บันทึกเข้า Obsidian ไม่สำเร็จ')
+      notify(`บันทึกเข้า Obsidian แล้ว: ${data.filename}`)
+    } catch (err) {
+      notify(err.message || 'บันทึกเข้า Obsidian ไม่สำเร็จ', 'error')
+    }
+  }
+
   return (
     <div className="mx-page">
       <style>{styles}</style>
@@ -1214,6 +1453,7 @@ export default function MarketingPage({ onBack }) {
             starterQueries={referenceStarterQueries}
             form={{ ...defaultReferenceForm, ...(workspace.referenceForm || {}) }}
             references={workspace.references || []}
+            knowledgeCount={dashboardCounts.knowledge}
             selectedReference={selectedReference}
             loading={referenceLoading}
             onQueryChange={(referenceQuery) => save({ ...workspace, referenceQuery })}
@@ -1225,6 +1465,8 @@ export default function MarketingPage({ onBack }) {
             onCopy={(reference) => copyText(buildReferenceBrief(reference))}
             onCreate={createFromReference}
             onSaveIdea={saveReferenceAsIdea}
+            onExportKnowledge={exportKnowledgeBase}
+            onSaveKnowledge={saveKnowledgeBaseToObsidian}
           />
         )}
         {view === 'gallery' && (
@@ -1292,6 +1534,7 @@ function ReferenceRadarView({
   starterQueries,
   form,
   references,
+  knowledgeCount,
   selectedReference,
   loading,
   onQueryChange,
@@ -1303,6 +1546,8 @@ function ReferenceRadarView({
   onCopy,
   onCreate,
   onSaveIdea,
+  onExportKnowledge,
+  onSaveKnowledge,
 }) {
   const activeSource = sourceFromId(form.sourceId)
   return (
@@ -1314,6 +1559,12 @@ function ReferenceRadarView({
           <p>ใช้แหล่งจริงเพื่อดู pattern ของโฆษณา/ภาพ/วิดีโอ แล้วบันทึกเฉพาะ insight ที่นำมาสร้างงานใหม่ได้อย่างปลอดภัย</p>
         </div>
         <div className="mx-page-actions">
+          <button className="mx-secondary" onClick={onSaveKnowledge} disabled={!knowledgeCount}>
+            บันทึกเข้า Obsidian{knowledgeCount ? ` (${knowledgeCount})` : ''}
+          </button>
+          <button className="mx-secondary" onClick={onExportKnowledge} disabled={!knowledgeCount}>
+            ส่งออก Obsidian MD{knowledgeCount ? ` (${knowledgeCount})` : ''}
+          </button>
           <button className="mx-secondary" onClick={onLoadRadar} disabled={loading}>
             {loading ? 'กำลังสำรวจ...' : 'สำรวจอัตโนมัติด้วย Tavily'}
           </button>
