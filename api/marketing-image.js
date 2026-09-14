@@ -1,6 +1,6 @@
 import { verifySession } from './_auth.js'
 
-const GEMINI_INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions'
+const OPENAI_IMAGES_URL = 'https://api.openai.com/v1/images/generations'
 const ASSETX_PALETTE = 'AssetX logo-inspired palette: midnight navy #08213f, deep indigo/violet #4b2a82, cyan/teal #42c7d8, soft sky blue #70d7e8, coral-pink-to-warm-orange #f26b4f, and clean white. Use cyan/teal and navy as the primary poster colors, violet as the depth/shadow color, and coral-pink/orange only as a small warm accent. CTA bands and badges should be navy, teal, white, or cyan-glow style. Avoid metallic gold CTA bars, dominant red map pins, green loan-ad themes, and generic high-saturation finance-ad colors.'
 
 function cleanPrompt(value = '') {
@@ -34,49 +34,31 @@ function buildFinalPrompt(prompt, styleGuidance) {
   return `${prompt}\n\n${styleGuidance}`
 }
 
-function toFriendlyGeminiError(message = '') {
+function normalizeOpenAIImageModel(value = '') {
+  const model = cleanPrompt(value)
+  if (!model || model === 'gpt-image-2.5') return 'gpt-image-2.5-flare'
+  return model
+}
+
+function toFriendlyOpenAIError(message = '', status = 500) {
   const text = String(message || '')
-  const quota = /quota|rate limit|RESOURCE_EXHAUSTED|free_tier|limit:/i.test(text)
-  const retry = text.match(/retry in\s+([0-9.]+)s/i)?.[1]
+  const quota = /quota|rate limit|billing|insufficient_quota|429/i.test(text) || status === 429
+  const auth = /api key|authentication|unauthorized|401/i.test(text) || status === 401
   if (quota) {
     return {
       status: 429,
-      code: 'GEMINI_QUOTA_EXCEEDED',
-      error: retry
-        ? `โควต้า Gemini สำหรับสร้างรูปเต็มชั่วคราว ลองใหม่อีกประมาณ ${Math.ceil(Number(retry))} วินาที หรือเปิด billing/เปลี่ยนโมเดลใน Environment Variables`
-        : 'โควต้า Gemini สำหรับสร้างรูปไม่พร้อมใช้งาน กรุณาตรวจ billing/rate limit หรือเปลี่ยนโมเดลใน Environment Variables',
+      code: 'OPENAI_IMAGE_QUOTA_EXCEEDED',
+      error: 'โควต้า OpenAI สำหรับสร้างรูปยังไม่พร้อมใช้งาน กรุณาตรวจ billing/rate limit หรือเปลี่ยนโมเดลใน Environment Variables',
     }
   }
-  return { status: 500, code: 'GEMINI_IMAGE_FAILED', error: text || 'สร้างรูปไม่สำเร็จ' }
-}
-
-function findGeneratedMedia(node, targetType) {
-  if (!node || typeof node !== 'object') return null
-  if (node.type === targetType && node.data) {
+  if (auth) {
     return {
-      data: node.data,
-      mimeType: node.mime_type || node.mimeType || (targetType === 'image' ? 'image/jpeg' : 'video/mp4'),
+      status: 401,
+      code: 'OPENAI_IMAGE_AUTH_FAILED',
+      error: 'OpenAI API key ไม่พร้อมใช้งาน กรุณาตรวจค่า OPENAI_API_KEY บน server',
     }
   }
-  const convenience = targetType === 'image' ? node.output_image || node.outputImage : node.output_video || node.outputVideo
-  if (convenience?.data) {
-    return {
-      data: convenience.data,
-      mimeType: convenience.mime_type || convenience.mimeType || (targetType === 'image' ? 'image/jpeg' : 'video/mp4'),
-    }
-  }
-  for (const value of Object.values(node)) {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const found = findGeneratedMedia(item, targetType)
-        if (found) return found
-      }
-    } else if (value && typeof value === 'object') {
-      const found = findGeneratedMedia(value, targetType)
-      if (found) return found
-    }
-  }
-  return null
+  return { status: status >= 400 && status < 600 ? status : 500, code: 'OPENAI_IMAGE_FAILED', error: text || 'สร้างรูปไม่สำเร็จ' }
 }
 
 export default async function handler(req, res) {
@@ -87,60 +69,73 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
   if (!verifySession(req)) return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' })
 
+  let finalPrompt = ''
   try {
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) throw new Error('ยังไม่ได้ตั้งค่า GEMINI_API_KEY บน server')
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) throw new Error('ยังไม่ได้ตั้งค่า OPENAI_API_KEY บน server')
 
     const prompt = cleanPrompt(req.body?.prompt)
     if (!prompt) throw new Error('กรุณาส่งบรีฟภาพก่อนสร้างรูป')
 
-    const aspectRatio = req.body?.aspectRatio || '1:1'
-    const imageSize = req.body?.imageSize || '1K'
-    const model = process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-lite-image'
+    const model = normalizeOpenAIImageModel(process.env.OPENAI_IMAGE_MODEL)
     const styleGuidance = buildStyleGuidance(req.body?.styleProfile || {})
-    const finalPrompt = buildFinalPrompt(prompt, styleGuidance)
+    finalPrompt = buildFinalPrompt(prompt, styleGuidance)
+    const size = process.env.OPENAI_IMAGE_SIZE || 'auto'
+    const quality = process.env.OPENAI_IMAGE_QUALITY || 'high'
+    const outputFormat = process.env.OPENAI_IMAGE_OUTPUT_FORMAT || 'jpeg'
 
-    const response = await fetch(`${GEMINI_INTERACTIONS_URL}?key=${encodeURIComponent(apiKey)}`, {
+    const response = await fetch(OPENAI_IMAGES_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         model,
-        input: [
-          {
-            type: 'text',
-            text: finalPrompt,
-          },
-        ],
-        response_format: {
-          type: 'image',
-          mime_type: 'image/jpeg',
-          aspect_ratio: aspectRatio,
-          image_size: imageSize,
-        },
+        prompt: finalPrompt,
+        n: 1,
+        size,
+        quality,
+        output_format: outputFormat,
+        ...(outputFormat === 'jpeg' || outputFormat === 'webp' ? { output_compression: 90 } : {}),
       }),
     })
 
     const data = await response.json().catch(() => ({}))
     if (!response.ok) {
-      throw new Error(data?.error?.message || data?.error || data?.message || `Gemini image API ${response.status}`)
+      const message = data?.error?.message || data?.error || data?.message || `OpenAI image API ${response.status}`
+      const friendly = toFriendlyOpenAIError(message, response.status)
+      return res.status(friendly.status).json({
+        success: false,
+        code: friendly.code,
+        error: friendly.error,
+        fallbackPrompt: finalPrompt,
+      })
     }
 
-    const media = findGeneratedMedia(data, 'image')
-    if (!media?.data) throw new Error('Gemini ไม่ได้ส่งรูปกลับมา')
+    const image = data?.data?.[0]
+    const base64 = image?.b64_json
+    if (!base64) throw new Error('OpenAI ไม่ได้ส่งรูปกลับมา')
+
+    const mimeType = outputFormat === 'png'
+      ? 'image/png'
+      : outputFormat === 'webp'
+        ? 'image/webp'
+        : 'image/jpeg'
 
     return res.status(200).json({
       success: true,
       model,
-      mimeType: media.mimeType,
-      dataUrl: `data:${media.mimeType};base64,${media.data}`,
+      mimeType,
+      dataUrl: `data:${mimeType};base64,${base64}`,
     })
   } catch (err) {
-    const friendly = toFriendlyGeminiError(err.message)
+    const friendly = toFriendlyOpenAIError(err.message)
     return res.status(friendly.status).json({
       success: false,
       code: friendly.code,
       error: friendly.error,
-      fallbackPrompt: req.body?.prompt ? buildFinalPrompt(cleanPrompt(req.body.prompt), buildStyleGuidance(req.body?.styleProfile || {})) : '',
+      fallbackPrompt: finalPrompt || (req.body?.prompt ? buildFinalPrompt(cleanPrompt(req.body.prompt), buildStyleGuidance(req.body?.styleProfile || {})) : ''),
     })
   }
 }

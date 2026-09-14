@@ -9,6 +9,10 @@
   },
   "rewrites": [
     { "source": "/api/chat", "destination": "/api/chat" },
+    { "source": "/api/marketing-image", "destination": "/api/marketing-image" },
+    { "source": "/api/marketing-video", "destination": "/api/marketing-video" },
+    { "source": "/api/marketing-references", "destination": "/api/marketing-references" },
+    { "source": "/api/marketing-knowledge-save", "destination": "/api/marketing-knowledge-save" },
     { "source": "/api/telegram-webhook", "destination": "/api/telegram-webhook" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],

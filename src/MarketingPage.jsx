@@ -428,6 +428,13 @@ function buildChannelPreview(post, channel) {
   return `${caption}\n\n#AssetXEstate #ขายฝาก #จำนอง #ประเมินทรัพย์`
 }
 
+function findMediaForPost(mediaAssets = [], post = {}) {
+  if (!post) return null
+  return mediaAssets.find((asset) => asset.id === post.mediaAssetId)
+    || mediaAssets.find((asset) => String(asset.postId || asset.briefId) === String(post.id))
+    || null
+}
+
 function sourceFromId(id) {
   return referenceSources.find((source) => source.id === id) || referenceSources[0]
 }
@@ -1316,6 +1323,33 @@ export default function MarketingPage({ onBack }) {
         mimeType: data.mimeType,
         model: data.model,
       })
+      if (type === 'image') {
+        const generatedImage = await loadImage(data.dataUrl)
+        const asset = {
+          id: `asset-${Date.now()}`,
+          briefId: String(brief.id),
+          postId: brief.id !== 'generated' ? String(brief.id) : null,
+          title: brief.title,
+          source: data.model || 'OpenAI generated artwork',
+          dataUrl: data.dataUrl,
+          mimeType: data.mimeType,
+          width: generatedImage.width,
+          height: generatedImage.height,
+          size: null,
+          originalName: 'generated-image.jpg',
+          createdAt: new Date().toISOString(),
+        }
+        const posts = (workspace.posts || []).map((post) => String(post.id) === String(brief.id) ? { ...post, mediaAssetId: asset.id } : post)
+        const generated = brief.id === 'generated' && workspace.generated
+          ? { ...workspace.generated, mediaAssetId: asset.id }
+          : workspace.generated
+        save({
+          ...workspace,
+          generated,
+          posts,
+          mediaAssets: [asset, ...(workspace.mediaAssets || [])],
+        })
+      }
       notify(type === 'video' ? 'สร้างวิดีโอแล้ว' : 'สร้างรูปแล้ว')
     } catch (err) {
       notify(err.message || 'สร้างสื่อไม่สำเร็จ', 'error')
@@ -1445,7 +1479,7 @@ export default function MarketingPage({ onBack }) {
         {view === 'approvals' && (
           <ApprovalsView drafts={pendingDrafts} selected={selectedDraft} mediaAssets={workspace.mediaAssets || []} posterCopy={workspace.posterCopy || defaultPosterCopy} onSelect={setSelectedId} onUpdate={updatePost} onCopy={copyText} />
         )}
-        {view === 'queue' && <QueueView posts={approvedDrafts} onCreate={() => setView('ideas')} onUpdate={updatePost} />}
+        {view === 'queue' && <QueueView posts={approvedDrafts} mediaAssets={workspace.mediaAssets || []} onCreate={() => setView('ideas')} onUpdate={updatePost} />}
         {view === 'references' && (
           <ReferenceRadarView
             query={workspace.referenceQuery || referenceStarterQueries[0]}
@@ -1901,7 +1935,7 @@ function ApprovalsView({ drafts, selected, mediaAssets = [], posterCopy, onSelec
   )
 }
 
-function QueueView({ posts, onCreate, onUpdate }) {
+function QueueView({ posts, mediaAssets = [], onCreate, onUpdate }) {
   return (
     <section className="mx-content">
       <div className="mx-page-head">
@@ -1916,6 +1950,7 @@ function QueueView({ posts, onCreate, onUpdate }) {
         {posts.length === 0 && <div className="mx-empty">ไม่มีอะไรรอโพสต์ อนุมัติคอนเทนต์จากหน้า รออนุมัติ แล้วจะมาโผล่ที่นี่</div>}
         {posts.map((post) => (
           <article className="mx-row-card" key={post.id}>
+            {findMediaForPost(mediaAssets, post) && <img className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
             <div><strong>{post.title}</strong><span>{post.channel} · {post.source || 'AssetX Studio'}{post.scheduledAt ? ` · จอง ${post.scheduledAt}` : ''}</span></div>
             <div className="mx-row-actions">
               <input
@@ -1976,7 +2011,7 @@ function GalleryView({
         <div>
           <div className="mx-kicker">ห้องภาพ</div>
           <h1>สร้างภาพและวิดีโอจากบรีฟคอนเทนต์</h1>
-          <p>ใช้ Gemini ฝั่ง server เพื่อสร้างรูป/วิดีโอจริง โดยไม่ส่ง API key ไปฝั่งเว็บ และยังห้ามใส่ข้อมูลส่วนตัวในภาพ</p>
+          <p>ใช้ OpenAI สำหรับสร้างรูป และ Gemini สำหรับวิดีโอฝั่ง server โดยไม่ส่ง API key ไปฝั่งเว็บ และยังห้ามใส่ข้อมูลส่วนตัวในภาพ</p>
         </div>
       </div>
       <div className="mx-visual-system">
@@ -2083,7 +2118,7 @@ function GalleryView({
           {mediaResult.type === 'prompt' ? (
             <>
               <div className="mx-quota-note">
-                โควต้า Gemini ยังไม่พร้อมสร้างไฟล์จริง ระบบเตรียม prompt แบบครบกฎแบรนด์ไว้ให้แล้ว สามารถคัดลอกไปใช้กับเครื่องมืออื่น เช่น Firefly, Midjourney, Runway หรือกลับมาลองใหม่หลัง quota พร้อม
+                โควต้า OpenAI ยังไม่พร้อมสร้างไฟล์จริง ระบบเตรียม prompt แบบครบกฎแบรนด์ไว้ให้แล้ว สามารถคัดลอกไปใช้กับเครื่องมืออื่น เช่น Firefly, Midjourney, Runway หรือกลับมาลองใหม่หลัง quota พร้อม
               </div>
               <pre className="mx-fallback-prompt">{mediaResult.prompt}</pre>
               <button className="mx-primary media-download" onClick={() => onCopy(mediaResult.prompt)}>คัดลอก Prompt</button>
@@ -2205,8 +2240,7 @@ function LibraryView({
     })
   const previewPost = filteredPosts[0] || posts[0]
   const previewText = buildChannelPreview(previewPost, previewChannel)
-  const mediaForPost = (post) => mediaAssets.find((asset) => asset.id === post.mediaAssetId)
-    || mediaAssets.find((asset) => String(asset.postId || asset.briefId) === String(post.id))
+  const previewMedia = findMediaForPost(mediaAssets, previewPost)
 
   return (
     <section className="mx-content">
@@ -2259,7 +2293,7 @@ function LibraryView({
           {filteredPosts.length === 0 && <div className="mx-empty">ไม่พบโพสต์ในตัวกรองนี้ ลองเปลี่ยนสถานะด้านบน</div>}
           {filteredPosts.map((post) => (
             <article className={`mx-row-card ${post.status === 'archived' ? 'muted' : ''}`} key={post.id}>
-              {mediaForPost(post) && <img className="mx-row-thumb" src={mediaForPost(post).dataUrl} alt={post.title} />}
+              {findMediaForPost(mediaAssets, post) && <img className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
               <div>
                 <strong>{post.title}</strong>
                 <span>{post.channel} · {statusLabels[post.status] || post.status} · {post.source || 'AssetX Studio'}</span>
@@ -2297,6 +2331,7 @@ function LibraryView({
               <span>{previewChannel === 'facebook' ? 'Facebook' : previewChannel === 'line' ? 'LINE OA' : 'TikTok / Reels'}</span>
             </div>
             <div className={`mx-preview-box ${previewChannel}`}>
+              {previewMedia && <img className="mx-channel-image" src={previewMedia.dataUrl} alt={previewPost.title} />}
               <strong>{previewPost?.title || 'ยังไม่มีโพสต์'}</strong>
               <pre>{previewText}</pre>
             </div>
@@ -2682,6 +2717,7 @@ const styles = `
   .mx-preview-box.facebook { border-color: #c8ddff; background: linear-gradient(180deg, #f8fbff, #edf5ff); }
   .mx-preview-box.line { border-color: #bee8d2; background: linear-gradient(180deg, #fbfffc, #eefbf4); }
   .mx-preview-box.tiktok { border-color: #d7dbea; background: linear-gradient(180deg, #ffffff, #f6f7fb); }
+  .mx-channel-image { width: 100%; max-height: 420px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; border: 1px solid #d8e3f2; background: #fff; }
   .mx-preview-box strong { color: #14243c; font-size: 16px; line-height: 1.45; }
   .mx-preview-box pre { margin: 0; white-space: pre-wrap; font: inherit; color: #30445f; font-size: 13px; line-height: 1.7; }
   .mx-section-title { margin: 0 0 10px; color: #143355; font-size: 17px; letter-spacing: 0; }
