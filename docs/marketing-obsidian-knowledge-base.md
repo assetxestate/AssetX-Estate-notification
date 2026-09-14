@@ -25,6 +25,16 @@ OBSIDIAN_MARKETING_KB_DIR=J:\ส่วนตัว\เลขาส่วนต�
 
 ค่า path นี้เป็นค่าเฉพาะเครื่อง จึงไม่ควร commit เข้า git และควรเก็บใน `.env.local` เท่านั้น
 
+## Local API Development
+
+เมื่อต้องทดสอบฟีเจอร์ที่เรียก `/api/*` เช่น สร้างรูปด้วย OpenAI, สำรวจ Tavily, หรือบันทึกเข้า Obsidian ให้รันแบบ full-stack:
+
+```bash
+npm run dev:full
+```
+
+ถ้ารันเฉพาะ `npm run dev` จะได้ Vite frontend อย่างเดียว และปุ่มที่ต้องใช้ Vercel API routes อาจตอบ 404 ได้
+
 ## Note Structure
 
 ไฟล์ที่ส่งออกมี:

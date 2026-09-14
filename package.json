@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:full": "vercel dev --listen 127.0.0.1:5173",
     "build": "vite build",
     "preview": "vite preview",
     "migrate": "node migrate.js"
