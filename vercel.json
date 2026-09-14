@@ -11,6 +11,9 @@
     },
     "api/marketing-video.js": {
       "maxDuration": 60
+    },
+    "api/marketing-references.js": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

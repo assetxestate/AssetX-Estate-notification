@@ -1,6 +1,7 @@
 import { verifySession } from './_auth.js'
 
 const GEMINI_INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions'
+const ASSETX_PALETTE = 'AssetX logo-inspired palette: midnight navy #08213f, deep indigo/violet #4b2a82, cyan/teal #42c7d8, soft sky blue #70d7e8, coral-pink-to-warm-orange #f26b4f, and clean white. Use cyan/teal and navy as the primary poster colors, violet as the depth/shadow color, and coral-pink/orange only as a small warm accent. CTA bands and badges should be navy, teal, white, or cyan-glow style. Avoid metallic gold CTA bars, dominant red map pins, green loan-ad themes, and generic high-saturation finance-ad colors.'
 
 function cleanPrompt(value = '') {
   return String(value).replace(/\s+/g, ' ').trim()
@@ -10,14 +11,22 @@ function buildStyleGuidance(styleProfile = {}) {
   const name = cleanPrompt(styleProfile.name || 'AssetX Premium Realistic')
   const prompt = cleanPrompt(styleProfile.prompt || '')
   const scenes = cleanPrompt(styleProfile.scenes || '')
+  const layoutRules = cleanPrompt(styleProfile.layoutRules || '')
+  const allowPosterText = styleProfile.allowPosterText === true
   return [
     `Selected visual system: ${name}.`,
     prompt,
     scenes ? `Preferred scene vocabulary: ${scenes}.` : '',
+    layoutRules ? `Layout rules: ${layoutRules}.` : '',
     'Output must look like a new original premium brand asset, not a copy of an existing ad or reference image.',
-    'Photorealistic, premium editorial lighting, clean composition, trustworthy Thai real-estate advisory mood.',
-    'Use subtle AssetX brand feeling: deep navy, teal, clean white space, professional calm confidence.',
-    'Strict exclusions: no readable Thai text inside the image, no personal data, no deed numbers, no customer names, no exact addresses, no identifiable real customer faces, no unrealistic financial promise.',
+    allowPosterText
+      ? 'If this is a poster/key-visual request, create a complete ready-to-post social-ad composition with the provided Thai headline, benefit badges, CTA, layered visual zones, realistic cutout-like property elements, and reusable design structure. Do not return only a plain background photo.'
+      : 'Create a complete premium commercial image for the selected visual style. If the prompt asks for a poster, include meaningful real-estate visual elements and composition depth, but do not add placeholder headline bars or empty CTA boxes.',
+    'Photorealistic, premium commercial lighting, clean composition, trustworthy Thai real-estate advisory mood.',
+    ASSETX_PALETTE,
+    allowPosterText
+      ? 'Text policy: readable Thai text is allowed and expected, but use only the exact poster copy provided by the user prompt. Do not invent random phone numbers, deed numbers, addresses, customer names, unrelated logos, unrelated watermarks, or unrealistic financial promises. AssetX Estate brand text/logo mark is allowed.'
+      : 'Strict exclusions: no readable Thai text inside the image, no letters, no numbers, no fake UI text, no personal data, no deed numbers, no customer names, no exact addresses, no identifiable real customer faces, no unrealistic financial promise, no logos, no watermarks.',
   ].filter(Boolean).join('\n')
 }
 
