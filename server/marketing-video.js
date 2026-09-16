@@ -1,4 +1,4 @@
-import { verifySession } from './_auth.js'
+import { verifySession } from '../api/_auth.js'
 
 const GEMINI_INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions'
 const ASSETX_PALETTE = 'AssetX logo-inspired palette: midnight navy #08213f, deep indigo/violet #4b2a82, cyan/teal #42c7d8, soft sky blue #70d7e8, coral-pink-to-warm-orange #f26b4f, and clean white. Use cyan/teal and navy as the primary poster colors, violet as the depth/shadow color, and coral-pink/orange only as a small warm accent. CTA bands and badges should be navy, teal, white, or cyan-glow style. Avoid metallic gold CTA bars, dominant red map pins, green loan-ad themes, and generic high-saturation finance-ad colors.'

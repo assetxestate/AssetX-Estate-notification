@@ -1,4 +1,4 @@
-import { verifySession } from './_auth.js'
+import { verifySession } from '../api/_auth.js'
 
 const TAVILY_SEARCH_URL = 'https://api.tavily.com/search'
 

@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { verifySession } from './_auth.js'
+import { verifySession } from '../api/_auth.js'
 
 function cleanFilename(value = '') {
   const base = String(value || 'assetx-marketing-knowledge.md')
