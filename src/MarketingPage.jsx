@@ -701,6 +701,52 @@ function inferStudioIntentFromIdea(sourceIdea = {}, currentStudio = {}) {
   return {}
 }
 
+function trimThaiLine(value = '', max = 92) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (text.length <= max) return text
+  return `${text.slice(0, max - 1).replace(/\s+\S*$/, '')}…`
+}
+
+function stripTrailingPunctuation(value = '') {
+  return String(value || '').replace(/[?？!！.。…]+$/g, '').trim()
+}
+
+function buildScrollStoppingCaption(input = {}, sourceIdea = {}, generated = {}) {
+  const title = stripTrailingPunctuation(sourceIdea.title || generated.headline || input.prompt || 'เรื่องนี้ควรรู้ก่อนตัดสินใจ')
+  const angle = trimThaiLine(sourceIdea.angle || input.offer || '', 150)
+  const audience = String(sourceIdea.audience || input.audience || 'เจ้าของทรัพย์').trim()
+  const asset = String(input.assetType || 'โฉนด/ทรัพย์').trim()
+  const isQuestion = /ไหม|อย่างไร|ยังไง|อะไร|ทำไม|หรือ/.test(title)
+  const hook = isQuestion
+    ? `${title} อ่านอันนี้ก่อนตัดสินใจ`
+    : `${title} เรื่องนี้หลายคนมองข้าม`
+  const pain = angle
+    ? `ประเด็นสำคัญคือ ${angle}`
+    : `หลายคนไม่ได้พลาดตอนเริ่มคุย แต่พลาดตอนยังไม่รู้ว่าเอกสาร เงื่อนไข และระยะเวลาผูกอะไรไว้บ้าง`
+  const checks = /นักลงทุน|ลงทุน|ราคาดี|ผลตอบแทน|ทรัพย์ราคา/i.test(`${title} ${angle}`)
+    ? ['เอกสารสิทธิ์และภาระผูกพัน', 'ทำเล ทางเข้า และสภาพจริง', 'ราคาตลาดเทียบกับความเสี่ยง']
+    : /ขาย|ราคาตลาด|ผู้ขาย|ประกาศ/i.test(`${title} ${angle}`)
+      ? ['ราคาตลาดในพื้นที่เดียวกัน', 'จุดแข็ง/จุดกังวลของทรัพย์', 'เอกสารและข้อมูลที่ต้องเตรียมก่อนคุยผู้ซื้อ']
+      : ['ระยะเวลาในสัญญา', 'ยอดที่ต้องใช้ไถ่ถอนหรือปิดบัญชี', 'ค่าใช้จ่ายและเงื่อนไขที่ต้องรับผิดชอบจริง']
+  return [
+    hook,
+    pain,
+    `ก่อนเดินต่อ ลองเช็ก ${checks.length} จุดนี้:`,
+    ...checks.map((item) => `- ${item}`),
+    `${audience}ที่อยากให้ช่วยดูภาพรวม ส่งประเภททรัพย์ พื้นที่ และเป้าหมายที่ต้องการให้ AssetX Estate ประเมินเบื้องต้นได้`,
+    `หมายเหตุ: ข้อมูลนี้เป็นความรู้ทั่วไป ต้องดูเอกสารจริงของ${asset}แต่ละเคสก่อนสรุป`,
+  ].filter(Boolean).join('\n\n')
+}
+
+function polishGeneratedForApproval(generated = {}, input = {}, sourceIdea = {}) {
+  const caption = buildScrollStoppingCaption(input, sourceIdea, generated)
+  return {
+    ...generated,
+    caption,
+    headline: trimThaiLine(sourceIdea.title || generated.headline || input.prompt, 34),
+  }
+}
+
 function inferPosterCopyFromBrief(brief = {}, previous = {}) {
   const text = `${brief.title || ''} ${brief.imagePrompt || ''} ${brief.videoScript || ''}`.toLowerCase()
   const keepContact = { contactLine: previous?.contactLine || '' }
@@ -1026,6 +1072,44 @@ export default function MarketingPage({ onBack }) {
     const generated = runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || ''))
     save({ ...workspace, studio: input, generated })
     setView('studio')
+  }
+
+  const createApprovalContentFromIdea = (prompt, sourceIdea) => {
+    const inferredIntent = inferStudioIntentFromIdea(sourceIdea, workspace.studio)
+    const input = {
+      ...workspace.studio,
+      ...inferredIntent,
+      prompt: normalizePrompt(prompt),
+      audience: sourceIdea?.audience || workspace.studio.audience,
+      offer: sourceIdea?.angle || workspace.studio.offer,
+      channel: sourceIdea?.channel?.includes('LINE') ? 'line-oa' : workspace.studio.channel,
+    }
+    const generated = polishGeneratedForApproval(
+      runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || '')),
+      input,
+      sourceIdea,
+    )
+    const publishCheck = canPublishAssetxPost({ channel: input.channel, status: 'pending', caption: generated.caption })
+    const post = {
+      id: Date.now(),
+      title: generated.headline || input.prompt,
+      channel: input.channel,
+      status: 'pending',
+      caption: generated.caption,
+      imagePrompt: generated.imagePrompt,
+      videoScript: generated.videoScript,
+      mediaAssetId: generated.mediaAssetId || null,
+      reviewStatus: publishCheck.ok ? 'passed' : 'needs_edit',
+      reviewNotes: publishCheck.ok
+        ? ['Hook ชัดขึ้น อ่านง่ายขึ้น', 'มี CTA เดียวและมีหมายเหตุความปลอดภัย']
+        : [...(generated.warnings || []), 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
+      source: sourceIdea?.source || 'ไอเดียวันนี้',
+      createdAt: new Date().toISOString(),
+    }
+    save({ ...workspace, studio: input, generated, posts: [post, ...workspace.posts] })
+    setSelectedId(post.id)
+    setView('approvals')
+    notify('สร้างคอนเทนต์และส่งเข้ารออนุมัติแล้ว')
   }
 
   const addGeneratedToQueue = (status = 'pending') => {
@@ -1460,7 +1544,7 @@ export default function MarketingPage({ onBack }) {
             onManualChange={(manualIdea) => save({ ...workspace, manualIdea })}
             onAddManual={addManualIdea}
             onToggle={() => setShowAllIdeas((value) => !value)}
-            onCreate={generateContent}
+            onCreate={createApprovalContentFromIdea}
             onSaveIdea={saveIdeaForLater}
             onLoadRadar={loadTrendRadar}
           />
@@ -1477,7 +1561,20 @@ export default function MarketingPage({ onBack }) {
           />
         )}
         {view === 'approvals' && (
-          <ApprovalsView drafts={pendingDrafts} selected={selectedDraft} mediaAssets={workspace.mediaAssets || []} posterCopy={workspace.posterCopy || defaultPosterCopy} onSelect={setSelectedId} onUpdate={updatePost} onCopy={copyText} />
+          <ApprovalsView
+            drafts={pendingDrafts}
+            selected={selectedDraft}
+            mediaAssets={workspace.mediaAssets || []}
+            posterCopy={workspace.posterCopy || defaultPosterCopy}
+            mediaLoading={mediaLoading}
+            onSelect={setSelectedId}
+            onUpdate={updatePost}
+            onCopy={copyText}
+            onGenerateImage={(brief) => generateMedia('image', brief)}
+            onUploadArtwork={uploadArtwork}
+            onDeleteMediaAsset={deleteMediaAsset}
+            onDelete={deletePost}
+          />
         )}
         {view === 'queue' && <QueueView posts={approvedDrafts} mediaAssets={workspace.mediaAssets || []} onCreate={() => setView('ideas')} onUpdate={updatePost} />}
         {view === 'references' && (
@@ -1854,15 +1951,20 @@ function StudioView({ studio, generated, posterCopy, onPromptChange, onGenerate,
   )
 }
 
-function ApprovalsView({ drafts, selected, mediaAssets = [], posterCopy, onSelect, onUpdate, onCopy }) {
-  const posterPrompt = selected ? buildSocialPosterPrompt({
-    title: selected.title,
-    imagePrompt: selected.imagePrompt,
-  }, posterCopy) : ''
-  const selectedMedia = selected
-    ? mediaAssets.find((asset) => asset.id === selected.mediaAssetId)
-      || mediaAssets.find((asset) => String(asset.postId || asset.briefId) === String(selected.id))
-    : null
+function ApprovalsView({
+  drafts,
+  selected,
+  mediaAssets = [],
+  posterCopy,
+  mediaLoading,
+  onSelect,
+  onUpdate,
+  onCopy,
+  onGenerateImage,
+  onUploadArtwork,
+  onDeleteMediaAsset,
+  onDelete,
+}) {
   return (
     <section className="mx-content">
       <div className="mx-page-head">
@@ -1872,65 +1974,93 @@ function ApprovalsView({ drafts, selected, mediaAssets = [], posterCopy, onSelec
           <p>ผ่าน — โพสต์ได้เลย · {drafts.filter((post) => post.reviewStatus === 'passed').length} / ควรแก้ก่อนโพสต์ · {drafts.filter((post) => post.reviewStatus !== 'passed').length}</p>
         </div>
       </div>
-      <div className="mx-approval-layout">
-        <div className="mx-draft-list">
-          {drafts.map((post) => (
-            <button className={`mx-draft-item ${selected?.id === post.id ? 'active' : ''}`} key={post.id} onClick={() => onSelect(post.id)}>
-              <strong>{post.title}</strong><span>{post.channel} · {post.reviewStatus === 'passed' ? 'ผ่าน' : 'ควรแก้'}</span>
-            </button>
-          ))}
-        </div>
-        {selected ? (
-          <article className="mx-review-card">
-            <div className="mx-review-head">
-              <div><div className="mx-kicker">#{selected.id} · {selected.channel}</div><h2>{selected.title}</h2></div>
-              <span className={selected.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{selected.reviewStatus === 'passed' ? 'ผ่าน' : 'ควรแก้'}</span>
-            </div>
-            <div className="mx-image-tools"><button>บรีฟทำรูป</button><button>ตรวจตัวอักษร</button><button>เทมเพลตแบรนด์</button></div>
-            {selectedMedia && (
-              <div className="mx-attached-media">
-                <img src={selectedMedia.dataUrl} alt={selectedMedia.title} />
-                <div>
-                  <strong>รูปที่แนบกับโพสต์นี้</strong>
-                  <span>{selectedMedia.width} x {selectedMedia.height}px · {selectedMedia.originalName || 'uploaded image'}</span>
+      {drafts.length === 0 ? (
+        <div className="mx-empty">ยังไม่มีโพสต์รอตรวจ</div>
+      ) : (
+        <div className="mx-approval-feed">
+          {drafts.map((post) => {
+            const postMedia = findMediaForPost(mediaAssets, post)
+            const postPosterPrompt = buildSocialPosterPrompt({
+              title: post.title,
+              imagePrompt: post.imagePrompt,
+            }, posterCopy)
+            return (
+              <article className={`mx-approval-card ${selected?.id === post.id ? 'active' : ''}`} key={post.id} onClick={() => onSelect(post.id)}>
+                <div className="mx-approval-media-column">
+                  <div className="mx-approval-card-image">
+                    {postMedia ? (
+                      <img src={postMedia.dataUrl} alt={postMedia.title} />
+                    ) : (
+                      <div className="mx-poster-placeholder compact">
+                        <span>AssetX Estate</span>
+                        <strong>{post.title}</strong>
+                        <small>Poster Preview</small>
+                      </div>
+                    )}
+                  </div>
+                  <button className="mx-primary" onClick={(event) => { event.stopPropagation(); onGenerateImage(post) }} disabled={mediaLoading === `image:${post.id}`}>
+                    {mediaLoading === `image:${post.id}` ? 'กำลังสร้างรูป...' : 'รีเฟรชรูป'}
+                  </button>
+                  <label className={`mx-upload-button slim ${mediaLoading === `upload:${post.id}` ? 'disabled' : ''}`} onClick={(event) => event.stopPropagation()}>
+                    {mediaLoading === `upload:${post.id}` ? 'กำลังอัปโหลด...' : 'อัปโหลดรูปเอง'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={mediaLoading === `upload:${post.id}`}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0]
+                        event.target.value = ''
+                        if (file) onUploadArtwork(file, post)
+                      }}
+                    />
+                  </label>
+                  {postMedia && (
+                    <button className="mx-mini-button danger" onClick={(event) => { event.stopPropagation(); onDeleteMediaAsset(postMedia.id) }}>ลบรูป</button>
+                  )}
                 </div>
-              </div>
-            )}
-            <div className="mx-content-block">
-              <div className="mx-content-title">
-                <span>โพสต์</span>
-                <button onClick={() => onCopy(selected.caption)}>คัดลอก</button>
-              </div>
-              <textarea
-                className="mx-edit-caption"
-                value={selected.caption}
-                onChange={(event) => onUpdate(selected.id, { caption: event.target.value })}
-              />
-            </div>
-            <ContentBlock title="บรีฟภาพโปสเตอร์พร้อมใช้" value={posterPrompt} onCopy={() => onCopy(posterPrompt)} collapsed />
-            <div className="mx-schedule-row">
-              <label>
-                วันที่จะโพสต์
-                <input
-                  type="date"
-                  value={selected.scheduledAt || ''}
-                  onChange={(event) => onUpdate(selected.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : selected.status }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
-                />
-              </label>
-              {selected.scheduledAt && <span>จองไว้วันที่ {selected.scheduledAt}</span>}
-            </div>
-            <div className="mx-review-notes">
-              <strong>ผลตรวจ</strong>
-              {selected.reviewNotes?.map((note, index) => <span key={index}>{note}</span>)}
-            </div>
-            <div className="mx-card-actions end">
-              <button className="mx-primary" onClick={() => onUpdate(selected.id, { status: selected.scheduledAt ? 'scheduled' : 'approved', reviewStatus: 'passed' }, selected.scheduledAt ? 'อนุมัติและเข้าปฏิทินแล้ว' : 'อนุมัติแล้ว')}>อนุมัติ</button>
-              <button className="mx-secondary" onClick={() => onUpdate(selected.id, { status: 'needs_edit', reviewStatus: 'needs_edit' }, 'ส่งกลับแก้แล้ว')}>ส่งกลับแก้</button>
-              <button className="mx-ghost" onClick={() => onUpdate(selected.id, { status: 'draft' }, 'พักโพสต์ไว้ก่อนแล้ว')}>พักไว้ก่อน</button>
-            </div>
-          </article>
-        ) : <div className="mx-empty">ยังไม่มีโพสต์รอตรวจ</div>}
-      </div>
+                <div className="mx-approval-copy-column">
+                  <div className="mx-review-head">
+                    <div>
+                      <div className="mx-kicker">#{post.id} · {post.channel} · {post.source || 'AssetX Studio'}</div>
+                      <h2>{post.title}</h2>
+                    </div>
+                    <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{post.reviewStatus === 'passed' ? 'ผ่าน' : 'ควรแก้'}</span>
+                  </div>
+                  <textarea
+                    className="mx-approval-caption"
+                    value={post.caption}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => onUpdate(post.id, { caption: event.target.value })}
+                  />
+                  <div className="mx-review-notes compact">
+                    <strong>ผลตรวจ</strong>
+                    {post.reviewNotes?.map((note, index) => <span key={index}>{note}</span>)}
+                  </div>
+                  <div className="mx-schedule-row compact" onClick={(event) => event.stopPropagation()}>
+                    <label>
+                      วันที่จะโพสต์
+                      <input
+                        type="date"
+                        value={post.scheduledAt || ''}
+                        onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : post.status }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
+                      />
+                    </label>
+                    {postMedia && <span>{postMedia.width} x {postMedia.height}px · {postMedia.originalName || 'generated image'}</span>}
+                  </div>
+                  <div className="mx-card-actions">
+                    <button className="mx-primary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: post.scheduledAt ? 'scheduled' : 'approved', reviewStatus: 'passed', mediaAssetId: postMedia?.id || post.mediaAssetId || null }, post.scheduledAt ? 'อนุมัติและเข้าปฏิทินแล้ว' : 'อนุมัติแล้ว') }}>อนุมัติ</button>
+                    <button className="mx-secondary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: 'needs_edit', reviewStatus: 'needs_edit' }, 'ส่งกลับแก้แล้ว') }}>แก้</button>
+                    <button className="mx-ghost" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: 'draft' }, 'พักโพสต์ไว้ก่อนแล้ว') }}>พัก</button>
+                    <button className="mx-secondary" onClick={(event) => { event.stopPropagation(); onCopy(postPosterPrompt) }}>คัดลอกบรีฟรูป</button>
+                    {postMedia && <a className="mx-mini-button" href={postMedia.dataUrl} download={`assetx-artwork-${postMedia.id}.jpg`} onClick={(event) => event.stopPropagation()}>ดาวน์โหลดรูป</a>}
+                    <button className="mx-mini-button danger" onClick={(event) => { event.stopPropagation(); onDelete(post.id) }}>ลบคอนเทนต์</button>
+                  </div>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }
@@ -2644,7 +2774,8 @@ const styles = `
   .mx-upload-panel p { margin: 5px 0 0; color: #70839f; font-size: 13px; line-height: 1.6; }
   .mx-upload-actions { display: grid; gap: 9px; justify-items: end; min-width: 260px; }
   .mx-upload-actions span { color: #60738f; font-size: 12px; font-weight: 800; text-align: right; }
-  .mx-upload-button { position: relative; overflow: hidden; border: 1px solid #2f73d8; background: #2f73d8; color: #fff; border-radius: 10px; padding: 10px 14px; font-weight: 900; cursor: pointer; display: inline-flex; }
+  .mx-upload-button { position: relative; overflow: hidden; border: 1px solid #2f73d8; background: #2f73d8; color: #fff; border-radius: 10px; padding: 10px 14px; font-weight: 900; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .mx-upload-button.slim { min-height: 38px; padding: 8px 12px; font-size: 13px; }
   .mx-upload-button.disabled { opacity: .55; cursor: not-allowed; }
   .mx-upload-button input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   .mx-artwork-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 16px; }
@@ -2728,18 +2859,45 @@ const styles = `
   .mx-edit-caption { width: 100%; min-height: 210px; margin-top: 10px; border: 1px solid #d8e3f2; border-radius: 10px; padding: 12px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.7; color: #243651; background: #fff; outline: 0; }
   .mx-edit-caption:focus { border-color: #8ab8f6; box-shadow: 0 0 0 3px rgba(47,115,216,.10); }
   .mx-schedule-row { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-top: 10px; border: 1px solid #e0e8f2; background: #fbfdff; border-radius: 10px; padding: 12px; }
+  .mx-schedule-row.compact { margin-top: 0; padding: 10px; }
   .mx-schedule-row label { display: grid; gap: 6px; color: #60738f; font-size: 12px; font-weight: 900; }
   .mx-schedule-row input, .mx-row-actions input { border: 1px solid #d8e3f2; background: #fff; color: #243651; border-radius: 8px; padding: 8px 10px; font: inherit; }
   .mx-schedule-row span { color: #0f8f83; font-size: 12px; font-weight: 900; padding-bottom: 9px; }
   summary::-webkit-details-marker { display: none; }
   .mx-approval-layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 14px; }
   .mx-draft-list { display: grid; gap: 8px; align-content: start; }
-  .mx-draft-item { display: grid; gap: 4px; text-align: left; border: 1px solid #d8e3f2; background: #fff; border-radius: 11px; padding: 12px; cursor: pointer; color: #17243b; }
+  .mx-draft-item { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; text-align: left; border: 1px solid #d8e3f2; background: #fff; border-radius: 11px; padding: 10px; cursor: pointer; color: #17243b; }
   .mx-draft-item.active, .mx-draft-item:hover { border-color: #8ab8f6; background: #eaf4ff; }
+  .mx-draft-item img { width: 48px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #d8e3f2; background: #f6f8fb; }
+  .mx-draft-thumb-placeholder { width: 48px; height: 60px; border: 1px dashed #cfe0f5; border-radius: 8px; background: #f8fbff; }
+  .mx-draft-copy { display: grid; gap: 4px; min-width: 0; }
+  .mx-draft-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mx-draft-item span { color: #71849f; font-size: 12px; }
   .mx-image-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
   .mx-image-tools button { border: 1px solid #cfe0f5; background: #f6faff; color: #245ca8; border-radius: 999px; padding: 7px 10px; font-weight: 800; cursor: pointer; }
+  .mx-approval-feed { display: grid; gap: 14px; max-width: 1120px; }
+  .mx-approval-card { border: 1px solid #e0e8f2; background: rgba(255,255,255,.96); border-radius: 18px; padding: 18px; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; box-shadow: 0 18px 44px rgba(31,75,138,.07); cursor: pointer; }
+  .mx-approval-card.active, .mx-approval-card:hover { border-color: #b8d8ff; box-shadow: 0 22px 52px rgba(31,75,138,.10); }
+  .mx-approval-media-column { display: grid; gap: 8px; align-content: start; }
+  .mx-approval-card-image { width: 100%; aspect-ratio: 4 / 5; border: 1px solid #d8e3f2; border-radius: 12px; overflow: hidden; background: #f8fbff; display: grid; }
+  .mx-approval-card-image img { width: 100%; height: 100%; object-fit: cover; background: #fff; }
+  .mx-approval-copy-column { min-width: 0; display: grid; gap: 10px; align-content: start; }
+  .mx-approval-caption { width: 100%; min-height: 116px; border: 0; background: transparent; color: #17243b; padding: 0; resize: vertical; font: inherit; font-size: 14px; line-height: 1.75; outline: 0; }
+  .mx-approval-caption:focus { background: #fbfdff; border: 1px solid #d8e3f2; border-radius: 10px; padding: 10px; box-shadow: 0 0 0 3px rgba(47,115,216,.08); }
+  .mx-poster-placeholder.compact { min-height: 100%; padding: 12px; }
+  .mx-poster-placeholder.compact strong { font-size: 15px; }
+  .mx-approval-artwork { border: 1px solid #bfd5f2; background: linear-gradient(180deg, #ffffff, #f6faff); border-radius: 14px; padding: 12px; display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: 14px; align-items: stretch; margin-bottom: 12px; box-shadow: 0 16px 38px rgba(31,75,138,.07); }
+  .mx-approval-artwork-preview { min-height: 260px; border: 1px solid #d8e3f2; border-radius: 12px; background: #fff; overflow: hidden; display: grid; }
+  .mx-approval-artwork-preview img { width: 100%; height: 100%; aspect-ratio: 4 / 5; object-fit: contain; background: #f8fbff; }
+  .mx-poster-placeholder { min-height: 260px; display: grid; align-content: space-between; gap: 12px; padding: 18px; color: #fff; background: linear-gradient(135deg, #08213f 0%, #2f73d8 56%, #21a6a1 100%); }
+  .mx-poster-placeholder span, .mx-poster-placeholder small { font-size: 12px; font-weight: 900; opacity: .9; }
+  .mx-poster-placeholder strong { font-size: 22px; line-height: 1.35; letter-spacing: 0; }
+  .mx-approval-artwork-side { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; min-width: 0; }
+  .mx-approval-artwork-side h3 { margin: 4px 0 6px; color: #143355; font-size: 18px; line-height: 1.35; letter-spacing: 0; }
+  .mx-approval-artwork-side p { margin: 0; color: #60738f; font-size: 13px; line-height: 1.6; }
+  .mx-approval-artwork-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .mx-review-notes { margin-top: 12px; display: grid; gap: 6px; border: 1px solid #e0e8f2; background: #fbfdff; border-radius: 10px; padding: 12px; }
+  .mx-review-notes.compact { margin-top: 0; background: #ecfdf5; border-color: #b6ead7; }
   .mx-review-notes strong { color: #1d3f78; }
   .mx-review-notes span { color: #51647f; font-size: 13px; }
   .mx-attached-media { border: 1px solid #d8e3f2; background: #f8fbff; border-radius: 12px; padding: 10px; display: grid; grid-template-columns: 96px 1fr; gap: 12px; align-items: center; margin-bottom: 12px; }
@@ -2795,5 +2953,5 @@ const styles = `
   .mx-bars span { flex: 1; min-width: 10px; border-radius: 8px 8px 0 0; background: linear-gradient(180deg, #2f73d8, #21a6a1); }
   .mx-chart-card p { color: #71849f; font-size: 13px; margin: 12px 0 0; }
   @media (max-width: 980px) { .mx-page { grid-template-columns: 1fr; } .mx-sidebar { border-right: 0; border-bottom: 1px solid #d8e3f2; } .mx-topbar { position: static; } .mx-generated-grid, .mx-approval-layout, .mx-library-split, .mx-inbox-layout, .mx-metrics-layout, .mx-visual-system, .mx-reference-layout, .mx-poster-form { grid-template-columns: 1fr; } .mx-upload-panel { align-items: stretch; flex-direction: column; } .mx-upload-actions { justify-items: start; min-width: 0; } .mx-upload-actions span { text-align: left; } }
-  @media (max-width: 720px) { .mx-topbar, .mx-page-head, .mx-row-card, .mx-pipe-card, .mx-section-head { align-items: stretch; flex-direction: column; } .mx-top-actions, .mx-card-actions, .mx-range { flex-wrap: wrap; } .mx-manual, .mx-prompt-box, .mx-metric-inputs, .mx-form-grid, .mx-attached-media { grid-template-columns: 1fr; } .mx-calendar { grid-template-columns: repeat(2, 1fr); } .mx-stepper { justify-content: flex-start; overflow-x: auto; gap: 14px; } }
+  @media (max-width: 720px) { .mx-topbar, .mx-page-head, .mx-row-card, .mx-pipe-card, .mx-section-head { align-items: stretch; flex-direction: column; } .mx-top-actions, .mx-card-actions, .mx-range { flex-wrap: wrap; } .mx-manual, .mx-prompt-box, .mx-metric-inputs, .mx-form-grid, .mx-attached-media, .mx-approval-artwork, .mx-approval-card { grid-template-columns: 1fr; } .mx-approval-media-column { max-width: 260px; } .mx-calendar { grid-template-columns: repeat(2, 1fr); } .mx-stepper { justify-content: flex-start; overflow-x: auto; gap: 14px; } }
 `
