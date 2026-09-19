@@ -57,6 +57,7 @@ const MapView = lazyPage(() => import("./MapView.jsx"));
 const InvestorPage = lazyPage(() => import("./InvestorPage.jsx"));
 const DashboardPage = lazyPage(() => import("./DashboardPage.jsx"));
 const MarketingPage = lazyPage(() => import("./MarketingPage.jsx"));
+const CaseWorkflowPage = lazyPage(() => import("./CaseWorkflowPage.jsx"));
 const TaxPage = lazyPage(() => import("./TaxPage.jsx"));
 const LegalPage = lazyPage(() => import("./LegalPage.jsx"));
 const ReservationPage = lazyPage(() => import("./ReservationPage.jsx"));
@@ -92,7 +93,7 @@ export default function App({ initialView = "main", onLogout }) {
   );
   const openView = (view) => {
     setCurrentView(view);
-    const nextPath = view === "marketing" ? "/marketing" : "/";
+    const nextPath = view === "marketing" ? "/marketing" : view === "cases" ? "/cases" : "/";
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath);
   };
 
@@ -567,7 +568,7 @@ export default function App({ initialView = "main", onLogout }) {
               gap: 12,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
               <Logo size={40} />
               <div>
                 <div
@@ -584,7 +585,7 @@ export default function App({ initialView = "main", onLogout }) {
                 </div>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, overflowX: "auto", whiteSpace: "nowrap", paddingBottom: 2 }}>
 
               {/* วันที่ + เวลา real-time */}
               <div style={{
@@ -638,6 +639,21 @@ export default function App({ initialView = "main", onLogout }) {
                 🏠 ประเมิน
               </button>
               <button
+                onClick={() => openView(currentView === "cases" ? "main" : "cases")}
+                style={{
+                  background: currentView === "cases" ? "rgba(45,212,191,0.15)" : "rgba(59,130,246,0.12)",
+                  border: `1px solid ${currentView === "cases" ? BRAND.teal : "#3B82F6"}`,
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  color: currentView === "cases" ? BRAND.teal : "#93C5FD",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                เคสงาน
+              </button>
+              <button
                 onClick={() => openView(currentView === "marketing" ? "main" : "marketing")}
                 style={{
                   background: currentView === "marketing" ? "rgba(45,212,191,0.15)" : "rgba(124,58,237,0.12)",
@@ -680,6 +696,10 @@ export default function App({ initialView = "main", onLogout }) {
             appsScriptUrl={APPS_SCRIPT_URL}
             customers={enriched}
           />
+        )}
+
+        {currentView === "cases" && (
+          <CaseWorkflowPage onBack={() => openView("main")} />
         )}
 
         {currentView === "marketing" && (

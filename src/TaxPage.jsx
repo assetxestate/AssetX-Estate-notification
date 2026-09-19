@@ -1,701 +1,121 @@
-import React, { useState, useMemo } from 'react'
-import { BRAND as BASE_BRAND } from './lib/config.js'
+import React, { useEffect, useMemo, useState } from 'react'
+import { BRAND as BASE } from './lib/config.js'
+import { getValuations } from './lib/api.js'
+import { STANDARD_EXPENSE_RATES, calendarOwnershipYears, calculateGiftInheritance, calculateLandBuildingTax, calculateLease, calculateMortgage, calculatePropertyRight, calculateRentalIncomeTax, calculateTransfer } from './lib/transactionCostEngine.js'
 
-// ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
-const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981', danger: '#EF4444' }
+const B = { ...BASE, card: '#0B1424', muted: '#64748B', success: '#10B981', danger: '#EF4444' }
+const fmt = value => Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const modes = [['transfer', 'โอนกรรมสิทธิ์'], ['land-tax', 'ภาษีที่ดินรายปี'], ['rental-tax', 'ภาษีรายได้ค่าเช่า'], ['mortgage', 'จำนอง'], ['lease', 'จดทะเบียนเช่า'], ['gift', 'มรดก / ให้'], ['rights', 'ทรัพยสิทธิ']]
 
-const fmtMoney = (n) => {
-  if (!n || isNaN(n)) return '0'
-  return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function Field({ label, value, onChange, type = 'number', suffix, hint }) {
+  return <label className="tx-field"><span>{label}</span><div><input type={type} value={value} min={type === 'number' ? 0 : undefined} onChange={e => onChange(e.target.value)} />{suffix && <em>{suffix}</em>}</div>{hint && <small>{hint}</small>}</label>
+}
+function Select({ label, value, onChange, options, hint }) {
+  return <label className="tx-field"><span>{label}</span><select value={value} onChange={e => onChange(e.target.value)}>{options.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}</select>{hint && <small>{hint}</small>}</label>
+}
+function Check({ label, checked, onChange }) {
+  return <label className="tx-check"><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} /><span>{label}</span></label>
+}
+function Row({ label, value, detail, total }) {
+  return <div className={`tx-row ${total ? 'total' : ''}`}><div><b>{label}</b>{detail && <small>{detail}</small>}</div><strong>{fmt(value)} บาท</strong></div>
+}
+function Result({ result, rows, title = 'ประมาณการค่าใช้จ่าย', children }) {
+  return <section className="tx-result"><header><div><span>ผลคำนวณเบื้องต้น</span><h3>{title}</h3></div><button onClick={() => window.print()}>พิมพ์สรุป</button></header>{rows.map((row, i) => <Row key={i} {...row} />)}{children}{result.warnings?.length > 0 && <div className="tx-warn"><b>ต้องตรวจยืนยันก่อนทำรายการ</b>{result.warnings.map((w, i) => <p key={i}>{w}</p>)}</div>}</section>
+}
+function Form({ title, children }) { return <section className="tx-form"><h3>{title}</h3>{children}</section> }
+
+const transferDefaults = { transactionType: 'sale', sellerType: 'individual', acquisitionType: 'other', contractPrice: '', assessedValue: '', mortgageDebt: '', deedCount: '1', ownershipYears: '1', acquisitionDate: '', registrationDate: new Date().toISOString().slice(0, 10), isResidence: false, houseRegistrationMonths: '0', outsideLocalAuthority: false, giftToLegitimateChild: false, coOwnership: false, sbtMode: 'auto', transferFeeRate: '2', buyerFeeShare: '50', otherFees: '' }
+
+function Transfer({ valuation }) {
+  const [f, setF] = useState(transferDefaults)
+  const set = (key, value) => setF(old => ({ ...old, [key]: value }))
+  useEffect(() => {
+    if (!valuation) return
+    setF(old => ({ ...old, assessedValue: valuation.assessedValue || '', contractPrice: valuation.contractPrice || '', transactionType: valuation.transactionType || 'sale' }))
+  }, [valuation])
+  useEffect(() => {
+    if (f.acquisitionDate && f.registrationDate) set('ownershipYears', String(calendarOwnershipYears(f.acquisitionDate, f.registrationDate)))
+  }, [f.acquisitionDate, f.registrationDate])
+  const r = useMemo(() => calculateTransfer(f), [f])
+  const buyer = r.transferFee * Math.min(100, Math.max(0, Number(f.buyerFeeShare) || 0)) / 100
+  return <div className="tx-grid"><Form title="ข้อมูลนิติกรรมและผู้โอน">
+    <Select label="ประเภทธุรกรรม" value={f.transactionType} onChange={v => set('transactionType', v)} options={[["sale", 'ซื้อขาย'], ['sale_redeem', 'ขายฝาก'], ['redemption', 'ไถ่ถอนจากขายฝาก'], ['exchange', 'แลกเปลี่ยน'], ['gift', 'ให้โดยเสน่หา']]} />
+    <div className="tx-two"><Select label="ผู้โอน" value={f.sellerType} onChange={v => set('sellerType', v)} options={[["individual", 'บุคคลธรรมดา'], ['company', 'นิติบุคคล']]} /><Select label="ที่มาทรัพย์" value={f.acquisitionType} onChange={v => set('acquisitionType', v)} options={[["other", 'ซื้อ / ทางอื่น'], ['inheritance', 'มรดก'], ['gift', 'ให้โดยเสน่หา']]} /></div>
+    <div className="tx-two"><Field label="ราคาตามสัญญา / สินไถ่" value={f.contractPrice} onChange={v => set('contractPrice', v)} suffix="บาท" /><Field label="ราคาประเมินทุนทรัพย์" value={f.assessedValue} onChange={v => set('assessedValue', v)} suffix="บาท" /></div>
+    {f.transactionType === 'redemption' && <Field label="จำนวนแปลงที่ไถ่ถอน" value={f.deedCount} onChange={v => set('deedCount', v)} suffix="แปลง" />}
+    <Field label="ภาระจำนองที่รวมในรายรับ" value={f.mortgageDebt} onChange={v => set('mortgageDebt', v)} suffix="บาท" hint="กรอกเมื่อผู้รับโอนรับภาระหนี้ติดทรัพย์" />
+    {f.sellerType === 'individual' && <><div className="tx-two"><Field label="วันที่ได้กรรมสิทธิ์" type="date" value={f.acquisitionDate} onChange={v => set('acquisitionDate', v)} /><Field label="วันที่จดทะเบียน" type="date" value={f.registrationDate} onChange={v => set('registrationDate', v)} /></div><Field label="ปีถือครองตามปีปฏิทิน" value={f.ownershipYears} onChange={v => set('ownershipYears', v)} suffix="ปี" hint="ใช้คำนวณ WHT: เศษปีนับเป็นหนึ่งปี สูงสุด 10 ปี" /><Check label="ทรัพย์มีบ้านหรืออาคารที่ใช้เป็นที่อยู่อาศัย" checked={f.isResidence} onChange={v => set('isResidence', v)} />{f.isResidence && <Field label="มีชื่อในทะเบียนบ้านรวม" value={f.houseRegistrationMonths} onChange={v => set('houseRegistrationMonths', v)} suffix="เดือน" hint="ใช้พิจารณา SBT เมื่อรวมแล้วไม่น้อยกว่า 12 เดือน" />}<Check label="ทรัพย์มรดก/รับให้อยู่นอกเขต กทม. เทศบาล เมืองพัทยา หรือท้องถิ่นที่กฎหมายกำหนด" checked={f.outsideLocalAuthority} onChange={v => set('outsideLocalAuthority', v)} />{f.transactionType === 'gift' && <Check label="ให้โดยไม่มีค่าตอบแทนแก่บุตรชอบด้วยกฎหมาย" checked={f.giftToLegitimateChild} onChange={v => set('giftToLegitimateChild', v)} />}</>}
+    <Check label="มีผู้ถือกรรมสิทธิ์ร่วมมากกว่าหนึ่งราย" checked={f.coOwnership} onChange={v => set('coOwnership', v)} />
+    <h3>ค่าธรรมเนียมและสิทธิยกเว้น</h3><div className="tx-two">{f.transactionType !== 'redemption' && <Field label="อัตราค่าธรรมเนียมโอน" value={f.transferFeeRate} onChange={v => set('transferFeeRate', v)} suffix="%" hint="ค่าเริ่มต้น 2%; เปลี่ยนเมื่อมีมาตรการที่ใช้ได้จริง" />}<Field label="ผู้ซื้อรับผิดชอบค่าโอน" value={f.buyerFeeShare} onChange={v => set('buyerFeeShare', v)} suffix="%" /></div>{f.transactionType !== 'redemption' && <Select label="สถานะภาษีธุรกิจเฉพาะ" value={f.sbtMode} onChange={v => set('sbtMode', v)} options={[["auto", 'ให้ระบบพิจารณา'], ['taxable', 'ยืนยันว่าเสีย SBT'], ['exempt', 'ยืนยันสิทธิยกเว้น SBT']]} />}<Field label="ค่าใช้จ่ายอื่น" value={f.otherFees} onChange={v => set('otherFees', v)} suffix="บาท" />
+  </Form><Result result={r} rows={[{ label: 'ค่าธรรมเนียมโอน', value: r.transferFee, detail: f.transactionType === 'redemption' ? '50 บาทต่อแปลง' : `${f.transferFeeRate}% ของราคาประเมิน` }, { label: 'ภาษีเงินได้หัก ณ ที่จ่าย', value: r.withholdingTax, detail: r.bases.withholdingTax }, { label: r.sbtTaxable ? 'ภาษีธุรกิจเฉพาะ' : 'อากรแสตมป์', value: r.sbtTaxable ? r.specificBusinessTax : r.stampDuty, detail: r.sbtReason }, { label: 'ค่าใช้จ่ายอื่น', value: r.otherFees }, { label: 'รวมประมาณการ', value: r.total, total: true }]}>
+    <div className="tx-basis"><b>ฐานคำนวณ</b><p>ค่าธรรมเนียม: {f.transactionType === 'redemption' ? `${r.deedCount} แปลง` : `${fmt(r.assessedValue)} บาท`}</p><p>SBT/อากร: {fmt(r.taxBase)} บาท</p>{f.sellerType === 'individual' && <p>WHT หักค่าใช้จ่าย {(r.whtDetail.expenseRate * 100).toFixed(0)}% · ถือครอง {r.whtDetail.years} ปี</p>}</div><div className="tx-split"><div><span>ผู้ซื้อเตรียม</span><b>{fmt(buyer)} บาท</b></div><div><span>ผู้ขายเตรียม</span><b>{fmt(r.total - buyer)} บาท</b></div></div>
+  </Result></div>
 }
 
-const num = (v) => parseFloat(String(v).replace(/,/g, '')) || 0
-
-// ── อัตราภาษีเงินได้บุคคลธรรมดา ──────────────────────────
-const PIT_BRACKETS = [
-  { max: 150000, rate: 0 },
-  { max: 300000, rate: 0.05 },
-  { max: 500000, rate: 0.10 },
-  { max: 750000, rate: 0.15 },
-  { max: 1000000, rate: 0.20 },
-  { max: 2000000, rate: 0.25 },
-  { max: 5000000, rate: 0.30 },
-  { max: Infinity, rate: 0.35 },
-]
-
-function calcPIT(income) {
-  if (income <= 0) return 0
-  let tax = 0
-  let prev = 0
-  for (const bracket of PIT_BRACKETS) {
-    if (income <= prev) break
-    const taxable = Math.min(income, bracket.max) - prev
-    tax += taxable * bracket.rate
-    prev = bracket.max
-  }
-  return tax
+function Mortgage() {
+  const [f, setF] = useState({ mortgageAmount: '', loanAmount: '', deedCount: '1', otherFees: '', discharge: false }); const set = (k, v) => setF(o => ({ ...o, [k]: v })); const r = useMemo(() => calculateMortgage(f), [f])
+  return <div className="tx-grid"><Form title="ข้อมูลจำนอง"><Check label="ไถ่ถอนจำนอง / ปลอดจำนอง" checked={f.discharge} onChange={v => set('discharge', v)} />{!f.discharge && <><Field label="วงเงินจำนอง" value={f.mortgageAmount} onChange={v => set('mortgageAmount', v)} suffix="บาท" /><Field label="วงเงินกู้" value={f.loanAmount} onChange={v => set('loanAmount', v)} suffix="บาท" /></>}<Field label="จำนวนโฉนด" value={f.deedCount} onChange={v => set('deedCount', v)} suffix="ฉบับ" /><Field label="ค่าใช้จ่ายอื่น" value={f.otherFees} onChange={v => set('otherFees', v)} suffix="บาท" /></Form><Result result={r} title={f.discharge ? 'ไถ่ถอนจำนอง' : 'จดจำนอง'} rows={[{ label: 'ค่าธรรมเนียมจดทะเบียน', value: r.registrationFee, detail: f.discharge ? 'ประมาณการ 50 บาทต่อแปลง' : '1% สูงสุด 200,000 บาท' }, { label: 'อากรสัญญากู้', value: r.stampDuty, detail: '1 บาทต่อ 2,000 บาท สูงสุด 10,000 บาท' }, { label: 'ค่าใช้จ่ายอื่น', value: r.otherFees }, { label: 'รวมประมาณการ', value: r.total, total: true }]} /></div>
 }
 
-// % หักค่าใช้จ่ายตามปีที่ถือครอง (กฎกระทรวง)
-const DEDUCTION_BY_YEAR = {
-  1: 0.50, 2: 0.55, 3: 0.60, 4: 0.65, 5: 0.70,
-  6: 0.75, 7: 0.80, 8: 0.85,
-}
-function getDeductionRate(years) {
-  const y = Math.min(Math.max(Math.floor(years), 1), 8)
-  return DEDUCTION_BY_YEAR[y]
+function Lease() {
+  const [f, setF] = useState({ monthlyRent: '', months: '36', premium: '', payerType: 'individual', ownerType: 'individual', otherFees: '' }); const set = (k, v) => setF(o => ({ ...o, [k]: v })); const r = useMemo(() => calculateLease(f), [f])
+  return <div className="tx-grid"><Form title="ข้อมูลสัญญาเช่า"><div className="tx-two"><Field label="ค่าเช่าต่อเดือน" value={f.monthlyRent} onChange={v => set('monthlyRent', v)} suffix="บาท" /><Field label="ระยะสัญญา" value={f.months} onChange={v => set('months', v)} suffix="เดือน" /></div><Field label="เงินกินเปล่า / ค่าตอบแทนแรกเข้า" value={f.premium} onChange={v => set('premium', v)} suffix="บาท" /><div className="tx-two"><Select label="ผู้จ่ายค่าเช่า" value={f.payerType} onChange={v => set('payerType', v)} options={[["individual", 'บุคคลธรรมดา'], ['company', 'นิติบุคคล']]} /><Select label="ผู้ให้เช่า" value={f.ownerType} onChange={v => set('ownerType', v)} options={[["individual", 'บุคคลธรรมดา'], ['company', 'นิติบุคคล']]} /></div><Field label="ค่าใช้จ่ายอื่น" value={f.otherFees} onChange={v => set('otherFees', v)} suffix="บาท" /></Form><Result result={r} rows={[{ label: 'ค่าตอบแทนตลอดสัญญา', value: r.totalConsideration }, { label: 'ค่าจดทะเบียนเช่า', value: r.registrationFee, detail: '1% ของค่าตอบแทนรวม' }, { label: 'อากรแสตมป์', value: r.stampDuty, detail: '1 บาทต่อ 1,000 บาทหรือเศษ' }, { label: 'ภาษีหัก ณ ที่จ่ายค่าเช่า', value: r.withholdingTax }, { label: 'รวมประมาณการ', value: r.total, total: true }]} /></div>
 }
 
-// ── คำนวณภาษีเงินได้หัก ณ ที่จ่าย (บุคคลธรรมดา) ──────────
-function calcWithholdingTax(assessedValue, years) {
-  if (assessedValue <= 0 || years <= 0) return 0
-  const y = Math.min(Math.max(Math.floor(years), 1), 8)
-  const deductRate = getDeductionRate(y)
-  const netIncome = assessedValue * (1 - deductRate)
-  const annualIncome = netIncome / y
-  const annualTax = calcPIT(annualIncome)
-  return annualTax * y
+function LandBuildingTax() {
+  const [f, setF] = useState({ assessedValue: '', ownerType: 'individual', useType: 'residence', isPrimaryResidence: false, residenceOwnership: 'land_building', vacantYears: '0', reliefRate: '0', mixedUse: false })
+  const set = (key, value) => setF(old => ({ ...old, [key]: value }))
+  const r = useMemo(() => calculateLandBuildingTax(f), [f])
+  return <div className="tx-grid"><Form title="ข้อมูลภาษีที่ดินและสิ่งปลูกสร้าง">
+    <Field label="มูลค่าประเมินที่ดินและสิ่งปลูกสร้างรวม" value={f.assessedValue} onChange={v => set('assessedValue', v)} suffix="บาท" />
+    <div className="tx-two"><Select label="เจ้าของทรัพย์" value={f.ownerType} onChange={v => set('ownerType', v)} options={[["individual", 'บุคคลธรรมดา'], ['company', 'นิติบุคคล']]} /><Select label="การใช้ประโยชน์" value={f.useType} onChange={v => set('useType', v)} options={[["agriculture", 'เกษตรกรรม'], ['residence', 'อยู่อาศัย'], ['commercial', 'พาณิชย์ / อื่น ๆ'], ['vacant', 'รกร้างว่างเปล่า']]} /></div>
+    {f.useType === 'residence' && <><Check label="เป็นบ้านหลังหลักและมีชื่อเจ้าของในทะเบียนบ้าน ณ 1 มกราคม" checked={f.isPrimaryResidence} onChange={v => set('isPrimaryResidence', v)} />{f.isPrimaryResidence && <Select label="กรรมสิทธิ์บ้านหลังหลัก" value={f.residenceOwnership} onChange={v => set('residenceOwnership', v)} options={[["land_building", 'เป็นเจ้าของที่ดินและสิ่งปลูกสร้าง'], ['building_only', 'เป็นเจ้าของเฉพาะสิ่งปลูกสร้าง']]} />}</>}
+    {f.useType === 'vacant' && <Field label="ปล่อยรกร้างต่อเนื่อง" value={f.vacantYears} onChange={v => set('vacantYears', v)} suffix="ปี" hint="อัตราเพิ่ม 0.3% ทุก 3 ปี แต่รวมไม่เกิน 3%" />}
+    <Check label="ทรัพย์เดียวมีการใช้ประโยชน์หลายประเภท" checked={f.mixedUse} onChange={v => set('mixedUse', v)} />
+    <Field label="ส่วนลดตามมาตรการของปีนั้น" value={f.reliefRate} onChange={v => set('reliefRate', v)} suffix="%" hint="กรอกเฉพาะเมื่อมีประกาศและทรัพย์เข้าเงื่อนไข" />
+  </Form><Result result={r} title="ภาษีที่ดินและสิ่งปลูกสร้างต่อปี" rows={[{ label: 'มูลค่าประเมิน', value: r.assessedValue }, { label: 'มูลค่ายกเว้น', value: -r.exemption }, { label: 'ฐานภาษีหลังยกเว้น', value: r.taxableValue }, { label: 'ภาษีก่อนส่วนลด', value: r.taxBeforeRelief }, { label: 'ส่วนลดตามมาตรการ', value: -r.reliefAmount }, { label: 'ภาษีประมาณการต่อปี', value: r.tax, total: true }]}>
+    {r.vacantSurchargeRate > 0 && <div className="tx-basis"><b>ที่ดินรกร้าง</b><p>อัตราเพิ่มสะสม {(r.vacantSurchargeRate * 100).toFixed(1)}%</p></div>}
+  </Result></div>
 }
 
-// ── ประเภทธุรกรรม ──────────────────────────────────────────
-const TRANSACTION_TYPES = [
-  { value: 'sale', label: 'ซื้อ-ขาย', icon: '🤝', color: BRAND.teal },
-  { value: 'mortgage', label: 'จำนอง', icon: '🏛️', color: BRAND.purple },
-  { value: 'sale_redeem', label: 'ขายฝาก', icon: '🔒', color: BRAND.gold },
-  { value: 'rental', label: 'ให้เช่า', icon: '🏠', color: BRAND.orange },
-  { value: 'inheritance', label: 'รับมรดก / รับให้', icon: '📜', color: BRAND.success },
-]
-
-// ── Input Component ──────────────────────────────────────────
-function TaxInput({ label, value, onChange, hint, prefix = '฿', unit, type = 'number' }) {
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <label style={{ display: 'block', fontSize: 12, color: BRAND.textSec, marginBottom: 6 }}>
-        {label}
-      </label>
-      <div style={{ display: 'flex', alignItems: 'center', background: '#0A1628', border: `1px solid ${BRAND.border}`, borderRadius: 8, overflow: 'hidden' }}>
-        {prefix && (
-          <span style={{ padding: '0 12px', color: BRAND.textMut, fontSize: 13, background: '#060E1C', borderRight: `1px solid ${BRAND.border}`, height: '100%', display: 'flex', alignItems: 'center', minWidth: 32, justifyContent: 'center' }}>
-            {prefix}
-          </span>
-        )}
-        <input
-          type={type}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: BRAND.textPri, padding: '10px 12px', fontSize: 14 }}
-          min={0}
-        />
-        {unit && (
-          <span style={{ padding: '0 12px', color: BRAND.textMut, fontSize: 12 }}>{unit}</span>
-        )}
-      </div>
-      {hint && <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 4 }}>{hint}</div>}
-    </div>
-  )
+function RentalIncomeTax() {
+  const [f, setF] = useState({ taxpayerType: 'individual', propertyType: 'building', monthlyRent: '', months: '12', premium: '', expenseMethod: 'standard', actualExpense: '', otherNetIncome: '', otherAssessableNonSalary: '', allowances: '60000', withholdingCredit: '', serviceRevenue: '', serviceExpense: '', vatRegistered: false, netProfit: '', corporateRate: '20' })
+  const set = (key, value) => setF(old => ({ ...old, [key]: value }))
+  const r = useMemo(() => calculateRentalIncomeTax(f), [f])
+  return <div className="tx-grid"><Form title="ข้อมูลรายได้ค่าเช่ารายปี">
+    <Select label="ผู้ให้เช่า" value={f.taxpayerType} onChange={v => set('taxpayerType', v)} options={[["individual", 'บุคคลธรรมดา'], ['company', 'นิติบุคคล']]} />
+    <div className="tx-two"><Field label="ค่าเช่าต่อเดือน" value={f.monthlyRent} onChange={v => set('monthlyRent', v)} suffix="บาท" /><Field label="จำนวนเดือนที่ได้รับ" value={f.months} onChange={v => set('months', v)} suffix="เดือน" /></div>
+    <Field label="เงินกินเปล่า / ค่าเช่ารับล่วงหน้าที่เป็นรายได้ปีนี้" value={f.premium} onChange={v => set('premium', v)} suffix="บาท" />
+    {f.taxpayerType === 'individual' ? <>
+      <Select label="ประเภททรัพย์ที่ให้เช่า" value={f.propertyType} onChange={v => set('propertyType', v)} options={[["building", 'บ้าน / อาคาร / สิ่งปลูกสร้าง'], ['agricultural_land', 'ที่ดินเกษตรกรรม'], ['other_land', 'ที่ดินไม่ใช่เกษตรกรรม'], ['other_property', 'ทรัพย์สินอื่น']]} />
+      <Select label="วิธีหักค่าใช้จ่าย" value={f.expenseMethod} onChange={v => set('expenseMethod', v)} options={[["standard", 'หักเหมาตามประเภททรัพย์'], ['actual', 'หักตามจริง']]} />
+      {f.expenseMethod === 'actual' && <Field label="ค่าใช้จ่ายตามจริงที่มีหลักฐาน" value={f.actualExpense} onChange={v => set('actualExpense', v)} suffix="บาท" />}
+      <div className="tx-two"><Field label="เงินได้สุทธิประเภทอื่น" value={f.otherNetIncome} onChange={v => set('otherNetIncome', v)} suffix="บาท" /><Field label="ค่าลดหย่อนรวม" value={f.allowances} onChange={v => set('allowances', v)} suffix="บาท" /></div>
+      <Field label="เงินได้ ม.40(2)-(8) อื่นก่อนหักค่าใช้จ่าย" value={f.otherAssessableNonSalary} onChange={v => set('otherAssessableNonSalary', v)} suffix="บาท" hint="ใช้ตรวจภาษีขั้นต่ำ 0.5%" />
+    </> : <div className="tx-two"><Field label="กำไรสุทธิทางภาษีทั้งกิจการ" value={f.netProfit} onChange={v => set('netProfit', v)} suffix="บาท" /><Field label="อัตราภาษีนิติบุคคล" value={f.corporateRate} onChange={v => set('corporateRate', v)} suffix="%" /></div>}
+    <Field label="ภาษีค่าเช่าที่ถูกหักไว้" value={f.withholdingCredit} onChange={v => set('withholdingCredit', v)} suffix="บาท" hint="ปกติผู้จ่ายนิติบุคคลหัก 5%" />
+    <h3>ค่าบริการที่แยกจากค่าเช่า</h3><div className="tx-two"><Field label="รายได้ค่าบริการ" value={f.serviceRevenue} onChange={v => set('serviceRevenue', v)} suffix="บาท" />{f.taxpayerType === 'individual' && <Field label="ค่าใช้จ่ายของงานบริการ" value={f.serviceExpense} onChange={v => set('serviceExpense', v)} suffix="บาท" />}</div><Check label="จดทะเบียน VAT และต้องคิด VAT สำหรับค่าบริการ" checked={f.vatRegistered} onChange={v => set('vatRegistered', v)} />
+  </Form><Result result={r} title="ภาษีรายได้ค่าเช่าประจำปี" rows={[{ label: 'รายได้ค่าเช่ารวม', value: r.annualRent }, { label: f.taxpayerType === 'individual' ? 'ค่าใช้จ่ายค่าเช่าที่หักได้' : 'กำไรสุทธิทางภาษี', value: f.taxpayerType === 'individual' ? -r.expense : r.netRentalIncome }, ...(f.taxpayerType === 'individual' && r.serviceRevenue ? [{ label: 'กำไรสุทธิจากค่าบริการ', value: r.netServiceIncome }] : []), ...(f.taxpayerType === 'individual' ? [{ label: 'เงินได้สุทธิหลังค่าลดหย่อน', value: r.taxableIncome }, { label: 'ภาษีวิธีเงินได้สุทธิ', value: r.methodOneTax }, { label: 'ภาษีขั้นต่ำ 0.5%', value: r.minimumTax }] : []), { label: 'ภาษีเงินได้ก่อนเครดิต', value: r.incomeTax }, { label: 'เครดิตภาษีหัก ณ ที่จ่าย', value: -r.withholdingCredit }, { label: 'VAT ค่าบริการ', value: r.vat }, { label: 'ภาษีคงเหลือประมาณการ', value: r.taxDue, total: true }]} /></div>
 }
 
-// ── Select Component ─────────────────────────────────────────
-function TaxSelect({ label, value, onChange, options }) {
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <label style={{ display: 'block', fontSize: 12, color: BRAND.textSec, marginBottom: 6 }}>{label}</label>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        style={{ width: '100%', background: '#0A1628', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, padding: '10px 12px', fontSize: 14, outline: 'none' }}
-      >
-        {options.map(o => (
-          <option key={o.value} value={o.value} style={{ background: BRAND.bgCard }}>{o.label}</option>
-        ))}
-      </select>
-    </div>
-  )
+function Gift() {
+  const [f, setF] = useState({ mode: 'inheritance', assessedValue: '', relationship: 'lineal', otherFees: '' }); const set = (k, v) => setF(o => ({ ...o, [k]: v })); const r = useMemo(() => calculateGiftInheritance(f), [f])
+  return <div className="tx-grid"><Form title="ข้อมูลมรดกหรือการให้"><Select label="ประเภท" value={f.mode} onChange={v => set('mode', v)} options={[["inheritance", 'รับมรดก'], ['gift', 'ให้โดยเสน่หา']]} /><Select label="ความสัมพันธ์" value={f.relationship} onChange={v => set('relationship', v)} options={[["lineal", 'บุพการี / ผู้สืบสันดาน'], ['spouse', 'คู่สมรส'], ['other', 'บุคคลอื่น']]} /><Field label="ราคาประเมินทุนทรัพย์" value={f.assessedValue} onChange={v => set('assessedValue', v)} suffix="บาท" /><Field label="ค่าใช้จ่ายอื่น" value={f.otherFees} onChange={v => set('otherFees', v)} suffix="บาท" /></Form><Result result={r} rows={[{ label: 'ค่าธรรมเนียมโอน', value: r.transferFee, detail: `${r.transferFeeRate * 100}% ของราคาประเมิน` }, { label: f.mode === 'inheritance' ? 'ภาษีการรับมรดก' : 'ภาษีเงินได้จากการรับให้', value: r.inheritanceOrGiftTax }, { label: 'ค่าใช้จ่ายอื่น', value: r.otherFees }, { label: 'รวมประมาณการ', value: r.total, total: true }]} /></div>
 }
 
-// ── แถวผลลัพธ์ภาษี ───────────────────────────────────────────
-function TaxRow({ label, amount, color, sub, bold, isTotal }) {
-  return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-      padding: isTotal ? '14px 0 0 0' : '10px 0',
-      borderTop: isTotal ? `1px solid ${BRAND.borderLt}` : undefined,
-      borderBottom: !isTotal ? `1px solid rgba(15,37,69,0.5)` : undefined,
-    }}>
-      <div>
-        <div style={{ fontSize: bold || isTotal ? 13 : 12, color: isTotal ? BRAND.textPri : BRAND.textSec, fontWeight: bold || isTotal ? 700 : 400 }}>{label}</div>
-        {sub && <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 2 }}>{sub}</div>}
-      </div>
-      <div style={{ fontSize: isTotal ? 18 : 13, fontWeight: isTotal ? 800 : 500, color: color || (isTotal ? BRAND.teal : BRAND.textPri), textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-        ฿{fmtMoney(amount)}
-      </div>
-    </div>
-  )
+function Rights() {
+  const [f, setF] = useState({ rightType: 'usufruct', consideration: '', hasConsideration: true, deedCount: '1', otherFees: '' }); const set = (k, v) => setF(o => ({ ...o, [k]: v })); const r = useMemo(() => calculatePropertyRight(f), [f])
+  return <div className="tx-grid"><Form title="ข้อมูลทรัพยสิทธิ"><Select label="ประเภทสิทธิ" value={f.rightType} onChange={v => set('rightType', v)} options={[["usufruct", 'สิทธิเก็บกิน'], ['superficies', 'สิทธิเหนือพื้นดิน'], ['habitation', 'สิทธิอาศัย'], ['servitude', 'ภาระจำยอม'], ['encumbrance', 'ภาระติดพันในอสังหาริมทรัพย์']]} /><Check label="มีค่าตอบแทน" checked={f.hasConsideration} onChange={v => set('hasConsideration', v)} />{f.hasConsideration && <Field label="ค่าตอบแทน" value={f.consideration} onChange={v => set('consideration', v)} suffix="บาท" />}<Field label="จำนวนโฉนด" value={f.deedCount} onChange={v => set('deedCount', v)} suffix="ฉบับ" /><Field label="ค่าใช้จ่ายอื่น" value={f.otherFees} onChange={v => set('otherFees', v)} suffix="บาท" /></Form><Result result={r} rows={[{ label: 'ค่าธรรมเนียมจดทะเบียน', value: r.registrationFee, detail: f.hasConsideration ? '1% ของค่าตอบแทน' : 'ประมาณการ 50 บาทต่อแปลง' }, { label: 'อากรแสตมป์', value: r.stampDuty }, { label: 'ค่าใช้จ่ายอื่น', value: r.otherFees }, { label: 'รวมประมาณการ', value: r.total, total: true }]} /></div>
 }
 
-// ── Tag หมายเหตุ ─────────────────────────────────────────────
-function Note({ text, color }) {
-  return (
-    <div style={{ background: `${color || BRAND.gold}18`, border: `1px solid ${color || BRAND.gold}40`, borderRadius: 8, padding: '10px 14px', fontSize: 12, color: color || BRAND.gold, marginTop: 12, lineHeight: 1.6 }}>
-      💡 {text}
-    </div>
-  )
-}
+function Reference() { return <section className="tx-ref"><div><h3>หักค่าใช้จ่าย WHT</h3>{Object.entries(STANDARD_EXPENSE_RATES).map(([y, r]) => <p key={y}><span>{y === '8' ? '8 ปีขึ้นไป' : `${y} ปี`}</span><b>{r * 100}%</b></p>)}</div><div><h3>ฐานคำนวณ</h3><p><span>ค่าโอน</span><b>ราคาประเมิน</b></p><p><span>SBT / อากร</span><b>ราคาที่สูงกว่า</b></p><p><span>WHT บุคคลธรรมดา</span><b>ราคาประเมิน</b></p><p><span>WHT นิติบุคคล</span><b>1% ราคาที่สูงกว่า</b></p></div><div><h3>อัตราหลัก</h3><p><span>SBT</span><b>3.3%</b></p><p><span>อากรแทน SBT</span><b>0.5%</b></p><p><span>จดจำนอง</span><b>1% สูงสุด 200,000</b></p><p><span>จดทะเบียนเช่า</span><b>1%</b></p></div></section> }
 
-// ────────────────────────────────────────────────────────────
-//  คำนวณ: ซื้อ-ขาย
-// ────────────────────────────────────────────────────────────
-function SaleCalc() {
-  const [sellingPrice, setSellingPrice] = useState('')
-  const [assessedLand, setAssessedLand] = useState('')
-  const [assessedBuilding, setAssessedBuilding] = useState('')
-  const [years, setYears] = useState('1')
-  const [isPrimary, setIsPrimary] = useState('no')
-  const [sellerType, setSellerType] = useState('individual')
-  const [primaryYears, setPrimaryYears] = useState('1')
-
-  const result = useMemo(() => {
-    const sp = num(sellingPrice)
-    const aLand = num(assessedLand)
-    const aBuilding = num(assessedBuilding)
-    const assessed = aLand + aBuilding
-    const baseValue = Math.max(sp, assessed)
-    const yrs = num(years)
-    const pYrs = num(primaryYears)
-
-    if (assessed === 0 && sp === 0) return null
-
-    // ค่าธรรมเนียมการโอน 2% ของราคาประเมิน
-    const transferFee = assessed * 0.02
-
-    // SBT เงื่อนไข: ถือครอง < 5 ปี หรือ ไม่ได้เป็นที่อยู่อาศัยหลักครบ 1 ปี
-    let useSBT = false
-    if (sellerType === 'company') {
-      useSBT = true
-    } else {
-      const heldLessThan5 = yrs < 5
-      const notPrimaryOver1Year = isPrimary === 'no' || pYrs < 1
-      useSBT = heldLessThan5 || notPrimaryOver1Year
-    }
-
-    // ภาษีธุรกิจเฉพาะ 3.3% (รวมภาษีท้องถิ่น 0.3%)
-    const sbt = useSBT ? baseValue * 0.033 : 0
-    // อากรแสตมป์ 0.5% (เฉพาะกรณียกเว้น SBT)
-    const stampDuty = !useSBT ? baseValue * 0.005 : 0
-
-    // ภาษีเงินได้หัก ณ ที่จ่าย
-    let withholdingTax = 0
-    if (sellerType === 'individual') {
-      withholdingTax = calcWithholdingTax(assessed > 0 ? assessed : sp, yrs)
-    } else {
-      // นิติบุคคล: 1% ของราคาขายหรือราคาประเมิน แล้วแต่สูงกว่า
-      withholdingTax = baseValue * 0.01
-    }
-
-    const totalTax = transferFee + sbt + stampDuty + withholdingTax
-
-    return {
-      assessed, baseValue, transferFee, sbt, stampDuty, withholdingTax, totalTax,
-      useSBT, sellerType,
-      deductRate: sellerType === 'individual' ? getDeductionRate(yrs) : null,
-    }
-  }, [sellingPrice, assessedLand, assessedBuilding, years, isPrimary, sellerType, primaryYears])
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px,1fr) minmax(280px,1fr)', gap: 20 }}>
-      {/* ── ฝั่งซ้าย: Input ── */}
-      <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 16 }}>ข้อมูลการซื้อ-ขาย</div>
-        <TaxInput label="ราคาซื้อขาย (ตามสัญญา)" value={sellingPrice} onChange={setSellingPrice} hint="ราคาที่ตกลงซื้อขายจริง" />
-        <TaxInput label="ราคาประเมินที่ดิน (กรมธนารักษ์)" value={assessedLand} onChange={setAssessedLand} hint="ดูจากสำนักงานที่ดินหรือเว็บไซต์กรมธนารักษ์" />
-        <TaxInput label="ราคาประเมินสิ่งปลูกสร้าง" value={assessedBuilding} onChange={setAssessedBuilding} hint="0 ถ้าเป็นที่ดินเปล่า" />
-        <TaxSelect label="ผู้ขาย" value={sellerType} onChange={setSellerType} options={[
-          { value: 'individual', label: 'บุคคลธรรมดา' },
-          { value: 'company', label: 'นิติบุคคล / บริษัท' },
-        ]} />
-        {sellerType === 'individual' && (
-          <>
-            <TaxInput label="จำนวนปีที่ถือครอง" value={years} onChange={setYears} prefix="" unit="ปี" hint="นับตั้งแต่วันที่ได้มา (สูงสุด 8 ปีสำหรับการคำนวณภาษี)" />
-            <TaxSelect label="เป็นที่อยู่อาศัยหลัก?" value={isPrimary} onChange={setIsPrimary} options={[
-              { value: 'no', label: 'ไม่ใช่ที่อยู่อาศัยหลัก' },
-              { value: 'yes', label: 'ใช่ที่อยู่อาศัยหลัก' },
-            ]} />
-            {isPrimary === 'yes' && (
-              <TaxInput label="ถือครองเป็นที่อยู่อาศัยหลักมาแล้ว" value={primaryYears} onChange={setPrimaryYears} prefix="" unit="ปี" hint="ต้องครบ 1 ปีจึงจะยกเว้น SBT" />
-            )}
-          </>
-        )}
-      </div>
-
-      {/* ── ฝั่งขวา: ผลลัพธ์ ── */}
-      <div>
-        {result ? (
-          <>
-            <div className="card" style={{ padding: 20, marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 16 }}>ผลการคำนวณภาษีและค่าธรรมเนียม</div>
-              <div style={{ fontSize: 11, color: BRAND.textMut, marginBottom: 4 }}>ฐานราคาประเมินรวม</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: BRAND.textPri, marginBottom: 16 }}>
-                ฿{fmtMoney(result.assessed)} <span style={{ fontSize: 12, color: BRAND.textMut }}>/ ฐานเปรียบเทียบ ฿{fmtMoney(result.baseValue)}</span>
-              </div>
-
-              <TaxRow
-                label="ค่าธรรมเนียมการโอนกรรมสิทธิ์"
-                sub="2% ของราคาประเมินรวม — แบ่งจ่ายผู้ซื้อ/ขายตามตกลง"
-                amount={result.transferFee}
-              />
-              {result.useSBT ? (
-                <TaxRow
-                  label="ภาษีธุรกิจเฉพาะ (SBT)"
-                  sub="3.3% (รวม 0.3% ภาษีท้องถิ่น) ของราคาสูงสุด — ผู้ขายเป็นผู้ชำระ"
-                  amount={result.sbt}
-                  color={BRAND.orange}
-                />
-              ) : (
-                <TaxRow
-                  label="อากรแสตมป์"
-                  sub="0.5% ของราคาสูงสุด — ได้รับยกเว้น SBT"
-                  amount={result.stampDuty}
-                />
-              )}
-              <TaxRow
-                label={result.sellerType === 'company' ? 'ภาษีเงินได้หัก ณ ที่จ่าย (นิติบุคคล)' : 'ภาษีเงินได้หัก ณ ที่จ่าย (บุคคลธรรมดา)'}
-                sub={result.sellerType === 'individual' && result.deductRate
-                  ? `หักค่าใช้จ่าย ${(result.deductRate * 100).toFixed(0)}% → คำนวณตามอัตราก้าวหน้า`
-                  : '1% ของราคาสูงสุด'}
-                amount={result.withholdingTax}
-                color={BRAND.purple}
-              />
-              <TaxRow label="รวมค่าใช้จ่ายทั้งหมด" amount={result.totalTax} isTotal />
-            </div>
-            <Note text={result.useSBT
-              ? 'ต้องจ่ายภาษีธุรกิจเฉพาะ เนื่องจากถือครองไม่ถึง 5 ปี หรือไม่ได้ใช้เป็นที่อยู่อาศัยหลักครบ 1 ปี'
-              : 'ได้รับยกเว้นภาษีธุรกิจเฉพาะ จ่ายอากรแสตมป์แทน เนื่องจากถือครองครบ 5 ปี หรือใช้เป็นที่อยู่อาศัยหลักครบ 1 ปี'}
-            />
-          </>
-        ) : (
-          <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🧮</div>
-            <div style={{ color: BRAND.textMut, fontSize: 13 }}>กรอกข้อมูลเพื่อคำนวณภาษี</div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────
-//  คำนวณ: จำนอง
-// ────────────────────────────────────────────────────────────
-function MortgageCalc() {
-  const [mortgageAmount, setMortgageAmount] = useState('')
-  const [loanAmount, setLoanAmount] = useState('')
-
-  const result = useMemo(() => {
-    const ma = num(mortgageAmount)
-    const la = num(loanAmount) || ma
-    if (ma === 0) return null
-
-    // ค่าธรรมเนียมจดจำนอง 1% สูงสุด 200,000 บาท
-    const regFee = Math.min(ma * 0.01, 200000)
-    // อากรแสตมป์สัญญากู้ 0.05% สูงสุด 10,000 บาท
-    const stampDuty = Math.min(la * 0.0005, 10000)
-    const total = regFee + stampDuty
-
-    return { regFee, stampDuty, total, ma, la }
-  }, [mortgageAmount, loanAmount])
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px,1fr) minmax(280px,1fr)', gap: 20 }}>
-      <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.purple, marginBottom: 16 }}>ข้อมูลการจำนอง</div>
-        <TaxInput label="วงเงินจำนอง" value={mortgageAmount} onChange={setMortgageAmount} hint="วงเงินที่จดจำนองที่สำนักงานที่ดิน" />
-        <TaxInput label="วงเงินกู้ยืม (ถ้าต่างจากวงเงินจำนอง)" value={loanAmount} onChange={setLoanAmount} hint="ปล่อยว่างหากเท่ากับวงเงินจำนอง" />
-      </div>
-      <div>
-        {result ? (
-          <div className="card" style={{ padding: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.purple, marginBottom: 16 }}>ผลการคำนวณ</div>
-            <TaxRow label="ค่าธรรมเนียมจดจำนอง" sub={`1% ของวงเงินจำนอง (สูงสุด ฿200,000)${result.ma * 0.01 > 200000 ? ' — คิดสูงสุดแล้ว' : ''}`} amount={result.regFee} color={BRAND.purple} />
-            <TaxRow label="อากรแสตมป์สัญญากู้" sub={`0.05% ของวงเงินกู้ (สูงสุด ฿10,000)${result.la * 0.0005 > 10000 ? ' — คิดสูงสุดแล้ว' : ''}`} amount={result.stampDuty} />
-            <TaxRow label="รวมค่าใช้จ่าย" amount={result.total} isTotal />
-          </div>
-        ) : (
-          <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🏛️</div>
-            <div style={{ color: BRAND.textMut, fontSize: 13 }}>กรอกวงเงินจำนองเพื่อคำนวณ</div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────
-//  คำนวณ: ขายฝาก
-// ────────────────────────────────────────────────────────────
-function SaleRedeemCalc() {
-  const [sellingPrice, setSellingPrice] = useState('')
-  const [assessedLand, setAssessedLand] = useState('')
-  const [assessedBuilding, setAssessedBuilding] = useState('')
-  const [years, setYears] = useState('1')
-
-  const result = useMemo(() => {
-    const sp = num(sellingPrice)
-    const aLand = num(assessedLand)
-    const aBuilding = num(assessedBuilding)
-    const assessed = aLand + aBuilding
-    const baseValue = Math.max(sp, assessed)
-    const yrs = num(years)
-
-    if (assessed === 0 && sp === 0) return null
-
-    // ขายฝากถือว่าเป็น SBT เสมอ (ไม่ยกเว้น)
-    const transferFee = assessed * 0.02
-    const sbt = baseValue * 0.033
-    const withholdingTax = calcWithholdingTax(assessed > 0 ? assessed : sp, yrs)
-    const total = transferFee + sbt + withholdingTax
-
-    // ค่าธรรมเนียมสัญญาขายฝาก (ไม่มีอากรแสตมป์เพิ่มเติม เพราะจ่าย SBT แล้ว)
-    return { assessed, baseValue, transferFee, sbt, withholdingTax, total, deductRate: getDeductionRate(yrs) }
-  }, [sellingPrice, assessedLand, assessedBuilding, years])
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px,1fr) minmax(280px,1fr)', gap: 20 }}>
-      <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 16 }}>ข้อมูลการขายฝาก</div>
-        <TaxInput label="ราคาขายฝาก" value={sellingPrice} onChange={setSellingPrice} />
-        <TaxInput label="ราคาประเมินที่ดิน" value={assessedLand} onChange={setAssessedLand} />
-        <TaxInput label="ราคาประเมินสิ่งปลูกสร้าง" value={assessedBuilding} onChange={setAssessedBuilding} hint="0 ถ้าเป็นที่ดินเปล่า" />
-        <TaxInput label="จำนวนปีที่ถือครอง (ก่อนขายฝาก)" value={years} onChange={setYears} prefix="" unit="ปี" hint="นับตั้งแต่ได้กรรมสิทธิ์มา" />
-      </div>
-      <div>
-        {result ? (
-          <>
-            <div className="card" style={{ padding: 20, marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 16 }}>ผลการคำนวณ</div>
-              <div style={{ fontSize: 11, color: BRAND.textMut, marginBottom: 12 }}>ราคาประเมินรวม ฿{fmtMoney(result.assessed)} / ฐานเปรียบเทียบ ฿{fmtMoney(result.baseValue)}</div>
-              <TaxRow label="ค่าธรรมเนียมการโอน" sub="2% ของราคาประเมินรวม" amount={result.transferFee} />
-              <TaxRow label="ภาษีธุรกิจเฉพาะ (SBT)" sub="3.3% — ขายฝากต้องจ่าย SBT เสมอ" amount={result.sbt} color={BRAND.orange} />
-              <TaxRow label="ภาษีเงินได้หัก ณ ที่จ่าย" sub={`หักค่าใช้จ่าย ${(result.deductRate * 100).toFixed(0)}% → คำนวณอัตราก้าวหน้า`} amount={result.withholdingTax} color={BRAND.purple} />
-              <TaxRow label="รวมค่าใช้จ่าย" amount={result.total} isTotal />
-            </div>
-            <Note text="การขายฝากต้องเสีย SBT เสมอ เนื่องจากถือเป็นการโอนกรรมสิทธิ์เชิงธุรกิจ" color={BRAND.gold} />
-          </>
-        ) : (
-          <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-            <div style={{ color: BRAND.textMut, fontSize: 13 }}>กรอกข้อมูลเพื่อคำนวณ</div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────
-//  คำนวณ: ให้เช่า
-// ────────────────────────────────────────────────────────────
-function RentalCalc() {
-  const [monthlyRent, setMonthlyRent] = useState('')
-  const [rentalMonths, setRentalMonths] = useState('12')
-  const [propertyType, setPropertyType] = useState('building')
-
-  const result = useMemo(() => {
-    const rent = num(monthlyRent)
-    const months = num(rentalMonths)
-    if (rent === 0 || months === 0) return null
-
-    const totalRent = rent * months
-
-    // อากรแสตมป์สัญญาเช่า: 1 บาทต่อ 1,000 บาท (0.1%) ปัดขึ้นทุก 1,000 บาท
-    const stampDutyRaw = totalRent * 0.001
-    const stampDuty = Math.ceil(stampDutyRaw) // ปัดขึ้น
-
-    // ภาษีเงินได้: หักค่าใช้จ่าย 30% (อาคาร) หรือ 20% (ที่ดิน)
-    const expenseDeductRate = propertyType === 'building' ? 0.30 : 0.20
-    const annualRent = (rent * 12)
-    const annualNet = annualRent * (1 - expenseDeductRate)
-    // ลดหย่อนส่วนตัว 60,000 บาท (ประมาณการ)
-    const taxableAnnual = Math.max(annualNet - 60000, 0)
-    const annualPIT = calcPIT(taxableAnnual)
-
-    const total = stampDuty + annualPIT
-
-    return { totalRent, stampDuty, annualPIT, total, expenseDeductRate, annualNet, months }
-  }, [monthlyRent, rentalMonths, propertyType])
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px,1fr) minmax(280px,1fr)', gap: 20 }}>
-      <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.orange, marginBottom: 16 }}>ข้อมูลการเช่า</div>
-        <TaxInput label="ค่าเช่า / เดือน" value={monthlyRent} onChange={setMonthlyRent} />
-        <TaxInput label="ระยะเวลาสัญญาเช่า" value={rentalMonths} onChange={setRentalMonths} prefix="" unit="เดือน" />
-        <TaxSelect label="ประเภทอสังหาริมทรัพย์" value={propertyType} onChange={setPropertyType} options={[
-          { value: 'building', label: 'อาคาร / สิ่งปลูกสร้าง (หักค่าใช้จ่าย 30%)' },
-          { value: 'land', label: 'ที่ดินเปล่า (หักค่าใช้จ่าย 20%)' },
-        ]} />
-      </div>
-      <div>
-        {result ? (
-          <>
-            <div className="card" style={{ padding: 20, marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.orange, marginBottom: 16 }}>ผลการคำนวณ</div>
-              <div style={{ fontSize: 11, color: BRAND.textMut, marginBottom: 12 }}>ค่าเช่าตลอดสัญญา ฿{fmtMoney(result.totalRent)} ({result.months} เดือน)</div>
-              <TaxRow label="อากรแสตมป์สัญญาเช่า" sub="0.1% ของค่าเช่าตลอดสัญญา (ปัดขึ้น)" amount={result.stampDuty} />
-              <TaxRow label="ภาษีเงินได้จากค่าเช่า (ประมาณการ/ปี)" sub={`หักค่าใช้จ่าย ${(result.expenseDeductRate * 100).toFixed(0)}% → รายได้สุทธิ ฿${fmtMoney(result.annualNet)}/ปี`} amount={result.annualPIT} color={BRAND.purple} />
-              <TaxRow label="รวมค่าใช้จ่าย" amount={result.total} isTotal />
-            </div>
-            <Note text="ภาษีเงินได้แสดงเป็นประมาณการต่อปี หักลดหย่อนส่วนตัว 60,000 บาท ค่าจริงขึ้นอยู่กับรายได้และการลดหย่อนทั้งหมดของผู้เสียภาษี" color={BRAND.orange} />
-          </>
-        ) : (
-          <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🏠</div>
-            <div style={{ color: BRAND.textMut, fontSize: 13 }}>กรอกข้อมูลเพื่อคำนวณ</div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────
-//  คำนวณ: รับมรดก / รับให้
-// ────────────────────────────────────────────────────────────
-function InheritanceCalc() {
-  const [assessedValue, setAssessedValue] = useState('')
-  const [transType, setTransType] = useState('inherit_lineal')
-
-  const result = useMemo(() => {
-    const av = num(assessedValue)
-    if (av === 0) return null
-
-    let transferFeeRate, taxLabel, taxAmount, stampDuty = 0, notes = []
-
-    if (transType === 'inherit_lineal') {
-      // รับมรดก ทายาทโดยธรรม (บุพการี/ผู้สืบสันดาน/คู่สมรส)
-      transferFeeRate = 0.005 // 0.5%
-      // ภาษีการรับมรดก: 5% ส่วนที่เกิน 100 ล้านบาท
-      taxLabel = 'ภาษีการรับมรดก (ทายาทโดยธรรม)'
-      taxAmount = av > 100000000 ? (av - 100000000) * 0.05 : 0
-      notes.push('ทายาทโดยธรรมได้รับยกเว้นภาษีมรดก ≤ 100 ล้านบาท')
-      notes.push('ยกเว้นภาษีเงินได้บุคคลธรรมดา สำหรับทรัพย์สินที่ได้จากมรดก')
-    } else if (transType === 'inherit_other') {
-      // รับมรดก บุคคลอื่น (ไม่ใช่ทายาทโดยธรรม)
-      transferFeeRate = 0.005
-      taxLabel = 'ภาษีการรับมรดก (บุคคลอื่น)'
-      taxAmount = av > 100000000 ? (av - 100000000) * 0.10 : 0
-      notes.push('บุคคลอื่น (ไม่ใช่ทายาทโดยธรรม) เสียภาษีมรดกในอัตรา 10%')
-    } else if (transType === 'gift_lineal') {
-      // รับให้ระหว่างบุพการี-ผู้สืบสันดาน
-      transferFeeRate = 0.005
-      taxLabel = 'ภาษีเงินได้จากการรับให้ (บุพการี)'
-      // ยกเว้น 20 ล้านบาทต่อปี ส่วนที่เกินเสีย 5%
-      taxAmount = av > 20000000 ? (av - 20000000) * 0.05 : 0
-      notes.push('ระหว่างบุพการี-ผู้สืบสันดาน ยกเว้น ≤ 20 ล้านบาท/ปี ส่วนที่เกินเสียภาษี 5%')
-    } else if (transType === 'gift_spouse') {
-      // รับให้ระหว่างสามี-ภรรยา
-      transferFeeRate = 0.005
-      taxLabel = 'ภาษีเงินได้จากการรับให้ (คู่สมรส)'
-      taxAmount = av > 20000000 ? (av - 20000000) * 0.05 : 0
-      notes.push('ระหว่างคู่สมรส ยกเว้น ≤ 20 ล้านบาท/ปี ส่วนที่เกินเสียภาษี 5%')
-    } else {
-      // รับให้ บุคคลทั่วไป
-      transferFeeRate = 0.02
-      taxLabel = 'ภาษีเงินได้จากการรับให้ (บุคคลทั่วไป)'
-      taxAmount = av > 10000000 ? (av - 10000000) * 0.05 : 0
-      notes.push('บุคคลทั่วไป ยกเว้น ≤ 10 ล้านบาท/ปี ส่วนที่เกินเสียภาษี 5%')
-      notes.push('ค่าธรรมเนียมโอน 2% (ไม่ใช่ 0.5% เหมือนทายาท)')
-    }
-
-    const transferFee = av * transferFeeRate
-    const total = transferFee + taxAmount + stampDuty
-
-    return { transferFee, taxLabel, taxAmount, stampDuty, total, transferFeeRate, notes }
-  }, [assessedValue, transType])
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px,1fr) minmax(280px,1fr)', gap: 20 }}>
-      <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.success, marginBottom: 16 }}>ข้อมูลการรับมรดก / รับให้</div>
-        <TaxSelect label="ประเภทการโอน" value={transType} onChange={setTransType} options={[
-          { value: 'inherit_lineal', label: 'รับมรดก — ทายาทโดยธรรม (บุพการี/ผู้สืบสันดาน/คู่สมรส)' },
-          { value: 'inherit_other', label: 'รับมรดก — บุคคลอื่น (ไม่ใช่ทายาทโดยธรรม)' },
-          { value: 'gift_lineal', label: 'รับให้ — จากบุพการีหรือให้ผู้สืบสันดาน' },
-          { value: 'gift_spouse', label: 'รับให้ — ระหว่างสามี-ภรรยา' },
-          { value: 'gift_other', label: 'รับให้ — บุคคลทั่วไป' },
-        ]} />
-        <TaxInput label="ราคาประเมิน (กรมธนารักษ์)" value={assessedValue} onChange={setAssessedValue} hint="ใช้ราคาประเมินของกรมธนารักษ์เป็นฐาน" />
-      </div>
-      <div>
-        {result ? (
-          <>
-            <div className="card" style={{ padding: 20, marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.success, marginBottom: 16 }}>ผลการคำนวณ</div>
-              <TaxRow label="ค่าธรรมเนียมการโอน" sub={`${(result.transferFeeRate * 100).toFixed(1)}% ของราคาประเมิน`} amount={result.transferFee} />
-              <TaxRow label={result.taxLabel} sub={result.taxAmount === 0 ? 'ไม่เกินเกณฑ์ยกเว้น' : 'ส่วนที่เกินเกณฑ์ยกเว้น'} amount={result.taxAmount} color={result.taxAmount > 0 ? BRAND.danger : BRAND.success} />
-              <TaxRow label="รวมค่าใช้จ่าย" amount={result.total} isTotal />
-            </div>
-            {result.notes.map((n, i) => (
-              <Note key={i} text={n} color={BRAND.success} />
-            ))}
-          </>
-        ) : (
-          <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📜</div>
-            <div style={{ color: BRAND.textMut, fontSize: 13 }}>กรอกข้อมูลเพื่อคำนวณ</div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────
-//  ตารางอัตราภาษีอ้างอิง
-// ────────────────────────────────────────────────────────────
-function ReferenceTable() {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px,1fr))', gap: 16 }}>
-      {/* อัตราภาษีเงินได้ก้าวหน้า */}
-      <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 14 }}>📊 อัตราภาษีเงินได้บุคคลธรรมดา (Progressive)</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', color: BRAND.textSec, padding: '4px 0', borderBottom: `1px solid ${BRAND.border}` }}>เงินได้สุทธิ</th>
-              <th style={{ textAlign: 'right', color: BRAND.textSec, padding: '4px 0', borderBottom: `1px solid ${BRAND.border}` }}>อัตรา</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ['0 – 150,000', '0%'],
-              ['150,001 – 300,000', '5%'],
-              ['300,001 – 500,000', '10%'],
-              ['500,001 – 750,000', '15%'],
-              ['750,001 – 1,000,000', '20%'],
-              ['1,000,001 – 2,000,000', '25%'],
-              ['2,000,001 – 5,000,000', '30%'],
-              ['5,000,001 ขึ้นไป', '35%'],
-            ].map(([range, rate], i) => (
-              <tr key={i}>
-                <td style={{ padding: '6px 0', color: BRAND.textPri, borderBottom: `1px solid ${BRAND.border}40` }}>{range}</td>
-                <td style={{ padding: '6px 0', color: BRAND.teal, fontWeight: 700, textAlign: 'right', borderBottom: `1px solid ${BRAND.border}40` }}>{rate}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* อัตราหักค่าใช้จ่ายตามปีถือครอง */}
-      <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.purple, marginBottom: 14 }}>📅 อัตราหักค่าใช้จ่ายตามปีถือครอง</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', color: BRAND.textSec, padding: '4px 0', borderBottom: `1px solid ${BRAND.border}` }}>ปีที่ถือครอง</th>
-              <th style={{ textAlign: 'right', color: BRAND.textSec, padding: '4px 0', borderBottom: `1px solid ${BRAND.border}` }}>หักค่าใช้จ่าย</th>
-              <th style={{ textAlign: 'right', color: BRAND.textSec, padding: '4px 0', borderBottom: `1px solid ${BRAND.border}` }}>คงเหลือ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(DEDUCTION_BY_YEAR).map(([yr, rate]) => (
-              <tr key={yr}>
-                <td style={{ padding: '6px 0', color: BRAND.textPri, borderBottom: `1px solid ${BRAND.border}40` }}>{yr === '8' ? '8 ปีขึ้นไป' : `${yr} ปี`}</td>
-                <td style={{ padding: '6px 0', color: BRAND.orange, fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${BRAND.border}40` }}>{(rate * 100).toFixed(0)}%</td>
-                <td style={{ padding: '6px 0', color: BRAND.textSec, textAlign: 'right', borderBottom: `1px solid ${BRAND.border}40` }}>{((1 - rate) * 100).toFixed(0)}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* สรุปอัตราค่าธรรมเนียม */}
-      <div className="card" style={{ padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 14 }}>💰 สรุปอัตราค่าธรรมเนียม & ภาษีหลัก</div>
-        {[
-          { label: 'ค่าธรรมเนียมโอน (ซื้อ-ขาย)', value: '2% ของราคาประเมิน', color: BRAND.teal },
-          { label: 'ค่าธรรมเนียมโอน (มรดก/ให้ทายาท)', value: '0.5% ของราคาประเมิน', color: BRAND.success },
-          { label: 'ภาษีธุรกิจเฉพาะ (SBT)', value: '3.3% ของราคาสูงสุด', color: BRAND.orange },
-          { label: 'อากรแสตมป์ (แทน SBT)', value: '0.5% ของราคาสูงสุด', color: BRAND.textPri },
-          { label: 'อากรแสตมป์สัญญาเช่า', value: '0.1% ของค่าเช่ารวม', color: BRAND.textPri },
-          { label: 'ค่าจดจำนอง', value: '1% (สูงสุด ฿200,000)', color: BRAND.purple },
-          { label: 'อากรแสตมป์สัญญากู้', value: '0.05% (สูงสุด ฿10,000)', color: BRAND.textSec },
-          { label: 'ภาษีมรดก (ทายาทโดยธรรม)', value: '5% ส่วนที่เกิน ฿100M', color: BRAND.danger },
-          { label: 'ภาษีมรดก (บุคคลอื่น)', value: '10% ส่วนที่เกิน ฿100M', color: BRAND.danger },
-        ].map((item, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${BRAND.border}40` }}>
-            <span style={{ fontSize: 12, color: BRAND.textSec }}>{item.label}</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: item.color }}>{item.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────
-//  TaxPage หลัก
-// ────────────────────────────────────────────────────────────
 export default function TaxPage() {
-  const [activeType, setActiveType] = useState('sale')
-  const [showReference, setShowReference] = useState(false)
-
-  return (
-    <div>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: BRAND.textPri }}>🧮 คำนวณภาษีอสังหาริมทรัพย์</div>
-          <div style={{ fontSize: 12, color: BRAND.textMut, marginTop: 4 }}>คำนวณภาษีและค่าธรรมเนียมตามประเภทธุรกรรม</div>
-        </div>
-        <button
-          onClick={() => setShowReference(!showReference)}
-          style={{ background: showReference ? `${BRAND.teal}20` : 'transparent', border: `1px solid ${showReference ? BRAND.teal : BRAND.border}`, borderRadius: 8, color: showReference ? BRAND.teal : BRAND.textSec, padding: '8px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
-        >
-          📋 {showReference ? 'ซ่อน' : 'ดู'}ตารางอ้างอิง
-        </button>
-      </div>
-
-      {/* Reference Table */}
-      {showReference && (
-        <div style={{ marginBottom: 20 }}>
-          <ReferenceTable />
-        </div>
-      )}
-
-      {/* Transaction Type Selector */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-        {TRANSACTION_TYPES.map(t => (
-          <button
-            key={t.value}
-            onClick={() => setActiveType(t.value)}
-            style={{
-              background: activeType === t.value ? `${t.color}20` : 'transparent',
-              border: `1px solid ${activeType === t.value ? t.color : BRAND.border}`,
-              borderRadius: 10, color: activeType === t.value ? t.color : BRAND.textSec,
-              padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-              transition: 'all 0.15s',
-            }}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Calculator */}
-      {activeType === 'sale' && <SaleCalc />}
-      {activeType === 'mortgage' && <MortgageCalc />}
-      {activeType === 'sale_redeem' && <SaleRedeemCalc />}
-      {activeType === 'rental' && <RentalCalc />}
-      {activeType === 'inheritance' && <InheritanceCalc />}
-
-      {/* Disclaimer */}
-      <div style={{ marginTop: 24, padding: '12px 16px', background: `${BRAND.textMut}15`, border: `1px solid ${BRAND.border}`, borderRadius: 10 }}>
-        <div style={{ fontSize: 11, color: BRAND.textMut, lineHeight: 1.7 }}>
-          ⚠️ <strong style={{ color: BRAND.textSec }}>หมายเหตุ:</strong> ผลการคำนวณเป็นเพียงการประมาณการเบื้องต้นเท่านั้น อัตราภาษีและเงื่อนไขอาจเปลี่ยนแปลงตามกฎหมายและประกาศกรมสรรพากร
-          ควรปรึกษาเจ้าหน้าที่สำนักงานที่ดินหรือผู้เชี่ยวชาญด้านภาษีก่อนทำธุรกรรมจริง
-        </div>
-      </div>
-    </div>
-  )
+  const [mode, setMode] = useState('transfer'), [rows, setRows] = useState([]), [valuationId, setValuationId] = useState(''), [reference, setReference] = useState(false)
+  useEffect(() => { getValuations().then(setRows).catch(() => setRows([])) }, [])
+  const selected = rows.find(row => String(row._rowIndex) === valuationId)
+  const valuation = selected ? { assessedValue: Number(selected['ราคาประเมินรัฐ (บ./ตร.ว.)'] || 0) * Number(selected['ตร.ว.รวม'] || 0), contractPrice: selected['วงเงินที่ลูกค้าขอ'], transactionType: selected['ประเภทการประเมิน'] === 'ขายฝาก' ? 'sale_redeem' : 'sale' } : null
+  return <div className="tx-page"><style>{styles}</style><header className="tx-head"><div><h2>คำนวณค่าใช้จ่ายอสังหาริมทรัพย์</h2><p>ประมาณการภาษีวันจดทะเบียน ภาษีรายปี และภาษีจากรายได้ค่าเช่า</p></div><button onClick={() => setReference(v => !v)}>{reference ? 'ซ่อนอัตราอ้างอิง' : 'ดูอัตราอ้างอิง'}</button></header>{reference && <Reference />}<div className="tx-link"><label>ดึงข้อมูลจากผลประเมิน<select value={valuationId} onChange={e => setValuationId(e.target.value)}><option value="">ไม่เชื่อมรายการประเมิน</option>{rows.map(row => <option key={row._rowIndex} value={row._rowIndex}>{row['รหัส/ชื่อทรัพย์'] || `รายการ #${row._rowIndex}`}</option>)}</select></label>{selected && <span>เชื่อมรายการ #{selected._rowIndex} แล้ว</span>}</div><nav className="tx-tabs">{modes.map(([key, label]) => <button key={key} className={mode === key ? 'active' : ''} onClick={() => setMode(key)}>{label}</button>)}</nav>{mode === 'transfer' && <Transfer valuation={valuation} />}{mode === 'land-tax' && <LandBuildingTax />}{mode === 'rental-tax' && <RentalIncomeTax />}{mode === 'mortgage' && <Mortgage />}{mode === 'lease' && <Lease />}{mode === 'gift' && <Gift />}{mode === 'rights' && <Rights />}<footer className="tx-note"><b>ขอบเขตการใช้งาน</b><span>ผลลัพธ์เป็นประมาณการภายใน ไม่ใช่ใบประเมินจากสำนักงานที่ดิน อปท. หรือแบบยื่นภาษี ยอดจริงขึ้นกับเอกสารสิทธิ มาตรการลดภาษี รายได้และค่าลดหย่อนทั้งปี ข้อเท็จจริงทางภาษี และคำวินิจฉัยของเจ้าพนักงาน ต้องตรวจยืนยันก่อนเสนอราคา นัดโอน หรือยื่นแบบทุกครั้ง</span></footer></div>
 }
+
+const styles = `.tx-page{color:${B.textPri};font-family:'Sarabun',sans-serif}.tx-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px}.tx-head h2{font-size:20px;margin:0 0 4px}.tx-head p{font-size:12px;color:${B.muted};margin:0}.tx-head button,.tx-result header button{background:#172033;border:1px solid #334155;color:#CBD5E1;border-radius:6px;padding:8px 12px;cursor:pointer}.tx-link{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:1px solid ${B.border};padding:10px 0 14px;margin-bottom:14px}.tx-link label{display:grid;gap:5px;font-size:11px;color:${B.textSec};min-width:min(420px,100%)}.tx-link select,.tx-field select{background:#07101F;border:1px solid #334155;border-radius:6px;color:${B.textPri};padding:9px}.tx-link span{font-size:11px;color:${B.teal}}.tx-tabs{display:flex;gap:6px;overflow:auto;margin-bottom:16px}.tx-tabs button{white-space:nowrap;background:#111827;border:1px solid #334155;color:#94A3B8;border-radius:6px;padding:9px 13px;cursor:pointer}.tx-tabs button.active{border-color:${B.teal};color:${B.teal};background:rgba(45,212,191,.08)}.tx-grid{display:grid;grid-template-columns:minmax(300px,.9fr) minmax(360px,1.1fr);gap:18px}.tx-form,.tx-result{border:1px solid ${B.border};background:${B.card};border-radius:8px;padding:18px}.tx-form h3{font-size:13px;color:${B.gold};margin:0 0 14px}.tx-form h3:not(:first-child){border-top:1px solid ${B.border};padding-top:16px;margin-top:18px}.tx-field{display:grid;gap:5px;margin-bottom:12px}.tx-field>span{font-size:11px;color:${B.textSec};font-weight:700}.tx-field small{font-size:10px;color:${B.muted};line-height:1.5}.tx-field>div{display:flex;align-items:center;background:#07101F;border:1px solid #334155;border-radius:6px;overflow:hidden}.tx-field input{min-width:0;width:100%;border:0;background:transparent;color:${B.textPri};padding:9px 10px;outline:0}.tx-field em{font-style:normal;font-size:10px;color:#64748B;padding:0 9px;white-space:nowrap}.tx-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.tx-check{display:flex;align-items:flex-start;gap:8px;padding:9px;background:#101B2C;border:1px solid #26364D;border-radius:6px;margin-bottom:12px;font-size:11px;color:#CBD5E1;line-height:1.5}.tx-check input{accent-color:${B.teal};margin-top:2px}.tx-result header{display:flex;justify-content:space-between;padding-bottom:13px;border-bottom:1px solid ${B.border}}.tx-result header span{font-size:10px;color:${B.teal};font-weight:700}.tx-result header h3{font-size:17px;margin:2px 0}.tx-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid rgba(51,65,85,.55)}.tx-row b{font-size:12px}.tx-row small{display:block;font-size:10px;color:#64748B;margin-top:3px}.tx-row strong{font-size:13px;white-space:nowrap}.tx-row.total{border-top:2px solid #334155;border-bottom:0;margin-top:5px}.tx-row.total b,.tx-row.total strong{font-size:17px;color:${B.teal}}.tx-basis,.tx-warn{padding:12px;margin-top:12px;border-radius:6px;font-size:11px}.tx-basis{background:#101B2C}.tx-basis p{margin:5px 0;color:#94A3B8}.tx-warn{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.28);color:#FCD34D}.tx-warn p{margin:6px 0}.tx-split{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.tx-split div{display:grid;gap:4px;padding:11px;background:#101B2C;border-radius:6px}.tx-split span{font-size:10px;color:#94A3B8}.tx-ref{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}.tx-ref>div{border:1px solid ${B.border};padding:14px;background:${B.card};border-radius:7px}.tx-ref h3{font-size:12px;margin:0 0 8px;color:${B.gold}}.tx-ref p{display:flex;justify-content:space-between;gap:8px;margin:0;padding:6px 0;border-bottom:1px solid #1E293B;font-size:10px;color:#94A3B8}.tx-ref b{color:#E2E8F0;text-align:right}.tx-note{display:grid;gap:4px;margin-top:18px;padding:12px 14px;border:1px solid ${B.border};border-radius:7px;color:#64748B;font-size:10px;line-height:1.6}.tx-note b{color:#94A3B8}@media(max-width:800px){.tx-grid,.tx-ref{grid-template-columns:1fr}.tx-link{align-items:flex-start;flex-direction:column}}@media(max-width:520px){.tx-head{align-items:flex-start;flex-direction:column}.tx-two,.tx-split{grid-template-columns:1fr}.tx-head button{width:100%}}@media print{.tx-head button,.tx-link,.tx-tabs,.tx-form,.tx-note{display:none!important}.tx-grid{display:block}.tx-result{border:0;color:#111;background:#fff}}`

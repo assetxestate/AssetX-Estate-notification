@@ -488,6 +488,88 @@ export async function deleteValuation(rowIndex) {
   return { success: true };
 }
 
+// -- Case workflow ----------------------------------------------------------
+export async function getWorkflowCases() {
+  const { data, error } = await supabase
+    .from("workflow_cases")
+    .select("*")
+    .is("archived_at", null)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createWorkflowCase(input) {
+  const { data, error } = await supabase
+    .from("workflow_cases")
+    .insert({
+      case_code: input.caseCode,
+      valuation_id: input.valuationId || null,
+      customer_id: input.customerId || null,
+      case_name: input.caseName || "",
+      contact_name: input.contactName || "",
+      transaction_type: input.transactionType || "",
+      phase: 1,
+      status: "active",
+      priority: input.priority || "normal",
+      owner_name: input.ownerName || "",
+      next_action: input.nextAction || "ตรวจเอกสารรับเรื่อง",
+      due_date: input.dueDate || null,
+      checklist: {},
+      phase_notes: {},
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  await addWorkflowEvent({
+    caseId: data.id,
+    eventType: "case_created",
+    toPhase: 1,
+    note: "สร้างเคสใหม่",
+    actor: input.ownerName || "ทีม AssetX",
+  });
+  return data;
+}
+
+export async function updateWorkflowCase(caseId, updates) {
+  const { data, error } = await supabase
+    .from("workflow_cases")
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq("id", caseId)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function addWorkflowEvent({ caseId, eventType, fromPhase, toPhase, note, actor, metadata }) {
+  const { data, error } = await supabase
+    .from("workflow_case_events")
+    .insert({
+      case_id: caseId,
+      event_type: eventType,
+      from_phase: fromPhase || null,
+      to_phase: toPhase || null,
+      note: note || "",
+      actor: actor || "ทีม AssetX",
+      metadata: metadata || {},
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getWorkflowEvents(caseId) {
+  const { data, error } = await supabase
+    .from("workflow_case_events")
+    .select("*")
+    .eq("case_id", caseId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 // ── Reservations (ใบจอง) ─────────────────────────────────────
 
 export async function getReservations() {
