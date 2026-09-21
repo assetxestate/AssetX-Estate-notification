@@ -13,6 +13,7 @@ import {
 } from './lib/api.js'
 import { searchGovPrice, extractPrice, recordLabel } from './lib/treasuryApi.js'
 import { confidenceBand } from './lib/pricePoints.js'
+import { parseParcelBoundary, parcelBoundaryToGeoJson } from './lib/parcelBoundary.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
 const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981' }
@@ -34,6 +35,7 @@ import {
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 const VALUATION_DRAFT_KEY = 'assetx_valuation_draft'
+const PARCEL_BOUNDARY_IMPORT_ENABLED = import.meta.env.VITE_ENABLE_PARCEL_BOUNDARY_IMPORT === 'true'
 
 const INITIAL_FORM = {
   assessmentType: 'ขายฝาก', propertyType: 'ที่ดิน', propertySubtype: 'ที่ดินเปล่า (โฉนด)',
@@ -50,6 +52,7 @@ const INITIAL_FORM = {
   lat: null, lng: null,
   requestedLoan: '', assetCode: '',
   propertyImages: [],
+  parcelBoundary: null,
 }
 
 const createInitialForm = () => ({
@@ -952,6 +955,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
 
   function applyDeedHistory(candidate) {
     update('deeds', candidate.deeds.map(d => ({ ...d, id: Date.now() + Math.random() })))
+    update('parcelBoundary', candidate.deeds[0]?.parcelBoundary || null)
     if (candidate.province) update('province', candidate.province)
     if (candidate.district) update('district', candidate.district)
     if (candidate.subdistrict) update('subdistrict', candidate.subdistrict)
@@ -1358,15 +1362,73 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
 }
 
 // ── Map Picker ─────────────────────────────────────────
-function MapPicker({ form, update }) {
+function calculateGeodesicArea(points) {
+  if (points.length < 3) return 0
+  const earthRadius = 6378137
+  const toRadians = value => value * Math.PI / 180
+  let area = 0
+
+  for (let i = 0; i < points.length; i += 1) {
+    const current = points[i]
+    const next = points[(i + 1) % points.length]
+    area += toRadians(next.lng - current.lng) * (2 + Math.sin(toRadians(current.lat)) + Math.sin(toRadians(next.lat)))
+  }
+
+  return Math.abs(area * earthRadius * earthRadius / 2)
+}
+
+function squareWaToThaiArea(totalSqw) {
+  const roundedSqw = Math.round(totalSqw * 10) / 10
+  const rai = Math.floor(roundedSqw / 400)
+  const remainingAfterRai = roundedSqw - (rai * 400)
+  const ngan = Math.floor(remainingAfterRai / 100)
+  const sqw = Math.round((remainingAfterRai - (ngan * 100)) * 10) / 10
+  return { rai, ngan, sqw }
+}
+
+function createBoundaryLayer(points) {
+  const boundary = points.length >= 3
+    ? L.polygon(points, { color: '#EF4444', weight: 3, fillColor: '#EF4444', fillOpacity: 0.18 })
+    : L.polyline(points, { color: '#EF4444', weight: 3, dashArray: '7 7' })
+  const vertices = points.map((point, index) => L.circleMarker(point, {
+    radius: 6,
+    color: '#FFFFFF',
+    weight: 2,
+    fillColor: '#EF4444',
+    fillOpacity: 1,
+  }).bindTooltip(String(index + 1), { permanent: true, direction: 'center', className: 'measurement-point-label' }))
+  return L.layerGroup([boundary, ...vertices])
+}
+
+function MapPicker({ form, update, updateDeed }) {
+  const savedParcelBoundary = form.parcelBoundary || form.deeds[0]?.parcelBoundary || null
+  const savedBoundaryPoints = Array.isArray(savedParcelBoundary?.points) ? savedParcelBoundary.points : []
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const markerRef = useRef(null)
+  const measurementLayerRef = useRef(null)
+  const baseLayersRef = useRef(null)
+  const measurementModeRef = useRef(false)
+  const measurementPointsRef = useRef(savedBoundaryPoints)
+  const boundaryFileInputRef = useRef(null)
+  const targetDeedIndexRef = useRef(0)
   const [searching, setSearching] = useState(false)
   const [geocoding, setGeocoding] = useState(false)
+  const [measuring, setMeasuring] = useState(false)
+  const [measurementPoints, setMeasurementPoints] = useState(savedBoundaryPoints)
+  const [targetDeedIndex, setTargetDeedIndex] = useState(0)
+  const [mapStyle, setMapStyle] = useState('satellite')
+  const [showBoundaryImporter, setShowBoundaryImporter] = useState(false)
+  const [boundaryText, setBoundaryText] = useState('')
+  const [boundaryError, setBoundaryError] = useState('')
   const formatCoordPair = (lat, lng) => lat != null && lng != null ? `${lat}, ${lng}` : ''
   const [coordInput, setCoordInput] = useState(() => formatCoordPair(form.lat, form.lng))
   const mapHeight = typeof window !== 'undefined' && window.innerWidth < 640 ? 260 : 320
+
+  const persistParcelBoundary = (boundary) => {
+    update('parcelBoundary', boundary)
+    if (updateDeed) updateDeed(targetDeedIndexRef.current, 'parcelBoundary', boundary)
+  }
 
   useEffect(() => {
     if (mapInstanceRef.current || !mapRef.current) return
@@ -1378,13 +1440,40 @@ function MapPicker({ form, update }) {
       doubleClickZoom: true,
       touchZoom: true,
     }).setView([13.0, 101.5], 6)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
+      maxNativeZoom: 19,
+      maxZoom: 21,
+    })
+    const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles © Esri',
+      maxNativeZoom: 18,
+      maxZoom: 21,
     }).addTo(map)
+    const labelLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Labels © Esri',
+      maxNativeZoom: 18,
+      maxZoom: 21,
+    }).addTo(map)
+    baseLayersRef.current = { streetLayer, satelliteLayer, labelLayer }
 
     map.on('click', async (e) => {
       const { lat, lng } = e.latlng
+      if (measurementModeRef.current) {
+        const nextPoints = [...measurementPointsRef.current, { lat, lng }]
+        measurementPointsRef.current = nextPoints
+        setMeasurementPoints(nextPoints)
+        persistParcelBoundary({
+          points: nextPoints,
+          source: 'manual',
+          sourceLabel: 'วาดบนแผนที่',
+          updatedAt: new Date().toISOString(),
+        })
+
+        if (measurementLayerRef.current) measurementLayerRef.current.remove()
+        measurementLayerRef.current = createBoundaryLayer(nextPoints).addTo(map)
+        return
+      }
       update('lat', lat)
       update('lng', lng)
       setCoordInput(formatCoordPair(lat.toFixed(6), lng.toFixed(6)))
@@ -1415,15 +1504,177 @@ function MapPicker({ form, update }) {
 
     if (form.lat && form.lng) {
       markerRef.current = L.marker([form.lat, form.lng]).addTo(map)
-      map.setView([form.lat, form.lng], 14)
+      map.setView([form.lat, form.lng], 18)
+    }
+    if (measurementPointsRef.current.length > 0) {
+      measurementLayerRef.current = createBoundaryLayer(measurementPointsRef.current).addTo(map)
+      map.fitBounds(L.latLngBounds(measurementPointsRef.current), { padding: [28, 28], maxZoom: 19 })
     }
 
     return () => {
       map.remove()
       mapInstanceRef.current = null
       markerRef.current = null
+      measurementLayerRef.current = null
+      baseLayersRef.current = null
     }
   }, [])
+
+  const measuredSqm = useMemo(() => calculateGeodesicArea(measurementPoints), [measurementPoints])
+  const measuredSqw = measuredSqm / 4
+  const measuredThaiArea = useMemo(() => squareWaToThaiArea(measuredSqw), [measuredSqw])
+  const selectedDeed = form.deeds[targetDeedIndex] || form.deeds[0] || {}
+  const registeredSqw = (Number(selectedDeed.areaRai) || 0) * 400
+    + (Number(selectedDeed.areaNgan) || 0) * 100
+    + (Number(selectedDeed.areaSqw) || 0)
+  const areaDifferencePercent = registeredSqw > 0
+    ? Math.abs(measuredSqw - registeredSqw) / registeredSqw * 100
+    : null
+  const areaComparison = areaDifferencePercent == null
+    ? { color: BRAND.textSec, label: 'ยังไม่มีเนื้อที่หน้าโฉนดสำหรับตรวจเทียบ' }
+    : areaDifferencePercent <= 3
+      ? { color: BRAND.success, label: 'เนื้อที่ใกล้เคียงข้อมูลหน้าโฉนด' }
+      : areaDifferencePercent <= 10
+        ? { color: BRAND.gold, label: 'เนื้อที่คลาดเคลื่อน ควรตรวจตำแหน่งมุมอีกครั้ง' }
+        : { color: '#F87171', label: 'เนื้อที่คลาดเคลื่อนสูง ห้ามใช้แทนแนวเขตทางการ' }
+
+  const toggleMeasuring = () => {
+    const nextMode = !measurementModeRef.current
+    measurementModeRef.current = nextMode
+    setMeasuring(nextMode)
+  }
+
+  const clearMeasurement = () => {
+    measurementPointsRef.current = []
+    setMeasurementPoints([])
+    persistParcelBoundary(null)
+    setBoundaryError('')
+    if (measurementLayerRef.current) {
+      measurementLayerRef.current.remove()
+      measurementLayerRef.current = null
+    }
+  }
+
+  const redrawMeasurement = (points, metadata = {}) => {
+    measurementPointsRef.current = points
+    setMeasurementPoints(points)
+    persistParcelBoundary(points.length > 0 ? {
+      points,
+      source: metadata.source || form.parcelBoundary?.source || 'manual',
+      sourceLabel: metadata.sourceLabel || form.parcelBoundary?.sourceLabel || 'วาดบนแผนที่',
+      fileName: metadata.fileName || form.parcelBoundary?.fileName || '',
+      updatedAt: new Date().toISOString(),
+    } : null)
+    if (measurementLayerRef.current) measurementLayerRef.current.remove()
+    if (!mapInstanceRef.current || points.length === 0) {
+      measurementLayerRef.current = null
+      return
+    }
+    measurementLayerRef.current = createBoundaryLayer(points).addTo(mapInstanceRef.current)
+  }
+
+  const undoMeasurementPoint = () => redrawMeasurement(measurementPointsRef.current.slice(0, -1))
+
+  const handleTargetDeedChange = (index) => {
+    targetDeedIndexRef.current = index
+    setTargetDeedIndex(index)
+    const boundary = form.deeds[index]?.parcelBoundary || null
+    const points = Array.isArray(boundary?.points) ? boundary.points : []
+    measurementPointsRef.current = points
+    setMeasurementPoints(points)
+    update('parcelBoundary', boundary)
+    if (measurementLayerRef.current) {
+      measurementLayerRef.current.remove()
+      measurementLayerRef.current = null
+    }
+    if (mapInstanceRef.current && points.length > 0) {
+      measurementLayerRef.current = createBoundaryLayer(points).addTo(mapInstanceRef.current)
+      mapInstanceRef.current.fitBounds(L.latLngBounds(points), { padding: [28, 28], maxZoom: 19 })
+    }
+  }
+
+  const loadBoundary = (text, fileName = '') => {
+    try {
+      const parsed = parseParcelBoundary(text, fileName)
+      redrawMeasurement(parsed.points, {
+        source: 'import',
+        sourceLabel: `นำเข้า ${parsed.format}`,
+        fileName,
+      })
+      mapInstanceRef.current?.fitBounds(L.latLngBounds(parsed.points), { padding: [28, 28], maxZoom: 19 })
+      setBoundaryError('')
+      setBoundaryText('')
+      setShowBoundaryImporter(false)
+      showToast(`นำเข้าแนวเขต ${parsed.points.length} จุดสำเร็จ`)
+    } catch (error) {
+      const message = error.message === 'Boundary requires at least three valid points'
+        ? 'ต้องมีพิกัดที่ถูกต้องอย่างน้อย 3 จุด'
+        : error.message
+      setBoundaryError(message)
+    }
+  }
+
+  const handleBoundaryFile = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      setBoundaryError('ไฟล์ต้องมีขนาดไม่เกิน 5 MB')
+      return
+    }
+    try {
+      loadBoundary(await file.text(), file.name)
+    } catch {
+      setBoundaryError('ไม่สามารถอ่านไฟล์นี้ได้')
+    }
+  }
+
+  const exportBoundary = () => {
+    if (measurementPoints.length < 3) return
+    const geoJson = parcelBoundaryToGeoJson(measurementPoints, {
+      source: form.parcelBoundary?.sourceLabel || 'AssetX Estate',
+      measuredSqm: Math.round(measuredSqm * 10) / 10,
+    })
+    const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(geoJson, null, 2)], { type: 'application/geo+json' }))
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.download = `${form.assetCode || 'assetx-parcel'}-boundary.geojson`
+    link.click()
+    URL.revokeObjectURL(blobUrl)
+  }
+
+  const changeMapStyle = (nextStyle) => {
+    const map = mapInstanceRef.current
+    const layers = baseLayersRef.current
+    if (!map || !layers || nextStyle === mapStyle) return
+    if (nextStyle === 'satellite') {
+      map.removeLayer(layers.streetLayer)
+      layers.satelliteLayer.addTo(map)
+      layers.labelLayer.addTo(map)
+    } else {
+      map.removeLayer(layers.satelliteLayer)
+      map.removeLayer(layers.labelLayer)
+      layers.streetLayer.addTo(map)
+    }
+    setMapStyle(nextStyle)
+  }
+
+  const applyMeasuredArea = () => {
+    if (measurementPoints.length < 3 || !updateDeed) return
+    if (registeredSqw > 0) {
+      const confirmed = window.confirm(
+        `เนื้อที่หน้าโฉนดเดิม ${registeredSqw.toLocaleString('th-TH')} ตร.ว.\n` +
+        `เนื้อที่วัดจากภาพประมาณ ${measuredSqw.toLocaleString('th-TH', { maximumFractionDigits: 1 })} ตร.ว.\n` +
+        `คลาดเคลื่อน ${areaDifferencePercent.toLocaleString('th-TH', { maximumFractionDigits: 1 })}%\n\n` +
+        'เส้นที่วาดไม่ใช่แนวเขตทางกฎหมาย ต้องการแทนที่เนื้อที่หน้าโฉนดหรือไม่?'
+      )
+      if (!confirmed) return
+    }
+    updateDeed(targetDeedIndex, 'areaRai', measuredThaiArea.rai)
+    updateDeed(targetDeedIndex, 'areaNgan', measuredThaiArea.ngan)
+    updateDeed(targetDeedIndex, 'areaSqw', measuredThaiArea.sqw)
+    showToast(`นำพื้นที่ ${measuredThaiArea.rai} ไร่ ${measuredThaiArea.ngan} งาน ${measuredThaiArea.sqw} ตร.ว. ไปใช้แล้ว`)
+  }
 
   const handleSearch = async () => {
     const parts = [form.subdistrict, form.district, form.province].filter(Boolean)
@@ -1453,7 +1704,7 @@ function MapPicker({ form, update }) {
     update('lat', lat)
     update('lng', lng)
     setCoordInput(formatCoordPair(lat, lng))
-    mapInstanceRef.current.setView([lat, lng], 15)
+    mapInstanceRef.current.setView([lat, lng], 18)
     if (markerRef.current) {
       markerRef.current.setLatLng([lat, lng])
     } else {
@@ -1551,14 +1802,150 @@ function MapPicker({ form, update }) {
         )}
       </div>
 
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', border: `1px solid ${BRAND.border}`, borderRadius: 7, overflow: 'hidden' }}>
+          {[['satellite', 'ภาพถ่ายดาวเทียม'], ['street', 'แผนที่ถนน']].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => changeMapStyle(value)}
+              style={{ padding: '6px 10px', border: 'none', borderRight: value === 'satellite' ? `1px solid ${BRAND.border}` : 'none', background: mapStyle === value ? 'rgba(45,212,191,0.16)' : BRAND.bg, color: mapStyle === value ? BRAND.teal : BRAND.textSec, fontSize: 11, fontWeight: mapStyle === value ? 700 : 500, cursor: 'pointer' }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 10, color: BRAND.textMut }}>ซูมเข้าใกล้แล้วคลิกตามหมุดเขตหรือมุมรั้วที่มองเห็น</div>
+          <button
+            type="button"
+            onClick={() => window.open('https://landsmaps.dol.go.th/', '_blank', 'noopener,noreferrer')}
+            style={{ padding: '6px 9px', borderRadius: 7, border: `1px solid ${BRAND.gold}`, background: 'rgba(245,158,11,0.08)', color: BRAND.gold, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+          >
+            เปิด LandsMaps (ยืนยัน ThaiID)
+          </button>
+        </div>
+      </div>
       <div style={{ borderRadius: 10, overflow: 'hidden', border: `1px solid ${BRAND.border}` }}>
         <div ref={mapRef} style={{ width: '100%', height: mapHeight }} />
+      </div>
+      <div style={{ marginTop: 10, padding: 12, borderRadius: 8, border: `1px solid ${measuring ? BRAND.teal : BRAND.border}`, background: measuring ? 'rgba(45,212,191,0.08)' : BRAND.bg }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <input
+            ref={boundaryFileInputRef}
+            type="file"
+            accept=".geojson,.json,.kml,.txt,application/geo+json,application/json,application/vnd.google-earth.kml+xml,text/plain"
+            onChange={handleBoundaryFile}
+            style={{ display: 'none' }}
+          />
+          <button
+            type="button"
+            onClick={toggleMeasuring}
+            style={{ padding: '7px 12px', borderRadius: 7, border: `1px solid ${BRAND.teal}`, background: measuring ? BRAND.teal : 'rgba(45,212,191,0.1)', color: measuring ? '#062A2A' : BRAND.teal, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          >
+            {measuring ? 'หยุดเพิ่มจุด' : 'วัดพื้นที่บนแผนที่'}
+          </button>
+          {PARCEL_BOUNDARY_IMPORT_ENABLED && (
+            <>
+              <button
+                type="button"
+                onClick={() => boundaryFileInputRef.current?.click()}
+                style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${BRAND.gold}`, background: 'rgba(245,158,11,0.08)', color: BRAND.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                นำเข้า GeoJSON / KML
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowBoundaryImporter(value => !value); setBoundaryError('') }}
+                style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 11, cursor: 'pointer' }}
+              >
+                วางข้อมูลแนวเขต
+              </button>
+            </>
+          )}
+          {measurementPoints.length > 0 && (
+            <>
+              <button type="button" onClick={undoMeasurementPoint} style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 11, cursor: 'pointer' }}>
+                ย้อนจุดล่าสุด
+              </button>
+              <button type="button" onClick={clearMeasurement} style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 11, cursor: 'pointer' }}>
+                ล้างแนวเขต
+              </button>
+              {PARCEL_BOUNDARY_IMPORT_ENABLED && measurementPoints.length >= 3 && (
+                <button type="button" onClick={exportBoundary} style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 11, cursor: 'pointer' }}>
+                  ส่งออก GeoJSON
+                </button>
+              )}
+            </>
+          )}
+          <span style={{ fontSize: 11, color: measuring ? BRAND.teal : BRAND.textSec }}>
+            {measuring ? `คลิกตามมุมเขตที่ดิน (${measurementPoints.length} จุด)` : 'คลิกอย่างน้อย 3 จุดเพื่อสร้างแนวเขต'}
+          </span>
+        </div>
+
+        {PARCEL_BOUNDARY_IMPORT_ENABLED && showBoundaryImporter && (
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 7, border: `1px solid ${BRAND.border}`, background: 'rgba(5,11,24,0.55)' }}>
+            <Label>วาง GeoJSON, KML หรือพิกัด Latitude, Longitude แยกบรรทัด</Label>
+            <textarea
+              value={boundaryText}
+              onChange={event => setBoundaryText(event.target.value)}
+              placeholder={'13.4048000, 101.1810700\n13.4049000, 101.1815000\n13.4044000, 101.1817000'}
+              style={{ width: '100%', minHeight: 100, boxSizing: 'border-box', resize: 'vertical', background: BRAND.bg, border: `1px solid ${boundaryError ? '#F87171' : BRAND.border}`, borderRadius: 7, color: BRAND.textPri, padding: 9, fontSize: 11, lineHeight: 1.5, outline: 'none' }}
+            />
+            {boundaryError && <div style={{ marginTop: 5, color: '#F87171', fontSize: 10 }}>{boundaryError}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 7, marginTop: 7 }}>
+              <button type="button" onClick={() => { setShowBoundaryImporter(false); setBoundaryError('') }} style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 10, cursor: 'pointer' }}>
+                ยกเลิก
+              </button>
+              <button type="button" onClick={() => loadBoundary(boundaryText)} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: BRAND.gold, color: '#111827', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
+                แสดงแนวเขต
+              </button>
+            </div>
+          </div>
+        )}
+
+        {measurementPoints.length > 0 && form.parcelBoundary?.sourceLabel && (
+          <div style={{ marginTop: 7, color: BRAND.textMut, fontSize: 10 }}>
+            แหล่งแนวเขต: {form.parcelBoundary.sourceLabel}{form.parcelBoundary.fileName ? ` (${form.parcelBoundary.fileName})` : ''} · บันทึกในแบบประเมินแล้ว
+          </div>
+        )}
+
+        {measurementPoints.length >= 3 && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BRAND.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: BRAND.teal }}>
+                พื้นที่ประมาณ {measuredThaiArea.rai} ไร่ {measuredThaiArea.ngan} งาน {measuredThaiArea.sqw.toLocaleString('th-TH')} ตร.ว.
+              </div>
+              <div style={{ fontSize: 10, color: BRAND.textMut, marginTop: 2 }}>
+                ประมาณ {Math.round(measuredSqm).toLocaleString('th-TH')} ตร.ม. ({measuredSqw.toLocaleString('th-TH', { maximumFractionDigits: 1 })} ตร.ว.)
+              </div>
+              <div style={{ fontSize: 10, color: areaComparison.color, marginTop: 5, fontWeight: 700 }}>
+                {registeredSqw > 0
+                  ? `${areaComparison.label} — หน้าโฉนด ${registeredSqw.toLocaleString('th-TH')} ตร.ว. ต่าง ${areaDifferencePercent.toLocaleString('th-TH', { maximumFractionDigits: 1 })}%`
+                  : areaComparison.label}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {form.deeds.length > 1 && (
+                <select value={targetDeedIndex} onChange={e => handleTargetDeedChange(Number(e.target.value))} style={{ ...inputBase, width: 'auto', padding: '7px 28px 7px 9px', fontSize: 11 }}>
+                  {form.deeds.map((deed, index) => <option key={index} value={index}>โฉนด {deed.titleDeedNo || `รายการที่ ${index + 1}`}</option>)}
+                </select>
+              )}
+              <button type="button" onClick={applyMeasuredArea} style={{ padding: '8px 12px', borderRadius: 7, border: 'none', background: BRAND.teal, color: '#062A2A', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
+                ใช้เป็นพื้นที่ประมาณการ
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 6 }}>
         {geocoding
           ? <span style={{ color: BRAND.teal }}>⏳ กำลังดึงที่อยู่จากพิกัด...</span>
           : '💡 วางพิกัดจาก LandsMaps ได้ในช่องเดียว เช่น 16.3395405|103.43032410 / คลิกบนแผนที่ / หรือกด "ค้นหาจากที่อยู่"'
         }
+      </div>
+      <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 7, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.07)', color: '#FBBF24', fontSize: 10, lineHeight: 1.6 }}>
+        แนวเขตสีแดงเป็นการวาดประมาณจากภาพถ่ายดาวเทียม อาจเหลื่อมจากระวางกรมที่ดิน แม้เนื้อที่จะใกล้เคียงกัน การตรวจรูปแปลงใน LandsMaps ต้องสแกน QR และยืนยันตัวตนผ่านแอป ThaiID ก่อน และต้องตรวจเอกสารสำนักงานที่ดินก่อนใช้ตัดสินใจหรือทำนิติกรรม
       </div>
     </Card>
   )
@@ -2123,7 +2510,7 @@ function NearbyPricePointsPanel({ points = [], loading, form, update }) {
   )
 }
 
-function Step2({ form, update, calc, comps = [], nearbyPricePoints = [], nearbyLoading = false }) {
+function Step2({ form, update, updateDeed, calc, comps = [], nearbyPricePoints = [], nearbyLoading = false }) {
   // ราคาอ้างอิงจากประวัติในพื้นที่เดียวกัน
   const relevantComps = comps.filter(c =>
     c['จังหวัด'] === form.province && c['ประเภทอสังหาฯ'] === form.propertyType
@@ -2270,7 +2657,7 @@ function Step2({ form, update, calc, comps = [], nearbyPricePoints = [], nearbyL
       <CompAdjPanel form={form} update={update} calc={calc} />
       <NearbyPricePointsPanel points={nearbyPricePoints} loading={nearbyLoading} form={form} update={update} />
       <MarketSearchPanel form={form} update={update} calc={calc} />
-      <MapPicker form={form} update={update} />
+      <MapPicker form={form} update={update} updateDeed={updateDeed} />
     </div>
   )
 }
@@ -3025,7 +3412,23 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   return (
     <>
       {/* Print Styles */}
-      <style>{``}</style>
+      <style>{`
+        .measurement-point-label {
+          width: 14px;
+          height: 14px;
+          padding: 0;
+          border: 0;
+          border-radius: 50%;
+          background: transparent;
+          box-shadow: none;
+          color: #fff;
+          font-size: 9px;
+          font-weight: 800;
+          line-height: 14px;
+          text-align: center;
+        }
+        .measurement-point-label::before { display: none; }
+      `}</style>
 
       <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px' }}>
         {/* Top Nav */}
@@ -3050,7 +3453,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
           <>
             <Stepper step={step} />
             {step === 1 && <Step1 form={form} update={update} updateDeed={updateDeed} addDeed={addDeed} removeDeed={removeDeed} customers={customers} assetCode={form.assetCode} />}
-            {step === 2 && <Step2 form={form} update={update} calc={calc} comps={comps} nearbyPricePoints={nearbyPricePoints} nearbyLoading={nearbyLoading} />}
+            {step === 2 && <Step2 form={form} update={update} updateDeed={updateDeed} calc={calc} comps={comps} nearbyPricePoints={nearbyPricePoints} nearbyLoading={nearbyLoading} />}
             {step === 3 && <Step3 form={form} update={update} calc={calc} policy={underwritingPolicy} />}
             {step === 4 && (
               <Step4
