@@ -9,6 +9,7 @@
     "build": "vite build",
     "test:parcel": "node src/lib/parcelBoundary.test.mjs",
     "test:tax": "node src/lib/transactionCostEngine.test.mjs",
+    "test:notice": "node src/lib/notice.test.mjs",
     "preview": "vite preview",
     "migrate": "node migrate.js"
   },

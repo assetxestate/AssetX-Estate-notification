@@ -1,176 +1,325 @@
-// ── ข้อมูลผู้ส่ง ─────────────────────────────────────────────────
+// ข้อมูลตั้งต้นสำหรับผู้ใช้งานหลัก สามารถแก้ไขเป็นรายสัญญาได้ในหน้าลูกค้า
 export const SENDER_INFO = {
-  name:     "จักรพันธ์ ศรีสว่าง",
+  name: "จักรพันธ์ ศรีสว่าง",
   position: "ผู้จัดการ",
-  company:  "บริษัท แอสเสท เอ็กซ์ เอสเตท จำกัด",
-  address:  "345/34 หมู่บ้านแกรนดิโอ2 - พระราม2 หมู่ที่ 5 ตำบลพันท้ายนรสิงห์ อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000",
+  company: "บริษัท แอสเสท เอ็กซ์ เอสเตท จำกัด",
+  address: "345/34 หมู่บ้านแกรนดิโอ2 - พระราม2 หมู่ที่ 5 ตำบลพันท้ายนรสิงห์ อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000",
 };
 
-// ── แปลงตัวเลขเป็นภาษาไทย ───────────────────────────────────────
-export function numberToThaiText(amount) {
-  if (amount === 0) return "ศูนย์บาทถ้วน";
-  const DIGITS    = ["ศูนย์","หนึ่ง","สอง","สาม","สี่","ห้า","หก","เจ็ด","แปด","เก้า"];
-  const POSITIONS = ["","สิบ","ร้อย","พัน","หมื่น","แสน","ล้าน"];
-  const baht   = Math.floor(amount);
-  const satang = Math.round((amount - baht) * 100);
+const THAI_MONTHS = [
+  "", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+  "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
+];
+
+const REQUIRED_NOTICE_FIELDS = [
+  ["fullName", "ชื่อผู้ขายฝาก"],
+  ["sellerNationalId", "เลขประจำตัวประชาชนผู้ขายฝาก"],
+  ["address", "ที่อยู่ผู้ขายฝาก"],
+  ["contractNumber", "เลขที่สัญญาขายฝาก"],
+  ["contractDate", "วันที่ทำสัญญา"],
+  ["landOffice", "สำนักงานที่ดิน"],
+  ["redemptionAmount", "จำนวนสินไถ่"],
+  ["buyerName", "ชื่อผู้ซื้อฝาก"],
+  ["buyerNationalId", "เลขประจำตัวประชาชนผู้ซื้อฝาก"],
+  ["buyerAddress", "ที่อยู่ผู้ซื้อฝาก"],
+];
+
+function readThaiUnderMillion(value, useEtForOne = false) {
+  const digits = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
+  const positions = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"];
+  const text = String(value);
   let result = "";
 
-  if (baht > 0) {
-    const s = String(baht);
-    const len = s.length;
-    for (let i = 0; i < len; i++) {
-      const d   = parseInt(s[i]);
-      const pos = len - i - 1;
-      if (d === 0) continue;
-      if (pos === 1 && d === 1)       result += "สิบ";
-      else if (pos === 1 && d === 2)  result += "ยี่สิบ";
-      else if (pos === 0 && d === 1 && len > 1) result += "เอ็ด";
-      else result += DIGITS[d] + POSITIONS[pos % 6] + (pos === 6 ? "ล้าน" : "");
-    }
-    result += "บาท";
+  for (let index = 0; index < text.length; index += 1) {
+    const digit = Number(text[index]);
+    const position = text.length - index - 1;
+    if (digit === 0) continue;
+    if (position === 1 && digit === 1) result += "สิบ";
+    else if (position === 1 && digit === 2) result += "ยี่สิบ";
+    else if (position === 0 && digit === 1 && (text.length > 1 || useEtForOne)) result += "เอ็ด";
+    else result += digits[digit] + positions[position];
   }
 
-  if (satang > 0) {
-    const ss = String(satang).padStart(2, "0");
-    for (let i = 0; i < 2; i++) {
-      const d   = parseInt(ss[i]);
-      const pos = 1 - i;
-      if (d === 0) continue;
-      if (pos === 1 && d === 1)      result += "สิบ";
-      else if (pos === 1 && d === 2) result += "ยี่สิบ";
-      else if (pos === 0 && d === 1 && satang >= 10) result += "เอ็ด";
-      else result += DIGITS[d] + POSITIONS[pos];
-    }
-    result += "สตางค์";
-  } else {
-    result += "ถ้วน";
-  }
   return result;
 }
 
-// ── แปลงวันที่เป็นรูปแบบ "1 มกราคม พ.ศ. 2568" ──────────────────
-export function formatThaiDateFull(dateStr) {
-  const MONTHS = ["","มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
-                  "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
-  const d = new Date(dateStr);
-  return `${d.getDate()} ${MONTHS[d.getMonth() + 1]} พ.ศ. ${d.getFullYear() + 543}`;
+function readThaiInteger(value) {
+  if (value < 1_000_000) return readThaiUnderMillion(value);
+  const higher = Math.floor(value / 1_000_000);
+  const remainder = value % 1_000_000;
+  return `${readThaiInteger(higher)}ล้าน${remainder ? readThaiUnderMillion(remainder, true) : ""}`;
 }
 
-// ── จัดรูปแบบเนื้อที่ดิน "0-1-75.4 ไร่" → "1 งาน 75.4 ตารางวา" ─
+export function numberToThaiText(amount) {
+  const number = Number(amount);
+  if (!Number.isFinite(number) || number < 0) return "-";
+
+  const rounded = Math.round((number + Number.EPSILON) * 100);
+  const baht = Math.floor(rounded / 100);
+  const satang = rounded % 100;
+  let result = baht === 0 ? "ศูนย์บาท" : `${readThaiInteger(baht)}บาท`;
+
+  if (satang === 0) return `${result}ถ้วน`;
+  result += `${readThaiUnderMillion(satang)}สตางค์`;
+  return result;
+}
+
+function parseDateParts(value) {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { day: value.getDate(), month: value.getMonth() + 1, year: value.getFullYear() };
+  }
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return { day, month, year };
+}
+
+function toLocalIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function formatThaiDateFull(dateValue) {
+  const parts = parseDateParts(dateValue);
+  if (!parts) return "-";
+  return `${parts.day} ${THAI_MONTHS[parts.month]} พ.ศ. ${parts.year + 543}`;
+}
+
+export function formatThaiLegalDate(dateValue) {
+  const parts = parseDateParts(dateValue);
+  if (!parts) return "-";
+  return `${parts.day} ${THAI_MONTHS[parts.month]} ${parts.year + 543}`;
+}
+
 export function formatLandArea(areaStr) {
   if (!areaStr) return "-";
-  const m = areaStr.match(/^(\d+)-(\d+)-([\d.]+)/);
-  if (!m) return areaStr;
+  const match = String(areaStr).match(/^(\d+)-(\d+)-([\d.]+)/);
+  if (!match) return String(areaStr);
   const parts = [];
-  if (parseInt(m[1]) > 0) parts.push(`${m[1]} ไร่`);
-  if (parseInt(m[2]) > 0) parts.push(`${m[2]} งาน`);
-  if (parseFloat(m[3]) > 0) parts.push(`${m[3]} ตารางวา`);
+  if (Number(match[1]) > 0) parts.push(`${Number(match[1])} ไร่`);
+  if (Number(match[2]) > 0) parts.push(`${Number(match[2])} งาน`);
+  if (Number(match[3]) > 0) parts.push(`${Number(match[3])} ตารางวา`);
   return parts.join(" ") || "-";
 }
 
-// ── สร้างและเปิดหน้าต่าง Notice ──────────────────────────────────
-export function printNotice(customer, extraInfo, docNumber) {
-  const allDeeds = customer.deeds || [];
-  const deed     = allDeeds[0] || {};
-  const today    = new Date();
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
-  const todayStr       = formatThaiDateFull(today.toISOString().split("T")[0]);
-  const contractEndStr = formatThaiDateFull(customer.contractEndDate);
-  const contractDateStr = extraInfo.contractDate
-    ? formatThaiDateFull(extraInfo.contractDate) : "-";
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
-  const remaining      = customer.payments?.filter(p => p.diff >= 0).length || 0;
-  const totalInterest  = (customer.amount || 0) * remaining;
-  const totalRedemption = (customer.principal || 0) + totalInterest;
+function calculateContractTerm(contractDate, endDate) {
+  const start = parseDateParts(contractDate);
+  const end = parseDateParts(endDate);
+  if (!start || !end) return "-";
+  let months = (end.year - start.year) * 12 + end.month - start.month;
+  if (end.day < start.day) months -= 1;
+  if (months > 0 && months % 12 === 0) return `${months / 12} ปี`;
+  return months > 0 ? `${months} เดือน` : "-";
+}
 
-  const deedList = allDeeds.map((d) =>
-    `โฉนดเลขที่ ${d.no || "-"} เลขที่ดิน ${d.landNo || "-"} ต.${d.tambon || "-"} อ.${d.amphoe || "-"} จ.${d.province || "-"} เนื้อที่ ${formatLandArea(d.area)}`
-  ).join("\n           ");
+function normalizeDeeds(rawDeeds) {
+  let parsed = rawDeeds;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = [];
+    }
+  }
+  if (Array.isArray(parsed)) return parsed.filter(deed => deed && typeof deed === "object");
+  if (parsed && typeof parsed === "object") return [parsed];
+  return [];
+}
 
-  const landOffice = extraInfo.landOffice || `สำนักงานที่ดินจังหวัด${deed.province || "-"}`;
+function buildDeedDescription(deed) {
+  const locality = [
+    deed.tambon ? `ตำบล/แขวง${deed.tambon}` : "",
+    deed.amphoe ? `อำเภอ/เขต${deed.amphoe}` : "",
+    deed.province ? `จังหวัด${deed.province}` : "",
+  ].filter(Boolean).join(" ");
+  return [
+    `โฉนดที่ดินเลขที่ ${deed.no || "-"}`,
+    `เลขที่ดิน ${deed.landNo || "-"}`,
+    deed.surveyPage ? `หน้าสำรวจ ${deed.surveyPage}` : "",
+    locality,
+    `เนื้อที่ ${formatLandArea(deed.area)}`,
+  ].filter(Boolean).join(" ");
+}
 
-  const html = `<!DOCTYPE html>
+export function getSaleRedemptionNoticeMissingFields(customer, extraInfo = {}) {
+  const missing = REQUIRED_NOTICE_FIELDS
+    .filter(([key]) => !String(extraInfo?.[key] ?? "").trim())
+    .map(([, label]) => label);
+  if (!customer?.contractEndDate) missing.push("วันครบกำหนดไถ่");
+  const deed = normalizeDeeds(customer?.deeds)[0] || {};
+  if (!extraInfo.titleDeedNumber && !deed.no) missing.push("เลขที่โฉนด");
+  if (!extraInfo.landNumber && !deed.landNo) missing.push("เลขที่ดิน");
+  if (!extraInfo.subdistrict && !deed.tambon) missing.push("ตำบล/แขวงตามโฉนด");
+  if (!extraInfo.district && !deed.amphoe) missing.push("อำเภอ/เขตตามโฉนด");
+  if (!extraInfo.province && !deed.province) missing.push("จังหวัดตามโฉนด");
+  if (!(Number(extraInfo?.redemptionAmount) > 0)) missing.push("จำนวนสินไถ่ที่มากกว่า 0 บาท");
+  return [...new Set(missing)];
+}
+
+export function buildSaleRedemptionNoticeData(customer, extraInfo = {}, now = new Date()) {
+  const normalizedDeeds = normalizeDeeds(customer?.deeds);
+  const sourceDeeds = normalizedDeeds.length ? normalizedDeeds : [{}];
+  const deeds = sourceDeeds.map((deed, index) => index !== 0 ? deed : ({
+    ...deed,
+    no: extraInfo.titleDeedNumber || deed.no,
+    landNo: extraInfo.landNumber || deed.landNo,
+    surveyPage: extraInfo.surveyPage || deed.surveyPage,
+    tambon: extraInfo.subdistrict || deed.tambon,
+    amphoe: extraInfo.district || deed.amphoe,
+    province: extraInfo.province || deed.province,
+    area: extraInfo.landArea || deed.area,
+  }));
+  const noticeDate = extraInfo.noticeDate || toLocalIsoDate(now);
+  const redemptionAmount = Number(extraInfo.redemptionAmount || 0);
+  const contractDate = formatThaiLegalDate(extraInfo.contractDate);
+  const contractTerm = extraInfo.contractTerm || calculateContractTerm(extraInfo.contractDate, customer.contractEndDate);
+  const buyerAddress = extraInfo.buyerAddress || SENDER_INFO.address;
+
+  return {
+    title: "หนังสือแจ้งกำหนดเวลาไถ่และจำนวนสินไถ่จากขายฝาก",
+    noticeDate: formatThaiLegalDate(noticeDate),
+    contractDate,
+    contractEndDate: formatThaiLegalDate(customer.contractEndDate),
+    contractTerm,
+    redemptionAmount,
+    redemptionAmountText: numberToThaiText(redemptionAmount),
+    landOffice: extraInfo.landOffice || "-",
+    paymentLocation: extraInfo.paymentLocation || extraInfo.landOffice || "-",
+    sellerName: extraInfo.fullName || customer.name || "-",
+    sellerNationalId: extraInfo.sellerNationalId || "-",
+    sellerAddress: extraInfo.address || "-",
+    sellerPhone: extraInfo.sellerPhone || "-",
+    buyerName: extraInfo.buyerName || SENDER_INFO.name || "-",
+    buyerNationalId: extraInfo.buyerNationalId || "-",
+    buyerAddress,
+    buyerPhone: extraInfo.buyerPhone || "-",
+    documentPlace: extraInfo.documentPlace || buyerAddress,
+    contractNumber: extraInfo.contractNumber || "-",
+    propertyDescription: deeds.map(buildDeedDescription).join(" และ "),
+    buildingDetails: extraInfo.buildingDetails || "",
+    attachmentText: extraInfo.attachmentText || `สำเนาหนังสือสัญญาขายฝากเลขที่ ${extraInfo.contractNumber || "-"} ลงวันที่ ${contractDate} จำนวน 1 ชุด`,
+  };
+}
+
+export function buildSaleRedemptionNoticeHtml(customer, extraInfo = {}, now = new Date()) {
+  const data = buildSaleRedemptionNoticeData(customer, extraInfo, now);
+  const propertyText = `${data.propertyDescription}${data.buildingDetails ? ` พร้อมสิ่งปลูกสร้าง${data.buildingDetails}` : ""}`;
+
+  return `<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<title>หนังสือแจ้งกำหนดเวลาไถ่จากขายฝาก - ${customer.name}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(data.title)} - ${escapeHtml(data.sellerName)}</title>
 <style>
-  @page { size: A4; margin: 2.5cm; }
+  @page { size: A4; margin: 16mm 20mm 15mm; }
   * { box-sizing: border-box; }
-  body { font-family: 'TH Sarabun New', 'Sarabun', serif; font-size: 16pt; line-height: 1.8; color: #000; background: #fff; }
-  .center { text-align: center; }
-  .right { text-align: right; }
-  .bold { font-weight: bold; }
-  .title { font-size: 18pt; font-weight: bold; text-align: center; margin-bottom: 8px; }
-  .doc-info { text-align: right; margin-bottom: 16px; }
-  .section { margin-bottom: 12px; }
-  .indent { padding-left: 60px; }
-  .indent2 { padding-left: 80px; }
-  .sign-area { text-align: center; margin-top: 40px; }
-  .dotline { display: inline-block; width: 220px; border-bottom: 1px dotted #000; }
-  .remark { margin-top: 20px; font-size: 13pt; border-top: 1px solid #000; padding-top: 8px; }
-  @media print { .no-print { display: none; } body { -webkit-print-color-adjust: exact; } }
+  body { margin: 0; background: #e5e7eb; color: #000; font-family: "TH Sarabun New", "Sarabun", Tahoma, sans-serif; font-size: 16pt; line-height: 1.25; }
+  .toolbar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: center; gap: 10px; padding: 12px; background: #0f172a; }
+  .toolbar button { border: 0; border-radius: 6px; padding: 9px 18px; background: #2dd4bf; color: #062723; font: 700 14px "Sarabun", sans-serif; cursor: pointer; }
+  .page { width: 210mm; min-height: 297mm; margin: 16px auto; padding: 16mm 20mm 15mm; background: #fff; box-shadow: 0 3px 16px rgba(0,0,0,.18); }
+  .title { margin: 0 0 10px; text-align: center; font-size: 18pt; font-weight: 700; }
+  .place { width: 58%; margin-left: auto; margin-bottom: 8px; }
+  .place div { margin-bottom: 2px; }
+  .meta-row { display: grid; grid-template-columns: 38mm 1fr; margin: 2px 0; }
+  .meta-label { font-weight: 700; }
+  p { margin: 6px 0; }
+  .body-paragraph { text-indent: 35mm; text-align: justify; }
+  .detail-table { width: calc(100% - 18mm); margin: 8px 0 10px 18mm; border-collapse: collapse; }
+  .detail-table td { padding: 2px 4px; vertical-align: top; }
+  .detail-table td:first-child { width: 50mm; font-weight: 700; white-space: nowrap; }
+  .signature { width: 75mm; margin: 16px 0 0 auto; text-align: center; }
+  .signature-space { height: 20px; }
+  @media print {
+    body { background: #fff; }
+    .toolbar { display: none; }
+    .page { width: auto; min-height: auto; margin: 0; padding: 0; box-shadow: none; }
+  }
 </style>
 </head>
 <body>
-<div class="no-print" style="display:block;text-align:center;margin-bottom:20px;font-family:sans-serif;">
-  <button onclick="window.print()" style="padding:10px 30px;font-size:16px;background:#2DD4BF;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">
-    🖨️ พิมพ์ / บันทึก PDF
-  </button>
-</div>
+<div class="toolbar"><button type="button" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button></div>
 
-<div class="title">หนังสือแจ้งกำหนดเวลาไถ่จากขายฝาก</div>
-<div class="doc-info">ที่ ${docNumber}<br>วันที่ ${todayStr}</div>
+<main class="page">
+  <h1 class="title">${escapeHtml(data.title)}</h1>
+  <div class="place">
+    <div>ทำที่ ${escapeHtml(data.documentPlace)}</div>
+    <div>วันที่ ${escapeHtml(data.noticeDate)}</div>
+  </div>
 
-<div class="section"><span class="bold">เรื่อง</span>&nbsp;&nbsp;&nbsp;แจ้งกำหนดเวลาไถ่และจำนวนสินไถ่จากการขายฝาก</div>
+  <div class="meta-row"><div class="meta-label">เรื่อง</div><div>แจ้งกำหนดเวลาไถ่และจำนวนสินไถ่จากขายฝาก</div></div>
+  <div class="meta-row"><div class="meta-label">เรียน</div><div>${escapeHtml(data.sellerName)}</div></div>
+  <div class="meta-row"><div class="meta-label">สิ่งที่ส่งมาด้วย</div><div>${escapeHtml(data.attachmentText)}</div></div>
 
-<div class="section">
-  <span class="bold">เรียน</span>&nbsp;&nbsp;&nbsp;${extraInfo.fullName || customer.name} (ผู้ขายฝาก)<br>
-  <span class="indent">${extraInfo.address || "-"}</span>
-</div>
+  <p class="body-paragraph">ตามที่ ${escapeHtml(data.sellerName)} เลขประจำตัวประชาชน ${escapeHtml(data.sellerNationalId)} อยู่${escapeHtml(data.sellerAddress)} ได้ทำหนังสือสัญญาขายฝากเลขที่ ${escapeHtml(data.contractNumber)} มีกำหนดเวลาไถ่ ${escapeHtml(data.contractTerm)} ลงวันที่ ${escapeHtml(data.contractDate)} ณ ${escapeHtml(data.landOffice)} กับ${escapeHtml(data.buyerName)} เลขประจำตัวประชาชน ${escapeHtml(data.buyerNationalId)} ผู้ซื้อฝาก โดยทรัพย์สินที่ขายฝากคือ ${escapeHtml(propertyText)} นั้น</p>
 
-<div class="section">
-  <span class="bold">อ้างถึง</span>&nbsp;&nbsp;สัญญาขายฝากที่ดิน เลขที่ ${extraInfo.contractNumber || "-"} ลงวันที่ ${contractDateStr}<br>
-  <span class="indent2">จดทะเบียน ณ ${landOffice}</span>
-</div>
+  <p class="body-paragraph">บัดนี้ สัญญาขายฝากดังกล่าวจะครบกำหนดเวลาไถ่ในวันที่ ${escapeHtml(data.contractEndDate)} ผู้ซื้อฝากจึงมีหนังสือฉบับนี้แจ้งให้ท่านทราบถึงกำหนดเวลาไถ่และจำนวนสินไถ่ เพื่อให้ท่านใช้สิทธิไถ่ทรัพย์สินที่ขายฝากภายในกำหนดเวลาไถ่ตามสัญญา โดยมีรายละเอียดดังต่อไปนี้</p>
 
-<div class="section"><span class="bold">สิ่งที่ส่งมาด้วย</span>&nbsp;&nbsp;สำเนาสัญญาขายฝาก จำนวน 1 ชุด</div>
+  <table class="detail-table">
+    <tr><td>กำหนดเวลาไถ่</td><td>ภายในวันที่ ${escapeHtml(data.contractEndDate)}</td></tr>
+    <tr><td>จำนวนสินไถ่</td><td>จำนวน ${formatMoney(data.redemptionAmount)} บาท (${escapeHtml(data.redemptionAmountText)})</td></tr>
+    <tr><td>ผู้รับชำระสินไถ่</td><td>${escapeHtml(data.buyerName)} ผู้ซื้อฝาก</td></tr>
+    <tr><td>สถานที่ดำเนินการ</td><td>${escapeHtml(data.paymentLocation)}</td></tr>
+  </table>
 
-<div class="section indent" style="margin-top:16px;">
-  ตามที่ท่านได้ทำสัญญาขายฝากที่ดิน ${deedList} ไว้กับข้าพเจ้า ตามสัญญาขายฝากอ้างถึงนั้น
-</div>
+  <p class="body-paragraph">จึงขอให้ท่านดำเนินการใช้สิทธิไถ่ภายในกำหนดเวลาดังกล่าว โดยชำระสินไถ่ตามจำนวนที่ระบุข้างต้นแก่ผู้ซื้อฝาก ทั้งนี้ หนังสือฉบับนี้ได้จัดส่งพร้อมสำเนาหนังสือสัญญาขายฝาก และจัดส่งทางไปรษณีย์ลงทะเบียนตอบรับไปยังที่อยู่ของผู้ขายฝากตามที่ปรากฏในสัญญาขายฝาก</p>
+  <p class="body-paragraph">จึงเรียนมาเพื่อทราบและดำเนินการภายในกำหนดเวลาไถ่</p>
 
-<div class="section indent">บัดนี้ ใกล้จะครบกำหนดเวลาไถ่ตามสัญญาแล้ว ข้าพเจ้าจึงขอแจ้งรายละเอียด ดังนี้</div>
-
-<div class="section indent2">
-  1. กำหนดวันครบกำหนดไถ่&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${contractEndStr}<br>
-  2. จำนวนสินไถ่&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${totalRedemption.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;(${numberToThaiText(totalRedemption)})<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;ประกอบด้วย<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;- เงินต้น (ราคาขายฝาก)&nbsp;&nbsp;:&nbsp;&nbsp;${(customer.principal || 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท<br>
-  &nbsp;&nbsp;&nbsp;&nbsp;- ผลประโยชน์ตอบแทน&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${totalInterest.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท<br>
-  3. สถานที่ชำระสินไถ่&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:&nbsp;&nbsp;${SENDER_INFO.company} ${SENDER_INFO.address}
-</div>
-
-<div class="section indent" style="margin-top:16px;">จึงเรียนมาเพื่อทราบและดำเนินการไถ่ถอนภายในกำหนดเวลาข้างต้น</div>
-
-<div class="sign-area">
-  ขอแสดงความนับถือ<br><br><br>
-  <span class="dotline"></span><br>
-  (${SENDER_INFO.name})<br>
-  ${SENDER_INFO.position}<br>
-  ${SENDER_INFO.company}
-</div>
-
-<div class="remark">
-  <span class="bold">หมายเหตุ:</span> หนังสือฉบับนี้ส่งทางไปรษณีย์ลงทะเบียนตอบรับ
-  ตามมาตรา 17 แห่ง พ.ร.บ. คุ้มครองประชาชนในการทำสัญญาขายฝากที่ดินเพื่อเกษตรกรรม
-  หรือที่อยู่อาศัย พ.ศ. 2562
-</div>
+  <div class="signature">
+    <div class="signature-space"></div>
+    <div>ลงชื่อ ........................................................ ผู้ซื้อฝาก</div>
+    <div>(${escapeHtml(data.buyerName)})</div>
+  </div>
+</main>
 </body>
 </html>`;
+}
 
-  const win = window.open("", "_blank", "width=900,height=700");
-  win.document.write(html);
-  win.document.close();
+export function printNotice(customer, extraInfo) {
+  const missing = getSaleRedemptionNoticeMissingFields(customer, extraInfo);
+  if (missing.length > 0) {
+    window.alert(`กรุณากด \"+ กรอกข้อมูล\" ในหัวข้อข้อมูลหนังสือแจ้งกำหนดไถ่ แล้วกรอกข้อมูลต่อไปนี้ให้ครบ:\n- ${missing.join("\n- ")}`);
+    return { ok: false, missing };
+  }
+
+  let html;
+  try {
+    html = buildSaleRedemptionNoticeHtml(customer, extraInfo);
+  } catch (error) {
+    window.alert(`ไม่สามารถประกอบร่างหนังสือได้: ${error instanceof Error ? error.message : "ข้อมูลมีรูปแบบไม่ถูกต้อง"}`);
+    return { ok: false, missing: [], error };
+  }
+
+  const blobUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+  const popup = window.open(blobUrl, "_blank", "width=980,height=760");
+  if (!popup) {
+    URL.revokeObjectURL(blobUrl);
+    window.alert("เบราว์เซอร์ปิดกั้นหน้าต่างร่างหนังสือ กรุณาอนุญาต Pop-up สำหรับเว็บไซต์นี้");
+    return { ok: false, missing: [] };
+  }
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+  return { ok: true, missing: [] };
 }

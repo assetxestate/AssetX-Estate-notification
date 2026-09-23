@@ -29,6 +29,11 @@
           "type": "string",
           "required": true
         },
+        "seller_national_id": {
+          "label": "เลขประจำตัวประชาชนผู้ขายฝาก",
+          "type": "string",
+          "required": true
+        },
         "seller_address": {
           "label": "ที่อยู่ผู้ขายฝาก",
           "type": "string",
@@ -89,6 +94,11 @@
           "type": "number",
           "required": false
         },
+        "building_details": {
+          "label": "รายละเอียดสิ่งปลูกสร้าง",
+          "type": "string",
+          "required": false
+        },
         "redemption_due_date": {
           "label": "วันครบกำหนดไถ่",
           "type": "date",
@@ -121,6 +131,16 @@
         },
         "buyer_name": {
           "label": "ชื่อผู้ซื้อฝาก",
+          "type": "string",
+          "required": true
+        },
+        "buyer_national_id": {
+          "label": "เลขประจำตัวประชาชนผู้ซื้อฝาก",
+          "type": "string",
+          "required": true
+        },
+        "buyer_address": {
+          "label": "ที่อยู่ผู้ซื้อฝากและสถานที่ทำหนังสือ",
           "type": "string",
           "required": true
         }
@@ -396,7 +416,7 @@
     }
   },
   "metadata": {
-    "version": "1.0",
+    "version": "1.1",
     "created_date": "2026-03-19",
     "author": "AssetX Estate",
     "description": "Template data for generating legal notice documents for Thai real estate transactions (Sale with Right of Redemption and Mortgage)",

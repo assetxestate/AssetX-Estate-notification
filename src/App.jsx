@@ -25,7 +25,7 @@ import {
   P_STATUS, C_STATUS, styles,
 } from "./lib/utils.js";
 import { IMGBB_KEY, IMGBB_ALBUMS, gcalPayment, msgPayment, msgContract } from "./lib/messages.js";
-import { SENDER_INFO, numberToThaiText, formatThaiDateFull, formatLandArea, printNotice } from "./lib/notice.js";
+import { printNotice } from "./lib/notice.js";
 import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
 import { MOCK_DATA } from "./lib/mockData.js";
 import { useLineNotification } from "./hooks/useLineNotification.js";
@@ -119,18 +119,6 @@ export default function App({ initialView = "main", onLogout }) {
       return updated;
     });
   }, []);
-
-  // ── counter เลขที่หนังสือ ────────────────────────────────────────
-  const [noticeCounter, setNoticeCounter] = React.useState(() => {
-    return parseInt(localStorage.getItem("assetx_notice_counter") || "0");
-  });
-  const getDocNumber = React.useCallback(() => {
-    const next = noticeCounter + 1;
-    setNoticeCounter(next);
-    localStorage.setItem("assetx_notice_counter", String(next));
-    const year = new Date().getFullYear() + 543;
-    return `ขฝ.${String(next).padStart(3,"0")}/${year}`;
-  }, [noticeCounter]);
 
   // ── สถานะสัญญา (ปิดแล้ว) ────────────────────────────────────────
   const [contractStatuses, setContractStatuses] = React.useState({});
@@ -1673,9 +1661,16 @@ export default function App({ initialView = "main", onLogout }) {
 
                               {/* ── ข้อมูล Notice (เฉพาะขายฝาก) ── */}
                               {c.type === "ขายฝาก" && (() => {
-                                const daysLeft = Math.ceil((new Date(c.contractEndDate) - new Date()) / 86400000);
-                                const showNotice = daysLeft <= 180 && daysLeft >= 0;
-                                const urgent = daysLeft <= 90;
+                                const daysLeft = c.contractDiff;
+                                const timing = !Number.isFinite(daysLeft)
+                                  ? { color: BRAND.textSec, bg: "rgba(100,116,139,.06)", border: "rgba(100,116,139,.3)", title: "ยังไม่ได้ระบุวันครบกำหนดไถ่", detail: "กรอกวันครบกำหนดสัญญาก่อนสร้างร่างหนังสือ" }
+                                  : daysLeft > 180
+                                    ? { color: "#93C5FD", bg: "rgba(59,130,246,.06)", border: "rgba(59,130,246,.3)", title: `ครบกำหนดไถ่ใน ${daysLeft} วัน`, detail: "ยังไม่ถึงช่วงส่งหนังสือตามกำหนด สามารถร่างเพื่อตรวจสอบล่วงหน้าได้" }
+                                    : daysLeft >= 90
+                                      ? { color: "#6EE7B7", bg: "rgba(16,185,129,.06)", border: "rgba(16,185,129,.3)", title: `อยู่ในช่วงส่งหนังสือ เหลือ ${daysLeft} วัน`, detail: "ช่วงแจ้งล่วงหน้า 3-6 เดือน ตามข้อมูลแม่แบบของระบบ" }
+                                      : daysLeft >= 0
+                                        ? { color: "#FCA5A5", bg: "rgba(239,68,68,.06)", border: "rgba(239,68,68,.3)", title: `ใกล้ครบกำหนดไถ่ เหลือ ${daysLeft} วัน`, detail: "เหลือน้อยกว่า 3 เดือน ควรตรวจสอบการส่งหนังสือและข้อกฎหมายทันที" }
+                                        : { color: "#FCA5A5", bg: "rgba(239,68,68,.06)", border: "rgba(239,68,68,.3)", title: `พ้นวันครบกำหนดไถ่ ${Math.abs(daysLeft)} วัน`, detail: "ร่างเอกสารได้ แต่ควรให้ผู้เชี่ยวชาญตรวจสอบสถานะสิทธิและกำหนดเวลา" };
                                 return (
                                   <div style={{ marginBottom: 16 }}>
                                     <CustomerExtraInfoSection
@@ -1683,39 +1678,31 @@ export default function App({ initialView = "main", onLogout }) {
                                       extraInfoMap={customerExtraInfo}
                                       onUpdate={updateCustomerExtraInfo}
                                     />
-                                    {showNotice && (
-                                      <div style={{
-                                        padding: "12px 14px", borderRadius: 10, marginBottom: 8,
-                                        background: urgent ? "rgba(239,68,68,.06)" : "rgba(245,158,11,.06)",
-                                        border: `1px solid ${urgent ? "rgba(239,68,68,.3)" : "rgba(245,158,11,.3)"}`,
-                                      }}>
-                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                                          <div>
-                                            <div style={{ fontWeight: 700, color: urgent ? "#FCA5A5" : "#FDE68A", fontSize: 13 }}>
-                                              {urgent ? "🚨" : "⚠️"} ครบกำหนดไถ่ใน {daysLeft} วัน
-                                            </div>
-                                            <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>
-                                              ต้องส่ง Notice ตาม พ.ร.บ. ขายฝาก มาตรา 17
-                                            </div>
+                                    <div style={{
+                                      padding: "12px 14px", borderRadius: 8, marginBottom: 8,
+                                      background: timing.bg, border: `1px solid ${timing.border}`,
+                                    }}>
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                                        <div>
+                                          <div style={{ fontWeight: 700, color: timing.color, fontSize: 13 }}>
+                                            {timing.title}
                                           </div>
-                                          <button
-                                            onClick={() => {
-                                              const extra = customerExtraInfo[c.id] || {};
-                                              const docNo = getDocNumber();
-                                              printNotice(c, extra, docNo);
-                                            }}
-                                            style={{
-                                              padding: "8px 16px", borderRadius: 8, cursor: "pointer",
-                                              background: "linear-gradient(135deg,#2DD4BF,#0E7490)",
-                                              border: "none", color: "#000", fontWeight: 700, fontSize: 12,
-                                              whiteSpace: "nowrap",
-                                            }}
-                                          >
-                                            📄 สร้าง Notice PDF
-                                          </button>
+                                          <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>
+                                            {timing.detail}
+                                          </div>
                                         </div>
+                                        <button
+                                          onClick={() => printNotice(c, customerExtraInfo[c.id] || {})}
+                                          style={{
+                                            padding: "8px 16px", borderRadius: 7, cursor: "pointer",
+                                            background: BRAND.teal, border: "none", color: "#062723",
+                                            fontWeight: 700, fontSize: 12, whiteSpace: "nowrap",
+                                          }}
+                                        >
+                                          ร่างหนังสือแจ้งกำหนดไถ่
+                                        </button>
                                       </div>
-                                    )}
+                                    </div>
                                   </div>
                                 );
                               })()}
