@@ -298,6 +298,86 @@ export function buildSaleRedemptionNoticeHtml(customer, extraInfo = {}, now = ne
 </html>`;
 }
 
+function showNoticePreview(html) {
+  const existing = document.getElementById("assetx-notice-preview");
+  if (existing?.closePreview) existing.closePreview();
+
+  const previousOverflow = document.body.style.overflow;
+  const overlay = document.createElement("div");
+  overlay.id = "assetx-notice-preview";
+  Object.assign(overlay.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "20000",
+    display: "flex",
+    flexDirection: "column",
+    background: "#050b18",
+  });
+
+  const header = document.createElement("div");
+  Object.assign(header.style, {
+    height: "52px",
+    flex: "0 0 52px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    padding: "0 14px 0 18px",
+    background: "#0d1b2e",
+    borderBottom: "1px solid #20324d",
+    color: "#f0f6ff",
+    fontFamily: '"Sarabun", sans-serif',
+  });
+
+  const title = document.createElement("strong");
+  title.textContent = "ตัวอย่างหนังสือแจ้งกำหนดเวลาไถ่";
+  title.style.fontSize = "14px";
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "×";
+  closeButton.title = "ปิดตัวอย่าง";
+  closeButton.setAttribute("aria-label", "ปิดตัวอย่างหนังสือ");
+  Object.assign(closeButton.style, {
+    width: "34px",
+    height: "34px",
+    border: "1px solid #475569",
+    borderRadius: "6px",
+    background: "transparent",
+    color: "#e2e8f0",
+    fontSize: "24px",
+    lineHeight: "1",
+    cursor: "pointer",
+  });
+
+  const frame = document.createElement("iframe");
+  frame.title = "ตัวอย่างหนังสือแจ้งกำหนดเวลาไถ่";
+  frame.srcdoc = html;
+  Object.assign(frame.style, {
+    width: "100%",
+    flex: "1 1 auto",
+    border: "0",
+    background: "#e5e7eb",
+  });
+
+  const closePreview = () => {
+    document.removeEventListener("keydown", handleKeyDown);
+    overlay.remove();
+    document.body.style.overflow = previousOverflow;
+  };
+  const handleKeyDown = (event) => {
+    if (event.key === "Escape") closePreview();
+  };
+  overlay.closePreview = closePreview;
+  closeButton.addEventListener("click", closePreview);
+  document.addEventListener("keydown", handleKeyDown);
+
+  header.append(title, closeButton);
+  overlay.append(header, frame);
+  document.body.append(overlay);
+  document.body.style.overflow = "hidden";
+}
+
 export function printNotice(customer, extraInfo) {
   const missing = getSaleRedemptionNoticeMissingFields(customer, extraInfo);
   if (missing.length > 0) {
@@ -313,13 +393,11 @@ export function printNotice(customer, extraInfo) {
     return { ok: false, missing: [], error };
   }
 
-  const blobUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
-  const popup = window.open(blobUrl, "_blank", "width=980,height=760");
-  if (!popup) {
-    URL.revokeObjectURL(blobUrl);
-    window.alert("เบราว์เซอร์ปิดกั้นหน้าต่างร่างหนังสือ กรุณาอนุญาต Pop-up สำหรับเว็บไซต์นี้");
-    return { ok: false, missing: [] };
+  try {
+    showNoticePreview(html);
+  } catch (error) {
+    window.alert(`ไม่สามารถเปิดตัวอย่างหนังสือได้: ${error instanceof Error ? error.message : "เบราว์เซอร์ไม่รองรับหน้าตัวอย่าง"}`);
+    return { ok: false, missing: [], error };
   }
-  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
   return { ok: true, missing: [] };
 }
