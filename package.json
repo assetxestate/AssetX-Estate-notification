@@ -10,6 +10,7 @@
     "test:parcel": "node src/lib/parcelBoundary.test.mjs",
     "test:tax": "node src/lib/transactionCostEngine.test.mjs",
     "test:notice": "node src/lib/notice.test.mjs",
+    "test:messages": "node src/lib/messages.test.mjs",
     "preview": "vite preview",
     "migrate": "node migrate.js"
   },

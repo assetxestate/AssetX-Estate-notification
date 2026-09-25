@@ -24,7 +24,10 @@ import {
   getDiff, payStatus, contractStatus, parseDeeds,
   P_STATUS, C_STATUS, styles,
 } from "./lib/utils.js";
-import { IMGBB_KEY, IMGBB_ALBUMS, gcalPayment, msgPayment, msgContract } from "./lib/messages.js";
+import {
+  IMGBB_KEY, IMGBB_ALBUMS, gcalPayment, gcalTopupPayment,
+  msgPayment, msgTopupPayment, msgContract,
+} from "./lib/messages.js";
 import { printNotice } from "./lib/notice.js";
 import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
 import { MOCK_DATA } from "./lib/mockData.js";
@@ -2040,6 +2043,20 @@ export default function App({ initialView = "main", onLogout }) {
                                       return { ...tp, diff, record, status };
                                     });
                                     const paidCount = tPays.filter(tp => tp.record).length;
+                                    const nextOutstanding = tPays.find(tp => !tp.record) || null;
+                                    const alertType = !nextOutstanding || nextOutstanding.diff > 7
+                                      ? null
+                                      : nextOutstanding.diff < 0
+                                        ? "overdue"
+                                        : nextOutstanding.diff === 0
+                                          ? "due"
+                                          : "early";
+                                    const alertMessage = alertType
+                                      ? msgTopupPayment(c, topup, nextOutstanding, alertType)
+                                      : "";
+                                    const alertTone = alertType === "overdue" || alertType === "due"
+                                      ? { color: "#FCA5A5", background: "rgba(239,68,68,.08)", border: "rgba(239,68,68,.4)" }
+                                      : { color: "#FDE68A", background: "rgba(245,158,11,.08)", border: "rgba(245,158,11,.4)" };
                                     return (
                                       <div key={topup.id} style={{ border: "1px solid rgba(245,158,11,.25)", borderRadius: 12, overflow: "hidden" }}>
                                         {/* Topup Header */}
@@ -2063,6 +2080,50 @@ export default function App({ initialView = "main", onLogout }) {
                                             style={{ padding: "3px 8px", borderRadius: 6, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.3)", color: "#FCA5A5", fontSize: 10, cursor: "pointer", flexShrink: 0, marginLeft: 8 }}
                                           >🗑️ ลบ</button>
                                         </div>
+                                        {alertType && (
+                                          <div style={{
+                                            margin: "10px 14px 0", padding: "10px 12px", borderRadius: 8,
+                                            background: alertTone.background, border: `1px solid ${alertTone.border}`,
+                                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                                            gap: 10, flexWrap: "wrap",
+                                          }}>
+                                            <div style={{ minWidth: 0 }}>
+                                              <div style={{ color: alertTone.color, fontSize: 12, fontWeight: 700 }}>
+                                                {alertType === "overdue"
+                                                  ? `เกินกำหนดชำระวงเงินเพิ่มงวดที่ ${nextOutstanding.installment} แล้ว ${Math.abs(nextOutstanding.diff)} วัน`
+                                                  : alertType === "due"
+                                                    ? `วันนี้ครบกำหนดชำระวงเงินเพิ่มงวดที่ ${nextOutstanding.installment}`
+                                                    : `แจ้งเตือนล่วงหน้า: วงเงินเพิ่มงวดที่ ${nextOutstanding.installment} ครบกำหนดในอีก ${nextOutstanding.diff} วัน`}
+                                              </div>
+                                              <div style={{ color: BRAND.textSec, fontSize: 11, marginTop: 2 }}>
+                                                กำหนด {formatThai(nextOutstanding.dateStr)} · ยอดชำระ {formatMoney(topup.interestAmount)} บาท
+                                              </div>
+                                            </div>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                                              <LineButton
+                                                message={alertMessage}
+                                                type="payment"
+                                                compact
+                                                onSend={(ok) => handleLineSend(ok, c.name)}
+                                                destinationId={customerLineIds[c.id] || targetUserId}
+                                              />
+                                              <button
+                                                type="button"
+                                                title="คัดลอกข้อความแจ้งเตือน"
+                                                onClick={(event) => { event.stopPropagation(); copy(alertMessage); }}
+                                                style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid rgba(245,158,11,.35)", background: "rgba(245,158,11,.08)", color: BRAND.gold, cursor: "pointer" }}
+                                              >📋</button>
+                                              <a
+                                                href={gcalTopupPayment(c, topup, nextOutstanding, false)}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                title="เพิ่มวันครบกำหนดลง Google Calendar"
+                                                onClick={event => event.stopPropagation()}
+                                                style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid rgba(56,189,248,.35)", background: "rgba(56,189,248,.08)", color: "#38BDF8", textDecoration: "none" }}
+                                              >📅</a>
+                                            </div>
+                                          </div>
+                                        )}
                                         {/* Topup Payment Schedule */}
                                         <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
                                           <div style={{ fontSize: 11, fontWeight: 600, color: BRAND.textSec, marginBottom: 2 }}>
