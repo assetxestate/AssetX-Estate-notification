@@ -25,6 +25,11 @@ const SHEET_NAME = 'DATA';
 // LINE User ID ของนายทุน — ใส่ ID จริงตรงนี้
 const INVESTOR_LINE_USER_ID = 'U90a5c8f66cb2c879a48ba36a46b300a3';
 
+// การแจ้งเตือนอัตโนมัติส่งให้ผู้ดูแลตรวจทานเท่านั้น
+// ถ้าตั้ง Script Property ชื่อ LINE_REVIEW_USER_ID ระบบจะใช้ค่านั้นก่อน
+const AUTOMATIC_NOTIFICATION_RECIPIENT_ID =
+  PropertiesService.getScriptProperties().getProperty('LINE_REVIEW_USER_ID') || INVESTOR_LINE_USER_ID;
+
 // ── คอลัมน์ใน Sheet DATA ────────────────────────────────────
 const COL = {
   customer_id:       1,
@@ -44,6 +49,11 @@ const COL = {
 // ฟังก์ชันหลัก — รันทุกวันเวลา 8:00 น.
 // ============================================================
 function checkAndSendNotifications() {
+  if (!AUTOMATIC_NOTIFICATION_RECIPIENT_ID) {
+    Logger.log('❌ ยังไม่ได้ตั้งค่า LINE_REVIEW_USER_ID สำหรับผู้ตรวจทาน');
+    return;
+  }
+
   const sheet = SpreadsheetApp.openById(SPREADSHEET_ID)
                               .getSheetByName(SHEET_NAME);
   if (!sheet) { Logger.log('❌ ไม่พบ Sheet: ' + SHEET_NAME); return; }
@@ -70,7 +80,7 @@ function checkAndSendNotifications() {
     const contractEndVal = row[COL.contract_end_date - 1];
     const lineUserId     = row[COL.line_user_id - 1];
 
-    if (!lineUserId || !dateVal) { skipCount++; continue; }
+    if (!dateVal) { skipCount++; continue; }
 
     const dueDate = new Date(dateVal);
     dueDate.setHours(0, 0, 0, 0);
@@ -82,13 +92,13 @@ function checkAndSendNotifications() {
     // ── ส่วนที่ 1: แจ้งเตือนชำระดอกเบี้ย ──────────────────
     if (diffDays === 0) {
       const msg = buildDueMsg(name, installment, amount, freq, dueDate);
-      sendLine(lineUserId, msg);
+      sendLine(AUTOMATIC_NOTIFICATION_RECIPIENT_ID, msg);
       sentCount++;
       Logger.log(`✅ ส่ง (วันนี้) → ${name} งวด ${installment}`);
 
     } else if (diffDays === 7) {
       const msg = buildEarlyMsg(name, installment, amount, freq, dueDate, 7);
-      sendLine(lineUserId, msg);
+      sendLine(AUTOMATIC_NOTIFICATION_RECIPIENT_ID, msg);
       sentCount++;
       Logger.log(`✅ ส่ง (7 วัน) → ${name} งวด ${installment}`);
     }
@@ -101,14 +111,14 @@ function checkAndSendNotifications() {
 
       if (contractDiff === 150) { // 5 เดือน ≈ 150 วัน
         const msg = buildContractMsg(name, principal, amount, contractEnd);
-        sendLine(lineUserId, msg);
+        sendLine(AUTOMATIC_NOTIFICATION_RECIPIENT_ID, msg);
         sentCount++;
         Logger.log(`✅ ส่ง (Notice 5 เดือน) → ${name}`);
       }
     }
   }
 
-  Logger.log(`📊 สรุป: ส่งสำเร็จ ${sentCount} | ข้าม ${skipCount} (ไม่มี User ID)`);
+  Logger.log(`📊 สรุป Review Mode: ส่งให้ผู้ดูแล ${sentCount} | ข้าม ${skipCount}`);
 }
 
 // ============================================================
@@ -223,8 +233,7 @@ function setupDailyTrigger() {
 // ทดสอบส่งข้อความ — รันเพื่อทดสอบก่อน Deploy
 // ============================================================
 function testSendToMe() {
-  const TEST_USER_ID = 'U90a5c8f66cb2c879a48ba36a46b300a3';
-  sendLine(TEST_USER_ID, '🧪 ทดสอบระบบแจ้งเตือน AssetX Estate\n\n✅ ระบบทำงานปกติ\nจะส่งแจ้งเตือนอัตโนมัติทุกวัน 8:00 น.');
+  sendLine(AUTOMATIC_NOTIFICATION_RECIPIENT_ID, '🧪 ทดสอบระบบแจ้งเตือน AssetX Estate\n\n✅ ระบบทำงานปกติ\nจะส่งแจ้งเตือนอัตโนมัติทุกวัน 8:00 น.');
   Logger.log('✅ ส่งทดสอบแล้ว — เช็ค LINE ได้เลย');
 }
 
@@ -1349,7 +1358,7 @@ function notifyInvestorNewValuation(v) {
     '👤 ผู้ประเมิน: ' + (v['ผู้ประเมิน'] || '—'),
     '─────────────────',
     '⏳ รอการพิจารณาจากท่าน',
-    'AssetX Estate Co., Ltd. 🏠'
+    'บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด 🏠'
   ].join('\n');
   sendLine(INVESTOR_LINE_USER_ID, msg);
   return { success: true };
@@ -1500,7 +1509,7 @@ function handleLineWebhook(body) {
           '🔒 ข้อมูลของคุณถูกเก็บรักษาเป็นความลับ',
           'และใช้เพื่อการแจ้งเตือนเท่านั้น',
           '',
-          'AssetX Estate Co., Ltd. 🏠'
+          'บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด 🏠'
         ].join('\n');
       } else {
         replyMsg = '❌ ไม่สามารถลงทะเบียนได้\n\n' + result.error + '\n\nกรุณาติดต่อเจ้าหน้าที่เพื่อขอรหัสใหม่';

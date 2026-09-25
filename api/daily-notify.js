@@ -1,6 +1,7 @@
 // แจ้งเตือน LINE รายวัน — อ่านข้อมูลจาก Supabase โดยตรง (แทนที่ checkAndSendNotifications ใน GAS ที่ยังอ่านจาก Google Sheet เก่า)
 // เรียกผ่าน Vercel Cron ทุกวัน (ดู vercel.json) — ป้องกันด้วย CRON_SECRET
 import { createClient } from '@supabase/supabase-js';
+import { getNotificationMode, resolveAutomaticRecipient } from './_notification-routing.js';
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 
@@ -17,7 +18,7 @@ const PAYMENT_FOOTER = [
   `📩 เพื่อรักษาสถานะสัญญา รบกวนดำเนินการภายในวันที่กำหนด`,
   `และกรุณาแจ้งหลักฐานการโอนเงินเพื่อยืนยันรายการครับ`, ``,
   `ขอบคุณครับ🙏`,
-  `AssetX Estate Co., Ltd. 🏠`,
+  `บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด 🏠`,
 ];
 
 function todayMidnight() {
@@ -138,6 +139,9 @@ export default async function handler(req, res) {
   const errors = [];
 
   try {
+    const deliveryMode = getNotificationMode();
+    if (deliveryMode === 'review') resolveAutomaticRecipient('');
+
     const [{ data: customers, error: custErr }, { data: payments, error: payErr },
            { data: paymentRecords, error: recErr }, { data: statuses, error: statErr },
            { data: topups, error: topupErr }, { data: topupRecords, error: topupRecErr }] =
@@ -169,16 +173,18 @@ export default async function handler(req, res) {
       const c = customerById[p.customer_id];
       if (!c) { skipCount++; continue; } // ลูกค้ายกเลิก/ไม่พบ
       if (closedIds.has(c.id)) { skipCount++; continue; } // ปิดสัญญาแล้ว
-      if (!c.line_user_id) { skipCount++; continue; }
       if (paidKeys.has(`${p.customer_id}|${p.installment}`)) { skipCount++; continue; } // จ่ายแล้ว
+
+      const recipientId = resolveAutomaticRecipient(c.line_user_id);
+      if (!recipientId) { skipCount++; continue; }
 
       const diff = diffDays(p.date_str, today);
       try {
         if (diff === 0) {
-          await sendLine(c.line_user_id, buildDueMsg(c.name, p.installment, c.amount, c.freq, p.date_str));
+          await sendLine(recipientId, buildDueMsg(c.name, p.installment, c.amount, c.freq, p.date_str));
           sentCount++;
         } else if (diff === 7) {
-          await sendLine(c.line_user_id, buildEarlyMsg(c.name, p.installment, c.amount, c.freq, p.date_str, 7));
+          await sendLine(recipientId, buildEarlyMsg(c.name, p.installment, c.amount, c.freq, p.date_str, 7));
           sentCount++;
         }
       } catch (e) {
@@ -189,20 +195,22 @@ export default async function handler(req, res) {
     // แจ้งเตือนงวดดอกเบี้ยของวงเงินเพิ่ม แยกจากตารางชำระสัญญาหลัก
     for (const topup of topups) {
       const c = customerById[topup.customer_id];
-      if (!c || closedIds.has(c.id) || !c.line_user_id) { skipCount++; continue; }
+      if (!c || closedIds.has(c.id)) { skipCount++; continue; }
+      const recipientId = resolveAutomaticRecipient(c.line_user_id);
+      if (!recipientId) { skipCount++; continue; }
       const schedule = Array.isArray(topup.payments) ? topup.payments : [];
       for (const payment of schedule) {
         if (paidTopupKeys.has(`${topup.id}|${payment.installment}`)) { skipCount++; continue; }
         const diff = diffDays(payment.dateStr, today);
         try {
           if (diff === 0) {
-            await sendLine(c.line_user_id, buildTopupDueMsg(
+            await sendLine(recipientId, buildTopupDueMsg(
               c.name, payment.installment, topup.interest_amount,
               topup.topup_amount, topup.freq, payment.dateStr,
             ));
             sentCount++;
           } else if (diff === 7) {
-            await sendLine(c.line_user_id, buildTopupEarlyMsg(
+            await sendLine(recipientId, buildTopupEarlyMsg(
               c.name, payment.installment, topup.interest_amount,
               topup.topup_amount, topup.freq, payment.dateStr, 7,
             ));
@@ -216,13 +224,15 @@ export default async function handler(req, res) {
 
     // แจ้งเตือนครบกำหนดสัญญาตาม policy threshold
     for (const c of customers) {
-      if (closedIds.has(c.id) || !c.line_user_id) continue;
+      if (closedIds.has(c.id)) continue;
       if (!c.contract_end_date) continue;
+      const recipientId = resolveAutomaticRecipient(c.line_user_id);
+      if (!recipientId) continue;
       const reminderDays = CONTRACT_REMINDER_DAYS[c.type] || [30, 7, 3, 0];
       const cDiff = diffDays(c.contract_end_date, today);
       if (reminderDays.includes(cDiff)) {
         try {
-          await sendLine(c.line_user_id, buildContractMsg(c.name, c.type, c.principal, c.amount, c.contract_end_date, cDiff));
+          await sendLine(recipientId, buildContractMsg(c.name, c.type, c.principal, c.amount, c.contract_end_date, cDiff));
           sentCount++;
         } catch (e) {
           errors.push(`${c.name} (ครบกำหนดสัญญา): ${e.message}`);
@@ -230,7 +240,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ success: true, sentCount, skipCount, errors });
+    return res.status(200).json({ success: true, deliveryMode, sentCount, skipCount, errors });
   } catch (e) {
     return res.status(500).json({ success: false, error: e.message });
   }

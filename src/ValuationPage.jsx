@@ -206,7 +206,7 @@ function printHistoryRow(row) {
   <!-- Header -->
   <div class="header">
     <div>
-      <div class="company-name">AssetX Estate Co., Ltd.</div>
+      <div class="company-name">บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด</div>
       <div class="company-sub">รายงานประเมินมูลค่าอสังหาริมทรัพย์ / Property Valuation Report</div>
     </div>
     <div class="header-right">
@@ -325,7 +325,7 @@ function printHistoryRow(row) {
 
   <!-- Footer -->
   <div class="footer">
-    <span>AssetX Estate Co., Ltd. — รายงานฉบับนี้จัดทำเพื่อใช้ภายในเท่านั้น</span>
+    <span>บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด — รายงานฉบับนี้จัดทำเพื่อใช้ภายในเท่านั้น</span>
     <span>พิมพ์: ${now.toLocaleString('th-TH')} &nbsp;|&nbsp; เลขอ้างอิง: ${row['_rowIndex'] || '—'}</span>
   </div>
 
@@ -2862,8 +2862,7 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 48, height: 48, background: BRAND.teal, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: '#000' }}>X</div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 15, color: BRAND.textPri }}>AssetX Estate Co., Ltd.</div>
-            <div style={{ fontSize: 11, color: BRAND.textSec }}>บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด</div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: BRAND.textPri }}>บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด</div>
           </div>
         </div>
         <div style={{ textAlign: 'right', fontSize: 11, color: BRAND.textSec }}>
@@ -3089,7 +3088,7 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
         <MiniMap lat={form.lat} lng={form.lng} label={form.projectName || form.province} />
       )}
       <div style={{ fontSize: 11, color: BRAND.textMut, textAlign: 'center', marginTop: 8 }}>
-        AssetX Estate Co., Ltd. — Generated: {new Date().toLocaleString('th-TH')}
+        บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด — Generated: {new Date().toLocaleString('th-TH')}
       </div>
     </div>
   )
@@ -3378,7 +3377,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
       </head>
       <body>
         <div id="pdf-header">
-          <div class="left">AssetX Estate Co., Ltd.<br><span style="font-size:10px;font-weight:400;">รายงานประเมินมูลค่าอสังหาริมทรัพย์</span></div>
+          <div class="left">บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด<br><span style="font-size:10px;font-weight:400;">รายงานประเมินมูลค่าอสังหาริมทรัพย์</span></div>
           <div class="right">
             <span>📅 ${dateStr} &nbsp; 🕐 ${timeStr}</span><br>
             <span>ผู้ประเมิน: ${form.assessorName || '—'} &nbsp;|&nbsp; วันที่ประเมิน: ${form.assessmentDate || '—'}</span>

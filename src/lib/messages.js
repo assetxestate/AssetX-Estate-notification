@@ -20,7 +20,7 @@ const PAYMENT_CLOSING = `📩 เพื่อรักษาสถานะส�
 และกรุณาแจ้งหลักฐานการโอนเงินเพื่อยืนยันรายการครับ
 
 ขอบคุณครับ🙏
-AssetX Estate Co., Ltd. 🏠`;
+บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด 🏠`;
 
 // ── Google Calendar Link ─────────────────────────────────────────
 export function gcalPayment(c, p, isReminder) {
@@ -65,7 +65,7 @@ export function msgPayment(c, p, type) {
   const bankInfo = `💳 ช่องทางชำระเงิน:\nธนาคาร กสิกรไทย\nชื่อบัญชี: กิตติชัย โสมทัตถ์\nเลขบัญชี: 194-8-33331-3`;
 
   if (type === "early") {
-    return `📢 แจ้งเตือนล่วงหน้า 7 วัน\n\nเรียน คุณ${c.name},\n\nAssetX Estate Co., Ltd. ขอแจ้งให้ทราบว่า\nครบกำหนดชำระ${label}งวดที่ ${p.installment} ในอีก 7 วันข้างหน้า\n\n📌 รายละเอียด:\n• ประเภท: ${c.type}\n• ยอดชำระ: ${amt} บาท\n• งวดที่: ${p.installment}\n• กำหนดชำระ: ${dt}\n\n${bankInfo}\n\n${PAYMENT_CLOSING}`;
+    return `📢 แจ้งเตือนล่วงหน้า 7 วัน\n\nเรียน คุณ${c.name},\n\nบริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด ขอแจ้งให้ทราบว่า\nครบกำหนดชำระ${label}งวดที่ ${p.installment} ในอีก 7 วันข้างหน้า\n\n📌 รายละเอียด:\n• ประเภท: ${c.type}\n• ยอดชำระ: ${amt} บาท\n• งวดที่: ${p.installment}\n• กำหนดชำระ: ${dt}\n\n${bankInfo}\n\n${PAYMENT_CLOSING}`;
   }
   return `⚠️ วันนี้ครบกำหนดชำระ\n\nเรียน คุณ${c.name},\n\nวันนี้ (${dt}) ครบกำหนดชำระ${label}งวดที่ ${p.installment}\n\n📌 รายละเอียด:\n• ประเภท: ${c.type}\n• ยอดชำระ: ${amt} บาท\n\n${bankInfo}\n\n${PAYMENT_CLOSING}`;
 }
@@ -79,15 +79,36 @@ export function msgTopupPayment(c, topup, p, type) {
   const details = `📌 รายละเอียด:\n• ประเภท: ดอกเบี้ยวงเงินเพิ่ม${c.type ? ` (${c.type})` : ""}\n• วงเงินเพิ่ม: ${topupAmount} บาท\n• ยอดชำระ: ${amount} บาท\n• งวดที่: ${p.installment}\n• กำหนดชำระ: ${dt}`;
 
   if (type === "overdue") {
-    return `⚠️ แจ้งเตือนเกินกำหนดชำระวงเงินเพิ่ม\n\nเรียน คุณ${c.name},\n\nดอกเบี้ยวงเงินเพิ่มงวดที่ ${p.installment} เกินกำหนดชำระ ${Math.abs(Number(p.diff) || 0)} วัน\n\n${details}\n\n${bankInfo}\n\n${PAYMENT_CLOSING}`;
+    return [
+      "⚠️ แจ้งเตือนเกินกำหนดชำระวงเงินเพิ่ม",
+      `เรียน คุณ${c.name},`,
+      `ดอกเบี้ยวงเงินเพิ่มงวดที่ ${p.installment} เกินกำหนดชำระ ${Math.abs(Number(p.diff) || 0)} วัน`,
+      details,
+      bankInfo,
+      PAYMENT_CLOSING,
+    ].join("\n\n");
   }
   if (type === "early") {
-    return `📢 แจ้งเตือนล่วงหน้า ${days} วัน\n\nเรียน คุณ${c.name},\n\nAssetX Estate Co., Ltd. ขอแจ้งให้ทราบว่า\nดอกเบี้ยวงเงินเพิ่มงวดที่ ${p.installment} จะครบกำหนดในอีก ${days} วัน\n\n${details}\n\n${bankInfo}\n\n${PAYMENT_CLOSING}`;
+    return [
+      `📢 แจ้งเตือนล่วงหน้า ${days} วัน`,
+      `เรียน คุณ${c.name},`,
+      `บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด ขอแจ้งให้ทราบว่า\nดอกเบี้ยวงเงินเพิ่มงวดที่ ${p.installment} จะครบกำหนดในอีก ${days} วัน`,
+      details,
+      bankInfo,
+      PAYMENT_CLOSING,
+    ].join("\n\n");
   }
-  return `⚠️ วันนี้ครบกำหนดชำระวงเงินเพิ่ม\n\nเรียน คุณ${c.name},\n\nวันนี้ (${dt}) ครบกำหนดชำระดอกเบี้ยวงเงินเพิ่มงวดที่ ${p.installment}\n\n${details}\n\n${bankInfo}\n\n${PAYMENT_CLOSING}`;
+  return [
+    "⚠️ วันนี้ครบกำหนดชำระวงเงินเพิ่ม",
+    `เรียน คุณ${c.name},`,
+    `วันนี้ (${dt}) ครบกำหนดชำระดอกเบี้ยวงเงินเพิ่มงวดที่ ${p.installment}`,
+    details,
+    bankInfo,
+    PAYMENT_CLOSING,
+  ].join("\n\n");
 }
 
 export function msgContract(c, diff) {
   const mo = Math.max(0, Math.floor(diff / 30));
-  return `📜 แจ้งเตือนครบกำหนดสัญญา\n\nเรียน คุณ${c.name},\n\nสัญญา${c.type}จะครบกำหนดในอีก ${mo} เดือน\n\n📌 รายละเอียด:\n• เงินต้น: ${formatMoney(c.principal)} บาท\n• วันครบกำหนด: ${formatThaiLong(c.contractEndDate)}\n\n🔔 กรุณาดำเนินการก่อนวันครบกำหนด\n\nAssetX Estate Co., Ltd. 🏠`;
+  return `📜 แจ้งเตือนครบกำหนดสัญญา\n\nเรียน คุณ${c.name},\n\nสัญญา${c.type}จะครบกำหนดในอีก ${mo} เดือน\n\n📌 รายละเอียด:\n• เงินต้น: ${formatMoney(c.principal)} บาท\n• วันครบกำหนด: ${formatThaiLong(c.contractEndDate)}\n\n🔔 กรุณาดำเนินการก่อนวันครบกำหนด\n\nบริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด 🏠`;
 }

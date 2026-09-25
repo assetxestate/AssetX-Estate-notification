@@ -37,7 +37,7 @@ export default function LoginPage({ onLogin }) {
       <div style={styles.card}>
         <img src="/logo.jpg" alt="AssetX Logo" style={styles.logo} />
 
-        <h2 style={styles.title}>AssetX Estate Co., Ltd.</h2>
+        <h2 style={styles.title}>บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด</h2>
         <p style={styles.subtitle}>ระบบจัดการอสังหาริมทรัพย์</p>
 
         <form onSubmit={handleSubmit} style={styles.form}>
