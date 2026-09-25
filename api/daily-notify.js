@@ -109,6 +109,16 @@ function buildContractMsg(name, type, principal, amount, contractEndDate, daysLe
   ].join('\n');
 }
 
+function buildReviewTestMsg() {
+  return [
+    '🧪 ทดสอบระบบแจ้งเตือน Review Mode', '',
+    'ข้อความนี้ส่งเพื่อยืนยันว่าระบบแจ้งเตือนอัตโนมัติ',
+    'สามารถส่งถึงผู้ดูแล Jak_AssetX ได้สำเร็จ', '',
+    'ยังไม่มีการส่งข้อความแจ้งเตือนไปยังลูกค้า',
+    'บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด 🏠',
+  ].join('\n');
+}
+
 async function sendLine(userId, message) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token) throw new Error('ไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN');
@@ -141,6 +151,15 @@ export default async function handler(req, res) {
   try {
     const deliveryMode = getNotificationMode();
     if (deliveryMode === 'review') resolveAutomaticRecipient('');
+
+    // ทดสอบปลายทางผู้ตรวจทานโดยไม่อ่านหรือส่งรายการลูกค้าจริง
+    if (req.method === 'POST' && req.query?.action === 'test-review') {
+      if (deliveryMode !== 'review') {
+        return res.status(409).json({ success: false, error: 'ระบบไม่ได้อยู่ใน Review Mode' });
+      }
+      await sendLine(resolveAutomaticRecipient(''), buildReviewTestMsg());
+      return res.status(200).json({ success: true, deliveryMode, test: true });
+    }
 
     const [{ data: customers, error: custErr }, { data: payments, error: payErr },
            { data: paymentRecords, error: recErr }, { data: statuses, error: statErr },
