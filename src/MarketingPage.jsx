@@ -415,6 +415,12 @@ function getPostTime(post) {
   return Number.isFinite(time) ? time : 0
 }
 
+function scheduleInputValue(raw = '') {
+  const value = String(raw || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T09:00`
+  return value.slice(0, 16)
+}
+
 function buildChannelPreview(post, channel) {
   if (!post) return 'เลือกหรือสร้างโพสต์ก่อน ระบบจะแสดงตัวอย่างตามช่องทางที่เลือก'
   const caption = (post.caption || '').trim()
@@ -959,6 +965,8 @@ export default function MarketingPage({ onBack }) {
   const [radarLoading, setRadarLoading] = useState(false)
   const [referenceLoading, setReferenceLoading] = useState(false)
   const [toast, setToast] = useState(null)
+  const [facebookConnection, setFacebookConnection] = useState({ loading: true, connected: false })
+  const [facebookPublishingId, setFacebookPublishingId] = useState(null)
 
   const ideaPool = useMemo(() => [...(workspace.radarIdeas || []), ...seedIdeas], [workspace.radarIdeas])
   const allDrafts = useMemo(
@@ -1018,6 +1026,20 @@ export default function MarketingPage({ onBack }) {
     return () => window.clearTimeout(timer)
   }, [workspace, cloudReady])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/marketing-facebook')
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.error || 'ตรวจการเชื่อมต่อ Facebook ไม่สำเร็จ')
+        if (!cancelled) setFacebookConnection({ loading: false, ...data })
+      })
+      .catch((error) => {
+        if (!cancelled) setFacebookConnection({ loading: false, connected: false, error: error.message })
+      })
+    return () => { cancelled = true }
+  }, [])
+
   const notify = (message, type = 'success') => {
     setToast({ message, type })
     window.setTimeout(() => setToast(null), 2200)
@@ -1034,6 +1056,52 @@ export default function MarketingPage({ onBack }) {
     }
     save({ ...workspace, posts: workspace.posts.map((post) => post.id === id ? { ...post, ...patch } : post) })
     if (message) notify(message)
+  }
+
+  const publishToFacebook = async (post) => {
+    if (!facebookConnection.connected) {
+      notify('ยังไม่ได้เชื่อม Facebook Page', 'error')
+      return
+    }
+    const media = findMediaForPost(workspace.mediaAssets || [], post)
+    setFacebookPublishingId(post.id)
+    try {
+      const response = await fetch('/api/marketing-facebook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          post: {
+            id: post.id,
+            channel: post.channel,
+            status: post.status,
+            reviewStatus: post.reviewStatus,
+            caption: post.caption,
+            scheduledAt: post.scheduledAt || '',
+            facebookPostId: post.facebookPostId || '',
+          },
+          media: media ? {
+            dataUrl: media.dataUrl,
+            mimeType: media.mimeType,
+            originalName: media.originalName,
+          } : null,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data.success) throw new Error(data.error || 'โพสต์ Facebook ไม่สำเร็จ')
+      updatePost(post.id, {
+        status: data.scheduled ? 'scheduled' : 'posted',
+        postedAt: data.scheduled ? '' : new Date().toISOString(),
+        facebookPostId: data.facebookPostId,
+        facebookMediaType: data.mediaType,
+        facebookScheduledAt: data.scheduledPublishTime || '',
+        publishError: '',
+      }, data.scheduled ? 'ตั้งเวลาโพสต์บน Facebook แล้ว' : 'โพสต์ไปยัง Facebook Page แล้ว')
+    } catch (error) {
+      updatePost(post.id, { publishError: error.message }, '')
+      notify(error.message || 'โพสต์ Facebook ไม่สำเร็จ', 'error')
+    } finally {
+      setFacebookPublishingId(null)
+    }
   }
 
   const archivePost = (id) => {
@@ -1576,7 +1644,17 @@ export default function MarketingPage({ onBack }) {
             onDelete={deletePost}
           />
         )}
-        {view === 'queue' && <QueueView posts={approvedDrafts} mediaAssets={workspace.mediaAssets || []} onCreate={() => setView('ideas')} onUpdate={updatePost} />}
+        {view === 'queue' && (
+          <QueueView
+            posts={approvedDrafts}
+            mediaAssets={workspace.mediaAssets || []}
+            facebookConnection={facebookConnection}
+            publishingId={facebookPublishingId}
+            onCreate={() => setView('ideas')}
+            onUpdate={updatePost}
+            onPublishFacebook={publishToFacebook}
+          />
+        )}
         {view === 'references' && (
           <ReferenceRadarView
             query={workspace.referenceQuery || referenceStarterQueries[0]}
@@ -2040,8 +2118,8 @@ function ApprovalsView({
                     <label>
                       วันที่จะโพสต์
                       <input
-                        type="date"
-                        value={post.scheduledAt || ''}
+                        type="datetime-local"
+                        value={scheduleInputValue(post.scheduledAt)}
                         onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : post.status }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
                       />
                     </label>
@@ -2065,33 +2143,72 @@ function ApprovalsView({
   )
 }
 
-function QueueView({ posts, mediaAssets = [], onCreate, onUpdate }) {
+function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, onCreate, onUpdate, onPublishFacebook }) {
   return (
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
           <div className="mx-kicker">รอโพสต์</div>
           <h1>คิวโพสต์ที่ผ่านการอนุมัติแล้ว</h1>
-          <p>ระยะแรกใช้แบบ manual-first: คัดลอกไปโพสต์เอง แล้วกดว่าโพสต์แล้วเพื่อเก็บผล</p>
+          <p>โพสต์ที่อนุมัติแล้วสามารถส่งไปยัง Facebook Page และบันทึกผลกลับเข้าระบบได้</p>
         </div>
-        <button className="mx-secondary" onClick={onCreate}>หาไอเดียเพิ่ม</button>
+        <div className="mx-row-actions">
+          <span className={facebookConnection?.connected ? 'mx-pass' : 'mx-warn'}>
+            {facebookConnection?.loading
+              ? 'กำลังตรวจ Facebook'
+              : facebookConnection?.connected
+                ? `เชื่อมแล้ว · ${facebookConnection.pageName}`
+                : 'ยังไม่ได้เชื่อม Facebook'}
+          </span>
+          <button className="mx-secondary" onClick={onCreate}>หาไอเดียเพิ่ม</button>
+        </div>
       </div>
       <div className="mx-list">
         {posts.length === 0 && <div className="mx-empty">ไม่มีอะไรรอโพสต์ อนุมัติคอนเทนต์จากหน้า รออนุมัติ แล้วจะมาโผล่ที่นี่</div>}
-        {posts.map((post) => (
-          <article className="mx-row-card" key={post.id}>
-            {findMediaForPost(mediaAssets, post) && <img className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
-            <div><strong>{post.title}</strong><span>{post.channel} · {post.source || 'AssetX Studio'}{post.scheduledAt ? ` · จอง ${post.scheduledAt}` : ''}</span></div>
-            <div className="mx-row-actions">
-              <input
-                type="date"
-                value={post.scheduledAt || ''}
-                onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : 'approved' }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
-              />
-              <button className="mx-primary" onClick={() => onUpdate(post.id, { status: 'posted', postedAt: new Date().toISOString() }, 'บันทึกว่าโพสต์แล้ว')}>โพสต์แล้ว</button>
-            </div>
-          </article>
-        ))}
+        {posts.map((post) => {
+          const isFacebook = /facebook/i.test(String(post.channel || ''))
+          const isPublishing = String(publishingId) === String(post.id)
+          const isScheduledOnFacebook = Boolean(post.facebookPostId) && post.status === 'scheduled'
+          const isPosted = post.status === 'posted'
+          const isDelivered = isPosted || isScheduledOnFacebook
+          return (
+            <article className="mx-row-card" key={post.id}>
+              {findMediaForPost(mediaAssets, post) && <img className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
+              <div>
+                <strong>{post.title}</strong>
+                <span>{post.channel} · {post.source || 'AssetX Studio'}{post.scheduledAt ? ` · จอง ${post.scheduledAt}` : ''}</span>
+                {post.publishError && <span style={{ color: '#FCA5A5' }}>{post.publishError}</span>}
+              </div>
+              <div className="mx-row-actions">
+                <input
+                  type="datetime-local"
+                  value={scheduleInputValue(post.scheduledAt)}
+                  disabled={isDelivered}
+                  onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : 'approved' }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
+                />
+                {isFacebook && (
+                  <button
+                    className="mx-primary"
+                    disabled={!facebookConnection?.connected || isPublishing || isDelivered}
+                    onClick={() => onPublishFacebook(post)}
+                    title={post.scheduledAt ? 'Facebook จะเผยแพร่อัตโนมัติตามวันและเวลานี้' : 'เผยแพร่บน Facebook ทันที'}
+                  >
+                    {isScheduledOnFacebook
+                      ? 'ตั้งเวลาแล้ว'
+                      : isPosted
+                        ? 'โพสต์แล้ว'
+                        : isPublishing
+                          ? 'กำลังส่ง...'
+                          : post.scheduledAt
+                            ? 'ตั้งเวลา Facebook'
+                            : 'โพสต์ Facebook'}
+                  </button>
+                )}
+                {!isDelivered && <button className="mx-secondary" onClick={() => onUpdate(post.id, { status: 'posted', postedAt: new Date().toISOString() }, 'บันทึกว่าโพสต์แล้ว')}>บันทึกว่าโพสต์แล้ว</button>}
+              </div>
+            </article>
+          )
+        })}
       </div>
     </section>
   )

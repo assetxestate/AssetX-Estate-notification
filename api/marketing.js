@@ -3,6 +3,7 @@ import videoHandler from '../server/marketing-video.js'
 import referencesHandler from '../server/marketing-references.js'
 import radarHandler from '../server/marketing-radar.js'
 import knowledgeSaveHandler from '../server/marketing-knowledge-save.js'
+import facebookHandler from '../server/marketing-facebook.js'
 
 const handlers = {
   image: imageHandler,
@@ -10,6 +11,7 @@ const handlers = {
   references: referencesHandler,
   radar: radarHandler,
   'knowledge-save': knowledgeSaveHandler,
+  facebook: facebookHandler,
 }
 
 function inferFeature(req) {
@@ -23,6 +25,7 @@ function inferFeature(req) {
   if (path.endsWith('/marketing-references')) return 'references'
   if (path.endsWith('/marketing-radar')) return 'radar'
   if (path.endsWith('/marketing-knowledge-save')) return 'knowledge-save'
+  if (path.endsWith('/marketing-facebook')) return 'facebook'
   return ''
 }
 
