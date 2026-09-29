@@ -14,6 +14,7 @@
     "test:notification-routing": "node api/_notification-routing.test.mjs",
     "test:marketing-facebook": "node server/marketing-facebook.test.mjs",
     "test:marketing-image": "node server/marketing-image.test.mjs",
+    "test:marketing-content": "node --test src/lib/marketingContent.test.mjs",
     "preview": "vite preview",
     "migrate": "node migrate.js"
   },

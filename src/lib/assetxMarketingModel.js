@@ -3,6 +3,8 @@ import {
   getOptions,
   runMarketingModel,
 } from './marketing-model/index.js'
+import { checkText, formatWarnings } from './marketing-model/rules.js'
+import { checkTopicContent, resolveTopic } from './marketing-model/topics.js'
 
 export const assetxContentTypes = [
   { value: 'educate', label: 'ให้ความรู้' },
@@ -63,11 +65,12 @@ function labelFor(options, value, fallback) {
 export function buildAssetxMarketingInput(studio = {}) {
   const assetTypeLabel = labelFor(assetxAssetTypes, studio.assetType, 'ที่ดินเปล่า')
   return {
+    topic: String(studio.prompt || studio.topic || '').trim(),
     objective: studio.objective || 'lead_owner',
     audience: studio.audience || 'เจ้าของทรัพย์ที่ต้องการสภาพคล่อง',
     offer: studio.offer || 'ประเมินทรัพย์เบื้องต้นและวางทางเลือกอย่างเป็นระบบ',
     assetType: assetTypeLabel,
-    province: studio.province || 'ชลบุรี',
+    province: studio.province || '',
     channel: studio.channel || 'facebook',
     tone: studio.tone || 'trustworthy',
     contentType: studio.contentType || 'educate',
@@ -99,9 +102,26 @@ export function runAssetxMarketingModel(studio = {}, recentCaptions = []) {
 }
 
 export function canPublishAssetxPost(post, opts = {}) {
-  return canPublish(post, {
+  const gate = canPublish(post, {
     publishableChannels: ['facebook', 'line-oa'],
     requireSchedule: false,
     ...opts,
   })
+  if (!gate.ok) return gate
+  const review = reviewAssetxContent(post)
+  return review.ok ? gate : { ok: false, code: 'content_review_failed', reason: review.notes.join('\n') }
+}
+
+export function reviewAssetxContent(post = {}) {
+  const legacyTopic = post.caption?.split('\n')[0] || ''
+  const topic = post.topic || (resolveTopic(legacyTopic) !== 'unknown' ? legacyTopic : '')
+  const findings = [
+    ...checkText(post.title || post.headline, 'หัวข้อ'),
+    ...checkText(post.caption, 'แคปชั่น'),
+    ...checkText(post.videoScript, 'สคริปต์วิดีโอ'),
+    ...checkTopicContent(topic, post),
+  ]
+  if (!String(post.caption || '').trim()) findings.push({ id: 'empty_caption', severity: 'block', where: 'แคปชั่น', message: 'ยังไม่มีเนื้อหาโพสต์' })
+  const ok = !findings.some(item => ['block', 'warn'].includes(item.severity))
+  return { ok, findings, notes: formatWarnings(findings) }
 }

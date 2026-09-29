@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { canPublishAssetxPost, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
+import { canPublishAssetxPost, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 
@@ -714,46 +714,6 @@ function trimThaiLine(value = '', max = 92) {
   return `${text.slice(0, max - 1).replace(/\s+\S*$/, '')}…`
 }
 
-function stripTrailingPunctuation(value = '') {
-  return String(value || '').replace(/[?？!！.。…]+$/g, '').trim()
-}
-
-function buildScrollStoppingCaption(input = {}, sourceIdea = {}, generated = {}) {
-  const title = stripTrailingPunctuation(sourceIdea.title || generated.headline || input.prompt || 'เรื่องนี้ควรรู้ก่อนตัดสินใจ')
-  const angle = trimThaiLine(sourceIdea.angle || input.offer || '', 150)
-  const audience = String(sourceIdea.audience || input.audience || 'เจ้าของทรัพย์').trim()
-  const asset = String(input.assetType || 'โฉนด/ทรัพย์').trim()
-  const isQuestion = /ไหม|อย่างไร|ยังไง|อะไร|ทำไม|หรือ/.test(title)
-  const hook = isQuestion
-    ? `${title} อ่านอันนี้ก่อนตัดสินใจ`
-    : `${title} เรื่องนี้หลายคนมองข้าม`
-  const pain = angle
-    ? `ประเด็นสำคัญคือ ${angle}`
-    : `หลายคนไม่ได้พลาดตอนเริ่มคุย แต่พลาดตอนยังไม่รู้ว่าเอกสาร เงื่อนไข และระยะเวลาผูกอะไรไว้บ้าง`
-  const checks = /นักลงทุน|ลงทุน|ราคาดี|ผลตอบแทน|ทรัพย์ราคา/i.test(`${title} ${angle}`)
-    ? ['เอกสารสิทธิ์และภาระผูกพัน', 'ทำเล ทางเข้า และสภาพจริง', 'ราคาตลาดเทียบกับความเสี่ยง']
-    : /ขาย|ราคาตลาด|ผู้ขาย|ประกาศ/i.test(`${title} ${angle}`)
-      ? ['ราคาตลาดในพื้นที่เดียวกัน', 'จุดแข็ง/จุดกังวลของทรัพย์', 'เอกสารและข้อมูลที่ต้องเตรียมก่อนคุยผู้ซื้อ']
-      : ['ระยะเวลาในสัญญา', 'ยอดที่ต้องใช้ไถ่ถอนหรือปิดบัญชี', 'ค่าใช้จ่ายและเงื่อนไขที่ต้องรับผิดชอบจริง']
-  return [
-    hook,
-    pain,
-    `ก่อนเดินต่อ ลองเช็ก ${checks.length} จุดนี้:`,
-    ...checks.map((item) => `- ${item}`),
-    `${audience}ที่อยากให้ช่วยดูภาพรวม ส่งประเภททรัพย์ พื้นที่ และเป้าหมายที่ต้องการให้ AssetX Estate ประเมินเบื้องต้นได้`,
-    `หมายเหตุ: ข้อมูลนี้เป็นความรู้ทั่วไป ต้องดูเอกสารจริงของ${asset}แต่ละเคสก่อนสรุป`,
-  ].filter(Boolean).join('\n\n')
-}
-
-function polishGeneratedForApproval(generated = {}, input = {}, sourceIdea = {}) {
-  const caption = buildScrollStoppingCaption(input, sourceIdea, generated)
-  return {
-    ...generated,
-    caption,
-    headline: trimThaiLine(sourceIdea.title || generated.headline || input.prompt, 34),
-  }
-}
-
 function inferPosterCopyFromBrief(brief = {}, previous = {}) {
   const text = `${brief.title || ''} ${brief.imagePrompt || ''} ${brief.videoScript || ''}`.toLowerCase()
   const keepContact = { contactLine: previous?.contactLine || '' }
@@ -975,7 +935,16 @@ export default function MarketingPage({ onBack }) {
     () => [...workspace.posts, ...seedDrafts.filter((post) => !workspace.hiddenPostIds.includes(post.id))],
     [workspace.posts, workspace.hiddenPostIds],
   )
-  const pendingDrafts = allDrafts.filter((post) => post.status === 'pending' || post.status === 'draft' || post.status === 'needs_edit')
+  const pendingDrafts = useMemo(() => allDrafts
+    .filter((post) => ['pending', 'draft', 'needs_edit'].includes(post.status))
+    .map((post) => {
+      const review = reviewAssetxContent(post)
+      return {
+        ...post,
+        reviewStatus: review.ok ? 'passed' : 'needs_edit',
+        reviewNotes: [...review.notes, 'ผลตรวจเบื้องต้น ต้องตรวจข้อเท็จจริงก่อนอนุมัติ'],
+      }
+    }), [allDrafts])
   const approvedDrafts = allDrafts.filter((post) => post.status === 'approved' || post.status === 'scheduled' || post.status === 'posted')
   const selectedDraft = allDrafts.find((post) => post.id === selectedId) || allDrafts[0]
   const visibleIdeas = showAllIdeas ? ideaPool : ideaPool.slice(0, 4)
@@ -1048,6 +1017,21 @@ export default function MarketingPage({ onBack }) {
   }
 
   const updatePost = (id, patch, message) => {
+    const current = allDrafts.find((post) => post.id === id)
+    if (Object.hasOwn(patch, 'caption') || Object.hasOwn(patch, 'channel')) {
+      const review = reviewAssetxContent({ ...current, ...patch })
+      patch = { ...patch, status: 'pending', reviewStatus: review.ok ? 'passed' : 'needs_edit', reviewNotes: [...review.notes, 'ข้อความเปลี่ยนแล้ว ต้องตรวจและอนุมัติใหม่'] }
+    }
+    if (['approved', 'scheduled'].includes(patch.status)) {
+      const review = reviewAssetxContent({ ...current, ...patch })
+      if (!review.ok) {
+        notify(review.notes.join('\n'), 'error')
+        patch = { reviewStatus: 'needs_edit', reviewNotes: review.notes, status: 'needs_edit' }
+        message = ''
+      } else {
+        patch = { ...patch, reviewStatus: 'passed', reviewNotes: [...review.notes, 'ผ่านการตรวจเบื้องต้น ณ เวลาอนุมัติ'] }
+      }
+    }
     if (String(id).startsWith('sample-')) {
       const cloned = allDrafts.find((post) => post.id === id)
       const post = { ...cloned, id: Date.now(), ...patch }
@@ -1106,6 +1090,9 @@ export default function MarketingPage({ onBack }) {
             channel: post.channel,
             status: post.status,
             reviewStatus: post.reviewStatus,
+            topic: post.topic,
+            title: post.title,
+            videoScript: post.videoScript,
             caption: post.caption,
             scheduledAt: post.scheduledAt || '',
             facebookPostId: post.facebookPostId || '',
@@ -1183,15 +1170,12 @@ export default function MarketingPage({ onBack }) {
       offer: sourceIdea?.angle || workspace.studio.offer,
       channel: sourceIdea?.channel ? (/facebook/i.test(sourceIdea.channel) ? 'facebook' : /LINE/i.test(sourceIdea.channel) ? 'line-oa' : workspace.studio.channel) : workspace.studio.channel,
     }
-    const generated = polishGeneratedForApproval(
-      runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || '')),
-      input,
-      sourceIdea,
-    )
-    const publishCheck = canPublishAssetxPost({ channel: input.channel, status: 'pending', caption: generated.caption })
+    const generated = runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || ''))
+    const publishCheck = reviewAssetxContent({ ...generated, topic: input.prompt })
     const post = {
       id: Date.now(),
       title: generated.headline || input.prompt,
+      topic: input.prompt,
       channel: input.channel,
       status: 'pending',
       caption: generated.caption,
@@ -1200,8 +1184,8 @@ export default function MarketingPage({ onBack }) {
       mediaAssetId: generated.mediaAssetId || null,
       reviewStatus: publishCheck.ok ? 'passed' : 'needs_edit',
       reviewNotes: publishCheck.ok
-        ? ['Hook ชัดขึ้น อ่านง่ายขึ้น', 'มี CTA เดียวและมีหมายเหตุความปลอดภัย']
-        : [...(generated.warnings || []), 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
+        ? [...publishCheck.notes, 'ผ่านการตรวจเบื้องต้น ต้องตรวจข้อเท็จจริงก่อนอนุมัติ']
+        : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
       source: sourceIdea?.source || 'ไอเดียวันนี้',
       createdAt: new Date().toISOString(),
     }
@@ -1213,10 +1197,16 @@ export default function MarketingPage({ onBack }) {
 
   const addGeneratedToQueue = (status = 'pending') => {
     if (!workspace.generated) return
-    const publishCheck = canPublishAssetxPost({ channel: workspace.studio.channel, status, caption: workspace.generated.caption })
+    const topic = workspace.generated.meta?.resolved?.topic || workspace.studio.prompt
+    const publishCheck = reviewAssetxContent({ ...workspace.generated, topic })
+    if (status === 'approved' && !publishCheck.ok) {
+      notify(publishCheck.notes.join('\n'), 'error')
+      return
+    }
     const post = {
       id: Date.now(),
       title: workspace.generated.headline || workspace.studio.prompt,
+      topic,
       channel: workspace.studio.channel,
       status,
       caption: workspace.generated.caption,
@@ -1226,7 +1216,7 @@ export default function MarketingPage({ onBack }) {
       reviewStatus: publishCheck.ok ? 'passed' : 'needs_edit',
       reviewNotes: publishCheck.ok
         ? ['ผ่านเงื่อนไขเบื้องต้น', 'ควรตรวจรายละเอียดจริงก่อนโพสต์']
-        : [...(workspace.generated.warnings || []), 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
+        : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
       source: 'AssetX Studio',
       createdAt: new Date().toISOString(),
     }
@@ -2058,7 +2048,7 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
           <article className="mx-review-card wide">
             <div className="mx-review-head">
               <div><div className="mx-kicker">คอนเทนต์พร้อมตรวจ</div><h2>{generated.headline}</h2></div>
-              <span className="mx-pass">Quality {generated.meta?.captionQuality?.score ?? '-'}%</span>
+              <span className="mx-pass">โครงสร้าง {generated.meta?.captionQuality?.score ?? '-'}/100</span>
             </div>
             <ContentBlock title="แคปชั่น" value={generated.caption} onCopy={() => onCopy(generated.caption)} />
             <ContentBlock title="บรีฟภาพโปสเตอร์พร้อมใช้" value={posterPrompt} onCopy={() => onCopy(posterPrompt)} collapsed />
@@ -3106,6 +3096,7 @@ const styles = `
   .mx-day span { color: #1f65c8; font-size: 12px; font-weight: 900; }
   .mx-calendar-item { border: 1px solid #cfe0f5; background: #fff; color: #24466f; border-radius: 8px; padding: 6px 7px; font-size: 11px; line-height: 1.35; }
   .mx-toast { position: fixed; right: 22px; bottom: 22px; z-index: 20; background: #15395f; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 13px; font-weight: 900; box-shadow: 0 18px 42px rgba(18,36,61,.22); }
+  .mx-toast { max-width: min(640px, calc(100vw - 44px)); box-sizing: border-box; overflow-wrap: anywhere; white-space: pre-line; }
   .mx-toast.error { background: #b42318; }
   .mx-range { display: flex; gap: 8px; }
   .mx-range button { border: 1px solid #cfe0f5; background: #fff; color: #245ca8; border-radius: 999px; padding: 8px 12px; font-weight: 900; }

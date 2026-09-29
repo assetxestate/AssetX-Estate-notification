@@ -101,6 +101,8 @@ function contextLines(input, resolved) {
   return [
     `วัตถุประสงค์: ${input.objective || resolved.objectiveLabel}`,
     `กลุ่มเป้าหมาย: ${input.audience || resolved.audienceDefault}`,
+    input.topic ? `หัวข้อหลักที่ต้องตอบให้ตรง (ห้ามเปลี่ยนเรื่อง): ${input.topic}` : null,
+    'แยกการซื้อขายทรัพย์ออกจากขายฝากและจำนอง ห้ามเติมเงื่อนไขไถ่ถอนให้หัวข้อซื้อทรัพย์ หากข้อมูลไม่พอให้ระบุข้อจำกัด ห้ามแต่งเคสหรือข้อเท็จจริง',
     input.offer ? `สิ่งที่เสนอให้: ${input.offer}` : null,
     `ประเภททรัพย์: ${input.assetType || resolved.assetLabel}`,
     input.province ? `พื้นที่: ${input.province}` : null,

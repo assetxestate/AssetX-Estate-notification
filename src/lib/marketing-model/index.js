@@ -27,6 +27,7 @@ import {
   HEADLINES, HEADLINES_BY_CONTENT,
 } from "./templates.js"
 import { checkText, checkStructure, formatWarnings, SEVERITY } from "./rules.js"
+import { buildTopicContent, checkTopicContent } from './topics.js'
 import {
   pickStable, recommendChannel, suggestSchedule, scoreCaption, scoreChannels, checkDuplicate,
 } from "./scoring.js"
@@ -354,14 +355,15 @@ function estimateVideoSeconds(r) {
 export function runMarketingModel(input = {}, opts = {}) {
   const r = resolveInput(input)
 
-  const cta = r.objectiveSpec.ctaByChannel[r.channel]
+  const topicContent = buildTopicContent(input, r)
+  const cta = topicContent?.cta || r.objectiveSpec.ctaByChannel[r.channel]
     || r.objectiveSpec.ctaByChannel.facebook
-  const caption = buildCaption(input, r, cta)
-  const headline = buildHeadline(input, r)
+  const caption = topicContent?.caption || buildCaption(input, r, cta)
+  const headline = topicContent?.headline || buildHeadline(input, r)
   const sub = splitHeadline(caption).headline      // บรรทัดรองบนภาพ มาจากเนื้อแคปชั่น
-  const hashtags = buildHashtags(input, r)
-  const imagePrompt = buildImagePrompt(input, r)
-  const videoScript = buildVideoScript(input, r, cta)
+  const hashtags = topicContent?.hashtags || buildHashtags(input, r)
+  const imagePrompt = topicContent?.imagePrompt || buildImagePrompt(input, r)
+  const videoScript = topicContent?.videoScript || buildVideoScript(input, r, cta)
   const channelRecommendation = recommendChannel(r)
 
   const output = { headline, caption, imagePrompt, videoScript, hashtags, cta, channelRecommendation }
@@ -369,7 +371,8 @@ export function runMarketingModel(input = {}, opts = {}) {
   // ── ด่านตรวจ ──
   const findings = [
     ...checkText(input.offer, "ข้อเสนอที่กรอกมา"),
-    ...checkText(input.campaignContext ? JSON.stringify(input.campaignContext) : "", "บริบทแคมเปญ"),
+    ...checkText(input.topic, "หัวข้อที่กรอกมา"),
+    ...checkTopicContent(input.topic, output),
     ...checkText(caption, "แคปชั่น"),
     ...checkText(videoScript, "สคริปต์วิดีโอ"),
     ...checkStructure({ input, resolved: r, output }),
@@ -433,6 +436,7 @@ export function runMarketingModel(input = {}, opts = {}) {
     // meta ไม่อยู่ในสัญญาหลัก แต่มีไว้ให้หน้าเว็บโชว์สถานะและให้ระบบอื่นตัดสินใจต่อ
     meta: {
       resolved: {
+        topic: input.topic || '',
         objective: r.objective, contentType: r.contentType, channel: r.channel,
         tone: r.tone, assetType: r.assetType, province: input.province || null,
       },
@@ -525,6 +529,8 @@ export async function runMarketingModelWithLLM(input = {}, opts = {}) {
 
   // ⚠️ ต้องตรวจซ้ำหลัง LLM เสมอ — โมเดลชอบเติมคำขายของที่ด่านแรกไม่เคยเห็น
   const findings = [
+    ...checkText(base.headline, "หัวข้อ (จาก LLM)"),
+    ...checkTopicContent(input.topic, base),
     ...checkText(base.caption, "แคปชั่น (จาก LLM)"),
     ...checkText(base.videoScript, "สคริปต์วิดีโอ (จาก LLM)"),
     ...checkStructure({ input, resolved: r, output: base }),

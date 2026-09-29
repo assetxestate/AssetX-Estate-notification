@@ -85,4 +85,10 @@ await assert.rejects(
   /ล่วงหน้าอย่างน้อย 10 นาที/,
 )
 
+for (const caption of ['อนุมัติแน่นอน', 'ก่อนซื้อที่ดิน ตรวจยอดสินไถ่']) {
+  await assert.rejects(() => publishFacebookPost({
+    post: { channel: 'facebook', status: 'approved', reviewStatus: 'passed', topic: 'ก่อนซื้อที่ดิน', caption },
+  }, async () => { assert.fail('Unsafe content must not reach Facebook') }, config), /ห้ามโพสต์/)
+}
+
 console.log('marketing facebook tests passed')

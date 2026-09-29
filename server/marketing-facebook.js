@@ -126,6 +126,7 @@ export async function publishFacebookPost(payload = {}, fetchImpl = fetch, confi
   const caption = cleanText(post.caption)
   const channel = /facebook/i.test(String(post.channel || '')) ? 'facebook' : String(post.channel || '')
   const publishCheck = canPublishAssetxPost({
+    ...post,
     postId: post.facebookPostId,
     channel,
     status: post.status,
