@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { canPublishAssetxPost, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
+import ArtworkEditor from './ArtworkEditor.jsx'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -967,6 +968,7 @@ export default function MarketingPage({ onBack }) {
   const [toast, setToast] = useState(null)
   const [facebookConnection, setFacebookConnection] = useState({ loading: true, connected: false })
   const [facebookPublishingId, setFacebookPublishingId] = useState(null)
+  const [artworkBrief, setArtworkBrief] = useState(null)
 
   const ideaPool = useMemo(() => [...(workspace.radarIdeas || []), ...seedIdeas], [workspace.radarIdeas])
   const allDrafts = useMemo(
@@ -1058,6 +1060,35 @@ export default function MarketingPage({ onBack }) {
     if (message) notify(message)
   }
 
+  const attachDesignedArtwork = async (image) => {
+    const brief = artworkBrief
+    const isGenerated = brief.id === 'generated'
+    const isSample = String(brief.id).startsWith('sample-')
+    const postId = isSample ? Date.now() : brief.id
+    const asset = {
+      ...image, id: `asset-${crypto.randomUUID()}`, title: image.design.headline,
+      briefId: String(postId), postId: isGenerated ? null : String(postId),
+      source: image.design.sourceKind === 'ai' ? 'AI + AssetX template' : 'Photo + AssetX template',
+      originalName: 'assetx-artwork.jpg', createdAt: new Date().toISOString(),
+    }
+    const patch = { mediaAssetId: asset.id, status: 'pending', reviewStatus: 'needs_edit' }
+    const next = {
+      ...workspace,
+      generated: isGenerated ? { ...workspace.generated, mediaAssetId: asset.id } : workspace.generated,
+      posts: isSample ? [{ ...brief, id: postId, ...patch }, ...workspace.posts]
+        : workspace.posts.map((post) => String(post.id) === String(postId) ? { ...post, ...patch } : post),
+      hiddenPostIds: isSample ? [...new Set([...workspace.hiddenPostIds, brief.id])] : workspace.hiddenPostIds,
+      mediaAssets: [asset, ...(workspace.mediaAssets || [])],
+    }
+    // Persist first: a failed storage write must not report a successful attachment.
+    if (cloudReady) await saveMarketingWorkspace(next)
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) }
+    catch { if (!cloudReady) throw new Error('พื้นที่เก็บข้อมูลในเครื่องเต็ม กรุณาเชื่อมต่อระบบจัดเก็บก่อนบันทึกภาพ') }
+    setWorkspace(next)
+    if (!isGenerated) setSelectedId(postId)
+    notify('แนบภาพแล้ว พร้อมตรวจอนุมัติ')
+  }
+
   const publishToFacebook = async (post) => {
     if (!facebookConnection.connected) {
       notify('ยังไม่ได้เชื่อม Facebook Page', 'error')
@@ -1135,7 +1166,7 @@ export default function MarketingPage({ onBack }) {
       prompt: normalizePrompt(prompt),
       audience: sourceIdea?.audience || workspace.studio.audience,
       offer: sourceIdea?.angle || workspace.studio.offer,
-      channel: sourceIdea?.channel?.includes('LINE') ? 'line-oa' : workspace.studio.channel,
+      channel: sourceIdea?.channel ? (/facebook/i.test(sourceIdea.channel) ? 'facebook' : /LINE/i.test(sourceIdea.channel) ? 'line-oa' : workspace.studio.channel) : workspace.studio.channel,
     }
     const generated = runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || ''))
     save({ ...workspace, studio: input, generated })
@@ -1150,7 +1181,7 @@ export default function MarketingPage({ onBack }) {
       prompt: normalizePrompt(prompt),
       audience: sourceIdea?.audience || workspace.studio.audience,
       offer: sourceIdea?.angle || workspace.studio.offer,
-      channel: sourceIdea?.channel?.includes('LINE') ? 'line-oa' : workspace.studio.channel,
+      channel: sourceIdea?.channel ? (/facebook/i.test(sourceIdea.channel) ? 'facebook' : /LINE/i.test(sourceIdea.channel) ? 'line-oa' : workspace.studio.channel) : workspace.studio.channel,
     }
     const generated = polishGeneratedForApproval(
       runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || '')),
@@ -1623,6 +1654,9 @@ export default function MarketingPage({ onBack }) {
             generated={workspace.generated}
             posterCopy={workspace.posterCopy || defaultPosterCopy}
             onPromptChange={(prompt) => save({ ...workspace, studio: { ...workspace.studio, prompt } })}
+            onChannelChange={(channel) => save({ ...workspace, studio: { ...workspace.studio, channel } })}
+            artwork={(workspace.mediaAssets || []).find((asset) => asset.id === workspace.generated?.mediaAssetId)}
+            onDesignImage={() => setArtworkBrief({ ...workspace.generated, id: 'generated', title: workspace.generated?.headline })}
             onGenerate={() => generateContent(workspace.studio.prompt)}
             onQueue={addGeneratedToQueue}
             onCopy={copyText}
@@ -1638,7 +1672,7 @@ export default function MarketingPage({ onBack }) {
             onSelect={setSelectedId}
             onUpdate={updatePost}
             onCopy={copyText}
-            onGenerateImage={(brief) => generateMedia('image', brief)}
+            onGenerateImage={setArtworkBrief}
             onUploadArtwork={uploadArtwork}
             onDeleteMediaAsset={deleteMediaAsset}
             onDelete={deletePost}
@@ -1731,6 +1765,15 @@ export default function MarketingPage({ onBack }) {
         )}
         {view === 'pipeline' && <PipelineView />}
         {view === 'inbox' && <InboxView onCopy={copyText} onCreate={generateContent} />}
+        {artworkBrief && <ArtworkEditor
+          key={artworkBrief.id}
+          brief={artworkBrief}
+          asset={artworkBrief.id === 'generated'
+            ? (workspace.mediaAssets || []).find((asset) => asset.id === artworkBrief.mediaAssetId)
+            : findMediaForPost(workspace.mediaAssets || [], artworkBrief)}
+          onSave={attachDesignedArtwork}
+          onClose={() => setArtworkBrief(null)}
+        />}
         {toast && <div className={`mx-toast ${toast.type === 'error' ? 'error' : ''}`}>{toast.message}</div>}
       </main>
     </div>
@@ -1980,7 +2023,7 @@ function IdeasView({
   )
 }
 
-function StudioView({ studio, generated, posterCopy, onPromptChange, onGenerate, onQueue, onCopy }) {
+function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onChannelChange, onPromptChange, onGenerate, onQueue, onCopy }) {
   const posterPrompt = generated ? buildSocialPosterPrompt({
     title: generated.headline || studio.prompt,
     imagePrompt: generated.imagePrompt,
@@ -2004,6 +2047,11 @@ function StudioView({ studio, generated, posterCopy, onPromptChange, onGenerate,
         <textarea value={studio.prompt} onChange={(event) => onPromptChange(event.target.value)} placeholder="พิมพ์หัวข้อที่อยากโพสต์ เช่น เจ้าของที่ดินต้องการเงินก่อน แต่ไม่อยากขายขาด" />
         <button className="mx-primary" onClick={onGenerate}>สร้างโพสต์</button>
       </div>
+      <label className="mx-schedule-row">ช่องทาง
+        <select value={studio.channel} onChange={(event) => onChannelChange(event.target.value)}>
+          <option value="facebook">Facebook</option><option value="line-oa">LINE OA</option>
+        </select>
+      </label>
       <div className="mx-model-note">ใช้ template fallback ของ AssetX เป็นหลัก เพื่อประหยัดเครดิต แล้วค่อยต่อ AI เมื่อต้องการร่างละเอียด</div>
       {generated && (
         <div className="mx-generated-grid">
@@ -2021,7 +2069,9 @@ function StudioView({ studio, generated, posterCopy, onPromptChange, onGenerate,
             </div>
           </article>
           <aside className="mx-preview">
-            <div className="mx-preview-poster"><span>AssetX</span><strong>{generated.headline}</strong><small>Real Estate Marketing</small></div>
+            {artwork ? <img src={artwork.dataUrl} alt={artwork.title} style={{ width: '100%', display: 'block' }} />
+              : <div className="mx-preview-poster"><span>AssetX</span><strong>{generated.headline}</strong><small>ยังไม่มีภาพแนบ</small></div>}
+            <button className="mx-primary" onClick={onDesignImage}>{artwork ? 'แก้ไขภาพโพสต์' : 'ออกแบบภาพ AI'}</button>
           </aside>
         </div>
       )}
@@ -2072,12 +2122,12 @@ function ApprovalsView({
                       <div className="mx-poster-placeholder compact">
                         <span>AssetX Estate</span>
                         <strong>{post.title}</strong>
-                        <small>Poster Preview</small>
+                        <small>ยังไม่มีภาพแนบ</small>
                       </div>
                     )}
                   </div>
                   <button className="mx-primary" onClick={(event) => { event.stopPropagation(); onGenerateImage(post) }} disabled={mediaLoading === `image:${post.id}`}>
-                    {mediaLoading === `image:${post.id}` ? 'กำลังสร้างรูป...' : 'รีเฟรชรูป'}
+                    {postMedia ? 'แก้ไขภาพโพสต์' : 'ออกแบบภาพ AI'}
                   </button>
                   <label className={`mx-upload-button slim ${mediaLoading === `upload:${post.id}` ? 'disabled' : ''}`} onClick={(event) => event.stopPropagation()}>
                     {mediaLoading === `upload:${post.id}` ? 'กำลังอัปโหลด...' : 'อัปโหลดรูปเอง'}
@@ -2110,6 +2160,11 @@ function ApprovalsView({
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => onUpdate(post.id, { caption: event.target.value })}
                   />
+                  <label className="mx-schedule-row" onClick={(event) => event.stopPropagation()}>ช่องทาง
+                    <select value={/facebook/i.test(post.channel) ? 'facebook' : post.channel} onChange={(event) => onUpdate(post.id, { channel: event.target.value, reviewStatus: 'needs_edit' })}>
+                      <option value="facebook">Facebook</option><option value="line-oa">LINE OA</option>
+                    </select>
+                  </label>
                   <div className="mx-review-notes compact">
                     <strong>ผลตรวจ</strong>
                     {post.reviewNotes?.map((note, index) => <span key={index}>{note}</span>)}

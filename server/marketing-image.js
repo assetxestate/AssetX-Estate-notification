@@ -78,9 +78,12 @@ export default async function handler(req, res) {
     if (!prompt) throw new Error('กรุณาส่งบรีฟภาพก่อนสร้างรูป')
 
     const model = normalizeOpenAIImageModel(process.env.OPENAI_IMAGE_MODEL)
-    const styleGuidance = buildStyleGuidance(req.body?.styleProfile || {})
+    const backgroundOnly = req.body?.mode === 'artwork-background'
+    const styleGuidance = backgroundOnly
+      ? `${buildStyleGuidance({ ...req.body?.styleProfile, allowPosterText: false })}\nCreate only the visual photograph or illustration. The application overlays its own Thai typography and original logo separately. No lettering, logo, watermark, badges, panels or captions. Keep the subject centered with room for cropping to a wide horizontal frame.`
+      : buildStyleGuidance(req.body?.styleProfile || {})
     finalPrompt = buildFinalPrompt(prompt, styleGuidance)
-    const size = process.env.OPENAI_IMAGE_SIZE || 'auto'
+    const size = backgroundOnly ? '1024x1024' : (process.env.OPENAI_IMAGE_SIZE || 'auto')
     const quality = process.env.OPENAI_IMAGE_QUALITY || 'high'
     const outputFormat = process.env.OPENAI_IMAGE_OUTPUT_FORMAT || 'jpeg'
 

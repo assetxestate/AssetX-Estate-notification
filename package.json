@@ -13,6 +13,7 @@
     "test:messages": "node src/lib/messages.test.mjs",
     "test:notification-routing": "node api/_notification-routing.test.mjs",
     "test:marketing-facebook": "node server/marketing-facebook.test.mjs",
+    "test:marketing-image": "node server/marketing-image.test.mjs",
     "preview": "vite preview",
     "migrate": "node migrate.js"
   },
