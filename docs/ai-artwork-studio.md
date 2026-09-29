@@ -35,4 +35,5 @@
 - ทดสอบเบราว์เซอร์ desktop/mobile ด้วยภาพทดสอบ: เปลี่ยนขนาด ข้อความ สี การเปิดกลับมาแก้ และตรวจไม่ล้นหน้าจอ
 - ทดสอบตั้งแต่แนบภาพ > อนุมัติ > คำขอ Facebook โดยจำลองปลายทาง ไม่เผยแพร่โพสต์จริง
 - บริการสร้างภาพจริงด้วย API key ใน .env.local ตอบ 429 / OPENAI_IMAGE_QUOTA_EXCEEDED ต้องตรวจ billing หรือ quota ของบัญชีนั้น
-- ยังไม่ได้ยืนยันการสร้างภาพจริงด้วย API key บน Production
+- ตรวจ Production หลัง deploy แล้ว: API ตอบ OPENAI_IMAGE_FAILED เพราะยังไม่ได้ตั้ง OPENAI_API_KEY บน server
+- ขั้นถัดไป: เพิ่ม OPENAI_API_KEY ที่มี billing/quota พร้อมใช้ใน Vercel > assetx-estate > Settings > Environment Variables > Production แล้ว Redeploy และทดสอบสร้างภาพอีกครั้ง ไม่ส่งคีย์ผ่านแชตหรือ commit ลง Git
