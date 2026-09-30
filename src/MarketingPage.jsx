@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { canPublishAssetxPost, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
+import ArtworkPreview from './ArtworkPreview.jsx'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -2059,7 +2060,7 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
             </div>
           </article>
           <aside className="mx-preview">
-            {artwork ? <img src={artwork.dataUrl} alt={artwork.title} style={{ width: '100%', display: 'block' }} />
+            {artwork ? <ArtworkPreview src={artwork.dataUrl} alt={artwork.title} />
               : <div className="mx-preview-poster"><span>AssetX</span><strong>{generated.headline}</strong><small>ยังไม่มีภาพแนบ</small></div>}
             <button className="mx-primary" onClick={onDesignImage}>{artwork ? 'แก้ไขภาพโพสต์' : 'ออกแบบภาพ AI'}</button>
           </aside>
@@ -2107,7 +2108,7 @@ function ApprovalsView({
                 <div className="mx-approval-media-column">
                   <div className="mx-approval-card-image">
                     {postMedia ? (
-                      <img src={postMedia.dataUrl} alt={postMedia.title} />
+                      <ArtworkPreview src={postMedia.dataUrl} alt={postMedia.title} />
                     ) : (
                       <div className="mx-poster-placeholder compact">
                         <span>AssetX Estate</span>
@@ -2218,7 +2219,7 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
           const isDelivered = isPosted || isScheduledOnFacebook
           return (
             <article className="mx-row-card" key={post.id}>
-              {findMediaForPost(mediaAssets, post) && <img className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
+              {findMediaForPost(mediaAssets, post) && <ArtworkPreview className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
               <div>
                 <strong>{post.title}</strong>
                 <span>{post.channel} · {post.source || 'AssetX Studio'}{post.scheduledAt ? ` · จอง ${post.scheduledAt}` : ''}</span>
@@ -2419,7 +2420,7 @@ function GalleryView({
             <>
               {mediaResult.type === 'video'
                 ? <video src={mediaResult.dataUrl} controls playsInline />
-                : <img src={mediaResult.dataUrl} alt={mediaResult.title} />}
+                : <ArtworkPreview src={mediaResult.dataUrl} alt={mediaResult.title} />}
               <a className="mx-primary media-download" href={mediaResult.dataUrl} download={`assetx-${mediaResult.type}-${mediaResult.id}.${mediaResult.type === 'video' ? 'mp4' : 'jpg'}`}>ดาวน์โหลด</a>
             </>
           )}
@@ -2455,7 +2456,7 @@ function GalleryView({
         <div className="mx-artwork-grid">
           {mediaAssets.map((asset) => (
             <article className="mx-artwork-card" key={asset.id}>
-              <img src={asset.dataUrl} alt={asset.title} />
+              <ArtworkPreview src={asset.dataUrl} alt={asset.title} />
               <div>
                 <strong>{asset.title}</strong>
                 <span>{asset.width} x {asset.height}px · {new Date(asset.createdAt).toLocaleDateString('th-TH')}</span>
@@ -2585,7 +2586,7 @@ function LibraryView({
           {filteredPosts.length === 0 && <div className="mx-empty">ไม่พบโพสต์ในตัวกรองนี้ ลองเปลี่ยนสถานะด้านบน</div>}
           {filteredPosts.map((post) => (
             <article className={`mx-row-card ${post.status === 'archived' ? 'muted' : ''}`} key={post.id}>
-              {findMediaForPost(mediaAssets, post) && <img className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
+              {findMediaForPost(mediaAssets, post) && <ArtworkPreview className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
               <div>
                 <strong>{post.title}</strong>
                 <span>{post.channel} · {statusLabels[post.status] || post.status} · {post.source || 'AssetX Studio'}</span>
@@ -2607,10 +2608,10 @@ function LibraryView({
               </div>
               <div className="mx-mini-artwork-grid">
                 {mediaAssets.map((asset) => (
-                  <a className="mx-mini-artwork" href={asset.dataUrl} target="_blank" rel="noreferrer" key={asset.id}>
-                    <img src={asset.dataUrl} alt={asset.title} />
+                  <div className="mx-mini-artwork" key={asset.id}>
+                    <ArtworkPreview src={asset.dataUrl} alt={asset.title} />
                     <span>{asset.title}</span>
-                  </a>
+                  </div>
                 ))}
               </div>
             </>
@@ -2623,7 +2624,7 @@ function LibraryView({
               <span>{previewChannel === 'facebook' ? 'Facebook' : previewChannel === 'line' ? 'LINE OA' : 'TikTok / Reels'}</span>
             </div>
             <div className={`mx-preview-box ${previewChannel}`}>
-              {previewMedia && <img className="mx-channel-image" src={previewMedia.dataUrl} alt={previewPost.title} />}
+              {previewMedia && <ArtworkPreview className="mx-channel-image" src={previewMedia.dataUrl} alt={previewPost.title} />}
               <strong>{previewPost?.title || 'ยังไม่มีโพสต์'}</strong>
               <pre>{previewText}</pre>
             </div>

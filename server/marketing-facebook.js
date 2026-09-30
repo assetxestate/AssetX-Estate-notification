@@ -81,22 +81,30 @@ export function parseImageDataUrl(dataUrl = '') {
   return { mimeType, buffer }
 }
 
-function facebookError(data, status) {
-  const message = data?.error?.message || data?.message || `Facebook Graph API ${status}`
+function facebookError(data, status, config) {
+  let message = String(data?.error?.message || data?.message || `Facebook Graph API ${status}`)
+  for (const secret of [config.accessToken, config.appSecret, appSecretProof(config)]) {
+    if (secret) message = message.replaceAll(secret, '[REDACTED]').replaceAll(encodeURIComponent(secret), '[REDACTED]')
+  }
   const code = data?.error?.code
+  const subcode = data?.error?.error_subcode
+  const details = [`HTTP ${status}`]
+  if (Number.isInteger(code)) details.push(`code ${code}`)
+  if (Number.isInteger(subcode)) details.push(`subcode ${subcode}`)
+  const diagnostic = `Facebook (${details.join(', ')}): ${message}`
   if (code === 190 || status === 401) {
-    return 'Page Access Token หมดอายุหรือไม่ถูกต้อง กรุณาเชื่อม Facebook ใหม่'
+    return `Page Access Token ใช้งานไม่ได้ กรุณาตรวจสอบโทเคน — ${diagnostic}`
   }
   if (code === 200 || status === 403) {
-    return 'Facebook Page ยังไม่ได้ให้สิทธิ์ pages_manage_posts และ pages_read_engagement'
+    return `Facebook ปฏิเสธคำขอ กรุณาตรวจสอบรายละเอียด — ${diagnostic}`
   }
-  return message
+  return diagnostic
 }
 
-async function graphRequest(url, options = {}, fetchImpl = fetch) {
+async function graphRequest(url, options, fetchImpl, config) {
   const response = await fetchImpl(url, options)
   const data = await response.json().catch(() => ({}))
-  if (!response.ok || data?.error) throw new Error(facebookError(data, response.status))
+  if (!response.ok || data?.error) throw new Error(facebookError(data, response.status, config))
   return data
 }
 
@@ -109,6 +117,7 @@ export async function getFacebookConnection(fetchImpl = fetch, config = facebook
     `${graphUrl(config, config.pageId)}?${params.toString()}`,
     { method: 'GET', headers: graphHeaders(config) },
     fetchImpl,
+    config,
   )
   return {
     connected: true,
@@ -152,6 +161,7 @@ export async function publishFacebookPost(payload = {}, fetchImpl = fetch, confi
       graphUrl(config, `${config.pageId}/photos`),
       { method: 'POST', headers: graphHeaders(config), body: form },
       fetchImpl,
+      config,
     )
   } else {
     const params = addProofParam(addScheduleParams(new URLSearchParams({ message: caption }), schedule), config)
@@ -163,6 +173,7 @@ export async function publishFacebookPost(payload = {}, fetchImpl = fetch, confi
         body: params,
       },
       fetchImpl,
+      config,
     )
   }
 

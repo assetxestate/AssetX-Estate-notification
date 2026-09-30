@@ -91,4 +91,18 @@ for (const caption of ['อนุมัติแน่นอน', 'ก่อน�
   }, async () => { assert.fail('Unsafe content must not reach Facebook') }, config), /ห้ามโพสต์/)
 }
 
+for (const [status, code] of [[403, 200], [400, 190], [400, 100], [200, 200]]) {
+  await assert.rejects(() => getFacebookConnection(async () => new Response(JSON.stringify({
+    error: { code, error_subcode: 123, message: 'Original Meta reason secret-token app-secret' },
+  }), { status }), config), (error) => {
+    assert.match(error.message, /Original Meta reason/)
+    assert.ok(error.message.includes(`HTTP ${status}`))
+    assert.ok(error.message.includes(`code ${code}`))
+    assert.match(error.message, /subcode 123/)
+    assert.doesNotMatch(error.message, /secret-token|app-secret/)
+    assert.doesNotMatch(error.message, /ยังไม่ได้ให้สิทธิ์/)
+    return true
+  })
+}
+
 console.log('marketing facebook tests passed')
