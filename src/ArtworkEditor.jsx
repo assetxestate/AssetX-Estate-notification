@@ -13,6 +13,7 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
   const dialog = useRef(null)
   const controller = useRef(null)
   const upload = useRef(null)
+  const original = design.layout === 'original'
   const patch = (value) => setDesign((current) => ({ ...current, ...value }))
 
   useEffect(() => {
@@ -95,7 +96,7 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
   }
 
   const attach = async () => {
-    if (!preview || !design.headline.trim()) return
+    if (!preview || (!original && !design.headline.trim())) return
     setBusy(true)
     setError('')
     try { await onSave({ ...preview, design, sourceDataUrl: source }); onClose() }
@@ -119,23 +120,24 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
           </select></label>
           <div className="ax-artwork-actions">
             <button type="button" className="accent" disabled={!design.prompt.trim()} onClick={generate}>{busy ? 'กำลังเตรียมภาพ...' : source ? 'สร้างภาพ AI ใหม่' : 'สร้างภาพ AI'}</button>
-            <button type="button" onClick={() => upload.current.click()}>เลือกภาพจริง</button>
+            <button type="button" onClick={() => upload.current.click()}>อัปโหลดภาพ</button>
             <input ref={upload} type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={(e) => { uploadSource(e.target.files?.[0]); e.target.value = '' }} />
           </div>
         </fieldset>
-        <fieldset disabled={busy}>
+        <label>รูปแบบภาพ<select value={design.layout} disabled={busy} onChange={(e) => patch({ layout: e.target.value })}>
+          <option value="original">โปสเตอร์สำเร็จรูป · เต็มภาพ</option>
+          <option value="editorial">หัวข้อด้านบน</option><option value="photo">ภาพด้านบน</option>
+        </select></label>
+        {!original && <fieldset disabled={busy}>
           <legend>ข้อความบนภาพ</legend>
           <label>หัวข้อ<textarea value={design.headline} maxLength={120} onChange={(e) => patch({ headline: e.target.value })} /></label>
           <label>รายละเอียดสั้น<input value={design.subtitle} maxLength={95} onChange={(e) => patch({ subtitle: e.target.value })} /></label>
           <label>ข้อความติดต่อ<input value={design.cta} maxLength={48} onChange={(e) => patch({ cta: e.target.value })} /></label>
-        </fieldset>
-        <fieldset disabled={busy}>
+        </fieldset>}
+        {!original && <fieldset disabled={busy}>
           <legend>การจัดวาง</legend>
           <label>ขนาด<select value={design.format} onChange={(e) => patch({ format: e.target.value })}>
             {Object.entries(ARTWORK_FORMATS).map(([id, item]) => <option key={id} value={id}>{item.label} · {item.width} × {item.height}</option>)}
-          </select></label>
-          <label>รูปแบบ<select value={design.layout} onChange={(e) => patch({ layout: e.target.value })}>
-            <option value="editorial">หัวข้อด้านบน</option><option value="photo">ภาพด้านบน</option>
           </select></label>
           <div className="ax-artwork-swatches" role="group" aria-label="ชุดสี">
             {Object.entries(ARTWORK_THEMES).map(([id, item]) => <button type="button" key={id} title={item.label} aria-label={item.label} aria-pressed={design.theme === id} style={{ background: item.accent }} onClick={() => patch({ theme: id })} />)}
@@ -143,17 +145,17 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
           <label>ขยายภาพ<input type="range" min="1" max="2" step="0.05" value={design.zoom} onChange={(e) => patch({ zoom: Number(e.target.value) })} /></label>
           <label>ตำแหน่งแนวนอน<input type="range" min="0" max="100" value={design.cropX} onChange={(e) => patch({ cropX: Number(e.target.value) })} /></label>
           <label>ตำแหน่งแนวตั้ง<input type="range" min="0" max="100" value={design.cropY} onChange={(e) => patch({ cropY: Number(e.target.value) })} /></label>
-        </fieldset>
+        </fieldset>}
       </div>
       <div className="ax-artwork-preview">
-        <div className="ax-artwork-sheet" style={{ aspectRatio: design.format === 'square' ? '1 / 1' : '4 / 5' }} aria-busy={busy || rendering}>
+        <div className="ax-artwork-sheet" style={{ aspectRatio: original && preview ? `${preview.width} / ${preview.height}` : design.format === 'square' ? '1 / 1' : '4 / 5' }} aria-busy={busy || rendering}>
           {preview ? <img src={preview.dataUrl} alt={design.headline} /> : <div className="ax-artwork-empty"><img src="/logo.jpg" alt="AssetX Estate" /><p>{busy ? 'กำลังสร้างภาพ...' : rendering ? 'กำลังจัดวาง...' : 'ยังไม่มีภาพ'}</p></div>}
         </div>
         {preview && <a href={preview.dataUrl} download="assetx-artwork.jpg">ดาวน์โหลด JPG</a>}
         {(error || renderError) && <p className="ax-artwork-error" role="alert">{error || renderError}</p>}
       </div>
     </div>
-    <footer><span>{ARTWORK_FORMATS[design.format].width} × {ARTWORK_FORMATS[design.format].height} px</span>
-      <button type="button" className="accent" disabled={busy || rendering || !preview || !design.headline.trim()} onClick={attach}>บันทึกและแนบกับโพสต์</button></footer>
+    <footer><span>{preview?.width || ARTWORK_FORMATS[design.format].width} × {preview?.height || ARTWORK_FORMATS[design.format].height} px</span>
+      <button type="button" className="accent" disabled={busy || rendering || !preview || (!original && !design.headline.trim())} onClick={attach}>บันทึกและแนบกับโพสต์</button></footer>
   </dialog>
 }

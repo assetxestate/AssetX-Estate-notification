@@ -66,6 +66,18 @@ function drawText(ctx, text, { x, y, width, height, size, min = 24, color, bold 
 }
 
 export async function renderArtwork(sourceUrl, design) {
+  if (design.layout === 'original') {
+    const source = await readArtworkImage(sourceUrl)
+    const canvas = document.createElement('canvas')
+    canvas.width = source.width
+    canvas.height = source.height
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(source, 0, 0)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+    return { dataUrl, mimeType: 'image/jpeg', width: canvas.width, height: canvas.height, size: Math.ceil(dataUrl.length * 0.75) }
+  }
   const format = ARTWORK_FORMATS[design.format] || ARTWORK_FORMATS.portrait
   const theme = ARTWORK_THEMES[design.theme] || ARTWORK_THEMES.ocean
   const [source, logo] = await Promise.all([readArtworkImage(sourceUrl), readArtworkImage('/logo.jpg')])
