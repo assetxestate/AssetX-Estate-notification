@@ -3,6 +3,7 @@ import { canPublishAssetxPost, reviewAssetxContent, runAssetxMarketingModel } fr
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
+import { canRecoverManualFacebookPost, recoverManualFacebookPost } from './lib/marketingQueue.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -2231,7 +2232,8 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                 <input
                   type="datetime-local"
                   value={scheduleInputValue(post.scheduledAt)}
-                  disabled={isDelivered}
+                  disabled={isDelivered || isPublishing}
+                  aria-label={`วันและเวลาโพสต์ ${post.title}`}
                   onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : 'approved' }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
                 />
                 {isFacebook && (
@@ -2251,6 +2253,13 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                             ? 'ตั้งเวลา Facebook'
                             : 'โพสต์ Facebook'}
                   </button>
+                )}
+                {canRecoverManualFacebookPost(post) && (
+                  <button className="mx-secondary" disabled={isPublishing} onClick={() => {
+                    if (!window.confirm('โปรดตรวจหน้าเพจและคิวใน Meta Business Suite ว่าไม่มีโพสต์นี้แล้ว เพื่อป้องกันโพสต์ซ้ำ ยืนยันคืนรายการมารอตั้งเวลา? การคืนคิวจะล้างเวลาเดิม แต่ยังไม่ส่งโพสต์ไป Facebook')) return
+                    const patch = recoverManualFacebookPost(post)
+                    if (patch) onUpdate(post.id, patch, 'คืนคิวแล้ว กรุณาเลือกวันและเวลาใหม่')
+                  }}>คืนคิวเพื่อตั้งเวลาใหม่</button>
                 )}
                 {!isFacebook && !isDelivered && <button className="mx-secondary" onClick={() => onUpdate(post.id, { status: 'posted', postedAt: new Date().toISOString() }, 'บันทึกว่าโพสต์แล้ว')}>บันทึกว่าโพสต์แล้ว</button>}
               </div>
