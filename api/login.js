@@ -2,11 +2,19 @@
 // ตั้งค่า ENV บน Vercel: APP_USERNAME, APP_PASSWORD
 import crypto from 'crypto'
 import dotenv from 'dotenv'
-import { createSessionCookie } from './_auth.js'
+import { createSessionCookie, verifySession } from './_auth.js'
 
 dotenv.config({ path: '.env.local' })
 
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store')
+  if (!process.env.SESSION_SECRET) {
+    return res.status(503).json({ error: 'ระบบเข้าสู่ระบบยังไม่พร้อม กรุณาตรวจ SESSION_SECRET บนเซิร์ฟเวอร์' })
+  }
+  if (req.method === 'GET') {
+    const authenticated = verifySession(req)
+    return res.status(authenticated ? 200 : 401).json({ authenticated })
+  }
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' })
   }

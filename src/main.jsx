@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react'
+import React, { Suspense, lazy, useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 
 const App = lazy(() => import('./App.jsx'))
@@ -15,14 +15,25 @@ function PageLoading() {
 }
 
 function Root() {
-  const [isLoggedIn, setIsLoggedIn] = useState(
-    () =>
-      localStorage.getItem('assetx_auth_version') === AUTH_STORAGE_VERSION &&
-      (
-        sessionStorage.getItem('assetx_auth') === 'true' ||
-        localStorage.getItem('assetx_auth_remember') === 'true'
-      )
-  )
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
+  const [sessionError, setSessionError] = useState('')
+  const [sessionAttempt, setSessionAttempt] = useState(0)
+  useEffect(() => {
+    if (window.location.pathname === '/assess') return
+    let cancelled = false
+    setCheckingSession(true)
+    setSessionError('')
+    fetch('/api/login', { credentials: 'same-origin', cache: 'no-store' })
+      .then(async (response) => {
+        const data = await response.json()
+        if (!response.ok && response.status !== 401) throw new Error(data.error || 'ตรวจเซสชันไม่สำเร็จ')
+        if (!cancelled) setIsLoggedIn(response.ok && data.authenticated === true)
+      })
+      .catch((error) => { if (!cancelled) setSessionError(error.message || 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้') })
+      .finally(() => { if (!cancelled) setCheckingSession(false) })
+    return () => { cancelled = true }
+  }, [sessionAttempt])
   const handleLogin = (remember) => {
     localStorage.setItem('assetx_auth_version', AUTH_STORAGE_VERSION)
     if (remember) localStorage.setItem('assetx_auth_remember', 'true')
@@ -43,6 +54,8 @@ function Root() {
 
   // หน้าประเมินออนไลน์สาธารณะ — bypass login โดยตั้งใจ ไม่ผ่าน auth gate เลย
   if (window.location.pathname === '/assess') return <AssessPage />
+  if (checkingSession) return <PageLoading />
+  if (sessionError) return <main><p role="alert">{sessionError}</p><button onClick={() => setSessionAttempt((value) => value + 1)}>ลองใหม่</button></main>
 
   if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />
 

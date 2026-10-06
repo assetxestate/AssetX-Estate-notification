@@ -2209,6 +2209,8 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
           <button className="mx-secondary" onClick={onCreate}>หาไอเดียเพิ่ม</button>
         </div>
       </div>
+      {facebookConnection?.error && <p role="alert" className="mx-warn">{facebookConnection.error}</p>}
+      {facebookConnection?.missing?.length > 0 && <p role="alert" className="mx-warn">ยังไม่ได้ตั้งค่า {facebookConnection.missing.join(', ')}</p>}
       <div className="mx-list">
         {posts.length === 0 && <div className="mx-empty">ไม่มีอะไรรอโพสต์ อนุมัติคอนเทนต์จากหน้า รออนุมัติ แล้วจะมาโผล่ที่นี่</div>}
         {posts.map((post) => {
@@ -2242,7 +2244,7 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                     {isScheduledOnFacebook
                       ? 'ตั้งเวลาแล้ว'
                       : isPosted
-                        ? 'โพสต์แล้ว'
+                        ? post.facebookPostId ? 'ส่งไป Facebook แล้ว' : 'บันทึกเอง · ยังไม่ยืนยัน Facebook'
                         : isPublishing
                           ? 'กำลังส่ง...'
                           : post.scheduledAt
@@ -2250,7 +2252,7 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                             : 'โพสต์ Facebook'}
                   </button>
                 )}
-                {!isDelivered && <button className="mx-secondary" onClick={() => onUpdate(post.id, { status: 'posted', postedAt: new Date().toISOString() }, 'บันทึกว่าโพสต์แล้ว')}>บันทึกว่าโพสต์แล้ว</button>}
+                {!isFacebook && !isDelivered && <button className="mx-secondary" onClick={() => onUpdate(post.id, { status: 'posted', postedAt: new Date().toISOString() }, 'บันทึกว่าโพสต์แล้ว')}>บันทึกว่าโพสต์แล้ว</button>}
               </div>
             </article>
           )

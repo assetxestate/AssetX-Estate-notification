@@ -20,6 +20,12 @@ export default function LoginPage({ onLogin }) {
         body: JSON.stringify({ username, password }),
       });
       if (res.ok) {
+        const session = await fetch('/api/login', { credentials: 'same-origin', cache: 'no-store' });
+        const data = await session.json().catch(() => ({}));
+        if (!session.ok || data.authenticated !== true) {
+          setError(data.error || 'ยืนยันเซสชันไม่ได้ กรุณาตรวจการอนุญาตคุกกี้และใช้โดเมนเดิมในการเข้าสู่ระบบ');
+          return;
+        }
         onLogin(remember);
       } else {
         const data = await res.json().catch(() => ({}));
