@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import handler from './login.js'
-import { verifySession } from './_auth.js'
+import handler from '../api/login.js'
+import { verifySession } from '../api/_auth.js'
 
 const keys = ['SESSION_SECRET', 'SESSION_VERSION', 'APP_USERNAME', 'APP_PASSWORD']
 const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
