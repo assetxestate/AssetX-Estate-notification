@@ -98,7 +98,24 @@ export function buildAssetxMarketingInput(studio = {}) {
 }
 
 export function runAssetxMarketingModel(studio = {}, recentCaptions = []) {
-  return runMarketingModel(buildAssetxMarketingInput(studio), { recentCaptions })
+  const result = runMarketingModel(buildAssetxMarketingInput(studio), { recentCaptions })
+  result.caption = appendMarketingHashtags(result.caption, result.hashtags)
+  result.automationPayload.postText = result.caption
+  return result
+}
+
+export function appendMarketingHashtags(caption = '', hashtags = []) {
+  const text = String(caption).trim()
+  const existing = new Set((text.match(/#[\p{L}\p{M}\p{N}_]+/gu) || []).map(tag => tag.toLowerCase()))
+  const added = []
+  for (const value of hashtags) {
+    const tag = String(value).trim().replace(/^#+/, '').replace(/[^\p{L}\p{M}\p{N}_]/gu, '')
+    const key = `#${tag}`.toLowerCase()
+    if (!tag || existing.has(key)) continue
+    existing.add(key)
+    added.push(`#${tag}`)
+  }
+  return added.length ? `${text}${text ? '\n\n' : ''}${added.join(' ')}` : text
 }
 
 export function canPublishAssetxPost(post, opts = {}) {

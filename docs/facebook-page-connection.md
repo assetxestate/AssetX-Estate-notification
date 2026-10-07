@@ -45,7 +45,23 @@
 - `App ID`
 - `App Secret` กด `Show` เพื่อดูค่า
 
-ค่า `App ID` ยังไม่จำเป็นกับโค้ดปัจจุบัน แต่ควรเก็บไว้สำหรับการต่อ OAuth ในอนาคต ส่วน `App Secret` ใช้สร้าง `appsecret_proof` เพื่อเพิ่มความปลอดภัยทุกครั้งที่เรียก Graph API
+ตั้ง `META_APP_ID` คู่กับ `META_APP_SECRET` เพื่อให้ระบบตรวจวันหมดอายุผ่าน Meta Debug Token ส่วน App Secret ใช้สร้าง `appsecret_proof` ด้วย การอ่านชื่อเพจสำเร็จไม่ใช่หลักฐานว่าโทเคนมีอายุยาวหรือมีสิทธิ์เผยแพร่ครบ
+
+### เมื่อโทเคนหมดอายุซ้ำ (code 190 / subcode 463)
+
+อย่าออก Page Token อายุสั้นจาก Explorer แล้วนำขึ้น Production ซ้ำ การ Redeploy ไม่ต่ออายุโทเคน
+
+1. ออก User Token ใหม่สำหรับ App เดิม พร้อม `pages_show_list`, `pages_read_engagement`, `pages_manage_posts` และอนุญาตเพจที่ต้องการ
+2. เปิด Access Token Debugger ตรวจ User Token แล้วใช้ `Extend Access Token` หากมี ให้ได้ Long-lived User Token ก่อน ห้ามใช้โทเคนเก่าที่หมดอายุแล้ว
+3. กลับ Explorer วาง Long-lived User Token ใหม่นั้น เรียก `GET /me/accounts?fields=id,name,access_token` โดยไม่กด Generate อีก เพราะอาจแทนที่ด้วยโทเคนระยะสั้น
+4. คัดลอก `access_token` จากรายการเพจที่ถูกต้อง ตรวจใน Debugger ว่าเป็น Page ของเพจนั้น สิทธิ์ครบ และตรวจทั้ง Expires กับ Data Access Expires ห้ามนำโทเคนที่เหลือหนึ่งชั่วโมงไปใช้เป็นการเชื่อมต่อระยะยาว
+5. ใส่ค่าใน `META_PAGE_ACCESS_TOKEN` บน Vercel Production แล้ว Redeploy ตรวจวันหมดอายุจากคิวอีกครั้ง
+
+ถ้าไม่มี Extend ให้ทำการแลกโทเคนตามเอกสาร Meta ฝั่งเซิร์ฟเวอร์โดยผู้ดูแล ห้ามส่ง App Secret หรือโทเคนในแชตหรือ commit ลง Git
+
+โทเคนที่ไม่ระบุวันหมดอายุยังถูกเพิกถอนได้ ระบบนี้ไม่ได้ต่ออายุหรือออกโทเคนใหม่แทนผู้ใช้โดยอัตโนมัติ และไม่ได้ตรวจสถานะเมื่อไม่มีผู้เปิดหน้าเว็บ โพสต์ที่ Facebook รับตั้งเวลาแล้วกับรายการที่บันทึกเองต้องตรวจแยกกันก่อนส่งซ้ำ
+
+อ้างอิง: https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived/
 
 ## 3. ขอสิทธิ์ที่ระบบต้องใช้
 
@@ -131,6 +147,7 @@
 | `META_PAGE_ID` | Page ID ที่ได้จาก `/me/accounts` | Production |
 | `META_PAGE_ACCESS_TOKEN` | Page Access Token หรือ System User Token | Production |
 | `META_APP_SECRET` | App Secret จาก Meta App | Production |
+| `META_APP_ID` | App ID ของ App ที่ออกโทเคน ใช้ตรวจอายุ | Production |
 | `META_GRAPH_API_VERSION` | `v26.0` | Production |
 
 5. ตรวจว่าไม่มีช่องว่างหรือเครื่องหมายอัญประกาศติดหัวท้ายค่า

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { getFacebookConnection, parseImageDataUrl, parseScheduledAt, publishFacebookPost } from './marketing-facebook.js'
+import { describeTokenHealth, getFacebookConnection, parseImageDataUrl, parseScheduledAt, publishFacebookPost } from './marketing-facebook.js'
 
 const config = {
   pageId: 'page-123',
@@ -14,7 +14,9 @@ const connection = await getFacebookConnection(async (url) => {
   assert.doesNotMatch(url, /secret-token/)
   return new Response(JSON.stringify({ id: 'page-123', name: 'AssetX Page' }), { status: 200 })
 }, config)
-assert.deepEqual(connection, {
+assert.equal(connection.tokenHealth.state, 'unknown')
+const { tokenHealth, ...connectionDetails } = connection
+assert.deepEqual(connectionDetails, {
   connected: true,
   pageId: 'page-123',
   pageName: 'AssetX Page',
@@ -105,4 +107,19 @@ for (const [status, code] of [[403, 200], [400, 190], [400, 100], [200, 200]]) {
   })
 }
 
+const now = Date.now()
+assert.equal(describeTokenHealth({ is_valid: false }, now).state, 'expired')
+assert.equal(describeTokenHealth({ is_valid: true, expires_at: now / 1000 - 1 }, now).state, 'expired')
+assert.equal(describeTokenHealth({ is_valid: true, expires_at: now / 1000 + 3600 }, now).state, 'expiring')
+assert.equal(describeTokenHealth({ is_valid: true, expires_at: 0, data_access_expires_at: now / 1000 + 3600 }, now).state, 'expiring')
+assert.equal(describeTokenHealth({ is_valid: true, expires_at: 0 }, now).expiresAt, null)
+const checked = await getFacebookConnection(async (url, options) => {
+  if (url.includes('/debug_token')) {
+    assert.equal(options.headers.Authorization, 'Bearer app-123|app-secret')
+    return new Response(JSON.stringify({ data: { is_valid: true, expires_at: 0 } }))
+  }
+  return new Response(JSON.stringify({ id: 'page-123', name: 'AssetX Page' }))
+}, { ...config, appId: 'app-123' })
+assert.equal(checked.tokenHealth.state, 'valid')
+assert.doesNotMatch(JSON.stringify(checked), /secret-token|app-secret/)
 console.log('marketing facebook tests passed')

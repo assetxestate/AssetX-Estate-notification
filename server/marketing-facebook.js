@@ -11,6 +11,7 @@ function facebookConfig() {
     pageId: String(process.env.META_PAGE_ID || '').trim(),
     accessToken: String(process.env.META_PAGE_ACCESS_TOKEN || '').trim(),
     appSecret: String(process.env.META_APP_SECRET || '').trim(),
+    appId: String(process.env.META_APP_ID || '').trim(),
     graphVersion: String(process.env.META_GRAPH_API_VERSION || DEFAULT_GRAPH_VERSION).trim(),
   }
 }
@@ -93,6 +94,7 @@ function facebookError(data, status, config) {
   if (Number.isInteger(subcode)) details.push(`subcode ${subcode}`)
   const diagnostic = `Facebook (${details.join(', ')}): ${message}`
   if (code === 190 || status === 401) {
+    if (subcode === 463) return `โทเคน Facebook หมดอายุ ต้องออกโทเคนระยะยาวใหม่ การเข้าสู่ระบบ AssetX หรือ Redeploy ด้วยค่าเดิมไม่ต่ออายุโทเคน — ${diagnostic}`
     return `Page Access Token ใช้งานไม่ได้ กรุณาตรวจสอบโทเคน — ${diagnostic}`
   }
   if (code === 200 || status === 403) {
@@ -119,11 +121,41 @@ export async function getFacebookConnection(fetchImpl = fetch, config = facebook
     fetchImpl,
     config,
   )
+  const tokenHealth = await getTokenHealth(fetchImpl, config)
   return {
     connected: true,
     pageId: data.id || config.pageId,
     pageName: data.name || 'Facebook Page',
     graphVersion: config.graphVersion,
+    tokenHealth,
+  }
+}
+
+export function describeTokenHealth(data, now = Date.now()) {
+  const dates = [data.expires_at, data.data_access_expires_at].map(Number).filter(value => Number.isFinite(value) && value > 0)
+  const expiresAt = dates.length ? Math.min(...dates) * 1000 : null
+  if (!data.is_valid || (expiresAt && expiresAt <= now)) return { state: 'expired', warning: 'โทเคนหมดอายุหรือถูกยกเลิก ต้องอนุญาตผ่าน Meta ใหม่' }
+  const expiry = expiresAt ? new Date(expiresAt).toISOString() : null
+  return {
+    state: expiresAt && expiresAt - now < 7 * 86400000 ? 'expiring' : 'valid',
+    expiresAt: expiry,
+    warning: expiry
+      ? `สิทธิ์โทเคนหมดอายุ ${new Date(expiresAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })} (เวลาไทย) ควรใช้โทเคนระยะยาวสำหรับงานอัตโนมัติ`
+      : 'Meta ไม่ระบุวันหมดอายุ แต่โทเคนยังอาจถูกเพิกถอนเมื่อสิทธิ์หรือความปลอดภัยเปลี่ยน',
+  }
+}
+
+async function getTokenHealth(fetchImpl, config) {
+  if (!config.appId || !config.appSecret) return { state: 'unknown', warning: 'ยังไม่ได้ตรวจอายุโทเคน ตั้งค่า META_APP_ID และ META_APP_SECRET เพื่อแสดงวันหมดอายุ การเชื่อมต่อสำเร็จไม่ได้ยืนยันว่าเป็นโทเคนระยะยาว' }
+  try {
+    const params = new URLSearchParams({ input_token: config.accessToken })
+    const data = await graphRequest(`${graphUrl(config, 'debug_token')}?${params}`, {
+      method: 'GET', headers: { Authorization: `Bearer ${config.appId}|${config.appSecret}` },
+    }, fetchImpl, config)
+    return describeTokenHealth(data.data || {})
+  } catch {
+    // Never expose diagnostic requests containing credentials to the browser.
+    return { state: 'unknown', warning: 'ตรวจวันหมดอายุโทเคนไม่สำเร็จ กรุณาตรวจใน Access Token Debugger' }
   }
 }
 
@@ -188,6 +220,7 @@ export async function publishFacebookPost(payload = {}, fetchImpl = fetch, confi
 }
 
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 

@@ -6,6 +6,20 @@ import { getPrompts, runMarketingModelWithLLM } from './marketing-model/index.js
 const prompt = 'ข้อควรรู้ก่อนซื้อที่ดินเปล่า ทั้งทำเลทอง'
 const studio = { prompt, channel: 'facebook', contentType: 'educate', objective: 'lead_owner', offer: 'วางทางเลือกขายฝาก/จำนอง' }
 
+test('Facebook explains practical checks without expanding short channels or video', () => {
+  const brief = { ...studio, prompt: 'ก่อนทำขายฝากควรเตรียมอะไร' }
+  const facebook = runAssetxMarketingModel(brief)
+  const line = runAssetxMarketingModel({ ...brief, channel: 'line-oa' })
+  assert.ok(facebook.caption.length > 1200)
+  assert.ok(facebook.caption.length < 2400)
+  assert.ok(facebook.caption.length > line.caption.length * 2)
+  assert.equal(facebook.videoScript, line.videoScript)
+  assert.match(facebook.caption, /เงินที่ได้รับจริง/)
+  assert.match(facebook.caption, /ลายลักษณ์อักษร/)
+  assert.match(facebook.caption, /ปิดข้อมูลส่วนบุคคล/)
+  assert.equal(reviewAssetxContent({ ...facebook, topic: brief.prompt }).ok, true)
+})
+
 test('passes original topic and keeps purchase content separate from default lending offer', () => {
   const input = buildAssetxMarketingInput(studio)
   assert.equal(input.topic, prompt)
@@ -14,7 +28,8 @@ test('passes original topic and keeps purchase content separate from default len
   assert.match(out.caption, /เอกสารสิทธิ์/)
   assert.match(out.caption, /ทางเข้าออก/)
   assert.doesNotMatch([out.caption, out.videoScript, ...out.hashtags].join(' '), /ไถ่ถอน|สินไถ่|ขายฝาก|จำนอง|ชลบุรี/)
-  assert.equal(out.automationPayload.postText, `${out.caption}\n\n${out.hashtags.map(h => '#' + h).join(' ')}`)
+  assert.equal(out.automationPayload.postText, out.caption)
+  assert.ok(out.caption.endsWith(out.hashtags.map(h => '#' + h).join(' ')))
   assert.equal(out.meta.blocking, false)
   assert.equal(reviewAssetxContent({ ...out, topic: prompt, status: 'pending' }).ok, true)
 })

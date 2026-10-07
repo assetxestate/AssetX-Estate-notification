@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { canPublishAssetxPost, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
+import { appendMarketingHashtags, canPublishAssetxPost, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
 import { canRecoverManualFacebookPost, recoverManualFacebookPost } from './lib/marketingQueue.js'
+import { prioritizeMarketingIdeas, redemptionIdeas } from './lib/marketingIdeaMix.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -20,6 +21,7 @@ const defaultStudio = {
 }
 
 const seedIdeas = [
+  ...redemptionIdeas,
   {
     id: 'pre-market-risk',
     source: 'ระบบสัญญา',
@@ -932,7 +934,7 @@ export default function MarketingPage({ onBack }) {
   const [facebookPublishingId, setFacebookPublishingId] = useState(null)
   const [artworkBrief, setArtworkBrief] = useState(null)
 
-  const ideaPool = useMemo(() => [...(workspace.radarIdeas || []), ...seedIdeas], [workspace.radarIdeas])
+  const ideaPool = useMemo(() => prioritizeMarketingIdeas([...(workspace.radarIdeas || []), ...seedIdeas]), [workspace.radarIdeas])
   const allDrafts = useMemo(
     () => [...workspace.posts, ...seedDrafts.filter((post) => !workspace.hiddenPostIds.includes(post.id))],
     [workspace.posts, workspace.hiddenPostIds],
@@ -1211,7 +1213,7 @@ export default function MarketingPage({ onBack }) {
       topic,
       channel: workspace.studio.channel,
       status,
-      caption: workspace.generated.caption,
+      caption: appendMarketingHashtags(workspace.generated.caption, workspace.generated.hashtags),
       imagePrompt: workspace.generated.imagePrompt,
       videoScript: workspace.generated.videoScript,
       mediaAssetId: workspace.generated.mediaAssetId || null,
@@ -2173,6 +2175,11 @@ function ApprovalsView({
                     {postMedia && <span>{postMedia.width} x {postMedia.height}px · {postMedia.originalName || 'generated image'}</span>}
                   </div>
                   <div className="mx-card-actions">
+                    {!post.facebookPostId && post.status !== 'posted' && /facebook/i.test(post.channel || '') && !/#[\p{L}\p{N}_]/u.test(post.caption || '') && <button className="mx-secondary" onClick={(event) => {
+                      event.stopPropagation()
+                      const suggested = runAssetxMarketingModel({ prompt: post.topic || post.title, channel: 'facebook' })
+                      onUpdate(post.id, { caption: appendMarketingHashtags(post.caption, suggested.hashtags) }, 'เพิ่มแฮชแท็กแล้ว กรุณาตรวจและอนุมัติอีกครั้ง')
+                    }}>เพิ่มแฮชแท็ก</button>}
                     <button className="mx-primary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: post.scheduledAt ? 'scheduled' : 'approved', reviewStatus: 'passed', mediaAssetId: postMedia?.id || post.mediaAssetId || null }, post.scheduledAt ? 'อนุมัติและเข้าปฏิทินแล้ว' : 'อนุมัติแล้ว') }}>อนุมัติ</button>
                     <button className="mx-secondary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: 'needs_edit', reviewStatus: 'needs_edit' }, 'ส่งกลับแก้แล้ว') }}>แก้</button>
                     <button className="mx-ghost" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: 'draft' }, 'พักโพสต์ไว้ก่อนแล้ว') }}>พัก</button>
@@ -2211,6 +2218,7 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
         </div>
       </div>
       {facebookConnection?.error && <p role="alert" className="mx-warn">{facebookConnection.error}</p>}
+      {facebookConnection?.tokenHealth?.warning && <p role="status" className="mx-warn" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{facebookConnection.tokenHealth.warning}</p>}
       {facebookConnection?.missing?.length > 0 && <p role="alert" className="mx-warn">ยังไม่ได้ตั้งค่า {facebookConnection.missing.join(', ')}</p>}
       <div className="mx-list">
         {posts.length === 0 && <div className="mx-empty">ไม่มีอะไรรอโพสต์ อนุมัติคอนเทนต์จากหน้า รออนุมัติ แล้วจะมาโผล่ที่นี่</div>}
