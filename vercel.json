@@ -8,6 +8,7 @@
     }
   },
   "rewrites": [
+    { "source": "/api/notices", "destination": "/api/notices" },
     { "source": "/api/chat", "destination": "/api/chat" },
     { "source": "/api/marketing-image", "destination": "/api/marketing?feature=image" },
     { "source": "/api/marketing-video", "destination": "/api/marketing?feature=video" },

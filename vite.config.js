@@ -8,6 +8,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { fetchMarketComps } from './api/_marketComps.js'
+import { devAuthMiddleware } from './server/dev-auth.js'
+import noticesHandler from './api/notices.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -145,43 +147,21 @@ export default defineConfig(({ mode }) => {
       {
         name: 'gemini-api-dev',
         configureServer(server) {
-          server.middlewares.use('/api/login', async (req, res) => {
-            if (req.method !== 'POST') {
-              res.statusCode = 405
-              res.setHeader('Content-Type', 'application/json')
-              res.end(JSON.stringify({ error: 'Method Not Allowed' }))
-              return
-            }
-
-            let body = ''
-            req.on('data', chunk => body += chunk)
-            req.on('end', () => {
-              try {
-                const { username, password } = JSON.parse(body || '{}')
-                const ok = String(username ?? '') === String(env.APP_USERNAME ?? '') &&
-                  String(password ?? '') === String(env.APP_PASSWORD ?? '')
-
-                res.setHeader('Content-Type', 'application/json')
-                if (!env.APP_USERNAME || !env.APP_PASSWORD) {
-                  res.statusCode = 500
-                  res.end(JSON.stringify({ error: 'ยังไม่ได้ตั้งค่า APP_USERNAME / APP_PASSWORD' }))
-                  return
-                }
-
-                if (!ok) {
-                  res.statusCode = 401
-                  res.end(JSON.stringify({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' }))
-                  return
-                }
-
-                res.statusCode = 200
-                res.end(JSON.stringify({ ok: true }))
-              } catch (e) {
-                res.statusCode = 400
-                res.setHeader('Content-Type', 'application/json')
-                res.end(JSON.stringify({ error: 'ข้อมูลล็อกอินไม่ถูกต้อง' }))
+          server.middlewares.use(devAuthMiddleware)
+          server.middlewares.use('/api/notices', async (req, res) => {
+            res.status = code => { res.statusCode = code; return res }
+            res.json = data => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)) }
+            try {
+              let body = ''
+              for await (const chunk of req) {
+                body += chunk
+                if (body.length > 3000000) return res.status(413).json({ error: 'ใบเสร็จต้องมีขนาดไม่เกิน 2 MB' })
               }
-            })
+              req.body = body ? JSON.parse(body) : {}
+              await noticesHandler(req, res)
+            } catch {
+              if (!res.writableEnded) res.status(400).json({ error: 'Invalid request' })
+            }
           })
 
           server.middlewares.use('/api/market-comps', async (req, res) => {

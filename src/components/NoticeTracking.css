@@ -1,0 +1,12 @@
+.notice-tracking { grid-column: 1 / -1; min-width: 0; color: #d4e4ef; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.notice-tracking summary { cursor: pointer; color: #2dd4bf; padding: 6px 0; }
+.notice-tracking p[role="alert"] { color: #fda4af; }
+.notice-tracking p[role="status"] { color: #5eead4; }
+.notice-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.notice-tracking button { background: #102635; color: #d4e4ef; border: 1px solid #356077; border-radius: 6px; padding: 6px 10px; cursor: pointer; white-space: normal; }
+.notice-tracking button:disabled { opacity: .5; cursor: default; }
+.notice-entry { padding: 10px 0; border-top: 1px solid #294455; }
+.notice-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 10px; }
+.notice-fields label { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
+.notice-fields input, .notice-fields select { box-sizing: border-box; width: 100%; min-width: 0; background: #09131f; color: #e2edf5; border: 1px solid #356077; border-radius: 6px; padding: 8px; font: inherit; color-scheme: dark; }
+.notice-tracking fieldset { min-width: 0; border: 0; padding: 8px 0; margin: 0; }

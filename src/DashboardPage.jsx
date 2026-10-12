@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { BRAND as BASE_BRAND } from './lib/config.js'
 import { getDiff } from './lib/utils.js'
+import NoticeTracking from './components/NoticeTracking.jsx'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
 const BRAND = { ...BASE_BRAND, success: '#10B981', danger: '#EF4444' }
@@ -415,9 +416,10 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                     <div style={{ fontSize: 12, color: BRAND.textPri }}>{c.contractEndDate ? new Date(c.contractEndDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}</div>
                     <div style={{ fontSize: 11, color: c.color, marginTop: 4 }}>{c.diffDays === null ? 'รอตรวจวันครบกำหนด' : `อีก ${Math.max(c.diffDays, 0)} วัน`}</div>
                     <div style={{ marginTop: 8, padding: '4px 8px', borderRadius: 8, background: `${c.color}18`, border: `1px solid ${c.color}44`, fontSize: 10, fontWeight: 700, color: c.color }}>
-                      {c.action}
+                      {c.action === 'เร่งรวมเอกสารและเตรียม Notice' ? 'ติดตามเอกสารและสถานะ Notice' : c.action}
                     </div>
                   </div>
+                  <NoticeTracking customerId={c.id} />
                 </div>
               ))}
             </div>
