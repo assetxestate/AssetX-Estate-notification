@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createNoticeHandler } from '../api/notices.js'
+import { createNoticeHandler } from './notices.js'
 const response = () => ({ setHeader() {}, status(code) { this.code = code; return this }, json(body) { this.body = body; return this } })
 test('unauthenticated calls cannot touch database', async () => {
   const res = response()

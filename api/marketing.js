@@ -4,8 +4,10 @@ import referencesHandler from '../server/marketing-references.js'
 import radarHandler from '../server/marketing-radar.js'
 import knowledgeSaveHandler from '../server/marketing-knowledge-save.js'
 import facebookHandler from '../server/marketing-facebook.js'
+import noticesHandler from '../server/notices.js'
 
 const handlers = {
+  notices: noticesHandler,
   image: imageHandler,
   video: videoHandler,
   references: referencesHandler,
@@ -20,6 +22,7 @@ function inferFeature(req) {
   if (feature) return feature
 
   const path = url.pathname.replace(/\/+$/, '')
+  if (path.endsWith('/notices')) return 'notices'
   if (path.endsWith('/marketing-image')) return 'image'
   if (path.endsWith('/marketing-video')) return 'video'
   if (path.endsWith('/marketing-references')) return 'references'

@@ -9,7 +9,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { fetchMarketComps } from './api/_marketComps.js'
 import { devAuthMiddleware } from './server/dev-auth.js'
-import noticesHandler from './api/notices.js'
+import noticesHandler from './server/notices.js'
 
 const execFileAsync = promisify(execFile)
 

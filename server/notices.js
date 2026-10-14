@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
-import { verifySession } from './_auth.js'
+import { verifySession } from '../api/_auth.js'
 import { validateNotice } from '../src/lib/noticeTracking.js'
-import { decodeReceipt, uploadReceipt, RECEIPT_BUCKET } from '../server/noticeReceipt.js'
+import { decodeReceipt, uploadReceipt, RECEIPT_BUCKET } from './noticeReceipt.js'
 
 export function createNoticeHandler({ authorized = verifySession, database = () => {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
