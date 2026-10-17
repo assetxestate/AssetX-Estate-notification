@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { appendMarketingHashtags, canPublishAssetxPost, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
+import { appendMarketingHashtags, assetxChannels, canPublishAssetxPost, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
 import { canRecoverManualFacebookPost, recoverManualFacebookPost } from './lib/marketingQueue.js'
 import { prioritizeMarketingIdeas, redemptionIdeas } from './lib/marketingIdeaMix.js'
+import { importHermesDraft } from './lib/hermesMarketingDraft.js'
+import { assetxImageStyles, buildGalleryFireflyPrompt } from './lib/assetxImageStyles.js'
+import { marketingChannelSetup, validateManualPublicationReference } from './lib/marketingChannels.js'
+import { organizeMarketingQueue } from './lib/marketingQueuePlan.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -249,6 +253,7 @@ const assetxVisualStyles = [
     prompt: `Photorealistic premium investor briefing style. Modern meeting table, clean financial advisory setting, sophisticated lighting, calm confidence, premium Thai real-estate investment mood. ${assetxPalettePrompt}`,
     scenes: 'Investment brief papers, anonymized property photos, tablet dashboard, coffee, calculator, minimal charts without readable sensitive text, professional hands only.',
   },
+  ...assetxImageStyles,
 ]
 
 const referenceSources = [
@@ -429,14 +434,14 @@ function scheduleInputValue(raw = '') {
 function buildChannelPreview(post, channel) {
   if (!post) return 'เลือกหรือสร้างโพสต์ก่อน ระบบจะแสดงตัวอย่างตามช่องทางที่เลือก'
   const caption = (post.caption || '').trim()
-  if (channel === 'line') {
+  if (channel === 'line-oa') {
     const firstLine = caption.split('\n').find(Boolean) || post.title
     return `${firstLine}\n\nสนใจให้ AssetX Estate ช่วยประเมินเบื้องต้น ส่งจังหวัด / ประเภททรัพย์ / เนื้อที่ เข้ามาได้เลย\n\nหมายเหตุ: ทีมงานตรวจข้อมูลจริงก่อนเสนอทางเลือกทุกครั้ง`
   }
-  if (channel === 'tiktok') {
+  if (channel === 'tiktok' || channel === 'youtube-shorts') {
     return post.videoScript || `Hook: ${post.title}\n\n1. เปิดด้วยปัญหาที่เจ้าของทรัพย์เจอบ่อย\n2. อธิบายทางเลือกแบบไม่สัญญาเกินจริง\n3. ปิดท้ายด้วยการชวนส่งข้อมูลเพื่อประเมินเบื้องต้น`
   }
-  return `${caption}\n\n#AssetXEstate #ขายฝาก #จำนอง #ประเมินทรัพย์`
+  return caption
 }
 
 function findMediaForPost(mediaAssets = [], post = {}) {
@@ -950,12 +955,13 @@ export default function MarketingPage({ onBack }) {
       }
     }), [allDrafts])
   const approvedDrafts = allDrafts.filter((post) => post.status === 'approved' || post.status === 'scheduled' || post.status === 'posted')
+  const queueGroups = organizeMarketingQueue(approvedDrafts)
   const selectedDraft = allDrafts.find((post) => post.id === selectedId) || allDrafts[0]
   const visibleIdeas = showAllIdeas ? ideaPool : ideaPool.slice(0, 4)
   const dashboardCounts = {
     ideas: ideaPool.length,
     approvals: pendingDrafts.length,
-    ready: approvedDrafts.length,
+    ready: queueGroups.action.length,
     saved: workspace.savedIdeas.length,
     references: workspace.references?.length || 0,
     knowledge: workspace.knowledgeNotes?.length || 0,
@@ -971,7 +977,21 @@ export default function MarketingPage({ onBack }) {
   useEffect(() => {
     let cancelled = false
     getMarketingWorkspace()
-      .then((remote) => {
+      .then(async (remote) => {
+        const incomingId = new URLSearchParams(window.location.search).get('hermesDraft')
+        if (incomingId) {
+          if (!/^[a-f0-9]{32}$/.test(incomingId)) throw new Error('Invalid Hermes draft link')
+          const incoming = await getMarketingWorkspace(`hermes-draft-${incomingId}`)
+          if (cancelled) return
+          if (!incoming?.payload || incoming.payload.id !== incomingId) throw new Error('Hermes draft not found')
+          const base = remote?.payload && hasWorkspaceContent(remote.payload) ? normalizeWorkspace(remote.payload) : loadWorkspace()
+          const imported = importHermesDraft(base, incoming.payload)
+          if (imported !== base) await saveMarketingWorkspace(imported)
+          if (cancelled) return
+          remote = { payload: imported, updated_at: new Date().toISOString() }
+          setView('approvals')
+          setSelectedId(`hermes-${incomingId}`)
+        }
         if (cancelled) return
         if (remote?.payload && hasWorkspaceContent(remote.payload)) {
           const next = normalizeWorkspace(remote.payload)
@@ -983,8 +1003,9 @@ export default function MarketingPage({ onBack }) {
         }
         setCloudReady(true)
       })
-      .catch(() => {
+      .catch((error) => {
         if (cancelled) return
+        if (new URLSearchParams(window.location.search).has('hermesDraft')) notify(`นำเข้าร่าง Hermes ไม่สำเร็จ: ${error.message}`, 'error')
         setSyncStatus('ใช้ข้อมูลในเครื่อง')
         setCloudReady(false)
       })
@@ -1124,6 +1145,26 @@ export default function MarketingPage({ onBack }) {
     } finally {
       setFacebookPublishingId(null)
     }
+  }
+
+  const recordManualPublication = (post, rawReference) => {
+    if (!['approved', 'scheduled'].includes(post.status) || post.reviewStatus !== 'passed' || !reviewAssetxContent(post).ok) {
+      notify('โพสต์นี้ต้องผ่านการตรวจและอนุมัติก่อน', 'error')
+      return false
+    }
+    const result = validateManualPublicationReference(post.channel, rawReference)
+    if (!result.ok) {
+      notify(result.error, 'error')
+      return false
+    }
+    updatePost(post.id, {
+      status: 'posted',
+      postedAt: new Date().toISOString(),
+      manualReference: result.reference,
+      manualConfirmedAt: new Date().toISOString(),
+      publishError: '',
+    }, 'บันทึกการโพสต์ด้วยตนเองแล้ว')
+    return true
   }
 
   const archivePost = (id) => {
@@ -1458,7 +1499,8 @@ export default function MarketingPage({ onBack }) {
   const generateMedia = async (type, brief) => {
     setMediaLoading(`${type}:${brief.id}`)
     try {
-      const visualStyle = assetxVisualStyles.find((style) => style.id === visualStyleId) || assetxVisualStyles[0]
+      const selectedVisualStyle = assetxVisualStyles.find((style) => style.id === visualStyleId) || assetxVisualStyles[0]
+      const visualStyle = type === 'video' && selectedVisualStyle.artistic ? assetxVisualStyles[1] : selectedVisualStyle
       const basePrompt = type === 'video'
         ? (brief.videoScript || brief.imagePrompt || brief.title)
         : (brief.imagePrompt || brief.title)
@@ -1592,6 +1634,7 @@ export default function MarketingPage({ onBack }) {
         <NavSection title="สร้าง">
           <NavButton active={view === 'references'} label="สำรวจ Reference" count={dashboardCounts.references} onClick={() => setView('references')} />
           <NavButton active={view === 'gallery'} label="ห้องภาพ" onClick={() => setView('gallery')} />
+          <NavButton active={view === 'channels'} label="ช่องทาง" onClick={() => setView('channels')} />
         </NavSection>
         <NavSection title="แบรนด์ของฉัน">
           <NavButton active={view === 'brand'} label="Brand Brain" onClick={() => setView('brand')} />
@@ -1681,6 +1724,16 @@ export default function MarketingPage({ onBack }) {
             onCreate={() => setView('ideas')}
             onUpdate={updatePost}
             onPublishFacebook={publishToFacebook}
+            onRecordManual={recordManualPublication}
+            onCopy={copyText}
+          />
+        )}
+        {view === 'channels' && (
+          <ChannelsView
+            posts={allDrafts}
+            facebookConnection={facebookConnection}
+            onCreate={() => setView('studio')}
+            onQueue={() => setView('queue')}
           />
         )}
         {view === 'references' && (
@@ -1714,6 +1767,8 @@ export default function MarketingPage({ onBack }) {
             mediaResult={mediaResult}
             mediaAssets={workspace.mediaAssets || []}
             selectedBriefId={selectedBriefId}
+            onSelectBrief={setSelectedBriefId}
+            onCreateContent={() => setView('studio')}
             posterCopy={workspace.posterCopy || defaultPosterCopy}
             visualStyles={assetxVisualStyles}
             visualStyleId={visualStyleId}
@@ -1747,7 +1802,7 @@ export default function MarketingPage({ onBack }) {
             onDeleteSavedIdea={deleteSavedIdea}
           />
         )}
-        {view === 'calendar' && <CalendarView posts={approvedDrafts} />}
+        {view === 'calendar' && <CalendarView posts={approvedDrafts} onQueue={() => setView('queue')} />}
         {view === 'metrics' && (
           <MetricsView
             metrics={workspace.metrics || []}
@@ -2043,7 +2098,7 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
       </div>
       <label className="mx-schedule-row">ช่องทาง
         <select value={studio.channel} onChange={(event) => onChannelChange(event.target.value)}>
-          <option value="facebook">Facebook</option><option value="line-oa">LINE OA</option>
+          {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
         </select>
       </label>
       <div className="mx-model-note">ใช้ template fallback ของ AssetX เป็นหลัก เพื่อประหยัดเครดิต แล้วค่อยต่อ AI เมื่อต้องการร่างละเอียด</div>
@@ -2156,7 +2211,7 @@ function ApprovalsView({
                   />
                   <label className="mx-schedule-row" onClick={(event) => event.stopPropagation()}>ช่องทาง
                     <select value={/facebook/i.test(post.channel) ? 'facebook' : post.channel} onChange={(event) => onUpdate(post.id, { channel: event.target.value, reviewStatus: 'needs_edit' })}>
-                      <option value="facebook">Facebook</option><option value="line-oa">LINE OA</option>
+                      {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
                     </select>
                   </label>
                   <div className="mx-review-notes compact">
@@ -2197,14 +2252,65 @@ function ApprovalsView({
   )
 }
 
-function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, onCreate, onUpdate, onPublishFacebook }) {
+function ChannelsView({ posts, facebookConnection, onCreate, onQueue }) {
+  return (
+    <section className="mx-content">
+      <div className="mx-page-head">
+        <div>
+          <div className="mx-kicker">ช่องทาง</div>
+          <h1>สถานะช่องทางการตลาด</h1>
+        </div>
+        <div className="mx-row-actions">
+          <button className="mx-primary" onClick={onCreate}>สร้างคอนเทนต์</button>
+          <button className="mx-secondary" onClick={onQueue}>ดูคิวโพสต์</button>
+        </div>
+      </div>
+      <div className="mx-channel-table-wrap">
+        <table className="mx-channel-table">
+          <thead><tr><th>ช่องทาง</th><th>สิ่งที่ต้องเตรียม</th><th>การส่งโพสต์</th><th>รออนุมัติ</th><th>อยู่ในคิว</th><th>บัญชี</th></tr></thead>
+          <tbody>
+            {marketingChannelSetup.map((channel) => {
+              const channelPosts = posts.filter((post) => post.channel === channel.id)
+              const pending = channelPosts.filter((post) => ['pending', 'draft', 'needs_edit'].includes(post.status)).length
+              const queued = channelPosts.filter((post) => ['approved', 'scheduled'].includes(post.status)).length
+              const facebookReady = channel.id === 'facebook' && facebookConnection?.connected
+              return (
+                <tr key={channel.id}>
+                  <th scope="row">{channel.label}</th>
+                  <td>{channel.preparation}</td>
+                  <td><span className={facebookReady ? 'mx-channel-ready' : 'mx-channel-manual'}>{facebookReady ? 'API พร้อมใช้' : channel.id === 'facebook' ? 'ยังไม่เชื่อม API' : 'ส่งเองก่อน · รอเชื่อม API'}</span></td>
+                  <td>{pending}</td>
+                  <td>{queued}</td>
+                  <td><a href={channel.managerUrl} target="_blank" rel="noreferrer">เปิดบัญชี</a></td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {facebookConnection?.tokenHealth?.warning && <p className="mx-channel-warning" role="status">Facebook: {facebookConnection.tokenHealth.warning}</p>}
+    </section>
+  )
+}
+
+function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, onCreate, onUpdate, onPublishFacebook, onRecordManual, onCopy }) {
+  const [queueFilter, setQueueFilter] = useState('action')
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const groups = organizeMarketingQueue(posts, now)
+  const visibleItems = groups[queueFilter]
+  const dueCount = groups.action.filter(({ queueState }) => queueState === 'overdue' || queueState === 'today').length
+  const verificationCount = groups.platformScheduled.filter(({ post }) => post.scheduledAt && new Date(post.scheduledAt) <= now).length
   return (
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
           <div className="mx-kicker">รอโพสต์</div>
           <h1>คิวโพสต์ที่ผ่านการอนุมัติแล้ว</h1>
-          <p>โพสต์ที่อนุมัติแล้วสามารถส่งไปยัง Facebook Page และบันทึกผลกลับเข้าระบบได้</p>
+          <p>Facebook ส่งผ่าน API; ช่องทางอื่นเตรียมไฟล์และบันทึกผลหลังโพสต์จริง</p>
         </div>
         <div className="mx-row-actions">
           <span className={facebookConnection?.connected ? 'mx-pass' : 'mx-warn'}>
@@ -2220,20 +2326,35 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
       {facebookConnection?.error && <p role="alert" className="mx-warn">{facebookConnection.error}</p>}
       {facebookConnection?.tokenHealth?.warning && <p role="status" className="mx-warn" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{facebookConnection.tokenHealth.warning}</p>}
       {facebookConnection?.missing?.length > 0 && <p role="alert" className="mx-warn">ยังไม่ได้ตั้งค่า {facebookConnection.missing.join(', ')}</p>}
+      {dueCount > 0 && <p className="mx-queue-due" role="status">มี {dueCount} โพสต์ที่ถึงกำหนดหรือเลยกำหนดแล้ว ต้องตรวจและเผยแพร่จริงตามช่องทาง</p>}
+      {verificationCount > 0 && <p className="mx-queue-verify" role="status">มี {verificationCount} โพสต์ที่ตั้งเวลาบน Facebook และเวลาผ่านแล้ว กรุณาตรวจผลจริงใน Meta Business Suite</p>}
+      <div className="mx-queue-tabs" aria-label="สถานะคิวโพสต์">
+        {[
+          ['action', 'ต้องดำเนินการ'],
+          ['platformScheduled', 'ตั้งเวลาบน Facebook'],
+          ['posted', 'โพสต์แล้ว'],
+        ].map(([key, label]) => (
+          <button key={key} type="button" className={queueFilter === key ? 'active' : ''} aria-pressed={queueFilter === key} onClick={() => setQueueFilter(key)}>
+            {label} <span>{groups[key].length}</span>
+          </button>
+        ))}
+      </div>
       <div className="mx-list">
-        {posts.length === 0 && <div className="mx-empty">ไม่มีอะไรรอโพสต์ อนุมัติคอนเทนต์จากหน้า รออนุมัติ แล้วจะมาโผล่ที่นี่</div>}
-        {posts.map((post) => {
+        {visibleItems.length === 0 && <div className="mx-empty">ไม่มีโพสต์ในสถานะนี้</div>}
+        {visibleItems.map(({ post, queueState }) => {
           const isFacebook = /facebook/i.test(String(post.channel || ''))
           const isPublishing = String(publishingId) === String(post.id)
           const isScheduledOnFacebook = Boolean(post.facebookPostId) && post.status === 'scheduled'
           const isPosted = post.status === 'posted'
           const isDelivered = isPosted || isScheduledOnFacebook
+          const postMedia = findMediaForPost(mediaAssets, post)
           return (
-            <article className="mx-row-card" key={post.id}>
-              {findMediaForPost(mediaAssets, post) && <ArtworkPreview className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
+            <article className="mx-row-card mx-publish-row" key={post.id}>
+              {postMedia && <ArtworkPreview className="mx-row-thumb" src={postMedia.dataUrl} alt={post.title} />}
               <div>
                 <strong>{post.title}</strong>
-                <span>{post.channel} · {post.source || 'AssetX Studio'}{post.scheduledAt ? ` · จอง ${post.scheduledAt}` : ''}</span>
+                <span>{assetxChannels.find((channel) => channel.value === post.channel)?.label || post.channel} · {post.source || 'AssetX Studio'}{isPosted ? (post.postedAt ? ` · โพสต์ ${new Date(post.postedAt).toLocaleString('th-TH')}` : '') : (post.scheduledAt ? ` · วางแผน ${new Date(post.scheduledAt).toLocaleString('th-TH')}` : '')}</span>
+                <span className={`mx-queue-state ${queueState}`}>{queueState === 'platformScheduled' && post.scheduledAt && new Date(post.scheduledAt) <= now ? 'เวลาผ่านแล้ว · ตรวจผลจริงบน Facebook' : ({ overdue: 'เลยกำหนด', today: 'ถึงกำหนดวันนี้', upcoming: 'กำหนดวันแล้ว', unscheduled: 'ยังไม่กำหนดวัน', platformScheduled: 'Facebook รับตั้งเวลาแล้ว', posted: 'โพสต์แล้ว' })[queueState]}</span>
                 {post.publishError && <span style={{ color: '#FCA5A5' }}>{post.publishError}</span>}
               </div>
               <div className="mx-row-actions">
@@ -2269,13 +2390,41 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                     if (patch) onUpdate(post.id, patch, 'คืนคิวแล้ว กรุณาเลือกวันและเวลาใหม่')
                   }}>คืนคิวเพื่อตั้งเวลาใหม่</button>
                 )}
-                {!isFacebook && !isDelivered && <button className="mx-secondary" onClick={() => onUpdate(post.id, { status: 'posted', postedAt: new Date().toISOString() }, 'บันทึกว่าโพสต์แล้ว')}>บันทึกว่าโพสต์แล้ว</button>}
+                {!isFacebook && isPosted && post.manualReference && (
+                  post.channel === 'line-oa'
+                    ? <span>ยืนยันการส่งด้วยตนเอง · {post.manualReference}</span>
+                    : <a href={post.manualReference} target="_blank" rel="noreferrer">ดูโพสต์ที่บันทึกไว้</a>
+                )}
               </div>
+              {!isFacebook && !isDelivered && <ManualPublishActions post={post} media={postMedia} onCopy={onCopy} onRecord={onRecordManual} />}
             </article>
           )
         })}
       </div>
     </section>
+  )
+}
+
+function ManualPublishActions({ post, media, onCopy, onRecord }) {
+  const [reference, setReference] = useState('')
+  const channel = marketingChannelSetup.find((item) => item.id === post.channel)
+  return (
+    <details className="mx-manual-handoff">
+      <summary>เตรียมโพสต์ {channel?.label || post.channel}</summary>
+      <div className="mx-manual-handoff-actions">
+        <button className="mx-secondary" type="button" onClick={() => onCopy(post.caption)}>คัดลอกแคปชั่น</button>
+        {post.videoScript && <button className="mx-secondary" type="button" onClick={() => onCopy(post.videoScript)}>คัดลอกสคริปต์</button>}
+        {media && <a className="mx-secondary as-link" href={media.dataUrl} download={`assetx-${post.id}.jpg`}>ดาวน์โหลดภาพ</a>}
+        {channel && <a className="mx-secondary as-link" href={channel.managerUrl} target="_blank" rel="noreferrer">เปิด {channel.label}</a>}
+      </div>
+      <form className="mx-manual-proof" onSubmit={(event) => { event.preventDefault(); if (onRecord(post, reference)) setReference('') }}>
+        <label>{post.channel === 'line-oa' ? 'รหัสหรือหลักฐานการส่งจาก LINE OA' : 'ลิงก์โพสต์ที่เผยแพร่แล้ว'}
+          <input value={reference} onChange={(event) => setReference(event.target.value)} placeholder={post.channel === 'line-oa' ? 'เช่น รหัส Broadcast' : 'https://...'} />
+        </label>
+        <button className="mx-primary" type="submit">บันทึกผลที่โพสต์จริง</button>
+      </form>
+      {post.scheduledAt && <small>เวลาที่เลือกเป็นแผนในเว็บ ยังไม่ได้ตั้งเวลาบน {channel?.label || post.channel}</small>}
+    </details>
   )
 }
 
@@ -2286,6 +2435,8 @@ function GalleryView({
   mediaResult,
   mediaAssets = [],
   selectedBriefId,
+  onSelectBrief,
+  onCreateContent,
   posterCopy,
   visualStyles,
   visualStyleId,
@@ -2317,15 +2468,72 @@ function GalleryView({
   ]
   const selectedStyle = visualStyles.find((style) => style.id === visualStyleId) || visualStyles[0]
   const selectedBrief = briefs.find((brief) => String(brief.id) === String(selectedBriefId)) || briefs[0]
+  const fireflyPrompt = selectedBrief ? buildGalleryFireflyPrompt(selectedStyle, selectedBrief) : ''
   return (
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
           <div className="mx-kicker">ห้องภาพ</div>
-          <h1>สร้างภาพและวิดีโอจากบรีฟคอนเทนต์</h1>
-          <p>ใช้ OpenAI สำหรับสร้างรูป และ Gemini สำหรับวิดีโอฝั่ง server โดยไม่ส่ง API key ไปฝั่งเว็บ และยังห้ามใส่ข้อมูลส่วนตัวในภาพ</p>
+          <h1>เตรียมภาพสำหรับคอนเทนต์</h1>
         </div>
       </div>
+      {!briefs.length && <div className="mx-gallery-empty">ยังไม่มีคอนเทนต์ที่มีบรีฟภาพ <button className="mx-secondary" type="button" onClick={onCreateContent}>สร้างคอนเทนต์</button></div>}
+      <div className="mx-gallery-flow">
+        <div className="mx-gallery-fields">
+          <label>
+            คอนเทนต์
+            <select value={selectedBrief ? String(selectedBrief.id) : ''} onChange={(event) => onSelectBrief(event.target.value)} disabled={!briefs.length}>
+              {!briefs.length && <option value="">ยังไม่มีบรีฟภาพ</option>}
+              {briefs.map((brief) => <option key={brief.id} value={String(brief.id)}>{brief.title}</option>)}
+            </select>
+          </label>
+          <label>
+            สไตล์ภาพ
+            <select value={selectedStyle.id} onChange={(event) => onVisualStyleChange(event.target.value)}>
+              <optgroup label="ภาพแนว AssetX">
+                {visualStyles.filter((style) => !style.artistic).map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
+              </optgroup>
+              <optgroup label="ภาพวาด 10 สไตล์">
+                {visualStyles.filter((style) => style.artistic).map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
+              </optgroup>
+            </select>
+          </label>
+        </div>
+        <div className="mx-gallery-prompt-head">
+          <strong>พร้อมต์สำหรับ Firefly</strong>
+          <span>{selectedStyle.allowPosterText ? 'ภาพพื้นหลังแนวโปสเตอร์ เพิ่มข้อความภายหลัง' : selectedStyle.description}</span>
+        </div>
+        <textarea aria-label="พร้อมต์สำหรับ Firefly" value={fireflyPrompt} readOnly placeholder="เลือกคอนเทนต์เพื่อดูพร้อมต์" />
+        <div className="mx-gallery-prompt-actions">
+          <button className="mx-primary" type="button" disabled={!fireflyPrompt} onClick={() => onCopy(fireflyPrompt)}>คัดลอกพร้อมต์</button>
+          <a className="mx-secondary as-link" href="https://firefly.adobe.com/" target="_blank" rel="noreferrer">เปิด Firefly</a>
+        </div>
+      </div>
+      <article className="mx-upload-panel">
+        <div>
+          <div className="mx-kicker">Artwork Library</div>
+          <h2>นำภาพจาก Firefly กลับเข้าระบบ</h2>
+          <p>ภาพที่เลือกจะถูกบีบอัดและผูกกับคอนเทนต์ด้านบน</p>
+        </div>
+        <div className="mx-upload-actions">
+          <span>คอนเทนต์: <strong>{selectedBrief?.title || 'ยังไม่มีบรีฟ'}</strong></span>
+          <label className={`mx-upload-button ${!selectedBrief ? 'disabled' : ''}`}>
+            {mediaLoading === `upload:${selectedBrief?.id}` ? 'กำลังอัปโหลด...' : 'อัปโหลดภาพที่สร้างแล้ว'}
+            <input
+              type="file"
+              accept="image/*"
+              disabled={!selectedBrief || mediaLoading === `upload:${selectedBrief?.id}`}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file && selectedBrief) onUploadArtwork(file, selectedBrief)
+              }}
+            />
+          </label>
+        </div>
+      </article>
+      <details className="mx-gallery-advanced">
+        <summary>ตัวเลือกขั้นสูง: โปสเตอร์และการสร้างภาพผ่าน API</summary>
       <div className="mx-visual-system">
         <div className="mx-visual-copy">
           <div className="mx-kicker">AssetX Visual System</div>
@@ -2340,7 +2548,7 @@ function GalleryView({
           </div>
         </div>
         <div className="mx-style-grid">
-          {visualStyles.map((style) => (
+          {visualStyles.filter((style) => !style.artistic).map((style) => (
             <button className={`mx-style-card ${style.id === visualStyleId ? 'active' : ''}`} key={style.id} onClick={() => onVisualStyleChange(style.id)}>
               <span>{style.badge}</span>
               <strong>{style.name}</strong>
@@ -2348,6 +2556,14 @@ function GalleryView({
               {style.imageAspectRatio && <small>{style.imageAspectRatio}</small>}
             </button>
           ))}
+          <label className="mx-style-picker">
+            <strong>AI Drawing Style (10)</strong>
+            <select value={selectedStyle.artistic ? selectedStyle.id : ''} onChange={(event) => event.target.value && onVisualStyleChange(event.target.value)}>
+              <option value="">Choose a drawing style</option>
+              {visualStyles.filter((style) => style.artistic).map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
+            </select>
+            {selectedStyle.artistic && <em>{selectedStyle.description}</em>}
+          </label>
         </div>
       </div>
       <article className="mx-poster-editor">
@@ -2398,29 +2614,7 @@ function GalleryView({
           </label>
         </div>
       </article>
-      <article className="mx-upload-panel">
-        <div>
-          <div className="mx-kicker">Artwork Library</div>
-          <h2>อัปโหลดรูปที่สร้างจากข้างนอกกลับเข้าระบบ</h2>
-          <p>เลือกรูปที่เจนจาก ChatGPT / Firefly / Canva แล้วระบบจะบีบอัดและผูกกับบรีฟที่เลือกอยู่</p>
-        </div>
-        <div className="mx-upload-actions">
-          <span>บรีฟที่เลือก: <strong>{selectedBrief?.title || 'ยังไม่มีบรีฟ'}</strong></span>
-          <label className={`mx-upload-button ${!selectedBrief ? 'disabled' : ''}`}>
-            {mediaLoading === `upload:${selectedBrief?.id}` ? 'กำลังอัปโหลด...' : 'อัปโหลดรูปที่สร้างแล้ว'}
-            <input
-              type="file"
-              accept="image/*"
-              disabled={!selectedBrief || mediaLoading === `upload:${selectedBrief?.id}`}
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                event.target.value = ''
-                if (file && selectedBrief) onUploadArtwork(file, selectedBrief)
-              }}
-            />
-          </label>
-        </div>
-      </article>
+      </details>
       {mediaResult && (
         <article className="mx-media-result">
           <div>
@@ -2445,6 +2639,8 @@ function GalleryView({
           )}
         </article>
       )}
+      <details className="mx-gallery-advanced">
+        <summary>ดูบรีฟทั้งหมดและสร้างภาพหรือวิดีโอผ่าน API</summary>
       <div className="mx-brief-grid">
         {briefs.map((brief) => (
           <article className={`mx-brief-card ${String(brief.id) === String(selectedBriefId) ? 'active' : ''}`} key={brief.id}>
@@ -2471,6 +2667,7 @@ function GalleryView({
           </article>
         ))}
       </div>
+      </details>
       {mediaAssets.length > 0 && (
         <div className="mx-artwork-grid">
           {mediaAssets.map((asset) => (
@@ -2590,9 +2787,7 @@ function LibraryView({
         <label>
           พรีวิว
           <select value={previewChannel} onChange={(event) => onPreviewChannelChange(event.target.value)}>
-            <option value="facebook">Facebook</option>
-            <option value="line">LINE OA</option>
-            <option value="tiktok">TikTok / Reels</option>
+            {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
           </select>
         </label>
       </div>
@@ -2640,7 +2835,7 @@ function LibraryView({
           <article className="mx-channel-preview">
             <div className="mx-library-head">
               <h2 className="mx-section-title">ตัวอย่างช่องทาง</h2>
-              <span>{previewChannel === 'facebook' ? 'Facebook' : previewChannel === 'line' ? 'LINE OA' : 'TikTok / Reels'}</span>
+              <span>{assetxChannels.find((channel) => channel.value === previewChannel)?.label || previewChannel}</span>
             </div>
             <div className={`mx-preview-box ${previewChannel}`}>
               {previewMedia && <ArtworkPreview className="mx-channel-image" src={previewMedia.dataUrl} alt={previewPost.title} />}
@@ -2665,26 +2860,35 @@ function LibraryView({
   )
 }
 
-function CalendarView({ posts = [] }) {
-  const days = Array.from({ length: 30 }, (_, index) => index + 1)
-  const planned = { 3: 'ความรู้', 7: 'Lead', 12: 'ทรัพย์', 18: 'นักลงทุน', 24: 'Reels' }
+function CalendarView({ posts = [], onQueue }) {
+  const [monthOffset, setMonthOffset] = useState(0)
+  const today = new Date()
+  const month = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
+  const days = Array.from({ length: new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate() }, (_, index) => index + 1)
+  const unscheduled = posts.filter((post) => post.status === 'approved' && !post.scheduledAt).length
   const postsByDay = posts.reduce((acc, post) => {
-    const rawDate = post.scheduledAt || post.postedAt || ''
-    const day = Number(String(rawDate).slice(8, 10))
-    if (!day || day < 1 || day > 30) return acc
+    const rawDate = post.status === 'posted' ? (post.postedAt || post.scheduledAt || '') : (post.scheduledAt || '')
+    const date = rawDate ? new Date(rawDate) : null
+    if (!date || Number.isNaN(date.getTime()) || date.getFullYear() !== month.getFullYear() || date.getMonth() !== month.getMonth()) return acc
+    const day = date.getDate()
     acc[day] = [...(acc[day] || []), post]
     return acc
   }, {})
   return (
     <section className="mx-content">
-      <div className="mx-page-head"><div><div className="mx-kicker">ปฏิทินโพสต์</div><h1>กันยายน 2569</h1><p>โพสต์แล้ว · จองวันไว้ · ยังไม่กำหนดวัน</p></div></div>
+      <div className="mx-page-head">
+        <div><div className="mx-kicker">ปฏิทินโพสต์</div><h1>{new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(month)}</h1></div>
+        <div className="mx-row-actions"><button className="mx-secondary" onClick={() => setMonthOffset(monthOffset - 1)}>เดือนก่อน</button><button className="mx-secondary" onClick={() => setMonthOffset(0)}>เดือนนี้</button><button className="mx-secondary" onClick={() => setMonthOffset(monthOffset + 1)}>เดือนถัดไป</button></div>
+      </div>
+      {unscheduled > 0 && <div className="mx-calendar-unscheduled">อนุมัติแล้วแต่ยังไม่กำหนดวัน {unscheduled} โพสต์ <button className="mx-secondary" onClick={onQueue}>ไปคิวโพสต์</button></div>}
       <div className="mx-calendar">
+        {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((day) => <div className="mx-weekday" key={day}>{day}</div>)}
+        {Array.from({ length: month.getDay() }, (_, index) => <div className="mx-day-empty" key={`blank-${index}`} />)}
         {days.map((day) => (
-          <div className={`mx-day ${planned[day] || postsByDay[day]?.length ? 'has' : ''}`} key={day}>
+          <div className={`mx-day ${postsByDay[day]?.length ? 'has' : ''}`} key={day}>
             <strong>{day}</strong>
-            {planned[day] && <span>{planned[day]}</span>}
             {postsByDay[day]?.map((post) => (
-              <div className="mx-calendar-item" key={post.id}>{post.title}</div>
+              <div className="mx-calendar-item" key={post.id}><strong>{post.title}</strong><span>{assetxChannels.find((channel) => channel.value === post.channel)?.label || post.channel} · {post.status === 'posted' ? 'โพสต์แล้ว' : post.facebookPostId ? 'ตั้งเวลาบน Facebook' : 'วันในแผน'}</span></div>
             ))}
           </div>
         ))}
@@ -2719,7 +2923,7 @@ function MetricsView({ metrics, form, onFormChange, onAdd, onDelete }) {
         <article className="mx-metric-form">
           <h2 className="mx-section-title">บันทึกผลโพสต์</h2>
           <label>ชื่อโพสต์ / แคมเปญ<input value={form.title} onChange={(event) => onFormChange({ ...form, title: event.target.value })} placeholder="เช่น ขายฝากกับจำนองต่างกันอย่างไร" /></label>
-          <label>ช่องทาง<select value={form.channel} onChange={(event) => onFormChange({ ...form, channel: event.target.value })}><option>Facebook</option><option>LINE OA</option><option>TikTok / Reels</option><option>Website</option></select></label>
+          <label>ช่องทาง<select value={form.channel} onChange={(event) => onFormChange({ ...form, channel: event.target.value })}>{assetxChannels.map((channel) => <option key={channel.value} value={channel.label}>{channel.label}</option>)}<option>Website</option></select></label>
           <div className="mx-metric-inputs">
             <label>Lead<input type="number" min="0" value={form.leads} onChange={(event) => onFormChange({ ...form, leads: event.target.value })} /></label>
             <label>คุณภาพ<input type="number" min="0" value={form.qualified} onChange={(event) => onFormChange({ ...form, qualified: event.target.value })} /></label>
@@ -2932,6 +3136,18 @@ const styles = `
   .mx-brief-card p, .mx-brand-rule p { margin: 8px 0 0; color: #51647f; font-size: 13px; line-height: 1.65; }
   .mx-brief-card p { max-height: 154px; overflow: auto; padding-right: 4px; }
   .mx-preview-poster strong { color: #fff; }
+  .mx-gallery-empty { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; color: #38516e; }
+  .mx-gallery-flow { display: grid; gap: 12px; padding: 4px 0 20px; border-bottom: 1px solid #d8e3f2; margin-bottom: 16px; }
+  .mx-gallery-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .mx-gallery-fields label { display: grid; gap: 6px; color: #38516e; font-size: 13px; font-weight: 800; }
+  .mx-gallery-fields select { width: 100%; min-width: 0; border: 1px solid #b9cde2; border-radius: 6px; background: #fff; color: #14243c; padding: 10px 11px; font: inherit; }
+  .mx-gallery-prompt-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; color: #14243c; }
+  .mx-gallery-prompt-head span { color: #61738d; font-size: 12px; text-align: right; }
+  .mx-gallery-flow textarea { width: 100%; min-height: 174px; resize: vertical; border: 1px solid #b9cde2; border-radius: 6px; background: #fff; color: #273d57; padding: 12px; font: inherit; font-size: 13px; line-height: 1.55; }
+  .mx-gallery-prompt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .mx-gallery-advanced { margin-bottom: 14px; }
+  .mx-gallery-advanced summary { cursor: pointer; padding: 10px 0; color: #315477; font-weight: 800; border-bottom: 1px solid #d8e3f2; }
+  .mx-gallery-advanced[open] > .mx-visual-system, .mx-gallery-advanced[open] > .mx-brief-grid { margin-top: 14px; }
   .mx-visual-system { border: 1px solid #bfd5f2; background: radial-gradient(circle at 100% 0%, rgba(33,166,161,.14), transparent 28%), linear-gradient(180deg, #ffffff, #f3f8ff); border-radius: 18px; padding: 16px; margin-bottom: 16px; display: grid; grid-template-columns: minmax(280px, .9fr) minmax(0, 1.1fr); gap: 14px; box-shadow: 0 20px 50px rgba(31,75,138,.10); }
   .mx-visual-copy h2 { margin: 3px 0 8px; color: #12243d; font-size: 22px; line-height: 1.35; letter-spacing: 0; }
   .mx-visual-copy p { margin: 0; color: #51647f; font-size: 13px; line-height: 1.7; }
@@ -2944,6 +3160,9 @@ const styles = `
   .mx-style-card strong { color: #143355; }
   .mx-style-card em { color: #60738f; font-size: 12px; line-height: 1.45; font-style: normal; }
   .mx-style-card small { width: fit-content; color: #1f65c8; background: #edf6ff; border: 1px solid #b8d8ff; border-radius: 999px; padding: 4px 7px; font-size: 11px; font-weight: 900; }
+  .mx-style-picker { grid-column: 1 / -1; display: grid; gap: 7px; padding: 12px; border: 1px solid #d8e3f2; border-radius: 8px; background: #fff; color: #143355; }
+  .mx-style-picker select { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #b8cee4; border-radius: 6px; background: #fff; color: #143355; font: inherit; }
+  .mx-style-picker em { color: #60738f; font-size: 12px; font-style: normal; }
   .mx-poster-editor { border: 1px solid #bfd5f2; background: linear-gradient(180deg, #ffffff, #f6faff); border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
   .mx-poster-editor .mx-section-head p { margin: 5px 0 0; color: #70839f; font-size: 13px; line-height: 1.6; }
   .mx-poster-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
@@ -3028,7 +3247,7 @@ const styles = `
   .mx-channel-preview { border: 1px solid #d8e3f2; background: #fff; border-radius: 14px; padding: 14px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
   .mx-preview-box { margin-top: 10px; border: 1px solid #d8e3f2; background: #f9fcff; border-radius: 12px; padding: 14px; min-height: 220px; display: grid; gap: 10px; align-content: start; }
   .mx-preview-box.facebook { border-color: #c8ddff; background: linear-gradient(180deg, #f8fbff, #edf5ff); }
-  .mx-preview-box.line { border-color: #bee8d2; background: linear-gradient(180deg, #fbfffc, #eefbf4); }
+  .mx-preview-box.line-oa { border-color: #bee8d2; background: #f3fbf7; }
   .mx-preview-box.tiktok { border-color: #d7dbea; background: linear-gradient(180deg, #ffffff, #f6f7fb); }
   .mx-channel-image { width: 100%; max-height: 420px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; border: 1px solid #d8e3f2; background: #fff; }
   .mx-preview-box strong { color: #14243c; font-size: 16px; line-height: 1.45; }
@@ -3094,6 +3313,34 @@ const styles = `
   .mx-row-card div, .mx-pipe-card div { display: grid; gap: 4px; }
   .mx-row-card span, .mx-pipe-card span { color: #71849f; font-size: 13px; }
   .mx-row-actions { display: flex !important; grid-template-columns: none !important; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .mx-channel-table-wrap { overflow-x: auto; border-top: 1px solid #d8e3f2; border-bottom: 1px solid #d8e3f2; background: #fff; }
+  .mx-channel-table { width: 100%; min-width: 760px; border-collapse: collapse; text-align: left; font-size: 13px; }
+  .mx-channel-table th, .mx-channel-table td { padding: 14px 12px; border-bottom: 1px solid #e1eaf5; vertical-align: top; }
+  .mx-channel-table thead th { color: #56708e; background: #f4f8fc; font-size: 12px; }
+  .mx-channel-table tbody th { color: #143355; white-space: nowrap; }
+  .mx-channel-table tbody tr:last-child th, .mx-channel-table tbody tr:last-child td { border-bottom: 0; }
+  .mx-channel-table a, .mx-publish-row a { color: #1f65c8; font-weight: 800; }
+  .mx-channel-ready { color: #047857; font-weight: 800; }
+  .mx-channel-manual { color: #9a6200; font-weight: 800; }
+  .mx-channel-warning { color: #9a6200; font-size: 12px; overflow-wrap: anywhere; }
+  .mx-queue-due { margin: 0 0 12px; padding: 10px 12px; border-left: 3px solid #dc2626; background: #fff5f5; color: #991b1b; font-size: 13px; font-weight: 800; }
+  .mx-queue-verify { margin: 0 0 12px; padding: 10px 12px; border-left: 3px solid #d97706; background: #fffbeb; color: #92400e; font-size: 13px; font-weight: 800; }
+  .mx-queue-tabs { display: flex; gap: 16px; overflow-x: auto; margin-bottom: 14px; border-bottom: 1px solid #d8e3f2; }
+  .mx-queue-tabs button { flex: 0 0 auto; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #60738f; padding: 10px 2px; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+  .mx-queue-tabs button.active { border-color: #0f8f83; color: #133a50; }
+  .mx-queue-tabs button span { margin-left: 5px; color: inherit; }
+  .mx-row-card .mx-queue-state { font-size: 12px; font-weight: 800; color: #41617f; }
+  .mx-row-card .mx-queue-state.overdue { color: #b42318; }
+  .mx-row-card .mx-queue-state.today { color: #a45a00; }
+  .mx-row-card .mx-queue-state.posted { color: #047857; }
+  .mx-publish-row { flex-wrap: wrap; }
+  .mx-manual-handoff { flex: 0 0 100%; border-top: 1px solid #d8e3f2; padding-top: 10px; }
+  .mx-manual-handoff summary { color: #245ca8; font-weight: 800; cursor: pointer; }
+  .mx-publish-row .mx-manual-handoff-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .mx-manual-proof { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+  .mx-manual-proof label { display: grid; gap: 5px; color: #4a607d; font-size: 12px; font-weight: 800; flex: 1 1 250px; }
+  .mx-manual-proof input { width: 100%; min-width: 0; border: 1px solid #b9cde2; border-radius: 6px; padding: 9px 10px; font: inherit; color: #14243c; }
+  .mx-manual-handoff small { display: block; color: #9a6200; margin-top: 8px; }
   .mx-pipe-card em { font-style: normal; color: #0f8f83; background: #ecfdf5; border: 1px solid #9bdaca; border-radius: 999px; padding: 6px 10px; font-weight: 900; white-space: nowrap; }
   .mx-inbox-layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; align-items: start; }
   .mx-inbox-list { display: grid; gap: 9px; }
@@ -3111,10 +3358,14 @@ const styles = `
   .mx-inbox-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
   .mx-inbox-meta span { border: 1px solid #d7e5f6; background: #f6faff; color: #446181; border-radius: 999px; padding: 6px 9px; font-size: 12px; font-weight: 800; }
   .mx-calendar { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 8px; }
+  .mx-calendar-unscheduled { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; color: #38516e; font-size: 13px; }
+  .mx-weekday { text-align: center; color: #56708e; font-size: 12px; font-weight: 800; }
   .mx-day { min-height: 96px; border: 1px solid #d8e3f2; background: #fff; border-radius: 12px; padding: 10px; display: grid; align-content: start; gap: 8px; }
   .mx-day.has { border-color: #8ab8f6; background: #f3f8ff; }
   .mx-day span { color: #1f65c8; font-size: 12px; font-weight: 900; }
   .mx-calendar-item { border: 1px solid #cfe0f5; background: #fff; color: #24466f; border-radius: 8px; padding: 6px 7px; font-size: 11px; line-height: 1.35; }
+  .mx-calendar-item strong { display: block; overflow-wrap: anywhere; }
+  .mx-calendar-item span { color: #60738f; font-size: 11px; }
   .mx-toast { position: fixed; right: 22px; bottom: 22px; z-index: 20; background: #15395f; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 13px; font-weight: 900; box-shadow: 0 18px 42px rgba(18,36,61,.22); }
   .mx-toast { max-width: min(640px, calc(100vw - 44px)); box-sizing: border-box; overflow-wrap: anywhere; white-space: pre-line; }
   .mx-toast.error { background: #b42318; }
@@ -3136,5 +3387,5 @@ const styles = `
   .mx-bars span { flex: 1; min-width: 10px; border-radius: 8px 8px 0 0; background: linear-gradient(180deg, #2f73d8, #21a6a1); }
   .mx-chart-card p { color: #71849f; font-size: 13px; margin: 12px 0 0; }
   @media (max-width: 980px) { .mx-page { grid-template-columns: 1fr; } .mx-sidebar { border-right: 0; border-bottom: 1px solid #d8e3f2; } .mx-topbar { position: static; } .mx-generated-grid, .mx-approval-layout, .mx-library-split, .mx-inbox-layout, .mx-metrics-layout, .mx-visual-system, .mx-reference-layout, .mx-poster-form { grid-template-columns: 1fr; } .mx-upload-panel { align-items: stretch; flex-direction: column; } .mx-upload-actions { justify-items: start; min-width: 0; } .mx-upload-actions span { text-align: left; } }
-  @media (max-width: 720px) { .mx-topbar, .mx-page-head, .mx-row-card, .mx-pipe-card, .mx-section-head { align-items: stretch; flex-direction: column; } .mx-top-actions, .mx-card-actions, .mx-range { flex-wrap: wrap; } .mx-manual, .mx-prompt-box, .mx-metric-inputs, .mx-form-grid, .mx-attached-media, .mx-approval-artwork, .mx-approval-card { grid-template-columns: 1fr; } .mx-approval-media-column { max-width: 260px; } .mx-calendar { grid-template-columns: repeat(2, 1fr); } .mx-stepper { justify-content: flex-start; overflow-x: auto; gap: 14px; } }
+  @media (max-width: 720px) { .mx-topbar, .mx-page-head, .mx-row-card, .mx-pipe-card, .mx-section-head { align-items: stretch; flex-direction: column; } .mx-top-actions, .mx-card-actions, .mx-range { flex-wrap: wrap; } .mx-manual, .mx-prompt-box, .mx-metric-inputs, .mx-form-grid, .mx-attached-media, .mx-approval-artwork, .mx-approval-card, .mx-gallery-fields { grid-template-columns: 1fr; } .mx-gallery-prompt-head { display: grid; } .mx-gallery-prompt-head span { text-align: left; } .mx-approval-media-column { max-width: 260px; } .mx-calendar { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mx-weekday, .mx-day-empty { display: none; } .mx-stepper { justify-content: flex-start; overflow-x: auto; gap: 14px; } }
 `

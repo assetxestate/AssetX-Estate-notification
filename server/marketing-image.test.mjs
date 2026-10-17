@@ -31,6 +31,14 @@ try {
   assert.match(body.prompt, /no readable Thai text/)
   assert.match(body.prompt, /overlays its own Thai typography/)
   assert.doesNotMatch(JSON.stringify(result.data), /artwork-test-key/)
+  const illustrated = response()
+  await handler({ method: 'POST', headers: { cookie: createSessionCookie() }, body: {
+    prompt: 'Thai property education', styleProfile: { name: 'Clay Style', prompt: 'Handcrafted clay objects', photorealistic: false },
+  } }, illustrated)
+  assert.equal(illustrated.code, 200)
+  assert.match(body.prompt, /Handcrafted clay objects/)
+  assert.match(body.prompt, /Clearly illustrative/)
+  assert.doesNotMatch(body.prompt, /Photorealistic, premium commercial lighting/)
   console.log('PASS: authentication, background-only generation, image size, response without credentials')
 } finally {
   globalThis.fetch = previous.fetch

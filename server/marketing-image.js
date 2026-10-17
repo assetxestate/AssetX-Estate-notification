@@ -22,7 +22,9 @@ function buildStyleGuidance(styleProfile = {}) {
     allowPosterText
       ? 'If this is a poster/key-visual request, create a complete ready-to-post social-ad composition with the provided Thai headline, benefit badges, CTA, layered visual zones, realistic cutout-like property elements, and reusable design structure. Do not return only a plain background photo.'
       : 'Create a complete premium commercial image for the selected visual style. If the prompt asks for a poster, include meaningful real-estate visual elements and composition depth, but do not add placeholder headline bars or empty CTA boxes.',
-    'Photorealistic, premium commercial lighting, clean composition, trustworthy Thai real-estate advisory mood.',
+    styleProfile.photorealistic === false
+      ? 'Clearly illustrative, not a photograph or depiction of an actual property or client case. Preserve the selected visual style; keep the composition clear and trustworthy.'
+      : 'Photorealistic, premium commercial lighting, clean composition, trustworthy Thai real-estate advisory mood.',
     ASSETX_PALETTE,
     allowPosterText
       ? 'Text policy: readable Thai text is allowed and expected, but use only the exact poster copy provided by the user prompt. Do not invent random phone numbers, deed numbers, addresses, customer names, unrelated logos, unrelated watermarks, or unrealistic financial promises. AssetX Estate brand text/logo mark is allowed.'
