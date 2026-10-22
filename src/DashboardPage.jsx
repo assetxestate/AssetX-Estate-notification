@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { BRAND as BASE_BRAND } from './lib/config.js'
-import { getDiff } from './lib/utils.js'
+import { getDiff, formatThai } from './lib/utils.js'
+import { getRecordedUpfrontDeductions } from './lib/advanceDeduction.js'
 import NoticeTracking from './components/NoticeTracking.jsx'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
@@ -137,6 +138,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
     liquidation: false,
     riskContracts: false,
     advance: false,
+    upfront: false,
     overdue: false,
   })
   const toggleSection = (key) => {
@@ -199,6 +201,8 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const closedCommissionCases = customers.filter(c => c.isClosed && !c.isVoided && (c.incomeType || 'commission') === 'commission')
   const closedAdvance = closedCommissionCases.reduce((s, c) => s + (c.principal || 0) * 0.02, 0)
   const stackedAdvance = totalAdvance + closedAdvance
+  const upfrontCases = getRecordedUpfrontDeductions(customers)
+  const upfrontTotal = upfrontCases.reduce((sum, c) => sum + Number(c.disbursement.advanceTotal), 0)
 
   // ── กราฟรายได้ 6 เดือนย้อนหลัง ──────────────────────────
   const monthlyChart = useMemo(() => {
@@ -334,7 +338,35 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
         <KpiCard icon="✅" label="ดอกเบี้ยที่ชำระแล้ว" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · อ้างอิงจากสลิปโอนเงิน`} color={BRAND.success} />
         <KpiCard icon="⚠️" label="ค้างชำระ" value={`฿${fmtFull(overdueAmount)}`} sub={overduePayments.length > 0 ? `${overduePayments.length} งวด · ${overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย` : 'ไม่มีค้างชำระ'} color={overduePayments.length > 0 ? BRAND.danger : BRAND.success} />
         <KpiCard icon="🏦" label="Advance 2%" value={`฿${fmtFull(Math.round(stackedAdvance))}`} sub={`${commissionCases.length} active + ${closedCommissionCases.length} ปิดแล้ว · 2% ของวงเงินรวม`} color={BRAND.purple} />
+        <KpiCard icon="💵" label="ค่าตอบแทนหักล่วงหน้าที่บันทึก" value={`฿${fmtFull(upfrontTotal)}`} sub={`${upfrontCases.length} เคส · หักจากยอดเบิกจ่าย`} color={BRAND.teal} />
       </div>
+
+      {upfrontCases.length > 0 && (
+        <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.teal}44`, borderRadius: 8, padding: '14px 18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri }}>ค่าตอบแทนหักล่วงหน้า</div>
+              <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>บันทึกว่าหักจากยอดเบิกจ่ายวันทำสัญญา · แยกจากค่านายหน้า 2% และงวดที่มีสลิป</div>
+            </div>
+            <SectionToggle open={expandedSections.upfront} onClick={() => toggleSection('upfront')} />
+          </div>
+          {expandedSections.upfront && (
+            <div style={{ marginTop: 12, borderTop: `1px solid ${BRAND.border}` }}>
+              {upfrontCases.map(c => (
+                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '10px 0', borderBottom: `1px solid ${BRAND.border}` }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri }}>{c.name}{c.isClosed ? ' · ปิดสัญญาแล้ว' : ''}</div>
+                    <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>
+                      หัก {c.disbursement.advanceMonths} เดือน · {c.disbursement.advanceDeductedAt ? formatThai(c.disbursement.advanceDeductedAt) : 'วันที่หักยังไม่ระบุ'} · ไม่รวมในตารางชำระ
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.teal }}>฿{fmtFull(c.disbursement.advanceTotal)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Charts Row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

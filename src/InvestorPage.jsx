@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { showToast } from "./lib/toast.js";
+import { buildAdvanceDeduction } from "./lib/advanceDeduction.js";
 import {
   getValuations as apiGetValuations,
   updateValuationStatus as apiUpdateValuationStatus,
@@ -73,6 +74,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     freq: 'รายเดือน',
     lineUserId: '',
     advanceInstallments: 0,
+    advanceDeductedAt: '',
   });
   const [existingDebts, setExistingDebts] = useState([]);
   const [externalBroker, setExternalBroker] = useState({ name: '', amount: '', payment: 'โอน' });
@@ -156,8 +158,12 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
 
   const handleSave = async () => {
     if (savingRef.current) return;
-    if (!form.customerName || !form.interestRate || !form.installmentCount || !form.payDay) {
+    if (!form.customerName || !form.interestRate || !form.installmentCount || !form.payDay || !form.contractStartDate) {
       showToast('กรุณากรอกข้อมูลให้ครบ');
+      return;
+    }
+    if (form.advanceInstallments > 0 && !form.advanceDeductedAt) {
+      showToast('กรุณาระบุวันที่หักล่วงหน้า / วันทำสัญญา');
       return;
     }
     if (form.freq === '2 ครั้ง/เดือน' && !form.payDay2) {
@@ -208,8 +214,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
           disbursement: {
             approvedAmount: principal,
             existingDebts,
-            advanceMonths: form.advanceInstallments,
-            advanceTotal,
+            ...buildAdvanceDeduction(form.advanceInstallments, amountPerInstall, form.advanceDeductedAt),
             externalBrokerName: externalBroker.name,
             externalBrokerAmount: externalFee,
             externalBrokerPayment: externalBroker.payment,
@@ -305,7 +310,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
               <input style={inp} type="number" step="0.1" value={form.interestRate} onChange={e => up('interestRate', e.target.value)} placeholder="เช่น 2" />
             </div>
             <div>
-              <label style={lbl}>จำนวนงวด *</label>
+              <label style={lbl}>จำนวนงวดในตารางที่ยังต้องชำระ *</label>
               <input style={inp} type="number" value={form.installmentCount} onChange={e => up('installmentCount', e.target.value)} placeholder="เช่น 12" />
             </div>
           </div>
@@ -317,7 +322,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: form.freq === '2 ครั้ง/เดือน' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 10 }}>
             <div>
-              <label style={lbl}>วันเริ่มสัญญา *</label>
+              <label style={lbl}>วันเริ่มตารางชำระ *</label>
               <input style={inp} type="date" value={form.contractStartDate} onChange={e => up('contractStartDate', e.target.value)} />
             </div>
             <div>
@@ -332,12 +337,18 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
             )}
           </div>
           <div>
-            <label style={lbl}>หักดอกเบี้ยล่วงหน้า (งวด)</label>
+            <label style={lbl}>หักค่าตอบแทนล่วงหน้าก่อนงวดในตาราง</label>
             <select style={inp} value={form.advanceInstallments} onChange={e => up('advanceInstallments', parseInt(e.target.value))}>
               <option value={0}>ไม่มีการหักล่วงหน้า</option>
-              {[1,2,3,4,5,6].map(n => <option key={n} value={n}>หัก {n} งวด (งวด 1–{n} ชำระแล้ว)</option>)}
+              {[1,2,3,4,5,6].map(n => <option key={n} value={n}>หัก {n} เดือน (ไม่รวมในตารางชำระ)</option>)}
             </select>
           </div>
+          {form.advanceInstallments > 0 && (
+            <div>
+              <label style={lbl}>วันที่หักล่วงหน้า / วันทำสัญญา *</label>
+              <input style={inp} type="date" value={form.advanceDeductedAt || ''} onChange={e => up('advanceDeductedAt', e.target.value)} />
+            </div>
+          )}
           <div>
             <label style={lbl}>LINE User ID (ไม่บังคับ)</label>
             <input style={inp} value={form.lineUserId} onChange={e => up('lineUserId', e.target.value)} placeholder="Uxxxxxxxxxxxxxxxxx" />
@@ -461,7 +472,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
             {[
               ['วงเงินอนุมัติ', principal, BRAND.textPri, false],
               totalDebt > 0 && ['หักทุนเก่า', totalDebt, '#FCA5A5', true],
-              advanceTotal > 0 && [`หักล่วงหน้า (${form.advanceInstallments} งวด)`, advanceTotal, '#FCA5A5', true],
+              advanceTotal > 0 && [`หักล่วงหน้า (${form.advanceInstallments} เดือน)`, advanceTotal, '#FCA5A5', true],
               externalFee > 0 && ['ค่านายหน้าภายนอก', externalFee, '#FCA5A5', true],
               companyFeeAmt > 0 && ['ค่านายหน้าบริษัท', companyFeeAmt, BRAND.gold, true],
             ].filter(Boolean).map(([label, val, color, minus]) => (
@@ -487,12 +498,12 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
             </div>
             {form.advanceInstallments > 0 && (
               <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.12)', borderRadius: 8, border: '1px solid rgba(245,158,11,0.3)', fontSize: 12 }}>
-                <div style={{ color: BRAND.gold, fontWeight: 700, marginBottom: 3 }}>⚡ หักล่วงหน้า {form.advanceInstallments} งวด</div>
+                <div style={{ color: BRAND.gold, fontWeight: 700, marginBottom: 3 }}>⚡ หักล่วงหน้า {form.advanceInstallments} เดือน</div>
                 <div style={{ color: BRAND.textSec }}>
-                  งวด 1–{form.advanceInstallments} = บันทึกชำระแล้วอัตโนมัติ (฿{fmt(amountPerInstall * form.advanceInstallments)})
+                  หักจากยอดเบิกจ่ายวันทำสัญญา ฿{fmt(amountPerInstall * form.advanceInstallments)} · ไม่รวมใน {form.installmentCount} งวดที่ต้องชำระ
                 </div>
                 <div style={{ color: BRAND.textSec }}>
-                  งวดแรกที่ต้องชำระจริง = งวดที่ {form.advanceInstallments + 1}
+                  งวดแรกในตาราง = งวดที่ 1 (ยังต้องชำระ)
                 </div>
               </div>
             )}

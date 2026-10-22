@@ -26,12 +26,12 @@ export function CustomerExtraInfoSection({ customer, extraInfoMap, onUpdate }) {
   ];
   const completedCount = requiredValues.filter(value => String(value || "").trim()).length;
   const isComplete = completedCount === requiredValues.length;
-  const [editing, setEditing] = React.useState(() => !isComplete);
+  const [editing, setEditing] = React.useState(false);
   const [form, setForm] = React.useState(() => buildForm(info));
 
   React.useEffect(() => {
     setForm(buildForm(extraInfoMap[customer.id] || {}));
-    setEditing(!isComplete);
+    setEditing(false);
   }, [extraInfoMap, customer.id, buildForm, isComplete]);
 
   const handleSave = () => {

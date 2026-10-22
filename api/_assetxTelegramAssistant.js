@@ -45,7 +45,7 @@ async function loadAssetxContext() {
   ] = await Promise.all([
     supabase
       .from('customers')
-      .select('id,name,type,principal,amount,freq,contract_end_date,is_cancelled,created_at')
+      .select('id,name,type,principal,amount,freq,contract_end_date,is_cancelled,created_at,disbursement')
       .eq('is_cancelled', false),
     supabase.from('payments').select('customer_id,installment,date_str,postponed_from,postpone_note'),
     supabase.from('payment_records').select('customer_id,installment,paid_at,amount_paid,note'),
@@ -59,7 +59,15 @@ async function loadAssetxContext() {
 
   return {
     customerData: {
-      customers: customers || [],
+      customers: (customers || []).map(({ disbursement, ...customer }) => ({
+        ...customer,
+        advanceDeduction: disbursement?.advanceMonths > 0 ? {
+          months: disbursement.advanceMonths,
+          total: disbursement.advanceTotal,
+          deductedAt: disbursement.advanceDeductedAt || null,
+          treatment: disbursement.advanceTreatment || 'unverified',
+        } : null,
+      })),
       payments: payments || [],
       paymentRecords: paymentRecords || [],
       contractStatuses: statuses || [],
@@ -81,6 +89,8 @@ ${contextNote ? `หมายเหตุระบบ: ${contextNote}\n` : ''}
 - สรุปภาพรวมพอร์ตโฟลิโอ จำนวนสัญญา เงินต้น ดอกเบี้ย และสถานะที่ต้องติดตาม
 - แจ้งงวดชำระที่ใกล้ครบกำหนดหรือเลยกำหนดจากข้อมูลที่มี
 - คำนวณดอกเบี้ยสะสม ยอดค้างชำระ และแยกจำนอง/ขายฝากเมื่อข้อมูลพอ
+- ถ้า advanceDeduction.treatment เป็น before_schedule จำนวนเดือนและยอดที่หักวันทำสัญญาไม่รวมในตาราง payments ห้ามหักซ้ำจากงวดที่ยังไม่จ่าย และอย่าสร้าง payment record สมมติ
+- ถ้า treatment เป็น unverified ให้แจ้งว่าต้องเทียบสัญญาและใบหักเงินก่อนสรุปยอดสินไถ่
 - ค้นหาลูกค้าจากชื่อ ประเภทสัญญา งวดชำระ และข้อมูลโฉนดถ้ามีในบริบท
 - ช่วยวิเคราะห์งานหลังบ้าน ประเมินทรัพย์ การติดตามลูกค้า และแผนแจ้งเตือน
 

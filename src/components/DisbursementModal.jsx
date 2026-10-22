@@ -2,9 +2,10 @@ import React from "react";
 import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { updateCustomer as apiUpdateCustomer } from "../lib/api.js";
+import { buildAdvanceDeduction } from "../lib/advanceDeduction.js";
 
 // ── Modal สรุปการเบิกจ่าย ────────────────────────────────────────
-export function DisbursementModal({ customer, onClose, onSaved }) {
+export function DisbursementModal({ customer, focusAdvance = false, onClose, onSaved }) {
   const EMPTY_DEBT = () => ({
     id: Date.now() + Math.random(),
     creditorName: '', contractType: 'จำนอง', amount: '',
@@ -16,6 +17,8 @@ export function DisbursementModal({ customer, onClose, onSaved }) {
     approvedAmount: String(ex.approvedAmount || customer.principal || ''),
     existingDebts: ex.existingDebts?.length > 0 ? ex.existingDebts : [],
     advanceMonths: String(ex.advanceMonths ?? 0),
+    advanceDeductedAt: ex.advanceDeductedAt || '',
+    advanceBeforeScheduleConfirmed: ex.advanceTreatment === 'before_schedule',
     externalBrokerName: ex.externalBrokerName || '',
     externalBrokerAmount: String(ex.externalBrokerAmount || ''),
     externalBrokerPayment: ex.externalBrokerPayment || 'โอน',
@@ -24,7 +27,14 @@ export function DisbursementModal({ customer, onClose, onSaved }) {
     companyFeeAmount: String(ex.companyFeeAmount || ''),
   })
   const [saving, setSaving] = React.useState(false)
+  const advanceSectionRef = React.useRef(null)
   const up = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  React.useEffect(() => {
+    if (!focusAdvance) return
+    const frame = requestAnimationFrame(() => advanceSectionRef.current?.scrollIntoView({ block: 'start' }))
+    return () => cancelAnimationFrame(frame)
+  }, [focusAdvance])
 
   const approved = parseFloat(form.approvedAmount) || 0
   const totalDebt = form.existingDebts.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0)
@@ -41,13 +51,22 @@ export function DisbursementModal({ customer, onClose, onSaved }) {
   const updateDebt = (id, key, val) => setForm(p => ({ ...p, existingDebts: p.existingDebts.map(d => d.id === id ? { ...d, [key]: val } : d) }))
 
   const handleSave = async () => {
+    const advanceMonths = Number(form.advanceMonths)
+    if (!Number.isInteger(advanceMonths) || advanceMonths < 0 || advanceMonths > 24) {
+      showToast('จำนวนเดือนหักล่วงหน้าต้องเป็นจำนวนเต็ม 0–24')
+      return
+    }
+    if (advanceMonths > 0 && !form.advanceBeforeScheduleConfirmed) {
+      showToast('กรุณายืนยันว่าจำนวนเดือนที่หักไม่รวมอยู่ในตารางชำระ')
+      return
+    }
     setSaving(true)
     try {
       const disbursement = {
+        ...ex,
         approvedAmount: approved,
         existingDebts: form.existingDebts,
-        advanceMonths: parseInt(form.advanceMonths) || 0,
-        advanceTotal,
+        ...buildAdvanceDeduction(advanceMonths, monthlyAmount, form.advanceDeductedAt),
         externalBrokerName: form.externalBrokerName,
         externalBrokerAmount: externalFee,
         externalBrokerPayment: form.externalBrokerPayment,
@@ -72,8 +91,8 @@ export function DisbursementModal({ customer, onClose, onSaved }) {
     borderRadius: 7, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none',
   }
   const lbl = { fontSize: 11, color: BRAND.textSec, marginBottom: 4, display: 'block' }
-  const SectionTitle = ({ icon, text }) => (
-    <div style={{ margin: '16px 0 8px', fontSize: 12, fontWeight: 700, color: BRAND.gold }}>{icon} {text}</div>
+  const SectionTitle = ({ icon, text, sectionRef }) => (
+    <div ref={sectionRef} style={{ margin: '16px 0 8px', fontSize: 12, fontWeight: 700, color: BRAND.gold }}>{icon} {text}</div>
   )
 
   return (
@@ -156,11 +175,11 @@ export function DisbursementModal({ customer, onClose, onSaved }) {
         </button>
 
         {/* หักล่วงหน้า */}
-        <SectionTitle icon="📅" text="หักล่วงหน้า" />
+        <SectionTitle icon="📅" text="ค่าตอบแทนหักล่วงหน้าก่อนตารางชำระ" sectionRef={advanceSectionRef} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
           <div>
-            <label style={lbl}>จำนวนงวด</label>
-            <input style={inp} type="number" value={form.advanceMonths} onChange={e => up('advanceMonths', e.target.value)} placeholder="0" />
+            <label style={lbl}>จำนวนเดือนที่หัก</label>
+            <input style={inp} type="number" min="0" max="24" step="1" value={form.advanceMonths} onChange={e => up('advanceMonths', e.target.value)} placeholder="0" />
           </div>
           <div>
             <label style={lbl}>ยอด/งวด (บาท)</label>
@@ -171,6 +190,16 @@ export function DisbursementModal({ customer, onClose, onSaved }) {
             <input style={{ ...inp, color: '#FCA5A5' }} value={advanceTotal.toLocaleString('th-TH')} readOnly />
           </div>
         </div>
+        {Number(form.advanceMonths) > 0 && (
+          <div style={{ marginTop: 9, display: 'grid', gap: 8 }}>
+            <label style={{ ...lbl, marginBottom: 0 }}>วันที่รับ/หักจากยอดเบิกจ่าย (ถ้าทราบ)</label>
+            <input style={inp} type="date" value={form.advanceDeductedAt} onChange={e => up('advanceDeductedAt', e.target.value)} />
+            <label style={{ fontSize: 12, color: BRAND.textSec, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <input type="checkbox" checked={form.advanceBeforeScheduleConfirmed} onChange={e => up('advanceBeforeScheduleConfirmed', e.target.checked)} />
+              ยืนยันว่าเดือนที่หัก ณ วันทำสัญญาไม่รวมในงวดที่แสดงในตารางชำระ
+            </label>
+          </div>
+        )}
 
         {/* ค่านายหน้าภายนอก */}
         <SectionTitle icon="🤝" text="ค่านายหน้าภายนอก" />
@@ -235,7 +264,7 @@ export function DisbursementModal({ customer, onClose, onSaved }) {
             </div>
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 16, fontWeight: 800 }}>
-            <span style={{ color: BRAND.textPri }}>ยอดที่ลูกค้าได้รับจริง</span>
+            <span style={{ color: BRAND.textPri }}>ยอดสุทธิตามรายการที่กรอก</span>
             <span style={{ color: net >= 0 ? BRAND.teal : '#FCA5A5' }}>{net.toLocaleString('th-TH')} ฿</span>
           </div>
         </div>

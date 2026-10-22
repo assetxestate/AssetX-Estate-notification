@@ -29,6 +29,7 @@ import {
   msgPayment, msgTopupPayment, msgContract,
 } from "./lib/messages.js";
 import { printNotice } from "./lib/notice.js";
+import { getUpfrontDeductionEntries } from "./lib/advanceDeduction.js";
 import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
 import { MOCK_DATA } from "./lib/mockData.js";
 import { useLineNotification } from "./hooks/useLineNotification.js";
@@ -87,7 +88,7 @@ export default function App({ initialView = "main", onLogout }) {
   const [advancePaymentModal, setAdvancePaymentModal] = React.useState(null);
   const [renewModal, setRenewModal] = React.useState(null);
   const [editCustomerModal, setEditCustomerModal] = React.useState(null); // customer object
-  const [disbursementModal, setDisbursementModal] = React.useState(null); // customer object
+  const [disbursementModal, setDisbursementModal] = React.useState(null); // { customer, focusAdvance }
   const [toast, setToast] = useState(null);
   const [apiConnected, setApiConnected] = useState(false);
   const [currentView, setCurrentView] = useState(initialView);
@@ -1308,6 +1309,7 @@ export default function App({ initialView = "main", onLogout }) {
                         c.payments.find((p) => p.diff >= 0 && p.status !== 'paid')
                         || c.payments.find((p) => p.diff >= 0)
                         || c.payments[0];
+                      const upfrontEntries = getUpfrontDeductionEntries(c.disbursement);
                       return (
                         <div
                           key={c.id}
@@ -1493,7 +1495,7 @@ export default function App({ initialView = "main", onLogout }) {
                                   }}
                                 >✏️ แก้ไข</button>
                                 <button
-                                  onClick={e => { e.stopPropagation(); setDisbursementModal(c); }}
+                                  onClick={e => { e.stopPropagation(); setDisbursementModal({ customer: c, focusAdvance: false }); }}
                                   style={{
                                     padding: '3px 10px', borderRadius: 6,
                                     background: c.disbursement?.netDisbursement ? 'rgba(245,158,11,.15)' : 'rgba(245,158,11,.07)',
@@ -1718,18 +1720,23 @@ export default function App({ initialView = "main", onLogout }) {
                                 onUpdate={updateCustomerLineId}
                               />
 
+                              {c.disbursement?.advanceTreatment === 'before_schedule' && c.disbursement.advanceMonths > 0 && !c.disbursement.netDisbursement && (
+                                <div style={{ marginBottom: 12, padding: '9px 12px', border: '1px solid rgba(245,158,11,.25)', borderRadius: 7, color: BRAND.gold, fontSize: 11 }}>
+                                  หักล่วงหน้าวันทำสัญญา {c.disbursement.advanceMonths} เดือน · {Number(c.disbursement.advanceTotal || 0).toLocaleString('th-TH')} บาท · ไม่รวมใน {c.payments.length} งวดที่ยังต้องชำระ
+                                </div>
+                              )}
                               {/* ── สรุปการเบิกจ่าย ── */}
                               {c.disbursement?.netDisbursement > 0 && (
                                 <div style={{ marginBottom: 16, padding: '12px 14px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 10 }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                                     <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.gold }}>💰 สรุปการเบิกจ่าย</div>
-                                    <button onClick={e => { e.stopPropagation(); setDisbursementModal(c); }} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 5, border: '1px solid rgba(245,158,11,.4)', background: 'transparent', color: BRAND.gold, cursor: 'pointer' }}>แก้ไข</button>
+                                    <button onClick={e => { e.stopPropagation(); setDisbursementModal({ customer: c, focusAdvance: false }); }} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 5, border: '1px solid rgba(245,158,11,.4)', background: 'transparent', color: BRAND.gold, cursor: 'pointer' }}>แก้ไข</button>
                                   </div>
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 12 }}>
                                     {[
                                       ['วงเงินอนุมัติ', c.disbursement.approvedAmount, BRAND.textPri],
                                       c.disbursement.existingDebts?.length > 0 && ['ทุนเก่า', -c.disbursement.existingDebts.reduce((s, d) => s + (d.amount || 0), 0), '#FCA5A5'],
-                                      c.disbursement.advanceTotal > 0 && ['หักล่วงหน้า', -c.disbursement.advanceTotal, '#FCA5A5'],
+                                      c.disbursement.advanceTotal > 0 && ['หักล่วงหน้าวันทำสัญญา', -c.disbursement.advanceTotal, '#FCA5A5'],
                                       c.disbursement.externalBrokerAmount > 0 && ['ค่านายหน้าภายนอก', -c.disbursement.externalBrokerAmount, '#FCA5A5'],
                                       c.disbursement.companyFeeAmount > 0 && ['ค่านายหน้าบริษัท', c.disbursement.companyFeeAmount, BRAND.gold],
                                     ].filter(Boolean).map(([label, val, color]) => (
@@ -1740,15 +1747,20 @@ export default function App({ initialView = "main", onLogout }) {
                                     ))}
                                   </div>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(245,158,11,.2)', fontSize: 13, fontWeight: 800 }}>
-                                    <span style={{ color: BRAND.textPri }}>ยอดที่ลูกค้าได้รับจริง</span>
+                                    <span style={{ color: BRAND.textPri }}>ยอดสุทธิตามรายการที่กรอก</span>
                                     <span style={{ color: BRAND.teal }}>{c.disbursement.netDisbursement.toLocaleString('th-TH')} ฿</span>
                                   </div>
+                                  {c.disbursement.advanceMonths > 0 && (
+                                    <div style={{ color: BRAND.textSec, fontSize: 11, marginTop: 7 }}>
+                                      หักล่วงหน้า {c.disbursement.advanceMonths} เดือน{c.disbursement.advanceDeductedAt ? ` · วันที่ ${formatThai(c.disbursement.advanceDeductedAt)}` : ''} · {c.disbursement.advanceTreatment === 'before_schedule' ? `ไม่รวมใน ${c.payments.length} งวดที่ยังต้องชำระ` : 'ยังไม่ได้ยืนยันว่าอยู่ในตารางชำระหรือไม่'}
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
                               {/* ── Detail Tabs ── */}
-                              <div style={{ display: "flex", gap: 6, marginBottom: 14, alignItems: "center", justifyContent: "space-between" }}>
-                                <div style={{ display: "flex", gap: 6 }}>
+                              <div style={{ display: "flex", gap: 6, marginBottom: 14, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                   <button
                                     onClick={e => { e.stopPropagation(); setDetailTabs(prev => ({ ...prev, [c.id]: 'schedule' })); }}
                                     style={{ padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", background: (detailTabs[c.id] || 'schedule') === 'schedule' ? "rgba(45,212,191,.2)" : "transparent", border: (detailTabs[c.id] || 'schedule') === 'schedule' ? "1px solid rgba(45,212,191,.5)" : `1px solid ${BRAND.border}`, color: (detailTabs[c.id] || 'schedule') === 'schedule' ? BRAND.teal : BRAND.textSec }}
@@ -1758,12 +1770,16 @@ export default function App({ initialView = "main", onLogout }) {
                                     style={{ padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer", background: (detailTabs[c.id] || 'schedule') === 'topup' ? "rgba(245,158,11,.2)" : "transparent", border: (detailTabs[c.id] || 'schedule') === 'topup' ? "1px solid rgba(245,158,11,.5)" : `1px solid ${BRAND.border}`, color: (detailTabs[c.id] || 'schedule') === 'topup' ? BRAND.gold : BRAND.textSec }}
                                   >💵 วงเงินเพิ่ม{(customerTopups[c.id] || []).length > 0 ? ` (${(customerTopups[c.id] || []).length})` : ""}</button>
                                 </div>
-                                <div style={{ display: "flex", gap: 4 }}>
+                                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                                   {(detailTabs[c.id] || 'schedule') === 'schedule' && (
                                     <>
+                                      <button onClick={e => { e.stopPropagation(); setDisbursementModal({ customer: c, focusAdvance: true }); }} title="บันทึกจำนวนเดือนและวันที่หักจากยอดเบิกจ่ายก่อนตารางชำระ"
+                                        style={{ padding: "5px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(22,163,74,.15)", border: "1px solid rgba(74,222,128,.4)", color: "#86EFAC" }}>
+                                        หักชำระล่วงหน้า
+                                      </button>
                                       <button onClick={e => { e.stopPropagation(); setAdvancePaymentModal(c); }}
                                         style={{ padding: "5px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(45,212,191,.15)", border: "1px solid rgba(45,212,191,.4)", color: BRAND.teal }}>
-                                        💰 ล่วงหน้า
+                                        💰 ชำระงวดล่วงหน้า
                                       </button>
                                       <button onClick={e => { e.stopPropagation(); setRenewModal(c); }}
                                         style={{ padding: "5px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(245,158,11,.15)", border: "1px solid rgba(245,158,11,.4)", color: BRAND.gold }}>
@@ -1787,6 +1803,32 @@ export default function App({ initialView = "main", onLogout }) {
                                   gap: 8,
                                 }}
                               >
+                                {upfrontEntries.length > 0 && (
+                                  <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 11, color: '#86EFAC', fontWeight: 700 }}>
+                                      <span>ค่าตอบแทนหักล่วงหน้าก่อนตารางชำระ</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span>รวม {formatMoney(c.disbursement.advanceTotal)} ฿</span>
+                                        <button onClick={e => { e.stopPropagation(); setDisbursementModal({ customer: c, focusAdvance: true }); }} title="แก้ไขวันที่และจำนวนเดือนที่หักล่วงหน้า" style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid rgba(74,222,128,.45)', background: 'transparent', color: '#86EFAC', fontSize: 10, cursor: 'pointer' }}>แก้ไข</button>
+                                      </div>
+                                    </div>
+                                    {upfrontEntries.map(entry => (
+                                      <div key={`upfront-${entry.index}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 14px', background: 'rgba(22,163,74,.10)', border: '1px solid rgba(74,222,128,.35)', borderRadius: 8 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                                          <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(74,222,128,.18)', color: '#86EFAC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700 }}>✓</span>
+                                          <div>
+                                            <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri }}>หักชำระล่วงหน้า งวดที่ {entry.index}</div>
+                                            <div style={{ fontSize: 11, color: BRAND.textSec }}>{entry.deductedAt ? `วันที่รับ/หัก ${formatThai(entry.deductedAt)}` : 'วันที่รับ/หักยังไม่ระบุ'} · ก่อนตารางชำระปกติ{c.payments.length > 0 ? ` (ไม่รวมในงวดที่ 1–${c.payments.length})` : ''}</div>
+                                          </div>
+                                        </div>
+                                        <div style={{ textAlign: 'right' }}>
+                                          <div style={{ fontSize: 10, color: '#86EFAC' }}>หักจากยอดเบิกจ่ายแล้ว</div>
+                                          <div style={{ fontSize: 13, fontWeight: 700, color: '#86EFAC' }}>{formatMoney(entry.amount)} ฿</div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </>
+                                )}
                                 {c.payments.map((p, pIdx) => {
                                   const isLastPayment = pIdx === c.payments.length - 1;
                                   const pSt = P_STATUS[p.status];
@@ -2222,7 +2264,8 @@ export default function App({ initialView = "main", onLogout }) {
       {/* Disbursement Modal */}
       {disbursementModal && (
         <DisbursementModal
-          customer={disbursementModal}
+          customer={disbursementModal.customer}
+          focusAdvance={disbursementModal.focusAdvance}
           onClose={() => setDisbursementModal(null)}
           onSaved={(updated) => {
             setCustomers(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
