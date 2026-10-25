@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { readRefinanceDraft, saveRefinanceDraft } from './lib/refinanceDraft.js'
 import { refinanceFieldErrors } from './lib/refinanceFieldErrors.js'
+import { calculateRefinanceWithholding } from './lib/refinanceWithholding.js'
 import { calculateOldPayoffEstimate, calculateRefinanceFunding, calculateOfficialAssessment } from './lib/refinanceCalculator.js'
 
 const initial = {
@@ -12,6 +13,7 @@ const initial = {
   advanceMonths: '0', advancePaidAmount: '', otherPaid: '0',
   paymentMode: 'installments', paidInstallments: '0', partialPaid: '0',
   assessmentMode: 'area', landPricePerWa: '', areaRai: '0', areaNgan: '0', areaWa: '', buildingAssessedValue: '',
+  oldWithholdingMode: 'individual', newWithholdingMode: 'individual_same_day',
 }
 const baht = value => Number(value).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const draftStorage = {
@@ -20,7 +22,14 @@ const draftStorage = {
 }
 
 export default function RefinanceCalculator() {
-  const [draft] = useState(() => readRefinanceDraft(draftStorage, initial))
+  const [draft] = useState(() => {
+    const restored = readRefinanceDraft(draftStorage, { ...initial, oldWithholdingMode: '', newWithholdingMode: '' })
+    for (const side of ['old', 'new']) {
+      const key = `${side}WithholdingMode`
+      if (!restored.form[key]) restored.form[key] = restored.form[`${side}Withholding`] !== '' ? 'manual' : initial[key]
+    }
+    return restored
+  })
   const [form, setForm] = useState(draft.form)
   const [payoffMode, setPayoffMode] = useState(draft.payoffMode)
   const [saved, setSaved] = useState(null)
@@ -37,9 +46,12 @@ export default function RefinanceCalculator() {
   const effectivePayoff = payoffMode === 'calculated' && payoffEstimate.ready ? payoffEstimate.payoff : form.oldPayoff
   const assessment = useMemo(() => calculateOfficialAssessment(form), [form])
   const assessedValue = form.assessmentMode === 'area' ? (assessment.ready ? assessment.total : '') : form.assessedValue
-  const result = useMemo(() => calculateRefinanceFunding({ ...form, assessedValue, oldPayoff: payoffMode === 'calculated' && !payoffEstimate.ready ? '' : effectivePayoff }), [form, assessedValue, payoffMode, payoffEstimate.ready, effectivePayoff])
+  const withholding = useMemo(() => calculateRefinanceWithholding(form, assessedValue), [form, assessedValue])
+  const oldWithholding = withholding.old.ready ? withholding.old.tax : ''
+  const newWithholding = withholding.new.ready ? withholding.new.tax : ''
+  const result = useMemo(() => calculateRefinanceFunding({ ...form, assessedValue, oldWithholding, newWithholding, oldPayoff: payoffMode === 'calculated' && !payoffEstimate.ready ? '' : effectivePayoff }), [form, assessedValue, oldWithholding, newWithholding, payoffMode, payoffEstimate.ready, effectivePayoff])
   const set = (key, value) => setForm(previous => ({ ...previous, [key]: value }))
-  const fieldErrors = refinanceFieldErrors(form, payoffMode)
+  const fieldErrors = { ...refinanceFieldErrors({ ...form, oldWithholding, newWithholding }, payoffMode), ...withholding.old.errors, ...withholding.new.errors }
   const errorText = key => fieldErrors[key] && <small id={`rf-error-${key}`} className="rf-error-text">{fieldErrors[key]}</small>
   const errorProps = key => ({ 'aria-invalid': Boolean(fieldErrors[key]), 'aria-describedby': fieldErrors[key] ? `rf-error-${key}` : undefined })
   const field = (key, label, hint, suffix = 'บาท') => <label className={`tx-field ${fieldErrors[key] ? 'rf-invalid' : ''}`} key={key}>
@@ -51,11 +63,31 @@ export default function RefinanceCalculator() {
   const row = (label, value, detail, total = false) => <div className={`tx-row ${total ? 'total' : ''}`} key={label}>
     <div><b>{label}</b>{detail && <small>{detail}</small>}</div><strong>{baht(value)} บาท</strong>
   </div>
+  const taxField = side => {
+    const key = `${side}Withholding`
+    const modeKey = `${key}Mode`
+    const tax = withholding[side]
+    const auto = form[modeKey] !== 'manual'
+    const label = side === 'old' ? 'ภาษีไถ่ที่รวมในวงเงินทุนใหม่ทั้งหมด' : 'ภาษีหัก ณ ที่จ่ายของสัญญาใหม่'
+    return <>
+      <label className="tx-field"><span>{side === 'old' ? 'ภาษีฝั่งผู้รับซื้อฝากเดิม' : 'ภาษีฝั่งผู้ขายฝากใหม่'}</span><select value={form[modeKey]} onChange={event => set(modeKey, event.target.value)}>
+        <option value={side === 'old' ? 'individual' : 'individual_same_day'}>{side === 'old' ? 'คำนวณอัตโนมัติ: บุคคลธรรมดารายเดียว รับซื้อฝากเดิม' : 'คำนวณอัตโนมัติ: บุคคลธรรมดารายเดียว ไถ่และขายฝากใหม่วันเดียวกัน'}</option>
+        <option value="manual">กรอกยอดภาษีเอง / กรณีอื่น</option>
+      </select></label>
+      {auto ? <label className={`tx-field ${!tax.ready ? 'rf-invalid' : ''}`}><span>{label} (ประมาณการอัตโนมัติ)</span><div><input type="text" readOnly value={tax.ready ? baht(tax.tax) : ''} placeholder="รอข้อมูล" {...errorProps(key)} /><em>บาท</em></div>
+        {errorText(key)}
+        {tax.ready && <small>ฐานราคาประเมิน {baht(tax.detail.assessed)} บาท · {tax.years} ปีปฏิทิน · หักค่าใช้จ่าย {Math.round(tax.detail.expenseRate * 100)}%</small>}
+        {!tax.ready && <small>{[...new Set(Object.values(tax.errors))].join(' · ')}</small>}
+      </label> : field(key, label, 'กรอกยอดที่ต้องใช้ทุนใหม่จ่าย; ใส่ 0 เมื่อจ่ายแยก ไม่ใช่การยกเว้นภาษี')}
+    </>
+  }
   const hasValue = value => value !== '' && value != null && Number.isFinite(Number(value)) && Number(value) >= 0
   const validPayoff = payoffMode === 'calculated' ? payoffEstimate.ready : hasValue(form.oldPayoff) && Number(form.oldPayoff) > 0
   const hasAssessment = hasValue(assessedValue) && Number(assessedValue) > 0
   const knownDeeds = hasValue(form.deedCount) && Number.isInteger(Number(form.deedCount)) && Number(form.deedCount) > 0
   const partialResults = <>
+    {withholding.old.ready && row('ภาษีหัก ณ ที่จ่ายฝั่งทุนเดิม', withholding.old.tax)}
+    {withholding.new.ready && row('ภาษีหัก ณ ที่จ่ายฝั่งขายฝากใหม่', withholding.new.tax)}
     {validPayoff && row('ยอดปิดทุนเก่าประมาณการ', effectivePayoff)}
     {hasAssessment && row('ราคาประเมินราชการรวม', assessedValue)}
     {knownDeeds && row('ค่าจดไถ่', Number(form.deedCount) * 50)}
@@ -111,7 +143,10 @@ export default function RefinanceCalculator() {
       {field('oldRegisteredValue', 'ราคาไถ่ถอนที่แจ้งสำนักงานที่ดิน', 'ใช้เทียบราคาประเมินเพื่อคำนวณอากรไถ่')}
       <button type="button" disabled={!validPayoff} onClick={() => set('oldRegisteredValue', String(effectivePayoff))}>ใช้ยอดปิดทุนเก่าที่คำนวณได้</button>
       {field('deedCount', 'จำนวนแปลงที่ไถ่', 'ค่าจดไถ่ทั่วไป 50 บาทต่อแปลง', 'แปลง')}
-      {field('oldWithholding', 'ภาษีไถ่ที่ต้องใช้ทุนใหม่จ่าย', 'หากทุนเดิมรับผิดชอบเองและไม่ต้องใช้เงินเพิ่ม ให้ใส่ 0')}
+      {payoffMode === 'manual' && (form.oldWithholdingMode !== 'manual' || form.newWithholdingMode !== 'manual') && <>
+        {dateField('startDate', 'วันจดทะเบียนขายฝากเดิม')}{dateField('endDate', 'วันครบกำหนดตามสัญญา')}{dateField('transferDate', 'วันจดทะเบียนไถ่และขายฝากใหม่')}
+      </>}
+      {taxField('old')}
 
       <h3 style={{ marginTop: 28 }}>ขายฝากกับทุนใหม่</h3>
       {field('customerCash', 'ยอดเงินสุทธิที่ต้องการเหลือให้ลูกค้า', 'หลังปิดทุนเก่าและหักค่าใช้จ่ายวันย้ายทุนทั้งหมด; ใส่ 0 หากต้องการเพียงปิดทุนเก่า')}
@@ -121,7 +156,7 @@ export default function RefinanceCalculator() {
           <option value="">ยังไม่ทราบ ต้องตรวจ</option><option value="sbt">ภาษีธุรกิจเฉพาะ 3.3%</option><option value="stamp">อากรแสตมป์ 0.5%</option>
         </select>{errorText('taxMode')}<small>เลือกอย่างใดอย่างหนึ่งหลังตรวจวันได้มาและสิทธิยกเว้น</small>
       </label>
-      {field('newWithholding', 'ภาษีหัก ณ ที่จ่ายของสัญญาใหม่', 'คำนวณในแท็บโอนกรรมสิทธิ์หรือให้สำนักงานที่ดินยืนยัน; ใส่ 0 เฉพาะเมื่อไม่ต้องใช้ทุนนี้จ่าย')}
+      {taxField('new')}
       {field('upfrontRate', 'ทุนใหม่หักอื่นเพิ่มเติม', 'เปอร์เซ็นต์อื่นนอกเหนือจากเดือนที่หักล่วงหน้าข้างบน', '%')}
       <div className="tx-two">{field('fixedDeduction', 'ทุนใหม่หักคงที่')}{field('otherCosts', 'ค่าใช้จ่ายอื่นที่ต้องใช้ทุนนี้จ่าย')}</div>
       <div aria-live="polite">
@@ -152,13 +187,18 @@ export default function RefinanceCalculator() {
         {row('อากรไถ่', result.oldStamp, '1 บาทต่อทุก 200 บาทหรือเศษของฐานที่สูงกว่า')}
         {row('ค่าจดขายฝากใหม่', result.newFee, '2% ของราคาประเมิน')}
         {row(form.taxMode === 'sbt' ? 'ภาษีธุรกิจเฉพาะสัญญาใหม่' : 'อากรแสตมป์สัญญาใหม่', result.newTax, 'ฐานสูงกว่าระหว่างราคาประเมินกับวงเงินทุนใหม่')}
-        {row('ภาษีหัก ณ ที่จ่ายที่นำมารวม', Number(form.oldWithholding) + Number(form.newWithholding))}
+        {row('ภาษีหัก ณ ที่จ่ายฝั่งทุนเดิม', Number(oldWithholding))}
+        {row('ภาษีหัก ณ ที่จ่ายฝั่งขายฝากใหม่', Number(newWithholding))}
         {row('ทุนใหม่หักล่วงหน้า', result.newAdvanceWithheld, `${form.newAdvanceMonths} เดือน`)}
         {row('ทุนใหม่หักอื่น (%)', result.otherWithheld)}
         {row('ค่าใช้จ่ายคงที่และค่าใช้จ่ายอื่น', Number(form.fixedDeduction) + Number(form.otherCosts))}
+        {row('เงินสุทธิคงเหลือให้ลูกค้า', result.netCustomerCash, 'หลังปิดทุนเก่าและหักค่าใช้จ่ายทุกรายการข้างต้น')}
+        {row('วงเงินทุนใหม่รวมที่ต้องขอ', result.gross, 'รวมยอดปิดทุนเก่า ภาษี ค่าใช้จ่าย เงินหักล่วงหน้า และเงินสุทธิให้ลูกค้า · ประมาณการปัดขึ้นเป็นบาทเต็ม', true)}
         <div className="tx-basis"><p>ผลตอบแทนทุนใหม่ต่อเดือน: {baht(result.monthlyNewReturn)} บาท (ไม่บวกซ้ำในค่าใช้จ่ายวันย้ายทุน)</p><p>วงเงินเพิ่มจากยอดปิดทุนเก่า: {baht(result.gross - result.oldPayoff)} บาท (รวมเงินสุทธิให้ลูกค้า)</p></div>
       </> : <>{partialResults}<div className="tx-warn" role="status"><b>ยังไม่สรุปวงเงิน</b>{result.errors.map((error, index) => <p key={index}>{error}</p>)}</div></>}
       <div className="tx-warn"><b>ก่อนใช้เสนอทุน</b>
+        <p>ภาษีอัตโนมัติรองรับบุคคลธรรมดารายเดียว รับซื้อฝากเดิมและไถ่ภายในกำหนด แล้วขายฝากใหม่วันเดียวกัน ไม่ใช่ภาษีเงินได้ประจำปี กรณีกรรมสิทธิ์รวม นิติบุคคล หรือรับโอนสิทธิระหว่างสัญญาให้ใช้ยอดที่สำนักงานที่ดินยืนยัน</p>
+        <p><a href="https://www.dol.go.th/media/813280496149729280/2026/01/6q8JueYhNksadgDC0EQ4XTy2.pdf" target="_blank" rel="noreferrer">หลักเกณฑ์ภาษีไถ่ กรมที่ดิน</a></p>
         <p>ยอดไถ่ต้องยืนยันตามสัญญาและวันที่ทำรายการจริง ภาษีและผู้รับผิดชอบค่าใช้จ่ายต้องตรวจที่สำนักงานที่ดิน</p>
         {payoffMode === 'calculated' && payoffEstimate.warnings.map((warning, index) => <p key={`payoff-${index}`}>{warning}</p>)}
         {result.warnings?.map((warning, index) => <p key={index}>{warning}</p>)}
