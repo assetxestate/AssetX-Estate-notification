@@ -2,6 +2,7 @@
 // เรียกผ่าน Vercel Cron ทุกวัน (ดู vercel.json) — ป้องกันด้วย CRON_SECRET
 import { createClient } from '@supabase/supabase-js';
 import { getNotificationMode, resolveAutomaticRecipient } from './_notification-routing.js';
+import { boldAmount } from '../src/lib/combinedPayment.js';
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 
@@ -85,6 +86,33 @@ function buildTopupEarlyMsg(name, installment, interestAmount, topupAmount, freq
     `💵 วงเงินเพิ่ม: ${Number(topupAmount).toLocaleString('th-TH')} บาท`,
     `💰 ยอดชำระ: ${Number(interestAmount).toLocaleString('th-TH')} บาท`,
     `📌 ความถี่: ${freq}`, ``,
+    ...PAYMENT_FOOTER,
+  ].join('\n');
+}
+
+function buildCombinedPaymentMsg(customer, dateStr, diff, main, extras) {
+  const entries = [
+    main && `• สัญญาหลัก งวดที่ ${main.installment}: ${Number(customer.amount).toLocaleString('th-TH')} บาท`,
+    ...extras.map(({ topup, installment }) =>
+      `• วงเงินเพิ่ม ${Number(topup.topup_amount).toLocaleString('th-TH')} บาท งวดที่ ${installment}: ${Number(topup.interest_amount).toLocaleString('th-TH')} บาท`),
+  ].filter(Boolean);
+  const total = (main ? Number(customer.amount) || 0 : 0) + extras.reduce(
+    (sum, { topup }) => sum + (Number(topup.interest_amount) || 0), 0
+  );
+  return [
+    diff === 0 ? '📅 ครบกำหนดชำระวันนี้' : '🔔 แจ้งเตือนล่วงหน้า 7 วัน', '',
+    `เรียน คุณ${customer.name}`, '',
+    'บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด ขอแจ้งให้ทราบว่า',
+    main
+      ? diff === 0
+        ? `วันนี้ครบกำหนดชำระ${customer.type === 'จำนอง' ? 'ดอกจำนอง' : 'ดอกเบี้ยขายฝาก'}งวดที่ ${main.installment}`
+        : `ครบกำหนดชำระ${customer.type === 'จำนอง' ? 'ดอกจำนอง' : 'ดอกเบี้ยขายฝาก'}งวดที่ ${main.installment} ในอีก ${diff} วันข้างหน้า`
+      : diff === 0
+        ? 'วันนี้ครบกำหนดชำระดอกเบี้ยวงเงินเพิ่ม'
+        : `ครบกำหนดชำระดอกเบี้ยวงเงินเพิ่มในอีก ${diff} วันข้างหน้า`, '',
+    `รายการที่ครบกำหนดวันที่ ${formatThaiDate(dateStr)}`, '',
+    ...entries,
+    `💰 รวมยอดที่ต้องชำระ\n${boldAmount(total)} บาท`, '',
     ...PAYMENT_FOOTER,
   ].join('\n');
 }
@@ -187,6 +215,14 @@ export default async function handler(req, res) {
     const paidTopupKeys = new Set(topupRecords.map((r) => `${r.topup_id}|${r.installment}`));
 
     const customerById = Object.fromEntries(customers.map((c) => [c.id, c]));
+    const paymentGroups = new Map();
+    const addPayment = (customer, dateStr, diff, main, extra) => {
+      const key = `${customer.id}|${dateStr}`;
+      if (!paymentGroups.has(key)) paymentGroups.set(key, { customer, dateStr, diff, main: null, extras: [] });
+      const group = paymentGroups.get(key);
+      if (main) group.main = main;
+      if (extra) group.extras.push(extra);
+    };
 
     for (const p of payments) {
       const c = customerById[p.customer_id];
@@ -198,17 +234,7 @@ export default async function handler(req, res) {
       if (!recipientId) { skipCount++; continue; }
 
       const diff = diffDays(p.date_str, today);
-      try {
-        if (diff === 0) {
-          await sendLine(recipientId, buildDueMsg(c.name, p.installment, c.amount, c.freq, p.date_str));
-          sentCount++;
-        } else if (diff === 7) {
-          await sendLine(recipientId, buildEarlyMsg(c.name, p.installment, c.amount, c.freq, p.date_str, 7));
-          sentCount++;
-        }
-      } catch (e) {
-        errors.push(`${c.name} งวด ${p.installment}: ${e.message}`);
-      }
+      if (diff === 0 || diff === 7) addPayment(c, p.date_str, diff, p, null);
     }
 
     // แจ้งเตือนงวดดอกเบี้ยของวงเงินเพิ่ม แยกจากตารางชำระสัญญาหลัก
@@ -221,23 +247,26 @@ export default async function handler(req, res) {
       for (const payment of schedule) {
         if (paidTopupKeys.has(`${topup.id}|${payment.installment}`)) { skipCount++; continue; }
         const diff = diffDays(payment.dateStr, today);
-        try {
-          if (diff === 0) {
-            await sendLine(recipientId, buildTopupDueMsg(
-              c.name, payment.installment, topup.interest_amount,
-              topup.topup_amount, topup.freq, payment.dateStr,
-            ));
-            sentCount++;
-          } else if (diff === 7) {
-            await sendLine(recipientId, buildTopupEarlyMsg(
-              c.name, payment.installment, topup.interest_amount,
-              topup.topup_amount, topup.freq, payment.dateStr, 7,
-            ));
-            sentCount++;
-          }
-        } catch (e) {
-          errors.push(`${c.name} วงเงินเพิ่มงวด ${payment.installment}: ${e.message}`);
-        }
+        if (diff === 0 || diff === 7) addPayment(c, payment.dateStr, diff, null, { topup, installment: payment.installment });
+      }
+    }
+
+    for (const group of paymentGroups.values()) {
+      const { customer, dateStr, diff, main, extras } = group;
+      try {
+        const message = main && extras.length === 0
+          ? diff === 0
+            ? buildDueMsg(customer.name, main.installment, customer.amount, customer.freq, dateStr)
+            : buildEarlyMsg(customer.name, main.installment, customer.amount, customer.freq, dateStr, 7)
+          : !main && extras.length === 1
+            ? diff === 0
+              ? buildTopupDueMsg(customer.name, extras[0].installment, extras[0].topup.interest_amount, extras[0].topup.topup_amount, extras[0].topup.freq, dateStr)
+              : buildTopupEarlyMsg(customer.name, extras[0].installment, extras[0].topup.interest_amount, extras[0].topup.topup_amount, extras[0].topup.freq, dateStr, 7)
+            : buildCombinedPaymentMsg(customer, dateStr, diff, main, extras);
+        await sendLine(resolveAutomaticRecipient(customer.line_user_id), message);
+        sentCount++;
+      } catch (e) {
+        errors.push(`${customer.name} วันที่ ${dateStr}: ${e.message}`);
       }
     }
 

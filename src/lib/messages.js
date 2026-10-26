@@ -1,4 +1,5 @@
 import { parseDate, formatThai, formatThaiLong, formatMoney, fmtCal } from "./utils.js";
+import { boldAmount, paymentTotal } from "./combinedPayment.js";
 
 // ── ImgBB Config ─────────────────────────────────────────────────
 // SECURITY: key เดิมรั่วใน git แล้ว — แนะนำ regenerate ที่ api.imgbb.com แล้วใส่ใน .env.local
@@ -68,6 +69,27 @@ export function msgPayment(c, p, type) {
     return `📢 แจ้งเตือนล่วงหน้า 7 วัน\n\nเรียน คุณ${c.name},\n\nบริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด ขอแจ้งให้ทราบว่า\nครบกำหนดชำระ${label}งวดที่ ${p.installment} ในอีก 7 วันข้างหน้า\n\n📌 รายละเอียด:\n• ประเภท: ${c.type}\n• ยอดชำระ: ${amt} บาท\n• งวดที่: ${p.installment}\n• กำหนดชำระ: ${dt}\n\n${bankInfo}\n\n${PAYMENT_CLOSING}`;
   }
   return `⚠️ วันนี้ครบกำหนดชำระ\n\nเรียน คุณ${c.name},\n\nวันนี้ (${dt}) ครบกำหนดชำระ${label}งวดที่ ${p.installment}\n\n📌 รายละเอียด:\n• ประเภท: ${c.type}\n• ยอดชำระ: ${amt} บาท\n\n${bankInfo}\n\n${PAYMENT_CLOSING}`;
+}
+
+export function msgCombinedPayment(c, p, topupEntries, type) {
+  const date = formatThaiLong(p.dateStr);
+  const days = Math.max(0, Number(p.diff) || 7);
+  const interestLabel = c.type === "จำนอง" ? "ดอกจำนอง" : "ดอกเบี้ยขายฝาก";
+  const lines = [
+    type === "early" ? "📢 แจ้งเตือนชำระเงินล่วงหน้า" : "⚠️ แจ้งเตือนครบกำหนดชำระ",
+    `เรียน คุณ${c.name}`,
+    type === "early"
+      ? `บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด ขอแจ้งให้ทราบว่า\nครบกำหนดชำระ${interestLabel}งวดที่ ${p.installment} ในอีก ${days} วันข้างหน้า`
+      : `วันนี้ครบกำหนดชำระ${interestLabel}งวดที่ ${p.installment}`,
+    `รายการที่ครบกำหนดวันที่ ${date}`,
+    `• สัญญาหลัก งวดที่ ${p.installment}: ${formatMoney(c.amount)} บาท`,
+    ...topupEntries.map(({ topup, payment }) =>
+      `• วงเงินเพิ่ม ${formatMoney(topup.topupAmount)} บาท งวดที่ ${payment.installment}: ${formatMoney(topup.interestAmount)} บาท`),
+    `💰 รวมยอดที่ต้องชำระ\n${boldAmount(paymentTotal(c.amount, topupEntries))} บาท`,
+    `💳 ช่องทางชำระเงิน:\nธนาคาร กสิกรไทย\nชื่อบัญชี: กิตติชัย โสมทัตถ์\nเลขบัญชี: 194-8-33331-3`,
+    PAYMENT_CLOSING,
+  ];
+  return lines.join("\n\n");
 }
 
 export function msgTopupPayment(c, topup, p, type) {

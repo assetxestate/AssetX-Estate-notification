@@ -26,10 +26,11 @@ import {
 } from "./lib/utils.js";
 import {
   IMGBB_KEY, IMGBB_ALBUMS, gcalPayment, gcalTopupPayment,
-  msgPayment, msgTopupPayment, msgContract,
+  msgPayment, msgTopupPayment, msgCombinedPayment, msgContract,
 } from "./lib/messages.js";
 import { printNotice } from "./lib/notice.js";
 import { getUpfrontDeductionEntries } from "./lib/advanceDeduction.js";
+import { unpaidTopupsOnDate } from "./lib/combinedPayment.js";
 import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
 import { MOCK_DATA } from "./lib/mockData.js";
 import { useLineNotification } from "./hooks/useLineNotification.js";
@@ -937,10 +938,10 @@ export default function App({ initialView = "main", onLogout }) {
                   >
                     {payAlerts.slice(0, 5).map(({ c, p }, i) => {
                       const st = P_STATUS[p.status];
-                      const msg =
-                        p.diff <= 0
-                          ? msgPayment(c, p, "due")
-                          : msgPayment(c, p, "early");
+                      const sameDayTopups = unpaidTopupsOnDate(customerTopups[c.id], p.dateStr);
+                      const msg = sameDayTopups.length
+                        ? msgCombinedPayment(c, p, sameDayTopups, p.diff <= 0 ? "due" : "early")
+                        : msgPayment(c, p, p.diff <= 0 ? "due" : "early");
                       return (
                         <div
                           key={i}
@@ -1012,12 +1013,12 @@ export default function App({ initialView = "main", onLogout }) {
                                 fontSize: 13,
                               }}
                             >
-                              {formatMoney(c.amount)} ฿
+                              {formatMoney((Number(c.amount) || 0) + sameDayTopups.reduce((sum, { topup }) => sum + (Number(topup.interestAmount) || 0), 0))} ฿
                             </span>
                             <LineButton
                               message={msg}
                               type="payment"
-                              label="ส่ง LINE"
+                              label={sameDayTopups.length ? "ส่งยอดรวม LINE" : "ส่ง LINE"}
                               compact
                               onSend={(ok) => handleLineSend(ok, c.name)}
                               destinationId={targetUserId}
@@ -1832,10 +1833,10 @@ export default function App({ initialView = "main", onLogout }) {
                                 {c.payments.map((p, pIdx) => {
                                   const isLastPayment = pIdx === c.payments.length - 1;
                                   const pSt = P_STATUS[p.status];
-                                  const msg =
-                                    p.status === "today"
-                                      ? msgPayment(c, p, "due")
-                                      : msgPayment(c, p, "early");
+                                  const sameDayTopups = p.status === "paid" ? [] : unpaidTopupsOnDate(customerTopups[c.id], p.dateStr);
+                                  const msg = sameDayTopups.length
+                                    ? msgCombinedPayment(c, p, sameDayTopups, p.status === "today" ? "due" : "early")
+                                    : msgPayment(c, p, p.status === "today" ? "due" : "early");
                                   return (
                                     <div
                                       key={p.installment}
@@ -1960,6 +1961,7 @@ export default function App({ initialView = "main", onLogout }) {
                                           <LineButton
                                             message={msg}
                                             type="payment"
+                                            label={sameDayTopups.length ? "ส่งยอดรวม LINE" : "ส่ง LINE"}
                                             compact
                                             onSend={(ok) =>
                                               handleLineSend(ok, c.name)
@@ -2093,8 +2095,14 @@ export default function App({ initialView = "main", onLogout }) {
                                         : nextOutstanding.diff === 0
                                           ? "due"
                                           : "early";
+                                    const matchingMain = nextOutstanding && c.payments.find(p =>
+                                      p.dateStr === nextOutstanding.dateStr && p.status !== 'paid' &&
+                                      (p.status === 'today' || p.status === 'soon')
+                                    );
                                     const alertMessage = alertType
-                                      ? msgTopupPayment(c, topup, nextOutstanding, alertType)
+                                      ? matchingMain
+                                        ? msgCombinedPayment(c, matchingMain, unpaidTopupsOnDate(customerTopups[c.id], matchingMain.dateStr), alertType === 'due' ? 'due' : 'early')
+                                        : msgTopupPayment(c, topup, nextOutstanding, alertType)
                                       : "";
                                     const alertTone = alertType === "overdue" || alertType === "due"
                                       ? { color: "#FCA5A5", background: "rgba(239,68,68,.08)", border: "rgba(239,68,68,.4)" }
@@ -2142,13 +2150,14 @@ export default function App({ initialView = "main", onLogout }) {
                                               </div>
                                             </div>
                                             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                                              <LineButton
+                                              {!matchingMain && <LineButton
                                                 message={alertMessage}
                                                 type="payment"
                                                 compact
                                                 onSend={(ok) => handleLineSend(ok, c.name)}
                                                 destinationId={customerLineIds[c.id] || targetUserId}
-                                              />
+                                              />}
+                                              {matchingMain && <span style={{ fontSize: 11, color: BRAND.teal }}>รวมส่งกับงวดหลัก</span>}
                                               <button
                                                 type="button"
                                                 title="คัดลอกข้อความแจ้งเตือน"
