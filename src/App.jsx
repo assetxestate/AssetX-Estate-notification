@@ -264,12 +264,24 @@ export default function App({ initialView = "main", onLogout }) {
     try { return JSON.parse(localStorage.getItem("assetx_customer_line_ids") || "{}"); }
     catch { return {}; }
   });
-  const updateCustomerLineId = useCallback((customerId, lineUserId) => {
-    setCustomerLineIds(prev => {
-      const updated = { ...prev, [customerId]: lineUserId };
-      localStorage.setItem("assetx_customer_line_ids", JSON.stringify(updated));
-      return updated;
-    });
+  const updateCustomerLineId = useCallback(async (customerId, lineUserId) => {
+    if (!/^U[0-9a-f]{32}$/.test(lineUserId)) {
+      showToast('LINE User ID ไม่ถูกต้อง กรุณาตรวจสอบก่อนบันทึก');
+      return false;
+    }
+    try {
+      await apiUpdateCustomer(customerId, { lineUserId });
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, lineUserId } : c));
+      setCustomerLineIds(prev => {
+        const updated = { ...prev, [customerId]: lineUserId };
+        localStorage.setItem("assetx_customer_line_ids", JSON.stringify(updated));
+        return updated;
+      });
+      return true;
+    } catch (error) {
+      showToast(`บันทึก LINE UID ไม่สำเร็จ: ${error.message}`);
+      return false;
+    }
   }, []);
 
   // sync savedUserIds → Apps Script PropertiesService
@@ -1021,7 +1033,7 @@ export default function App({ initialView = "main", onLogout }) {
                               label={sameDayTopups.length ? "ส่งยอดรวม LINE" : "ส่ง LINE"}
                               compact
                               onSend={(ok) => handleLineSend(ok, c.name)}
-                              destinationId={targetUserId}
+                              destinationId={c.lineUserId || customerLineIds[c.id] || ''}
                             />
                             <button
                               onClick={() => setPostponeModal({ customer: c, payment: p })}
@@ -1227,7 +1239,7 @@ export default function App({ initialView = "main", onLogout }) {
                               type="contract"
                               label="ส่ง LINE"
                               onSend={(ok) => handleLineSend(ok, c.name)}
-                              destinationId={targetUserId}
+                              destinationId={c.lineUserId || customerLineIds[c.id] || ''}
                             />
                           </div>
                         </div>
@@ -1966,7 +1978,7 @@ export default function App({ initialView = "main", onLogout }) {
                                             onSend={(ok) =>
                                               handleLineSend(ok, c.name)
                                             }
-                                            destinationId={customerLineIds[c.id] || targetUserId}
+                                            destinationId={c.lineUserId || customerLineIds[c.id] || ''}
                                           />
                                         )}
                                         <button
@@ -2155,7 +2167,7 @@ export default function App({ initialView = "main", onLogout }) {
                                                 type="payment"
                                                 compact
                                                 onSend={(ok) => handleLineSend(ok, c.name)}
-                                                destinationId={customerLineIds[c.id] || targetUserId}
+                                                destinationId={c.lineUserId || customerLineIds[c.id] || ''}
                                               />}
                                               {matchingMain && <span style={{ fontSize: 11, color: BRAND.teal }}>รวมส่งกับงวดหลัก</span>}
                                               <button

@@ -3,23 +3,21 @@ import { BRAND } from "../lib/config.js";
 
 // ── LINE User ID Section per Customer ──────────────────────────
 export function CustomerLineIdSection({ customer, customerLineIds, savedUserIds, onUpdate }) {
-  const currentId = customerLineIds[customer.id] || "";
+  const currentId = customer.lineUserId || customerLineIds[customer.id] || "";
   const [input, setInput] = React.useState(currentId);
   const [editing, setEditing] = React.useState(false);
 
   React.useEffect(() => {
-    setInput(customerLineIds[customer.id] || "");
-  }, [customerLineIds, customer.id]);
+    setInput(currentId);
+  }, [currentId]);
 
-  const handleSave = () => {
-    onUpdate(customer.id, input.trim());
-    setEditing(false);
+  const handleSave = async () => {
+    if (await onUpdate(customer.id, input.trim())) setEditing(false);
   };
 
-  const handleSelect = (id) => {
+  const handleSelect = async (id) => {
     setInput(id);
-    onUpdate(customer.id, id);
-    setEditing(false);
+    if (await onUpdate(customer.id, id)) setEditing(false);
   };
 
   return (
@@ -55,7 +53,7 @@ export function CustomerLineIdSection({ customer, customerLineIds, savedUserIds,
                 </span>
                 {currentId}
               </>
-            : "ยังไม่ได้ตั้งค่า — ปุ่ม LINE จะใช้ User ID หลักแทน"}
+            : "ยังไม่ได้ตั้งค่า — กรุณาระบุ UID ก่อนส่ง LINE"}
         </div>
       )}
 

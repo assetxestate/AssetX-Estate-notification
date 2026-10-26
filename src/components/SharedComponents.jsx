@@ -1,5 +1,7 @@
 import React, { useState } from "react";
-import { LOGO_CONFIG, APPS_SCRIPT_URL } from "../lib/config.js";
+import { LOGO_CONFIG } from "../lib/config.js";
+import { sendLineMessage } from "../lib/lineDelivery.js";
+import { showToast } from "../lib/toast.js";
 
 export function Logo({ size = 40 }) {
   const hasBase64 = LOGO_CONFIG.type === "base64" && LOGO_CONFIG.base64;
@@ -70,18 +72,12 @@ export function LineButton({
     e.stopPropagation();
     setSending(true);
     try {
-      const did = destinationId && destinationId.trim() ? destinationId.trim() : "";
-      const url = did ? `${APPS_SCRIPT_URL}?dest=${encodeURIComponent(did)}` : APPS_SCRIPT_URL;
-      await fetch(url, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ action: "sendLine", message, type }),
-      });
+      await sendLineMessage(destinationId, message);
       setResult("success");
       if (onSend) onSend(true);
     } catch (err) {
       setResult("error");
+      showToast(err.message);
       if (onSend) onSend(false);
     }
     setSending(false);
@@ -101,7 +97,7 @@ export function LineButton({
           กำลังส่ง...
         </>
       ) : result === "success" ? (
-        <><span>✅</span> ส่งแล้ว!</>
+        <><span>✅</span> LINE รับคำขอแล้ว</>
       ) : result === "error" ? (
         <><span>❌</span> ลองใหม่</>
       ) : (

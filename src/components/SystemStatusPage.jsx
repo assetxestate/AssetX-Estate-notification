@@ -3,7 +3,7 @@ import { APPS_SCRIPT_URL, BRAND } from "../lib/config.js";
 
 // System Status Page Component
 export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUserId, onSetTargetUserId, savedUserIds = [], onSaveNewUserId, onDeleteSavedUserId, syncStatus = "idle", triggerActive = false, onSetTriggerActive }) {
-  const { sending, logs, testConnection, sendTestMessage, addLog } = lineHook;
+  const { sending, logs, connectionStatus, sendNotification, testConnection, sendTestMessage, addLog } = lineHook;
   const [customMessage, setCustomMessage] = useState("");
   const [editingUserId, setEditingUserId] = useState(false);
   const [userIdInput, setUserIdInput] = useState("");
@@ -43,21 +43,8 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
 
   const sendCustom = async () => {
     if (!customMessage.trim()) return;
-    addLog("info", "กำลังส่งข้อความ Manual...");
-    try {
-      const did = targetUserId && targetUserId.trim() ? targetUserId.trim() : "";
-      const url = did ? `${APPS_SCRIPT_URL}?dest=${encodeURIComponent(did)}` : APPS_SCRIPT_URL;
-      await fetch(url, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ action: "sendLine", message: customMessage, type: "manual" }),
-      });
-      addLog("success", "✅ ส่งข้อความ Manual สำเร็จ");
-      setCustomMessage("");
-    } catch (err) {
-      addLog("error", "❌ ส่งล้มเหลว: " + err.message);
-    }
+    const result = await sendNotification(customMessage, "manual", "Manual");
+    if (result.success) setCustomMessage("");
   };
 
   return (
@@ -99,15 +86,15 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
             }}
           >
             <span
-              className={`status-dot ${apiConnected ? "success" : "warning"}`}
+              className={`status-dot ${connectionStatus === true ? "success" : "warning"}`}
             ></span>
             <span
               style={{
                 fontSize: 13,
-                color: apiConnected ? "#4ADE80" : "#F59E0B",
+                color: connectionStatus === true ? "#4ADE80" : connectionStatus === false ? "#FCA5A5" : "#F59E0B",
               }}
             >
-              {apiConnected ? "เชื่อมต่อแล้ว" : "รอตรวจสอบ"}
+              {connectionStatus === true ? "LINE API ตอบแล้ว" : connectionStatus === false ? "เชื่อมต่อไม่สำเร็จ" : "รอตรวจสอบ"}
             </span>
           </div>
           <button

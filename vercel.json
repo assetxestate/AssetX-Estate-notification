@@ -10,6 +10,7 @@
   "rewrites": [
     { "source": "/api/notices", "destination": "/api/marketing?feature=notices" },
     { "source": "/api/chat", "destination": "/api/chat" },
+    { "source": "/api/line-webhook", "destination": "/api/line-webhook" },
     { "source": "/api/marketing-image", "destination": "/api/marketing?feature=image" },
     { "source": "/api/marketing-video", "destination": "/api/marketing?feature=video" },
     { "source": "/api/marketing-references", "destination": "/api/marketing?feature=references" },

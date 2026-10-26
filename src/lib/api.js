@@ -800,16 +800,8 @@ export async function saveMarketingWorkspace(payload, id = "default") {
   return { success: true };
 }
 
-// ── LINE (ยังส่งผ่าน GAS เพราะ LINE API ต้องการ server-side token) ──
+// ── LINE ──
 export async function sendLineMessage(destinationId, message) {
-  const GAS_URL = import.meta.env.VITE_GAS_URL;
-  if (!GAS_URL) return { success: false, error: "ไม่มี GAS_URL" };
-  const url = destinationId ? `${GAS_URL}?dest=${encodeURIComponent(destinationId)}` : GAS_URL;
-  await fetch(url, {
-    method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "text/plain" },
-    body: JSON.stringify({ action: "sendLine", message }),
-  });
-  return { success: true };
+  const { sendLineMessage: send } = await import('./lineDelivery.js');
+  return send(destinationId, message);
 }

@@ -1,15 +1,17 @@
 import { useState, useCallback } from "react";
 import { useRef, useEffect } from "react";
-import { APPS_SCRIPT_URL } from "../lib/config.js";
+import { checkLineConnection, sendLineMessage } from "../lib/lineDelivery.js";
 
 export function useLineNotification(targetUserId) {
   const [sending, setSending] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [connectionStatus, setConnectionStatus] = useState(null);
 
   // useRef เพื่อให้จับ targetUserId ล่าสุดเสมอ ป้องกัน stale closure
   const targetUserIdRef = useRef(targetUserId);
   useEffect(() => {
     targetUserIdRef.current = targetUserId;
+    setConnectionStatus(null);
   }, [targetUserId]);
 
   const addLog = useCallback((type, message) => {
@@ -22,15 +24,8 @@ export function useLineNotification(targetUserId) {
     setSending(true);
     addLog("info", `กำลังส่งข้อความ${targetName ? " ถึง " + targetName : ""}...`);
     try {
-      const did = currentId && currentId.trim() ? currentId.trim() : "";
-      const url = did ? `${APPS_SCRIPT_URL}?dest=${encodeURIComponent(did)}` : APPS_SCRIPT_URL;
-      await fetch(url, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ action: "sendLine", message, type }),
-      });
-      addLog("success", `✅ ส่งสำเร็จ${targetName ? " → " + targetName : ""}${currentId ? " [" + currentId.substring(0,8) + "...]" : ""}`);
+      const result = await sendLineMessage(currentId, message);
+      addLog("success", `✅ LINE รับคำขอแล้ว${targetName ? " → " + targetName : ""}${currentId ? " [" + currentId.substring(0,8) + "...]" : ""}${result.requestId ? " (คำขอ " + result.requestId + ")" : ""}`);
       setSending(false);
       return { success: true };
     } catch (error) {
@@ -44,13 +39,11 @@ export function useLineNotification(targetUserId) {
     setSending(true);
     addLog("info", "กำลังทดสอบการเชื่อมต่อ...");
     try {
-      const response = await fetch(APPS_SCRIPT_URL);
-      if (response.ok) {
-        addLog("success", "✅ เชื่อมต่อ API สำเร็จ");
-      } else {
-        addLog("error", `❌ HTTP Error: ${response.status}`);
-      }
+      await checkLineConnection(targetUserIdRef.current);
+      setConnectionStatus(true);
+      addLog("success", targetUserIdRef.current ? "✅ LINE API และ UID ผู้รับพร้อมใช้งาน" : "✅ LINE API เชื่อมต่อสำเร็จ (ยังไม่เลือก UID ผู้รับ)");
     } catch (error) {
+      setConnectionStatus(false);
       addLog("error", `❌ ไม่สามารถเชื่อมต่อ: ${error.message}`);
     }
     setSending(false);
@@ -61,5 +54,5 @@ export function useLineNotification(targetUserId) {
     return sendNotification(testMsg, "test", "ทดสอบ");
   }, [sendNotification]);
 
-  return { sending, logs, sendNotification, testConnection, sendTestMessage, addLog };
+  return { sending, logs, connectionStatus, sendNotification, testConnection, sendTestMessage, addLog };
 }
