@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import handler from './line-webhook.js';
-import { createSessionCookie } from './_auth.js';
+import handler from '../api/line-webhook.js';
+import { createSessionCookie } from '../api/_auth.js';
 
 const recipientId = `U${'a'.repeat(32)}`;
 
