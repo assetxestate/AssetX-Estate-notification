@@ -24,6 +24,7 @@ npm install       # ติดตั้ง dependencies ครั้งแรก
 npm run dev       # รัน development server
 npm run build     # build สำหรับ production
 npm run preview   # preview หลัง build
+npm run report:contracts   # สร้าง PDF สรุปสัญญาที่มีผล (A4 แนวนอน) จากข้อมูลสดใน Supabase ไปที่โฟลเดอร์แม่ของโปรเจกต์
 
 ## Project Structure
 
