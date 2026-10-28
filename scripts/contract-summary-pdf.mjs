@@ -221,3 +221,9 @@ execFileSync(browser, [
 console.log(`สัญญาที่มีผล ${active.length} ฉบับ · วงเงินรวม ${money(total)} บาท · ดอกเบี้ย ≈ ${money(monthly)} บาท/เดือน`)
 console.log(`PDF: ${pdfPath}`)
 console.log(`HTML (แก้ข้อความแล้วพิมพ์เองได้): ${htmlPath}`)
+
+// --open: เปิด PDF ด้วยโปรแกรมประจำเครื่องทันที (ใช้กับไฟล์ทางลัดดับเบิลคลิก)
+if (args.includes('--open')) {
+  if (process.platform === 'win32') execFileSync('cmd', ['/c', 'start', '', pdfPath], { stdio: 'ignore' })
+  else execFileSync(process.platform === 'darwin' ? 'open' : 'xdg-open', [pdfPath], { stdio: 'ignore' })
+}
