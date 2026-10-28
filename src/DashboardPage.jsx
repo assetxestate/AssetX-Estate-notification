@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { BRAND as BASE_BRAND } from './lib/config.js'
 import { getDiff, formatThai } from './lib/utils.js'
 import { getRecordedUpfrontDeductions } from './lib/advanceDeduction.js'
+import { principalWithTopups } from './lib/topupTotals.js'
 import NoticeTracking from './components/NoticeTracking.jsx'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
@@ -146,7 +147,9 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   }
 
   // ── KPIs ────────────────────────────────────────────────
-  const totalPrincipal = active.reduce((s, c) => s + (c.principal || 0), 0)
+  // วงเงินรวมนับรวมวงเงินเพิ่ม (top-up) ให้ตรงกับยอดที่ปล่อยจริง
+  const totalTopup = active.reduce((s, c) => s + (c.topupPrincipal || 0), 0)
+  const totalPrincipal = active.reduce((s, c) => s + principalWithTopups(c), 0)
 
   // แปลง amount ต่องวด → รายได้ต่อเดือน ตาม freq
   const toMonthly = (c) => {
@@ -157,7 +160,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
     if (f.includes('วัน')) return amt * 30
     return amt // รายเดือน (default)
   }
-  const monthlyIncome = active.reduce((s, c) => s + toMonthly(c), 0)
+  const monthlyIncome = active.reduce((s, c) => s + toMonthly(c) + (c.topupMonthlyInterest || 0), 0)
 
   // ยอดดอกเบี้ยที่ชำระแล้วทั้งหมด — อ้างอิงจาก amountPaid ของสลิปจริง
   const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
@@ -229,8 +232,8 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const mortgage = active.filter(c => c.type === 'จำนอง')
   const sellback = active.filter(c => c.type === 'ขายฝาก')
   const donutData = [
-    { label: 'ขายฝาก', value: sellback.length, amount: sellback.reduce((s, c) => s + (c.principal || 0), 0), color: BRAND.orange },
-    { label: 'จำนอง', value: mortgage.length, amount: mortgage.reduce((s, c) => s + (c.principal || 0), 0), color: BRAND.teal },
+    { label: 'ขายฝาก', value: sellback.length, amount: sellback.reduce((s, c) => s + principalWithTopups(c), 0), color: BRAND.orange },
+    { label: 'จำนอง', value: mortgage.length, amount: mortgage.reduce((s, c) => s + principalWithTopups(c), 0), color: BRAND.teal },
   ]
 
   // ── สัญญาที่ต้องระวัง ────────────────────────────────────
@@ -333,7 +336,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
 
       {/* KPI Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        <KpiCard icon="💰" label="วงเงินรวมที่ปล่อย" value={`฿${fmt(totalPrincipal)}`} sub={`${active.length} สัญญา active`} color={BRAND.teal} />
+        <KpiCard icon="💰" label="วงเงินรวมที่ปล่อย" value={`฿${fmt(totalPrincipal)}`} sub={`${active.length} สัญญา active${totalTopup > 0 ? ` · รวมวงเงินเพิ่ม ฿${fmtFull(totalTopup)}` : ''}`} color={BRAND.teal} />
         <KpiCard icon="📈" label="รายได้ดอกเบี้ย/เดือน" value={`฿${fmtFull(Math.round(monthlyIncome))}`} sub={`Yield ${yieldRate}%/ปี`} color={BRAND.gold} />
         <KpiCard icon="✅" label="ดอกเบี้ยที่ชำระแล้ว" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · อ้างอิงจากสลิปโอนเงิน`} color={BRAND.success} />
         <KpiCard icon="⚠️" label="ค้างชำระ" value={`฿${fmtFull(overdueAmount)}`} sub={overduePayments.length > 0 ? `${overduePayments.length} งวด · ${overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย` : 'ไม่มีค้างชำระ'} color={overduePayments.length > 0 ? BRAND.danger : BRAND.success} />
@@ -437,7 +440,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                       <span style={{ fontSize: 10, color: c.color, padding: '2px 7px', borderRadius: 999, border: `1px solid ${c.color}66`, background: `${c.color}18` }}>{c.label}</span>
                     </div>
                     <div style={{ fontSize: 11, color: BRAND.textSec }}>
-                      {c.placeLabel} · วงเงิน ฿{fmtFull(c.principal)} · ค้าง {c.overdueCount} งวด · เลื่อน {c.postponedCount} งวด
+                      {c.placeLabel} · วงเงิน ฿{fmtFull(principalWithTopups(c))} · ค้าง {c.overdueCount} งวด · เลื่อน {c.postponedCount} งวด
                     </div>
                     <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 4 }}>
                       กรอบขายด่วน: ประเมินจากราคาตลาดแล้วลด 15-30% หลังสำรวจทรัพย์จริง
@@ -499,7 +502,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 10, color: BRAND.textSec }}>วงเงิน</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal }}>฿{fmt(c.principal)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal }}>฿{fmt(principalWithTopups(c))}</div>
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 10, color: BRAND.textSec }}>ครบกำหนด</div>
@@ -538,7 +541,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                 <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri }}>{c.name}</div>
-                    <div style={{ fontSize: 11, color: BRAND.textSec }}>{c.type} · วงเงิน ฿{fmtFull(c.principal)}</div>
+                    <div style={{ fontSize: 11, color: BRAND.textSec }}>{c.type} · วงเงิน ฿{fmtFull(principalWithTopups(c))}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 10, color: BRAND.textSec }}>Advance 2%</div>
@@ -562,7 +565,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                 <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri }}>{c.name}</div>
-                    <div style={{ fontSize: 11, color: BRAND.textSec }}>{c.type} · วงเงิน ฿{fmtFull(c.principal)}</div>
+                    <div style={{ fontSize: 11, color: BRAND.textSec }}>{c.type} · วงเงิน ฿{fmtFull(principalWithTopups(c))}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 10, color: BRAND.gold }}>ดอกเบี้ย/งวด</div>
@@ -585,7 +588,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                 <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: 'rgba(15,23,42,.45)', border: `1px solid ${BRAND.border}`, opacity: .72 }}>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textSec, textDecoration: 'line-through' }}>{c.name}</div>
-                    <div style={{ fontSize: 11, color: BRAND.textMut }}>{c.type} · วงเงิน ฿{fmtFull(c.principal)}</div>
+                    <div style={{ fontSize: 11, color: BRAND.textMut }}>{c.type} · วงเงิน ฿{fmtFull(principalWithTopups(c))}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 10, color: BRAND.textMut }}>Advance 2%</div>

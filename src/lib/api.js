@@ -660,8 +660,28 @@ export async function getTopups(customerId) {
     .eq("customer_id", customerId);
   if (recErr) throw recErr;
 
+  return mapTopupRows(topupRows, recRows);
+}
+
+// โหลดวงเงินเพิ่มทุกรายการของทุกลูกค้า — ใช้ให้ยอดรวมบนหน้าหลัก/Dashboard นับวงเงินเพิ่มได้ตั้งแต่เปิดหน้า
+export async function getAllTopups() {
+  const { data: topupRows, error: topupErr } = await supabase
+    .from("contract_topups")
+    .select("*")
+    .order("topup_date", { ascending: true });
+  if (topupErr) throw topupErr;
+
+  const { data: recRows, error: recErr } = await supabase
+    .from("topup_payment_records")
+    .select("*");
+  if (recErr) throw recErr;
+
+  return mapTopupRows(topupRows, recRows);
+}
+
+function mapTopupRows(topupRows, recRows) {
   const recMap = {};
-  recRows.forEach((r) => {
+  (recRows || []).forEach((r) => {
     if (!recMap[r.topup_id]) recMap[r.topup_id] = {};
     recMap[r.topup_id][r.installment] = {
       paidDate: r.paid_at,
@@ -672,7 +692,7 @@ export async function getTopups(customerId) {
     };
   });
 
-  return topupRows.map((t) => ({
+  return (topupRows || []).map((t) => ({
     id: t.id,
     customerId: t.customer_id,
     topupDate: t.topup_date,

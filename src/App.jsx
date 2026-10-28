@@ -13,6 +13,7 @@ import {
   postponePayment as apiPostponePayment,
   voidContract as apiVoidContract,
   getTopups as apiGetTopups,
+  getAllTopups as apiGetAllTopups,
   createTopup as apiCreateTopup,
   deleteTopup as apiDeleteTopup,
   saveTopupPaymentRecord as apiSaveTopupPaymentRecord,
@@ -31,6 +32,7 @@ import {
 import { printNotice } from "./lib/notice.js";
 import { getUpfrontDeductionEntries } from "./lib/advanceDeduction.js";
 import { unpaidTopupsOnDate } from "./lib/combinedPayment.js";
+import { sumTopupPrincipal, sumTopupMonthlyInterest, groupTopupsByCustomer } from "./lib/topupTotals.js";
 import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
 import { MOCK_DATA } from "./lib/mockData.js";
 import { useLineNotification } from "./hooks/useLineNotification.js";
@@ -416,6 +418,10 @@ export default function App({ initialView = "main", onLogout }) {
         lineHook.addLog("info", "ℹ️ ยังไม่มีข้อมูลใน Supabase — ใช้ข้อมูล fallback");
       }
       setLastFetch(new Date().toLocaleTimeString("th-TH"));
+      // โหลดวงเงินเพิ่มทุกรายการตั้งแต่แรก เพื่อให้ยอดรวมนับวงเงินเพิ่มได้ทันที (ไม่ต้องรอกดขยายการ์ด)
+      apiGetAllTopups()
+        .then(all => setCustomerTopups(groupTopupsByCustomer(all)))
+        .catch(e => lineHook.addLog("error", "❌ โหลดวงเงินเพิ่มไม่สำเร็จ: " + e.message));
       setApiConnected(true);
     } catch (e) {
       setCustomers(MOCK_DATA);
@@ -439,6 +445,8 @@ export default function App({ initialView = "main", onLogout }) {
         isClosed: contractStatuses[c.id]?.status === 'ปิดแล้ว',
         isVoided: contractStatuses[c.id]?.status === 'ยกเลิก',
         isHiddenDraft: c.isCancelled && !contractStatuses[c.id]?.status,
+        topupPrincipal: sumTopupPrincipal(customerTopups[c.id]),
+        topupMonthlyInterest: sumTopupMonthlyInterest(customerTopups[c.id]),
         payments: (c.payments || []).map((p) => {
           const diff = getDiff(p.dateStr, today);
           const record = paymentRecords[c.id]?.[p.installment];
@@ -449,7 +457,7 @@ export default function App({ initialView = "main", onLogout }) {
           ? getDiff(c.contractEndDate, today)
           : null,
       })),
-    [customers, today, paymentRecords, contractStatuses]
+    [customers, today, paymentRecords, contractStatuses, customerTopups]
   );
   const activeCustomers = useMemo(
     () => enriched.filter((c) => !c.isClosed && !c.isVoided && !c.isHiddenDraft),
@@ -515,7 +523,9 @@ export default function App({ initialView = "main", onLogout }) {
     [enriched, filter]
   );
 
-  const totalPrincipal = activeCustomers.reduce((s, c) => s + (c.principal || 0), 0);
+  const totalTopup = activeCustomers.reduce((s, c) => s + (c.topupPrincipal || 0), 0);
+  // เงินต้นรวมนับรวมวงเงินเพิ่ม เพื่อให้ตรงกับยอดที่ปล่อยจริง
+  const totalPrincipal = activeCustomers.reduce((s, c) => s + (c.principal || 0) + (c.topupPrincipal || 0), 0);
 
   const copy = (text) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -874,7 +884,7 @@ export default function App({ initialView = "main", onLogout }) {
                       marginBottom: 4,
                     }}
                   >
-                    💰 เงินต้นรวม
+                    💰 เงินต้นรวม{totalTopup > 0 ? " (รวมวงเงินเพิ่ม)" : ""}
                   </div>
                   <div
                     style={{ fontSize: 16, fontWeight: 700, color: BRAND.gold }}
@@ -1231,7 +1241,12 @@ export default function App({ initialView = "main", onLogout }) {
                               marginTop: 2,
                             }}
                           >
-                            {formatMoney(c.principal)} ฿
+                            {formatMoney((c.principal || 0) + (c.topupPrincipal || 0))} ฿
+                            {c.topupPrincipal > 0 && (
+                              <div style={{ fontSize: 10, fontWeight: 600, color: BRAND.gold, marginTop: 1 }}>
+                                รวมวงเงินเพิ่ม +{formatMoney(c.topupPrincipal)} ฿
+                              </div>
+                            )}
                           </div>
                           <div style={{ marginTop: 8 }}>
                             <LineButton
