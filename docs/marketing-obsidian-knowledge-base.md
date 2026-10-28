@@ -35,6 +35,8 @@ npm run dev:full
 
 ถ้ารันเฉพาะ `npm run dev` จะได้ Vite frontend อย่างเดียว และปุ่มที่ต้องใช้ Vercel API routes อาจตอบ 404 ได้
 
+ถ้าเครื่องนั้นไม่ได้ติดตั้ง Vercel CLI ให้รัน `npm run dev` ในหน้าต่างหนึ่ง และ `npm run dev:local` ในอีกหน้าต่าง แล้วเปิด `http://127.0.0.1:5175` แทน (สคริปต์นี้ใช้กฎ rewrite จาก `vercel.json` เหมือน production)
+
 ## Note Structure
 
 ไฟล์ที่ส่งออกมี:

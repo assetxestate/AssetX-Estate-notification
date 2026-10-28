@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:full": "vercel dev --listen 127.0.0.1:5173",
+    "dev:local": "node scripts/local-api-dev.mjs",
     "build": "vite build",
     "test:parcel": "node src/lib/parcelBoundary.test.mjs",
     "test:tax": "node src/lib/transactionCostEngine.test.mjs",
