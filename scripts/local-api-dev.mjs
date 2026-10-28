@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -47,8 +48,23 @@ function createResponseAdapter(nativeRes) {
   }
 }
 
+// ใช้กฎ rewrite ของ vercel.json กับเส้นทาง /api/* ให้เหมือนบน Vercel
+// เช่น /api/marketing-knowledge-save -> /api/marketing?feature=knowledge-save
+const vercelRewrites = JSON.parse(readFileSync(path.join(rootDir, 'vercel.json'), 'utf8')).rewrites || []
+
+function applyVercelRewrite(requestUrl) {
+  const rule = vercelRewrites.find(item => item.source === requestUrl.pathname && item.destination.startsWith('/api/'))
+  if (!rule) return requestUrl
+  const target = new URL(rule.destination, requestUrl.origin)
+  requestUrl.searchParams.forEach((value, key) => {
+    if (!target.searchParams.has(key)) target.searchParams.set(key, value)
+  })
+  return target
+}
+
 async function handleApi(req, res, requestUrl) {
-  const { pathname, searchParams } = requestUrl
+  const resolvedUrl = applyVercelRewrite(requestUrl)
+  const { pathname, searchParams } = resolvedUrl
   const route = pathname.replace(/^\/api\//, '').replace(/[^a-z0-9_-]/gi, '')
   const apiPath = path.join(rootDir, 'api', `${route}.js`)
   const mod = await import(`${pathToFileURL(apiPath).href}?t=${Date.now()}`)
@@ -56,7 +72,8 @@ async function handleApi(req, res, requestUrl) {
   const contentType = req.headers['content-type'] || ''
   const body = rawBody && contentType.includes('application/json') ? JSON.parse(rawBody) : rawBody
   const query = Object.fromEntries(searchParams.entries())
-  await mod.default({ method: req.method, headers: req.headers, body, query }, createResponseAdapter(res))
+  const url = `${pathname}${resolvedUrl.search}`
+  await mod.default({ method: req.method, headers: req.headers, url, body, query }, createResponseAdapter(res))
 }
 
 async function proxyToVite(req, res) {
