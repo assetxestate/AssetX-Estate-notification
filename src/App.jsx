@@ -1864,6 +1864,10 @@ export default function App({ initialView = "main", onLogout }) {
                                   const isLastPayment = pIdx === c.payments.length - 1;
                                   const pSt = P_STATUS[p.status];
                                   const sameDayTopups = p.status === "paid" ? [] : unpaidTopupsOnDate(customerTopups[c.id], p.dateStr);
+                                  // บรรทัดนับถอยหลัง/วันที่ชำระ แบบเดียวกับตารางวงเงินเพิ่ม (ป้ายสถานะบอกแค่ "รอชำระ" ไม่บอกว่าอีกกี่วัน)
+                                  const countdown = p.status === "paid"
+                                    ? (p.record?.paidDate ? `ชำระเมื่อ ${formatThai(p.record.paidDate)}` : "")
+                                    : p.diff === 0 ? "วันนี้!" : p.diff > 0 ? `อีก ${p.diff} วัน` : `เกิน ${Math.abs(p.diff)} วัน`;
                                   const msg = sameDayTopups.length
                                     ? msgCombinedPayment(c, p, sameDayTopups, p.status === "today" ? "due" : "early")
                                     : msgPayment(c, p, p.status === "today" ? "due" : "early");
@@ -1922,6 +1926,9 @@ export default function App({ initialView = "main", onLogout }) {
                                             <div style={{ fontSize: 10, color: "#FB923C", marginTop: 1 }}>
                                               เลื่อนจาก {formatThai(p.postponedFrom)}
                                             </div>
+                                          )}
+                                          {countdown && (
+                                            <div style={{ fontSize: 10, color: pSt.text, marginTop: 1 }}>{countdown}</div>
                                           )}
                                         </div>
                                       </div>
