@@ -6,7 +6,7 @@ import { STANDARD_EXPENSE_RATES, calendarOwnershipYears, calculateGiftInheritanc
 
 const B = { ...BASE, card: '#0B1424', muted: '#64748B', success: '#10B981', danger: '#EF4444' }
 const fmt = value => Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const modes = [['transfer', 'โอนกรรมสิทธิ์'], ['refinance', 'รีไฟแนนซ์'], ['land-tax', 'ภาษีที่ดินรายปี'], ['rental-tax', 'ภาษีรายได้ค่าเช่า'], ['mortgage', 'จำนอง'], ['lease', 'จดทะเบียนเช่า'], ['gift', 'มรดก / ให้'], ['rights', 'ทรัพยสิทธิ']]
+const modes = [['transfer', 'โอนกรรมสิทธิ์'], ['refinance', 'รีไฟแนนซ์ย้ายทุน'], ['land-tax', 'ภาษีที่ดินรายปี'], ['rental-tax', 'ภาษีรายได้ค่าเช่า'], ['mortgage', 'จำนอง'], ['lease', 'จดทะเบียนเช่า'], ['gift', 'มรดก / ให้'], ['rights', 'ทรัพยสิทธิ']]
 
 function Field({ label, value, onChange, type = 'number', suffix, hint }) {
   return <label className="tx-field"><span>{label}</span><div><input type={type} value={value} min={type === 'number' ? 0 : undefined} onChange={e => onChange(e.target.value)} />{suffix && <em>{suffix}</em>}</div>{hint && <small>{hint}</small>}</label>
