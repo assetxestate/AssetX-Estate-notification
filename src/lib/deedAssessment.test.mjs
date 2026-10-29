@@ -10,6 +10,19 @@ test('แปลงเนื้อที่ ไร่-งาน-วา เป็�
   assert.equal(deedAreaWa({ areaRai: 0, areaNgan: 3, areaSqw: 37 }), 337)
   assert.equal(deedAreaWa({ area: '' }), 0)
   assert.equal(deedAreaWa(null), 0)
+  // รูปแบบมีหน่วย / ตัวเลขล้วน / อ่านไม่ได้
+  assert.equal(deedAreaWa({ area: '1 ไร่' }), 400)
+  assert.equal(deedAreaWa({ area: '2 งาน 50 ตร.ว.' }), 250)
+  assert.equal(deedAreaWa({ area: '12345' }), 12345)
+  assert.equal(deedAreaWa({ area: 'ไม่ระบุ' }), 0)
+  assert.equal(deedAreaWa({ no: '96753' }), 0)
+})
+
+test('ค่าติดลบของสิ่งปลูกสร้าง/ราคาถือเป็น 0', () => {
+  const d = deedAssessment({ area: '0-0-100 ไร่', govPrice: 1000, buildingValue: -50000 })
+  assert.equal(d.buildingValue, 0)
+  assert.equal(d.total, 100000)
+  assert.equal(deedAssessment({ area: '0-0-100 ไร่', govPrice: -5 }).priced, false)
 })
 
 test('ราคาประเมินต่อแปลงและรวมทั้งลูกค้า', () => {
@@ -39,4 +52,9 @@ test('ค้นราคาจากผลประเมินในระบ�
   assert.equal(findValuationPriceForDeed({ no: '133153' }, rows), null) // ราคา 0 ไม่ถือว่ามี
   assert.equal(findValuationPriceForDeed({ no: '' }, rows), null)
   assert.equal(findValuationPriceForDeed({ no: '1' }, null), null)
+  // เลขโฉนดซ้ำคนละจังหวัดต้องไม่จับคู่กัน; ไม่ระบุจังหวัดฝั่งใดฝั่งหนึ่งยังจับคู่ได้
+  const withProvince = [{ 'เลขโฉนด': '96753', 'ราคาประเมินรัฐ (บ./ตร.ว.)': 2200, 'จังหวัด': 'เพชรบุรี', deeds: [] }]
+  assert.equal(findValuationPriceForDeed({ no: '96753', province: 'นนทบุรี' }, withProvince), null)
+  assert.equal(findValuationPriceForDeed({ no: '96753', province: 'เพชรบุรี' }, withProvince).govPrice, 2200)
+  assert.equal(findValuationPriceForDeed({ no: '96753' }, withProvince).govPrice, 2200)
 })

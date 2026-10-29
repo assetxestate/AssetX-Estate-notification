@@ -15,14 +15,21 @@ export function deedAreaWa(deed) {
   if (deed.areaRai !== undefined || deed.areaNgan !== undefined || deed.areaSqw !== undefined) {
     return round2(num(deed.areaRai) * 400 + num(deed.areaNgan) * 100 + num(deed.areaSqw))
   }
-  const plain = Number(String(deed.area || '').replace(/[^\d.]/g, ''))
-  return Number.isFinite(plain) ? round2(plain) : 0
+  // รูปแบบมีหน่วย เช่น "1 ไร่", "2 งาน 50 ตร.ว." — ห้ามตีความ "1 ไร่" เป็น 1 ตร.ว.
+  const text = String(deed.area || '')
+  const unit = (re) => { const u = text.match(re); return u ? Number(u[1]) : 0 }
+  const rai = unit(/(\d+(?:\.\d+)?)\s*ไร่/)
+  const ngan = unit(/(\d+(?:\.\d+)?)\s*งาน/)
+  const wa = unit(/(\d+(?:\.\d+)?)\s*(?:ตร\.?\s*ว\.?|ตารางวา|วา)/)
+  if (rai || ngan || wa) return round2(rai * 400 + ngan * 100 + wa)
+  // ตัวเลขล้วน = ตารางวา
+  return /^\s*\d+(?:\.\d+)?\s*$/.test(text) ? round2(Number(text)) : 0
 }
 
 export function deedAssessment(deed) {
   const wa = deedAreaWa(deed)
-  const govPrice = num(deed?.govPrice)
-  const buildingValue = num(deed?.buildingValue)
+  const govPrice = Math.max(0, num(deed?.govPrice))
+  const buildingValue = Math.max(0, num(deed?.buildingValue)) // ค่าติดลบไม่มีความหมาย ถือเป็น 0
   const landValue = round2(wa * govPrice)
   return { wa, govPrice, landValue, buildingValue, total: round2(landValue + buildingValue), priced: govPrice > 0 && wa > 0 }
 }
@@ -45,10 +52,14 @@ export function customerAssessment(deeds) {
 }
 
 // หาราคาประเมินราชการของโฉนดเลขนี้จากผลประเมินในระบบ (ValuationPage) → { govPrice, date, source } หรือ null
+// เลขโฉนดซ้ำกันข้ามจังหวัดได้ จึงต้องให้จังหวัดตรงกันด้วยเมื่อทั้งสองฝั่งระบุไว้
 export function findValuationPriceForDeed(deed, valuationRows) {
   const no = String(deed?.no || '').trim()
   if (!no) return null
+  const province = String(deed?.province || '').trim()
   for (const row of Array.isArray(valuationRows) ? valuationRows : []) {
+    const rowProvince = String(row?.['จังหวัด'] || '').trim()
+    if (province && rowProvince && province !== rowProvince) continue
     const inDeeds = (Array.isArray(row?.deeds) ? row.deeds : []).find((d) => String(d?.titleDeedNo || '').trim() === no && num(d?.govPrice) > 0)
     if (inDeeds) return { govPrice: num(inDeeds.govPrice), date: row['วันที่ประเมิน'] || '', source: row['รหัส/ชื่อทรัพย์'] || '' }
     if (String(row?.['เลขโฉนด'] || '').trim() === no && num(row?.['ราคาประเมินรัฐ (บ./ตร.ว.)']) > 0) {

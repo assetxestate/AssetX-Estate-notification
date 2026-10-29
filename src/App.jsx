@@ -10,6 +10,7 @@ import {
   deletePaymentRecord as apiDeletePaymentRecord,
   getDestinations as apiGetDestinations,
   updateCustomer as apiUpdateCustomer,
+  updateCustomerDeed as apiUpdateCustomerDeed,
   postponePayment as apiPostponePayment,
   voidContract as apiVoidContract,
   getTopups as apiGetTopups,
@@ -265,9 +266,10 @@ export default function App({ initialView = "main", onLogout }) {
   }, []);
 
   // ── ราคาประเมินราชการรายโฉนด (เก็บใน customers.deeds[]) ─────────
-  const updateCustomerDeeds = useCallback(async (customerId, deeds) => {
+  // บันทึกทีละแปลง: API อ่าน deeds ล่าสุดก่อนเขียน แล้วคืนชุดใหม่มาแทนใน state (ไม่ทับแปลงที่เครื่องอื่นเพิ่งบันทึก)
+  const updateCustomerDeed = useCallback(async (customerId, index, patch, deedNo) => {
     try {
-      await apiUpdateCustomer(customerId, { deeds });
+      const deeds = await apiUpdateCustomerDeed(customerId, index, patch, deedNo);
       setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, deeds } : c));
       showToast("บันทึกราคาประเมินราชการแล้ว");
       return true;
@@ -1637,7 +1639,7 @@ export default function App({ initialView = "main", onLogout }) {
                                         if (!a.pricedCount) return null;
                                         return (
                                           <span style={{ background: a.complete ? "rgba(45,212,191,.12)" : "rgba(245,158,11,.15)", color: a.complete ? BRAND.teal : "#FCD34D", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
-                                            {a.complete ? `ประเมินราชการ ฿${formatMoney(a.total)}` : `ประเมินราชการ ${a.pricedCount}/${a.count} แปลง`}
+                                            {a.complete ? `ประเมินราชการ ${formatMoney(a.total)} ฿` : `ประเมินราชการ ${a.pricedCount}/${a.count} แปลง`}
                                           </span>
                                         );
                                       })()}
@@ -1712,7 +1714,7 @@ export default function App({ initialView = "main", onLogout }) {
                                               {d.mapRef || "-"}
                                             </div>
                                           </div>
-                                          <DeedAssessmentEditor customer={c} deed={d} index={idx} onSave={updateCustomerDeeds} />
+                                          <DeedAssessmentEditor customer={c} deed={d} index={idx} onSave={updateCustomerDeed} />
                                         </div>
                                       ))}
                                     </div>

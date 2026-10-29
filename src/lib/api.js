@@ -108,6 +108,32 @@ export async function updateCustomer(customerId, data) {
   return { success: true };
 }
 
+// แก้ข้อมูลโฉนด 1 แปลง (เช่น ราคาประเมินราชการ) — อ่าน deeds ล่าสุดจากฐานข้อมูลก่อนแล้วเขียนทั้งชุด (JSONB)
+// กันกรณีอีกเครื่องเพิ่งบันทึกแปลงอื่นไปแล้วแต่หน้านี้ยังถือข้อมูลเก่า; จับคู่แปลงด้วยเลขโฉนดก่อน ลำดับเป็นตัวสำรอง
+export async function updateCustomerDeed(customerId, index, patch, deedNo = "") {
+  const { data: current, error: fetchErr } = await supabase
+    .from("customers")
+    .select("deeds")
+    .eq("id", customerId)
+    .single();
+  if (fetchErr) throw fetchErr;
+  const deeds = (typeof current.deeds === "string" ? JSON.parse(current.deeds || "[]") : current.deeds) || [];
+  const no = String(deedNo || "").trim();
+  let at = no && String(deeds[index]?.no || "").trim() === no ? index : -1;
+  if (at < 0 && no) at = deeds.findIndex((d) => String(d?.no || "").trim() === no);
+  if (at < 0) at = index;
+  if (!deeds[at]) throw new Error("ไม่พบโฉนดแปลงนี้ในฐานข้อมูล (อาจถูกแก้จากเครื่องอื่น กรุณารีเฟรชหน้า)");
+  const next = deeds.map((d, i) => (i === at ? { ...d, ...patch } : d));
+  const { data: updated, error } = await supabase
+    .from("customers")
+    .update({ deeds: next, updated_at: new Date().toISOString() })
+    .eq("id", customerId)
+    .select("id");
+  if (error) throw error;
+  if (!updated?.length) throw new Error("บันทึกไม่สำเร็จ: ไม่พบลูกค้าหรือไม่มีสิทธิ์แก้ไข");
+  return next;
+}
+
 export async function cancelCustomer(customerId) {
   const { error } = await supabase
     .from("customers")
