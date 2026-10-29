@@ -3,6 +3,8 @@ import { BRAND as BASE_BRAND } from './lib/config.js'
 import { getDiff, formatThai } from './lib/utils.js'
 import { getRecordedUpfrontDeductions } from './lib/advanceDeduction.js'
 import { principalWithTopups } from './lib/topupTotals.js'
+import { openContractSummaryForPrint } from './lib/contractSummaryReport.js'
+import { showToast } from './lib/toast.js'
 import NoticeTracking from './components/NoticeTracking.jsx'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
@@ -144,6 +146,16 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   })
   const toggleSection = (key) => {
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  // ส่งออกรายงาน "สรุปสัญญา" รูปแบบเดียวกับ npm run report:contracts — เปิดแท็บใหม่แล้วให้บันทึกเป็น PDF จากหน้าต่างพิมพ์
+  const exportContractSummary = () => {
+    try {
+      const s = openContractSummaryForPrint(customers, { today })
+      showToast(`เปิดรายงานสรุปสัญญา ${s.count} ฉบับ · วงเงินรวม ฿${fmtFull(s.total)}\nในหน้าต่างพิมพ์เลือกปลายทาง "บันทึกเป็น PDF" แล้วกดบันทึก`, 'success')
+    } catch (e) {
+      showToast(e.message, 'error')
+    }
   }
 
   // ── KPIs ────────────────────────────────────────────────
@@ -327,11 +339,21 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '4px 0 32px' }}>
 
       {/* Header */}
-      <div>
-        <div style={{ fontSize: 20, fontWeight: 800, color: BRAND.textPri }}>📊 Dashboard ภาพรวมธุรกิจ</div>
-        <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
-          ข้อมูล ณ {today.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: BRAND.textPri }}>📊 Dashboard ภาพรวมธุรกิจ</div>
+          <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
+            ข้อมูล ณ {today.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={exportContractSummary}
+          title="เปิดรายงานสรุปสัญญาที่มีผล (A4 แนวนอน) ในแท็บใหม่ แล้วบันทึกเป็น PDF จากหน้าต่างพิมพ์"
+          style={{ border: `1px solid ${BRAND.teal}`, background: 'rgba(45,212,191,.12)', color: BRAND.teal, borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+        >
+          📄 ส่งออก PDF สรุปสัญญา
+        </button>
       </div>
 
       {/* KPI Row */}

@@ -17,6 +17,7 @@
     "test:marketing-facebook": "node server/marketing-facebook.test.mjs",
     "test:marketing-image": "node server/marketing-image.test.mjs",
     "test:marketing-content": "node --test src/lib/marketingContent.test.mjs",
+    "test:contract-summary": "node --test src/lib/contractSummaryReport.test.mjs",
     "preview": "vite preview",
     "migrate": "node migrate.js"
   },

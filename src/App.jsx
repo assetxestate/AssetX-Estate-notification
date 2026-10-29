@@ -447,6 +447,7 @@ export default function App({ initialView = "main", onLogout }) {
         isHiddenDraft: c.isCancelled && !contractStatuses[c.id]?.status,
         topupPrincipal: sumTopupPrincipal(customerTopups[c.id]),
         topupMonthlyInterest: sumTopupMonthlyInterest(customerTopups[c.id]),
+        topups: customerTopups[c.id] || [], // รายการวงเงินเพิ่ม ใช้ในรายงานสรุปสัญญา
         payments: (c.payments || []).map((p) => {
           const diff = getDiff(p.dateStr, today);
           const record = paymentRecords[c.id]?.[p.installment];
