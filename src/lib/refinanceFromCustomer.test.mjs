@@ -13,7 +13,7 @@ const paid = (paidDate, amountPaid) => ({ paidDate, amountPaid, slipId: 'abc', n
 const sitthichai = () => ({
   id: 'CID1', name: 'สิทธิชัย', fullLabel: 'ที่ดินเปล่าติดถนนเลี่ยงเมืองชะอำ', type: 'จำนอง',
   principal: 2_000_000, amount: 24_000, freq: 'รายเดือน', contractEndDate: '2027-03-30',
-  deeds: [{ no: '96753' }],
+  deeds: [{ no: '96753', area: '5-2-0 ไร่', govPrice: 2200, buildingValue: 0, govPriceDate: '2026-03-30' }],
   topupPrincipal: 700_000, topupMonthlyInterest: 8_400,
   topups: [{ topupAmount: 700_000, interestAmount: 8_400, freq: 'รายเดือน', topupDate: '2026-05-29', topupStartDate: '2026-09-30', topupEndDate: '2027-03-30', note: 'หักล่วงหน้า 3 เดือน 25,200 บาท (3 × 8,400) ยืนยัน 28 ต.ค. 69', records: { 1: paid('2026-10-09', 8_400) } }],
   payments: [
@@ -49,6 +49,10 @@ test('สัญญาหลักเติมเฉพาะทุนเดิ�
   assert.equal(topupPayoffs[0].estimate.accrued, 42000)
   assert.equal(topupPayoffs[0].payoff, 708400)
   assert.equal(form.otherCosts, '708400')
+  // ราคาประเมินราชการจากโฉนด: 2,200 ตร.ว. × 2,200 = 4,840,000
+  assert.equal(form.assessmentMode, 'manual')
+  assert.equal(form.assessedValue, '4840000')
+  assert.ok(notes.some((n) => n.includes('4,840,000')))
   assert.ok(notes.some((n) => n.includes('จำนอง')), 'ต้องเตือนว่าสูตรคิดแบบขายฝาก')
   assert.ok(notes.some((n) => n.includes('708,400')))
 })
@@ -66,6 +70,8 @@ test('สัญญารายปีใช้หักล่วงหน้า�
   assert.equal(form.otherPaid, '0')
   assert.equal(form.deedCount, '2')
   assert.equal(form.otherCosts, undefined) // ไม่มีวงเงินเพิ่ม → ไม่แตะช่องค่าใช้จ่ายอื่น
+  assert.equal(form.assessedValue, undefined) // โฉนดไม่มีราคาประเมิน → ไม่แตะฐานราคาประเมิน
+  assert.ok(notes.some((n) => n.includes('0/2 แปลง')))
   assert.ok(notes.some((n) => n.includes('ข้อมูลเบิกจ่าย')))
 })
 

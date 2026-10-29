@@ -20,6 +20,7 @@
     "test:contract-summary": "node --test src/lib/contractSummaryReport.test.mjs",
     "test:topup-schedule": "node --test src/lib/topupSchedule.test.mjs",
     "test:refinance-prefill": "node --test src/lib/refinanceFromCustomer.test.mjs",
+    "test:deed-assessment": "node --test src/lib/deedAssessment.test.mjs",
     "preview": "vite preview",
     "migrate": "node migrate.js"
   },

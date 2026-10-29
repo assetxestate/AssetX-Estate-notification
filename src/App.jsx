@@ -33,6 +33,7 @@ import { printNotice } from "./lib/notice.js";
 import { getUpfrontDeductionEntries } from "./lib/advanceDeduction.js";
 import { unpaidTopupsOnDate } from "./lib/combinedPayment.js";
 import { postponeTopupInstallment, nearestDue } from "./lib/topupSchedule.js";
+import { customerAssessment } from "./lib/deedAssessment.js";
 import { sumTopupPrincipal, sumTopupMonthlyInterest, groupTopupsByCustomer } from "./lib/topupTotals.js";
 import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
 import { MOCK_DATA } from "./lib/mockData.js";
@@ -42,6 +43,7 @@ import { SlipModal } from "./components/SlipModal.jsx";
 import { CustomerExtraInfoSection } from "./components/CustomerExtraInfoSection.jsx";
 import { CustomerSheetEditModal } from "./components/CustomerSheetEditModal.jsx";
 import { CustomerLineIdSection } from "./components/CustomerLineIdSection.jsx";
+import { DeedAssessmentEditor } from "./components/DeedAssessmentEditor.jsx";
 import { PostponeModal } from "./components/PostponeModal.jsx";
 import { DisbursementModal } from "./components/DisbursementModal.jsx";
 import { TopupModal } from "./components/TopupModal.jsx";
@@ -260,6 +262,19 @@ export default function App({ initialView = "main", onLogout }) {
       ...prev,
       [customerId]: (prev[customerId] || []).filter(t => t.id !== topupId),
     }));
+  }, []);
+
+  // ── ราคาประเมินราชการรายโฉนด (เก็บใน customers.deeds[]) ─────────
+  const updateCustomerDeeds = useCallback(async (customerId, deeds) => {
+    try {
+      await apiUpdateCustomer(customerId, { deeds });
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, deeds } : c));
+      showToast("บันทึกราคาประเมินราชการแล้ว");
+      return true;
+    } catch (error) {
+      showToast(`บันทึกราคาประเมินไม่สำเร็จ: ${error.message}`);
+      return false;
+    }
   }, []);
 
   // ── LINE User ID รายลูกค้า ──────────────────────────────────
@@ -1617,6 +1632,15 @@ export default function App({ initialView = "main", onLogout }) {
                                       }}>
                                         {c.deeds.length} แปลง
                                       </span>
+                                      {(() => {
+                                        const a = customerAssessment(c.deeds);
+                                        if (!a.pricedCount) return null;
+                                        return (
+                                          <span style={{ background: a.complete ? "rgba(45,212,191,.12)" : "rgba(245,158,11,.15)", color: a.complete ? BRAND.teal : "#FCD34D", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
+                                            {a.complete ? `ประเมินราชการ ฿${formatMoney(a.total)}` : `ประเมินราชการ ${a.pricedCount}/${a.count} แปลง`}
+                                          </span>
+                                        );
+                                      })()}
                                       {/* Preview โฉนดแปลงแรก เมื่อยังไม่ขยาย */}
                                       {!expandedDeeds[c.id] && (
                                         <span style={{ fontSize: 11, color: BRAND.textSec }}>
@@ -1688,6 +1712,7 @@ export default function App({ initialView = "main", onLogout }) {
                                               {d.mapRef || "-"}
                                             </div>
                                           </div>
+                                          <DeedAssessmentEditor customer={c} deed={d} index={idx} onSave={updateCustomerDeeds} />
                                         </div>
                                       ))}
                                     </div>

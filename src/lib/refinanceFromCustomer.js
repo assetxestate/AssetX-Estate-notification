@@ -3,6 +3,7 @@
 import { toMonthlyAmount } from './topupTotals.js'
 import { isAdvanceDeductionRecord } from './advanceDeduction.js'
 import { calculateOldPayoffEstimate } from './refinanceCalculator.js'
+import { customerAssessment } from './deedAssessment.js'
 import { formatThai } from './utils.js'
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100
@@ -123,6 +124,18 @@ export function buildRefinanceFormFromCustomer(customer, { today = new Date() } 
     otherPaid: String(otherPaid),
     deedCount: String(Array.isArray(c.deeds) && c.deeds.length ? c.deeds.length : 1),
     oldRegisteredValue: String(principal),
+  }
+
+  // ราคาประเมินราชการจากโฉนดของลูกค้า (กรอกไว้ที่หัวข้อโฉนดที่ดิน) → ฐานราคาประเมินแบบยอดรวม
+  const assessment = customerAssessment(c.deeds)
+  if (assessment.complete) {
+    form.assessmentMode = 'manual'
+    form.assessedValue = String(assessment.total)
+    notes.push(`ราคาประเมินราชการ ${money(assessment.total)} บาท จากโฉนด ${assessment.count} แปลง (${money(assessment.totalWa)} ตร.ว.${assessment.buildingValue > 0 ? ` + สิ่งปลูกสร้าง ${money(assessment.buildingValue)}` : ''}) ที่บันทึกไว้ในหน้าลูกค้า`)
+  } else {
+    notes.push(assessment.count
+      ? `ราคาประเมินราชการยังไม่ครบ (${assessment.pricedCount}/${assessment.count} แปลง) — กรอกที่หัวข้อโฉนดที่ดินของลูกค้า หรือกดใช้ผลประเมินที่เลือก`
+      : 'ลูกค้ารายนี้ไม่มีข้อมูลโฉนดในระบบ — กรอกราคาประเมินราชการเอง')
   }
 
   // วงเงินเพิ่ม: ยอดปิดแต่ละรายการ (เงินต้น + ดอกเบี้ยค้างถึงวันย้ายทุน − หักล่วงหน้า − ที่รับแล้ว) ใส่ไว้ที่ "ค่าใช้จ่ายอื่นที่ต้องใช้ทุนนี้จ่าย"
