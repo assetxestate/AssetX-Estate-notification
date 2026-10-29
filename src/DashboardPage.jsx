@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { BRAND as BASE_BRAND } from './lib/config.js'
 import { getDiff, formatThai } from './lib/utils.js'
 import { getRecordedUpfrontDeductions, getAdvanceDeductionRecordCases, isAdvanceDeductionRecord } from './lib/advanceDeduction.js'
-import { principalWithTopups } from './lib/topupTotals.js'
+import { principalWithTopups, toMonthlyAmount } from './lib/topupTotals.js'
 import { openContractSummaryForPrint } from './lib/contractSummaryReport.js'
 import { showToast } from './lib/toast.js'
 import NoticeTracking from './components/NoticeTracking.jsx'
@@ -163,15 +163,8 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const totalTopup = active.reduce((s, c) => s + (c.topupPrincipal || 0), 0)
   const totalPrincipal = active.reduce((s, c) => s + principalWithTopups(c), 0)
 
-  // แปลง amount ต่องวด → รายได้ต่อเดือน ตาม freq
-  const toMonthly = (c) => {
-    const amt = c.amount || 0
-    const f = c.freq || ''
-    if (f.includes('ปี') || f === 'รายปี') return amt / 12
-    if (f.includes('2 สัปดาห์') || f.includes('สองสัปดาห์')) return amt * 2
-    if (f.includes('วัน')) return amt * 30
-    return amt // รายเดือน (default)
-  }
+  // แปลง amount ต่องวด → รายได้ต่อเดือน ตาม freq (กฎชุดเดียวกับทุกหน้า อยู่ใน topupTotals.js)
+  const toMonthly = (c) => toMonthlyAmount(c.amount, c.freq)
   const monthlyIncome = active.reduce((s, c) => s + toMonthly(c) + (c.topupMonthlyInterest || 0), 0)
 
   // ยอดดอกเบี้ยที่ชำระแล้วทั้งหมด — อ้างอิงจาก amountPaid ของสลิปจริง

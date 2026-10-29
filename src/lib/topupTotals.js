@@ -5,7 +5,8 @@ export function toMonthlyAmount(amount, freq) {
   const amt = Number(amount) || 0
   const f = String(freq || '')
   if (f.includes('ปี') || f === 'รายปี') return amt / 12
-  if (f.includes('2 สัปดาห์') || f.includes('สองสัปดาห์')) return amt * 2
+  if (f.includes('2 สัปดาห์') || f.includes('สองสัปดาห์') || f.includes('2 ครั้ง')) return amt * 2
+  if (f.includes('สัปดาห์')) return amt * 52 / 12 // รายสัปดาห์
   if (f.includes('วัน')) return amt * 30
   return amt // รายเดือน (ค่าเริ่มต้น)
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { readRefinanceDraft, saveRefinanceDraft } from './lib/refinanceDraft.js'
 import { refinanceFieldErrors } from './lib/refinanceFieldErrors.js'
+import { buildRefinanceFormFromCustomer, buildRefinanceFormFromValuation, customerRefinanceLabel } from './lib/refinanceFromCustomer.js'
 import { calculateRefinanceWithholding } from './lib/refinanceWithholding.js'
 import { calculateOldPayoffEstimate, calculateRefinanceFunding, calculateOfficialAssessment } from './lib/refinanceCalculator.js'
 
@@ -14,6 +15,7 @@ const initial = {
   paymentMode: 'installments', paidInstallments: '0', partialPaid: '0',
   assessmentMode: 'area', landPricePerWa: '', areaRai: '0', areaNgan: '0', areaWa: '', buildingAssessedValue: '',
   oldWithholdingMode: 'individual', newWithholdingMode: 'individual_same_day',
+  sourceCustomerId: '', // ลูกค้าในระบบที่ใช้เติมฟอร์ม ('' = กรอกเอง)
 }
 const baht = value => Number(value).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const draftStorage = {
@@ -21,7 +23,8 @@ const draftStorage = {
   setItem: (key, value) => window.localStorage.setItem(key, value),
 }
 
-export default function RefinanceCalculator() {
+// customers: รายการลูกค้าจาก App (ใช้เติมฟอร์มจากสัญญาจริง) · valuation: ผลประเมินที่เลือกบนหน้าภาษี (ใช้เป็นฐานราคาประเมิน)
+export default function RefinanceCalculator({ customers = [], valuation = null }) {
   const [draft] = useState(() => {
     const restored = readRefinanceDraft(draftStorage, { ...initial, oldWithholdingMode: '', newWithholdingMode: '' })
     for (const side of ['old', 'new']) {
@@ -36,6 +39,24 @@ export default function RefinanceCalculator() {
   useEffect(() => {
     setSaved(saveRefinanceDraft(draftStorage, form, payoffMode))
   }, [form, payoffMode])
+  const activeCustomers = customers.filter(c => !c.isClosed && !c.isVoided && !c.isHiddenDraft)
+  // ลูกค้าที่เลือกอยู่ในร่าง (form.sourceCustomerId) → กลับมาแท็บนี้แล้วยังรู้ว่าค่ามาจากสัญญาไหน และยังเห็นหมายเหตุ
+  const sourceCustomer = activeCustomers.find(c => String(c.id) === String(form.sourceCustomerId || '')) || null
+  const prefillNotes = useMemo(() => sourceCustomer ? buildRefinanceFormFromCustomer(sourceCustomer).notes : [], [sourceCustomer])
+  const applyCustomer = (id) => {
+    const customer = activeCustomers.find(c => String(c.id) === String(id))
+    if (!customer) { setForm(previous => ({ ...previous, sourceCustomerId: '' })); return }
+    const prefill = buildRefinanceFormFromCustomer(customer)
+    setForm(previous => ({ ...previous, ...prefill.form, sourceCustomerId: String(customer.id) }))
+    setPayoffMode(prefill.payoffMode)
+  }
+  // ผลประเมินที่เลือกบนหน้าภาษี → ใช้เป็นฐานราคาประเมินเมื่อกดปุ่มเท่านั้น (ไม่ทับร่างเองตอนสลับแท็บ)
+  const valuationPatch = useMemo(() => buildRefinanceFormFromValuation(valuation), [valuation])
+  const applyValuation = () => {
+    if (!valuationPatch) return
+    // ผลประเมินไม่มีราคาสิ่งปลูกสร้าง: คงค่าที่ผู้ใช้กรอกไว้ ถ้าว่างให้เป็น 0 (ที่ดินเปล่า)
+    setForm(previous => ({ ...previous, ...valuationPatch, buildingAssessedValue: valuationPatch.assessmentMode === 'area' ? (previous.buildingAssessedValue || '0') : previous.buildingAssessedValue }))
+  }
   const clearDraft = () => {
     if (!window.confirm('ล้างร่างคำนวณย้ายทุนและเริ่มกรอกใหม่? ข้อมูลลูกค้าจริงไม่เปลี่ยนแปลง')) return
     setSaved(saveRefinanceDraft(draftStorage, initial, 'calculated'))
@@ -102,6 +123,14 @@ export default function RefinanceCalculator() {
     <section className="tx-form">
       <p role="status" className="tx-note">{saved === false ? 'บันทึกร่างไม่สำเร็จ เบราว์เซอร์ไม่อนุญาตหรือพื้นที่เต็ม' : saved ? 'บันทึกร่างในเบราว์เซอร์นี้แล้ว' : 'กำลังกู้คืนร่าง'}</p>
       <button type="button" onClick={clearDraft}>ล้างร่างคำนวณ</button>
+      <label className="tx-field"><span>ดึงจากสัญญาลูกค้าในระบบ</span>
+        <select value={form.sourceCustomerId || ''} onChange={event => applyCustomer(event.target.value)}>
+          <option value="">ไม่เชื่อม — กรอกเอง (ลูกค้าใหม่)</option>
+          {activeCustomers.map(c => <option key={c.id} value={c.id}>{customerRefinanceLabel(c)}</option>)}
+        </select>
+        <small>เติมเงินต้น อัตรา วันครบกำหนด หักล่วงหน้า ยอดรับชำระแล้ว จำนวนโฉนด และยอดปิดวงเงินเพิ่ม (ที่ "ค่าใช้จ่ายอื่น") จากข้อมูลจริง — แก้ทับได้ทุกช่อง</small>
+      </label>
+      {prefillNotes.length > 0 && <div className="tx-basis" role="status">{prefillNotes.map((note, index) => <p key={index}>{note}</p>)}</div>}
       <h3>ปิดทุนเดิม</h3>
       <div className="rf-mode" role="group" aria-label="วิธีกำหนดยอดปิดทุน">
         <button type="button" aria-pressed={payoffMode === 'calculated'} className={payoffMode === 'calculated' ? 'active' : ''} onClick={() => setPayoffMode('calculated')}>คำนวณจากเงินต้น</button>
@@ -131,6 +160,7 @@ export default function RefinanceCalculator() {
         {field('oldPayoff', 'ยอดจ่ายให้ทุนเดิม', 'ต้องหักเงินล่วงหน้าและเงินที่รับชำระแล้วจากยอดสินไถ่ก่อนกรอก')}
       </>}
       <h3 style={{ marginTop: 28 }}>ราคาประเมินราชการ</h3>
+      {valuationPatch && <button type="button" onClick={applyValuation}>ใช้ราคาประเมินจากผลประเมินที่เลือก{valuationPatch.assessmentMode === 'area' ? ' (ราคาต่อ ตร.ว. × เนื้อที่)' : ' (ยอดรวม)'}</button>}
       <label className="tx-field"><span>ฐานราคาประเมิน</span><select value={form.assessmentMode} onChange={event => set('assessmentMode', event.target.value)}><option value="area">ราคาต่อตารางวา × เนื้อที่</option><option value="manual">ยอดรวมตามเอกสาร / หลายแปลงต่างราคา</option></select></label>
       {form.assessmentMode === 'area' ? <>
         {field('landPricePerWa', 'ราคาประเมินที่ดินราชการ', 'ราคาของแปลงที่จดทะเบียน ณ วันทำรายการ ไม่ใช่ราคาตลาด', 'บาท/ตร.ว.')}

@@ -836,7 +836,7 @@ export default function App({ initialView = "main", onLogout }) {
           )}
 
           {/* Tax Tab */}
-          {mainTab === "tax" && <TaxPage />}
+          {mainTab === "tax" && <TaxPage customers={enriched} />}
 
           {/* Legal Tab */}
           {mainTab === "legal" && <LegalPage />}

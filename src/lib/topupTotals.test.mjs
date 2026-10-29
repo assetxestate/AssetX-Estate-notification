@@ -42,3 +42,12 @@ test('groupTopupsByCustomer จัดกลุ่มตามรหัสลู�
   assert.equal(grouped.A.length, 2)
   assert.equal(sumTopupPrincipal(grouped.A), 4)
 })
+
+test('toMonthlyAmount รองรับรอบชำระทุกแบบที่หน้าเว็บให้เลือก', () => {
+  assert.equal(toMonthlyAmount(7500, '2 ครั้ง/เดือน'), 15000)
+  assert.equal(toMonthlyAmount(50000, 'ทุก 2 สัปดาห์'), 100000)
+  assert.equal(toMonthlyAmount(1200, 'รายสัปดาห์'), 5200)
+  assert.equal(toMonthlyAmount(120000, 'ปีละครั้ง'), 10000)
+  assert.equal(toMonthlyAmount(100, 'รายวัน'), 3000)
+  assert.equal(toMonthlyAmount(24000, 'รายเดือน'), 24000)
+})
