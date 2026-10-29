@@ -2,10 +2,11 @@ import React from "react";
 import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { formatThai } from "../lib/utils.js";
-import { postponePayment as apiPostponePayment } from "../lib/api.js";
+import { postponePayment as apiPostponePayment, postponeTopupPayment as apiPostponeTopupPayment } from "../lib/api.js";
 
 // ── Modal เลื่อนนัดชำระ ──────────────────────────────────────────
-export function PostponeModal({ customer, payment, onSave, onClose }) {
+// ส่ง topup มาด้วยเมื่อเป็นงวดของวงเงินเพิ่ม (ตารางชำระอยู่ใน contract_topups.payments ไม่ใช่ตาราง payments)
+export function PostponeModal({ customer, payment, topup = null, onSave, onClose }) {
   const [newDate, setNewDate] = React.useState(payment.dateStr || "");
   const [note, setNote] = React.useState("");
   const [saving, setSaving] = React.useState(false);
@@ -17,7 +18,8 @@ export function PostponeModal({ customer, payment, onSave, onClose }) {
     if (!newDate) return;
     setSaving(true);
     try {
-      await apiPostponePayment(customer.id, payment.installment, newDate, note);
+      if (topup) await apiPostponeTopupPayment(topup.id, payment.installment, newDate, note);
+      else await apiPostponePayment(customer.id, payment.installment, newDate, note);
       onSave({ newDate, note });
     } catch (e) {
       showToast("เกิดข้อผิดพลาด: " + e.message);
@@ -30,12 +32,17 @@ export function PostponeModal({ customer, payment, onSave, onClose }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: 24, maxWidth: 380, width: "100%" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, color: BRAND.textPri }}>📅 เลื่อนนัดชำระ</div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: BRAND.textPri }}>{topup ? "📅 เลื่อนนัดชำระวงเงินเพิ่ม" : "📅 เลื่อนนัดชำระ"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: BRAND.textSec, fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
 
         <div style={{ background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.25)", borderRadius: 10, padding: "10px 14px", marginBottom: 16 }}>
           <div style={{ fontSize: 13, color: BRAND.textPri, fontWeight: 600 }}>{customer.name}</div>
+          {topup && (
+            <div style={{ fontSize: 12, color: BRAND.gold, marginTop: 2 }}>
+              💵 วงเงินเพิ่ม +{Number(topup.topupAmount || 0).toLocaleString("th-TH")} ฿ · ดอกเบี้ย {Number(topup.interestAmount || 0).toLocaleString("th-TH")} ฿/{topup.freq || "งวด"}
+            </div>
+          )}
           <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
             งวดที่ {payment.installment} · กำหนดเดิม: <span style={{ color: BRAND.gold }}>{formatThai(payment.dateStr)}</span>
           </div>

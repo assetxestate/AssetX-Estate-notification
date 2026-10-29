@@ -32,6 +32,7 @@ import {
 import { printNotice } from "./lib/notice.js";
 import { getUpfrontDeductionEntries } from "./lib/advanceDeduction.js";
 import { unpaidTopupsOnDate } from "./lib/combinedPayment.js";
+import { postponeTopupInstallment, nearestDue } from "./lib/topupSchedule.js";
 import { sumTopupPrincipal, sumTopupMonthlyInterest, groupTopupsByCustomer } from "./lib/topupTotals.js";
 import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
 import { MOCK_DATA } from "./lib/mockData.js";
@@ -80,7 +81,7 @@ export default function App({ initialView = "main", onLogout }) {
   const [expandedId, setExpandedId] = useState(null);
   const [expandedDeeds, setExpandedDeeds] = useState({});
   const [slipModal, setSlipModal] = React.useState(null); // { customer, payment }
-  const [postponeModal, setPostponeModal] = React.useState(null); // { customer, payment }
+  const [postponeModal, setPostponeModal] = React.useState(null); // { customer, payment, topup? } — มี topup = งวดของวงเงินเพิ่ม
   const [cancelConfirm, setCancelConfirm] = React.useState(null); // customer object
   const [cancelling, setCancelling] = React.useState(false);
   const [detailTabs, setDetailTabs] = React.useState({});
@@ -1479,9 +1480,10 @@ export default function App({ initialView = "main", onLogout }) {
                                         const status = record ? "paid" : payStatus(diff);
                                         return { ...tp, diff, record, status };
                                       });
+                                      // เลือกตามวันที่ใกล้ที่สุด ไม่ใช่ตามลำดับงวด (หลังเลื่อนนัดลำดับวันที่อาจสลับกัน)
                                       const nextTopupPay =
-                                        tPays.find((tp) => tp.diff >= 0 && tp.status !== "paid")
-                                        || tPays.find((tp) => tp.diff >= 0)
+                                        nearestDue(tPays.filter((tp) => tp.diff >= 0 && tp.status !== "paid"))
+                                        || nearestDue(tPays.filter((tp) => tp.diff >= 0))
                                         || tPays[0];
                                       if (!nextTopupPay) return null;
                                       const st = P_STATUS[nextTopupPay.status];
@@ -2115,7 +2117,11 @@ export default function App({ initialView = "main", onLogout }) {
                                       return { ...tp, diff, record, status };
                                     });
                                     const paidCount = tPays.filter(tp => tp.record).length;
-                                    const nextOutstanding = tPays.find(tp => !tp.record) || null;
+                                    // งวดค้างที่ใกล้ถึงกำหนดที่สุด (ไม่ใช่งวดแรกตามลำดับ) เพราะการเลื่อนนัดอาจทำให้วันที่ไม่เรียงตามเลขงวด
+                                    const unpaidTopupPays = tPays.filter(tp => !tp.record);
+                                    const nextOutstanding = nearestDue(unpaidTopupPays);
+                                    // งวดค้างอื่นที่ครบวันเดียวกัน (เช่น เลื่อนงวดก่อนหน้ามาชนงวดถัดไป) → แสดงยอดรวมให้ตรงกับที่ cron LINE ส่ง
+                                    const sameDayUnpaid = nextOutstanding ? unpaidTopupPays.filter(tp => tp.dateStr === nextOutstanding.dateStr) : [];
                                     const alertType = !nextOutstanding || nextOutstanding.diff > 7
                                       ? null
                                       : nextOutstanding.diff < 0
@@ -2174,7 +2180,10 @@ export default function App({ initialView = "main", onLogout }) {
                                                     : `แจ้งเตือนล่วงหน้า: วงเงินเพิ่มงวดที่ ${nextOutstanding.installment} ครบกำหนดในอีก ${nextOutstanding.diff} วัน`}
                                               </div>
                                               <div style={{ color: BRAND.textSec, fontSize: 11, marginTop: 2 }}>
-                                                กำหนด {formatThai(nextOutstanding.dateStr)} · ยอดชำระ {formatMoney(topup.interestAmount)} บาท
+                                                กำหนด {formatThai(nextOutstanding.dateStr)}
+                                                {nextOutstanding.postponedFrom && <span style={{ color: "#FB923C", marginLeft: 6 }}>(เลื่อนจาก {formatThai(nextOutstanding.postponedFrom)})</span>}
+                                                {" · "}ยอดชำระ {formatMoney((Number(topup.interestAmount) || 0) * sameDayUnpaid.length)} บาท
+                                                {sameDayUnpaid.length > 1 && <span style={{ color: BRAND.gold, marginLeft: 6 }}>(งวดที่ {sameDayUnpaid.map(tp => tp.installment).join(", ")} ครบวันเดียวกัน)</span>}
                                               </div>
                                             </div>
                                             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -2219,6 +2228,9 @@ export default function App({ initialView = "main", onLogout }) {
                                                   <div>
                                                     <div style={{ fontSize: 12, fontWeight: 600, color: pSt.text }}>งวดที่ {tp.installment}</div>
                                                     <div style={{ fontSize: 11, color: BRAND.textSec }}>{formatThai(tp.dateStr)}</div>
+                                                    {tp.postponedFrom && (
+                                                      <div style={{ fontSize: 10, color: "#FB923C", marginTop: 1 }}>เลื่อนจาก {formatThai(tp.postponedFrom)}</div>
+                                                    )}
                                                     <div style={{ fontSize: 10, color: pSt.text, marginTop: 1 }}>
                                                       {tp.record
                                                         ? "ชำระแล้ว ✓"
@@ -2233,6 +2245,13 @@ export default function App({ initialView = "main", onLogout }) {
                                                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                                   {tp.record && (
                                                     <span style={{ fontSize: 11, color: "#86EFAC" }}>✓ {(tp.record.amountPaid || topup.interestAmount).toLocaleString("th-TH")} ฿</span>
+                                                  )}
+                                                  {/* ปุ่มเลื่อนนัดชำระ (เฉพาะยังไม่ชำระ) — ทำงานเหมือนตารางชำระหลัก */}
+                                                  {!tp.record && (
+                                                    <button
+                                                      onClick={e => { e.stopPropagation(); setPostponeModal({ customer: c, payment: tp, topup }); }}
+                                                      style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", border: tp.postponedFrom ? "1px solid rgba(251,146,60,.6)" : "1px solid rgba(251,146,60,.3)", background: tp.postponedFrom ? "rgba(251,146,60,.18)" : "rgba(251,146,60,.07)", color: "#FB923C" }}
+                                                    >{tp.postponedFrom ? "🔄 เลื่อนแล้ว" : "📅 เลื่อน"}</button>
                                                   )}
                                                   <button
                                                     onClick={e => { e.stopPropagation(); setTopupSlipModal({ topup, customer: c, payment: tp }); }}
@@ -2418,8 +2437,20 @@ export default function App({ initialView = "main", onLogout }) {
         <PostponeModal
           customer={postponeModal.customer}
           payment={postponeModal.payment}
+          topup={postponeModal.topup || null}
           onSave={({ newDate, note }) => {
-            const { customer: c, payment: p } = postponeModal;
+            const { customer: c, payment: p, topup } = postponeModal;
+            if (topup) {
+              // งวดของวงเงินเพิ่ม: ฐานข้อมูลบันทึกแล้วใน modal — อัปเดตตาราง JSON ของ top-up นั้นใน state ให้ตรงกัน
+              setCustomerTopups(prev => ({
+                ...prev,
+                [c.id]: (prev[c.id] || []).map(t =>
+                  t.id !== topup.id ? t : { ...t, payments: postponeTopupInstallment(t.payments, p.installment, newDate, note) }
+                ),
+              }));
+              setPostponeModal(null);
+              return;
+            }
             setCustomers(prev => prev.map(cust =>
               cust.id !== c.id ? cust : {
                 ...cust,

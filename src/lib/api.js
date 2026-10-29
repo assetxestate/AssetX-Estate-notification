@@ -4,6 +4,7 @@
 // ============================================================
 import { supabase } from "./supabase";
 import { haversineDistanceMeters } from "./pricePoints";
+import { postponeTopupInstallment } from "./topupSchedule.js";
 
 // ── Customers ─────────────────────────────────────────────────
 
@@ -765,6 +766,27 @@ export async function deleteTopupPaymentRecord(topupId, installment) {
     .eq("installment", installment);
   if (error) throw error;
   return { success: true };
+}
+
+// เลื่อนนัดงวดดอกเบี้ยของวงเงินเพิ่ม — ตารางชำระเก็บเป็น JSON ใน contract_topups.payments จึงต้องอ่านทั้งชุดแล้วเขียนกลับ
+export async function postponeTopupPayment(topupId, installment, newDate, note) {
+  const { data: current, error: fetchErr } = await supabase
+    .from("contract_topups")
+    .select("payments")
+    .eq("id", topupId)
+    .single();
+  if (fetchErr) throw fetchErr;
+
+  const payments = postponeTopupInstallment(current.payments, installment, newDate, note);
+  const { data: updated, error } = await supabase
+    .from("contract_topups")
+    .update({ payments, updated_at: new Date().toISOString() })
+    .eq("id", topupId)
+    .select("id");
+  if (error) throw error;
+  // PATCH ที่ไม่ตรงแถวใด (ถูก RLS กัน/แถวถูกลบไปแล้ว) ไม่ถือเป็น error — ต้องเช็กเอง ไม่งั้นหน้าเว็บจะแสดงว่าเลื่อนแล้วทั้งที่ไม่ได้บันทึก
+  if (!updated?.length) throw new Error("บันทึกการเลื่อนไม่สำเร็จ: ไม่พบรายการวงเงินเพิ่ม หรือไม่มีสิทธิ์แก้ไข");
+  return { success: true, payments };
 }
 
 // ── Contract Renewal ─────────────────────────────────────────
