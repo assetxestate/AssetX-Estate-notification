@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { formatMoney, formatThai } from "../lib/utils.js";
+import { ADVANCE_DEDUCTION_SLIP_ID } from "../lib/advanceDeduction.js";
 
 export function AdvancePaymentModal({ customer, onClose, onSaved }) {
   // งวดที่ยังไม่ชำระทั้งหมด (รวม overdue และอนาคต)
@@ -15,6 +16,8 @@ export function AdvancePaymentModal({ customer, onClose, onSaved }) {
   const [selected, setSelected] = useState(new Set());
   const [paidDate, setPaidDate] = useState(new Date().toISOString().split("T")[0]);
   const [note, setNote] = useState("ชำระล่วงหน้า");
+  // หักจากยอดเบิกจ่ายวันทำสัญญา = ไม่มีเงินโอนจริง → Dashboard แยกออกจาก "ดอกเบี้ยที่ชำระแล้ว"
+  const [isDeduction, setIsDeduction] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const toggle = (n) =>
@@ -37,6 +40,7 @@ export function AdvancePaymentModal({ customer, onClose, onSaved }) {
         paidDate,
         amountPaid: customer.amount || 0,
         note: note || "ชำระล่วงหน้า",
+        slipId: isDeduction ? ADVANCE_DEDUCTION_SLIP_ID : "",
       });
     } finally {
       setSaving(false);
@@ -138,6 +142,15 @@ export function AdvancePaymentModal({ customer, onClose, onSaved }) {
             <input type="text" style={inp} value={note} onChange={e => setNote(e.target.value)} placeholder="ชำระล่วงหน้า" />
           </div>
         </div>
+
+        {/* หักจากยอดเบิกจ่าย (ไม่มีเงินโอน) */}
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, padding: "10px 12px", borderRadius: 10, border: `1px solid ${isDeduction ? "rgba(245,158,11,.5)" : BRAND.border}`, background: isDeduction ? "rgba(245,158,11,.08)" : "transparent", cursor: "pointer" }}>
+          <input type="checkbox" checked={isDeduction} onChange={e => setIsDeduction(e.target.checked)} style={{ marginTop: 2 }} />
+          <span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: isDeduction ? BRAND.gold : BRAND.textPri }}>หักจากยอดเบิกจ่ายวันทำสัญญา (ไม่มีเงินโอน)</span>
+            <span style={{ display: "block", fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>งวดจะขึ้นว่าชำระแล้วในตารางชำระ แต่ Dashboard จะนับเป็น "ค่าตอบแทนหักล่วงหน้า" ไม่รวมใน "ดอกเบี้ยที่ชำระแล้ว"</span>
+          </span>
+        </label>
 
         {/* Buttons */}
         <div style={{ display: "flex", gap: 10 }}>

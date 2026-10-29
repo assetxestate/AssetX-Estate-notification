@@ -228,13 +228,13 @@ export default function App({ initialView = "main", onLogout }) {
 
   const saveAdvancePayment = React.useCallback(async (customerId, installments, record) => {
     const newRecs = {};
-    installments.forEach(n => { newRecs[n] = { paidDate: record.paidDate, amountPaid: record.amountPaid, note: record.note }; });
+    installments.forEach(n => { newRecs[n] = { paidDate: record.paidDate, amountPaid: record.amountPaid, note: record.note, slipId: record.slipId || "" }; });
     setPaymentRecords(prev => {
       const updated = { ...prev, [customerId]: { ...(prev[customerId] || {}), ...newRecs } };
       localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
       return updated;
     });
-    await Promise.all(installments.map(n => apiSavePaymentRecord(customerId, n, { paidDate: record.paidDate, amountPaid: record.amountPaid, note: record.note })));
+    await Promise.all(installments.map(n => apiSavePaymentRecord(customerId, n, { paidDate: record.paidDate, amountPaid: record.amountPaid, note: record.note, slipId: record.slipId || "" })));
     setAdvancePaymentModal(null);
   }, []);
 

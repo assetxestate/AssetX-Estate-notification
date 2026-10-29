@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { BRAND as BASE_BRAND } from './lib/config.js'
 import { getDiff, formatThai } from './lib/utils.js'
-import { getRecordedUpfrontDeductions } from './lib/advanceDeduction.js'
+import { getRecordedUpfrontDeductions, getAdvanceDeductionRecordCases, isAdvanceDeductionRecord } from './lib/advanceDeduction.js'
 import { principalWithTopups } from './lib/topupTotals.js'
 import { openContractSummaryForPrint } from './lib/contractSummaryReport.js'
 import { showToast } from './lib/toast.js'
@@ -175,12 +175,13 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const monthlyIncome = active.reduce((s, c) => s + toMonthly(c) + (c.topupMonthlyInterest || 0), 0)
 
   // ยอดดอกเบี้ยที่ชำระแล้วทั้งหมด — อ้างอิงจาก amountPaid ของสลิปจริง
+  // ไม่นับงวดที่เป็น "หักล่วงหน้าวันทำสัญญา" (ติดธง ADVANCE_DEDUCTION) เพราะไม่ใช่เงินโอนเข้ามาจริง — แยกไปที่การ์ดหักล่วงหน้า
   const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
   let collectedThisMonth = 0
   let collectedCount = 0
   Object.entries(paymentRecords).forEach(([cid, records]) => {
     Object.values(records || {}).forEach(rec => {
-      if (rec?.amountPaid > 0) {
+      if (rec?.amountPaid > 0 && !isAdvanceDeductionRecord(rec)) {
         collectedThisMonth += rec.amountPaid
         collectedCount++
       }
@@ -216,8 +217,15 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const closedCommissionCases = customers.filter(c => c.isClosed && !c.isVoided && (c.incomeType || 'commission') === 'commission')
   const closedAdvance = closedCommissionCases.reduce((s, c) => s + (c.principal || 0) * 0.02, 0)
   const stackedAdvance = totalAdvance + closedAdvance
-  const upfrontCases = getRecordedUpfrontDeductions(customers)
-  const upfrontTotal = upfrontCases.reduce((sum, c) => sum + Number(c.disbursement.advanceTotal), 0)
+  // เคสหักล่วงหน้าวันทำสัญญา: จาก disbursement (สัญญารายปี ไม่อยู่ในตารางชำระ) + จากงวดในตารางชำระที่ติดธง ADVANCE_DEDUCTION (รายเดือน/2 สัปดาห์)
+  const upfrontCases = [
+    ...getRecordedUpfrontDeductions(customers).map(c => ({
+      id: c.id, name: c.name, isClosed: Boolean(c.isClosed), source: 'disbursement',
+      periods: Number(c.disbursement.advanceMonths), total: Number(c.disbursement.advanceTotal), deductedAt: c.disbursement.advanceDeductedAt || null,
+    })),
+    ...getAdvanceDeductionRecordCases(customers, paymentRecords),
+  ]
+  const upfrontTotal = upfrontCases.reduce((sum, c) => sum + c.total, 0)
 
   // ── กราฟรายได้ 6 เดือนย้อนหลัง ──────────────────────────
   const monthlyChart = useMemo(() => {
@@ -228,6 +236,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
       let total = 0
       Object.entries(paymentRecords).forEach(([cid, records]) => {
         Object.values(records || {}).forEach(rec => {
+          if (isAdvanceDeductionRecord(rec)) return // หักล่วงหน้าไม่ใช่เงินที่เก็บได้ในเดือนนั้น
           const paidStr = rec?.paidAt || rec?.paidDate || ''
           if (paidStr.startsWith(key)) {
             const cust = customers.find(c => String(c.id) === String(cid))
@@ -360,10 +369,10 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <KpiCard icon="💰" label="วงเงินรวมที่ปล่อย" value={`฿${fmt(totalPrincipal)}`} sub={`${active.length} สัญญา active${totalTopup > 0 ? ` · รวมวงเงินเพิ่ม ฿${fmtFull(totalTopup)}` : ''}`} color={BRAND.teal} />
         <KpiCard icon="📈" label="รายได้ดอกเบี้ย/เดือน" value={`฿${fmtFull(Math.round(monthlyIncome))}`} sub={`Yield ${yieldRate}%/ปี`} color={BRAND.gold} />
-        <KpiCard icon="✅" label="ดอกเบี้ยที่ชำระแล้ว" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · อ้างอิงจากสลิปโอนเงิน`} color={BRAND.success} />
+        <KpiCard icon="✅" label="ดอกเบี้ยที่ชำระแล้ว" value={`฿${fmtFull(collectedThisMonth)}`} sub={`${collectedCount} งวด · เฉพาะเงินโอนตามสลิป ไม่รวมหักล่วงหน้า`} color={BRAND.success} />
         <KpiCard icon="⚠️" label="ค้างชำระ" value={`฿${fmtFull(overdueAmount)}`} sub={overduePayments.length > 0 ? `${overduePayments.length} งวด · ${overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย` : 'ไม่มีค้างชำระ'} color={overduePayments.length > 0 ? BRAND.danger : BRAND.success} />
         <KpiCard icon="🏦" label="Advance 2%" value={`฿${fmtFull(Math.round(stackedAdvance))}`} sub={`${commissionCases.length} active + ${closedCommissionCases.length} ปิดแล้ว · 2% ของวงเงินรวม`} color={BRAND.purple} />
-        <KpiCard icon="💵" label="ค่าตอบแทนหักล่วงหน้าที่บันทึก" value={`฿${fmtFull(upfrontTotal)}`} sub={`${upfrontCases.length} เคส · หักจากยอดเบิกจ่าย`} color={BRAND.teal} />
+        <KpiCard icon="💵" label="ค่าตอบแทนหักล่วงหน้าที่บันทึก" value={`฿${fmtFull(upfrontTotal)}`} sub={`${upfrontCases.length} เคส · หักจากยอดเบิกจ่าย ไม่นับในดอกเบี้ยที่ชำระแล้ว`} color={BRAND.teal} />
       </div>
 
       {upfrontCases.length > 0 && (
@@ -371,7 +380,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri }}>ค่าตอบแทนหักล่วงหน้า</div>
-              <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>บันทึกว่าหักจากยอดเบิกจ่ายวันทำสัญญา · แยกจากค่านายหน้า 2% และงวดที่มีสลิป</div>
+              <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>หักจากยอดเบิกจ่ายวันทำสัญญา ไม่มีเงินโอน · แยกจากค่านายหน้า 2% และงวดที่มีสลิป (รวมงวดล่วงหน้าที่อยู่ในตารางชำระ)</div>
             </div>
             <SectionToggle open={expandedSections.upfront} onClick={() => toggleSection('upfront')} />
           </div>
@@ -382,10 +391,13 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri }}>{c.name}{c.isClosed ? ' · ปิดสัญญาแล้ว' : ''}</div>
                     <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>
-                      หัก {c.disbursement.advanceMonths} เดือน · {c.disbursement.advanceDeductedAt ? formatThai(c.disbursement.advanceDeductedAt) : 'วันที่หักยังไม่ระบุ'} · ไม่รวมในตารางชำระ
+                      {c.source === 'records'
+                        ? `หัก ${c.periods} งวด (งวดที่ ${c.installments[0]}${c.installments.length > 1 ? `–${c.installments[c.installments.length - 1]}` : ''} ในตารางชำระ)`
+                        : `หัก ${c.periods} เดือน · ไม่รวมในตารางชำระ`}
+                      {' · '}{c.deductedAt ? formatThai(c.deductedAt) : 'วันที่หักยังไม่ระบุ'}
                     </div>
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.teal }}>฿{fmtFull(c.disbursement.advanceTotal)}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.teal }}>฿{fmtFull(c.total)}</div>
                 </div>
               ))}
             </div>

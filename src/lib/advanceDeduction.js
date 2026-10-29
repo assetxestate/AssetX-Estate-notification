@@ -40,3 +40,33 @@ export function getUpfrontDeductionEntries(disbursement) {
     deductedAt: disbursement.advanceDeductedAt || null,
   }))
 }
+
+// ── หักล่วงหน้าที่บันทึกเป็นงวดในตารางชำระ ──
+// สัญญารายเดือน/ราย 2 สัปดาห์บันทึกงวดล่วงหน้าเป็น payment_records จริง (งวดที่ 1..k, แบบของสิทธิชัย) แต่ไม่มีเงินโอน
+// จึงติดธงไว้ที่ slip_id — ใช้ note ไม่ได้ เพราะ "ชำระล่วงหน้า" เป็นค่าเริ่มต้นของการชำระงวดล่วงหน้าด้วยเงินจริงด้วย
+export const ADVANCE_DEDUCTION_SLIP_ID = 'ADVANCE_DEDUCTION'
+
+export function isAdvanceDeductionRecord(record) {
+  return record?.slipId === ADVANCE_DEDUCTION_SLIP_ID
+}
+
+// รวมบันทึกที่ติดธงเป็นเคสต่อลูกค้า รูปเดียวกับเคสจาก disbursement เพื่อแสดงรวมกันบน Dashboard
+export function getAdvanceDeductionRecordCases(customers, paymentRecords) {
+  return (customers || []).flatMap((customer) => {
+    if (customer.isVoided || customer.isHiddenDraft) return []
+    const records = paymentRecords?.[customer.id] || paymentRecords?.[String(customer.id)] || {}
+    const entries = Object.entries(records).filter(([, record]) => isAdvanceDeductionRecord(record))
+    if (!entries.length) return []
+    const dates = entries.map(([, record]) => record.paidAt || record.paidDate || '').filter(Boolean).sort()
+    return [{
+      id: customer.id,
+      name: customer.name,
+      isClosed: Boolean(customer.isClosed),
+      source: 'records',
+      periods: entries.length,
+      installments: entries.map(([installment]) => Number(installment)).sort((a, b) => a - b),
+      total: entries.reduce((sum, [, record]) => sum + (Number(record.amountPaid) || 0), 0),
+      deductedAt: dates[0] || null,
+    }]
+  })
+}
