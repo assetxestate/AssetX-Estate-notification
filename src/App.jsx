@@ -2227,7 +2227,8 @@ export default function App({ initialView = "main", onLogout }) {
                                           {tPays.map(tp => {
                                             const pSt = P_STATUS[tp.status];
                                             return (
-                                              <div key={tp.installment} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: pSt.bg, borderRadius: 8, border: `1px solid ${pSt.border}40` }}>
+                                              <div key={tp.installment} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", background: pSt.bg, borderRadius: 8, border: `1px solid ${pSt.border}40` }}>
+                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                                   <span style={{ width: 24, height: 24, borderRadius: "50%", background: pSt.border + "30", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: pSt.text, flexShrink: 0 }}>
                                                     {tp.installment}
@@ -2250,9 +2251,6 @@ export default function App({ initialView = "main", onLogout }) {
                                                   </div>
                                                 </div>
                                                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                                  {tp.record && (
-                                                    <span style={{ fontSize: 11, color: "#86EFAC" }}>✓ {(tp.record.amountPaid || topup.interestAmount).toLocaleString("th-TH")} ฿</span>
-                                                  )}
                                                   {/* ปุ่มเลื่อนนัดชำระ (เฉพาะยังไม่ชำระ) — ทำงานเหมือนตารางชำระหลัก */}
                                                   {!tp.record && (
                                                     <button
@@ -2263,8 +2261,20 @@ export default function App({ initialView = "main", onLogout }) {
                                                   <button
                                                     onClick={e => { e.stopPropagation(); setTopupSlipModal({ topup, customer: c, payment: tp }); }}
                                                     style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", background: tp.record ? "rgba(45,212,191,.08)" : "rgba(45,212,191,.15)", border: "1px solid rgba(45,212,191,.3)", color: BRAND.teal }}
-                                                  >{tp.record ? "✏️ แก้ไข" : "💳 บันทึก"}</button>
+                                                  >{tp.record ? "🧾 ดูสลิป" : "💳 บันทึก"}</button>
                                                 </div>
+                                                </div>
+                                                {/* แสดงข้อมูลสลิปถ้าชำระแล้ว — แบบเดียวกับตารางชำระหลัก */}
+                                                {tp.record && (
+                                                  <div style={{ padding: "6px 10px", background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 7, fontSize: 11, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                                                    <span style={{ color: "#86EFAC" }}>✓ ชำระ {(tp.record.amountPaid || 0).toLocaleString("th-TH")} บาท</span>
+                                                    <span style={{ color: BRAND.textSec }}>วันที่ {formatThai(tp.record.paidDate)}</span>
+                                                    {tp.record.note && <span style={{ color: BRAND.textSec }}>| {tp.record.note}</span>}
+                                                    {tp.record.slipUrl
+                                                      ? <a href={tp.record.slipUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: BRAND.teal, fontSize: 11 }}>🖼️ ดูสลิป</a>
+                                                      : <span style={{ color: BRAND.textMut }}>ยังไม่แนบสลิป — กด 🧾 ดูสลิป เพื่อแนบรูป</span>}
+                                                  </div>
+                                                )}
                                               </div>
                                             );
                                           })}
@@ -2386,6 +2396,8 @@ export default function App({ initialView = "main", onLogout }) {
           customer={topupSlipModal.customer}
           payment={topupSlipModal.payment}
           existing={topupSlipModal.topup.records[topupSlipModal.payment.installment]}
+          expectedAmount={topupSlipModal.topup.interestAmount}
+          subtitle={`วงเงินเพิ่ม +${formatMoney(topupSlipModal.topup.topupAmount)} ฿`}
           onSave={(record) => {
             saveTopupPayment(topupSlipModal.topup.id, topupSlipModal.customer.id, topupSlipModal.payment.installment, record);
             setTopupSlipModal(null);

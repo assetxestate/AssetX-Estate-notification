@@ -4,11 +4,12 @@ import { BRAND } from "../lib/config.js";
 import { formatThai } from "../lib/utils.js";
 import { IMGBB_KEY, IMGBB_ALBUMS } from "../lib/messages.js";
 
-export function SlipModal({ customer, payment, existing, onSave, onDelete, onClose }) {
+// expectedAmount/subtitle: ใช้เมื่อเป็นงวดของวงเงินเพิ่ม (ยอดต่องวดไม่ใช่ customer.amount)
+export function SlipModal({ customer, payment, existing, onSave, onDelete, onClose, expectedAmount = null, subtitle = "" }) {
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = React.useState({
     paidDate: existing?.paidDate || today,
-    amount: existing?.amountPaid ?? existing?.amount ?? customer.amount ?? "",
+    amount: existing?.amountPaid ?? existing?.amount ?? expectedAmount ?? customer.amount ?? "",
     note: existing?.note || "",
     slipUrl: existing?.slipUrl || existing?.slipImage || null,
     slipId: existing?.slipId || null,
@@ -89,7 +90,7 @@ export function SlipModal({ customer, payment, existing, onSave, onDelete, onClo
           <div>
             <div style={{ fontWeight: 700, color: BRAND.textPri, fontSize: 16 }}>บันทึกการชำระเงิน</div>
             <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
-              {customer.name} — งวดที่ {payment.installment} ({formatThai(payment.dateStr)})
+              {customer.name}{subtitle ? ` · ${subtitle}` : ""} — งวดที่ {payment.installment} ({formatThai(payment.dateStr)})
             </div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: BRAND.textSec, fontSize: 20, cursor: "pointer" }}>✕</button>
@@ -115,7 +116,7 @@ export function SlipModal({ customer, payment, existing, onSave, onDelete, onClo
               style={{ width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(45,212,191,.25)", borderRadius: 8, color: BRAND.textPri, fontSize: 14, padding: "9px 12px", outline: "none" }}
             />
             <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>
-              ยอดที่ต้องชำระ: {(customer.amount || 0).toLocaleString("th-TH")} บาท
+              ยอดที่ต้องชำระ: {Number(expectedAmount ?? customer.amount ?? 0).toLocaleString("th-TH")} บาท
             </div>
           </div>
 
