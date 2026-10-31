@@ -1,0 +1,10 @@
+{
+  "dir": "docs/daily",
+  "lang": "th",
+  "link_style": "markdown",
+  "public_repo": true,
+  "commit": true,
+  "diary_artifact": "https://claude.ai/artifact/NCQeqaQQ7X8cro92GhY2nF",
+  "diary_days_dir": ".claude/diary/days",
+  "diary_page": ".claude/diary/diary.html"
+}

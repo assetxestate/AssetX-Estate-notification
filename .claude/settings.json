@@ -1,5 +1,24 @@
 {
   "enabledPlugins": {
     "claude-code-setup@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(grep -Ei '\\\\.\\(xlsx|docx|zip\\)$|App Script|หน้าเว็บ')"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/diary-brief.mjs",
+            "timeout": 15,
+            "statusMessage": "อ่านไดอารี่งาน…"
+          }
+        ]
+      }
+    ]
   }
 }
