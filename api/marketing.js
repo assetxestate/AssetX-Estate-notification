@@ -5,9 +5,12 @@ import radarHandler from '../server/marketing-radar.js'
 import knowledgeSaveHandler from '../server/marketing-knowledge-save.js'
 import facebookHandler from '../server/marketing-facebook.js'
 import noticesHandler from '../server/notices.js'
+import diaryHandler from '../server/diary.js'
 
 const handlers = {
   notices: noticesHandler,
+  // ไดอารี่งานอยู่ในฟังก์ชันนี้ด้วยเหตุผลเดียวกับ notices: จำกัดจำนวน serverless function บน Vercel
+  diary: diaryHandler,
   image: imageHandler,
   video: videoHandler,
   references: referencesHandler,
@@ -23,6 +26,7 @@ function inferFeature(req) {
 
   const path = url.pathname.replace(/\/+$/, '')
   if (path.endsWith('/notices')) return 'notices'
+  if (path.endsWith('/diary')) return 'diary'
   if (path.endsWith('/marketing-image')) return 'image'
   if (path.endsWith('/marketing-video')) return 'video'
   if (path.endsWith('/marketing-references')) return 'references'

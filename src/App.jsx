@@ -702,6 +702,22 @@ export default function App({ initialView = "main", onLogout }) {
               >
                 การตลาด
               </button>
+              <a
+                href="/diary"
+                title="ไดอารี่งาน — สรุปงานรายวัน ติ๊กเรื่องค้าง สั่งงาน Claude"
+                style={{
+                  background: "rgba(16,185,129,0.12)",
+                  border: "1px solid rgba(16,185,129,0.5)",
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  color: "#6EE7B7",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textDecoration: "none",
+                }}
+              >
+                📓 ไดอารี่
+              </a>
               <button
                 onClick={onLogout}
                 className="btn"

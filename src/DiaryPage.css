@@ -1,0 +1,167 @@
+/* ไดอารี่งาน AssetX — สไตล์ของหน้า /diary (ย้ายจากหน้า claude.ai เดิม · ทุก class ขึ้นต้น dy- กันชนกับสไตล์หลักของแอป) */
+@import url('https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600&family=Bai+Jamjuree:wght@500;600;700&family=JetBrains+Mono:wght@500&display=swap');
+
+.dy-root {
+  --paper: #EDF1F6; --sheet: #FFFFFF; --ink: #111A2C; --muted: #566175; --line: #D5DCE7;
+  --volt: #0072B0; --volt-soft: #E1F1FA; --gold: #8F6511; --gold-soft: #F7EED9;
+  --pend: #A6530A; --done: #2B7A4B; --done-soft: #E3F2E8;
+  --f-display: "Bai Jamjuree", "Anuphan", "Leelawadee UI", "Thonburi", sans-serif;
+  --f-body: "Anuphan", "Leelawadee UI", "Thonburi", "Noto Sans Thai", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 14px;
+  min-height: 100vh; background: var(--paper); color: var(--ink); font: 400 16px/1.7 var(--f-body);
+}
+@media (prefers-color-scheme: dark) {
+  .dy-root {
+    --paper: #0A1020; --sheet: #111A2E; --ink: #E6EBF4; --muted: #93A0B9; --line: #243049;
+    --volt: #3FC7FF; --volt-soft: #0E2A40; --gold: #E3C06E; --gold-soft: #2A2414;
+    --pend: #F2A552; --done: #62C48F; --done-soft: #12301F; color-scheme: dark;
+  }
+}
+
+.dy-root * { box-sizing: border-box; }
+.dy-wrap { max-width: 1160px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 64px; display: grid; gap: 28px; }
+.dy-root a { color: var(--volt); text-underline-offset: 3px; }
+.dy-root :focus-visible { outline: 2px solid var(--volt); outline-offset: 2px; border-radius: 6px; }
+
+/* ── หัวหน้า ── */
+.dy-top { display: grid; gap: 6px; }
+.dy-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.dy-lock { display: inline-flex; align-items: center; gap: 8px; font: 600 13px/1 var(--f-body); letter-spacing: .02em; color: var(--muted);
+           padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--sheet); }
+.dy-lock svg { width: 13px; height: 13px; }
+.dy-links { display: inline-flex; align-items: center; gap: 14px; font: 500 14px/1 var(--f-body); }
+.dy-link-btn { font: inherit; color: var(--muted); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.dy-top h1 { margin: 4px 0 0; font: 700 clamp(34px, 6vw, 52px)/1.1 var(--f-display); letter-spacing: -.01em; text-wrap: balance; color: var(--ink); }
+.dy-spark { color: var(--volt); }
+.dy-lede { margin: 0; color: var(--muted); max-width: 62ch; }
+
+/* ── การ์ดทั่วไป ── */
+.dy-card { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r); padding: 18px 20px; display: grid; gap: 10px; }
+.dy-card h2 { margin: 0; font: 600 18px/1.3 var(--f-display); display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; color: var(--ink); }
+.dy-n { font: 600 13px/1 var(--f-body); color: var(--pend); background: color-mix(in srgb, var(--pend) 14%, transparent); padding: 4px 9px; border-radius: 999px; }
+.dy-more { justify-self: start; font: 500 14px/1 var(--f-body); color: var(--volt); background: transparent; border: 0; padding: 6px 0; cursor: pointer; }
+.dy-from { color: var(--muted); font-size: 13px; white-space: nowrap; margin-left: 6px; }
+
+/* ── สั่งงาน Claude ── */
+.dy-cmd form { display: grid; gap: 8px; }
+.dy-cmd textarea { width: 100%; min-height: 72px; resize: vertical; font: inherit; font-size: 15px; line-height: 1.5; padding: 10px 12px;
+                   border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); }
+.dy-cmd textarea::placeholder { color: var(--muted); }
+.dy-btn { justify-self: start; font: 600 14px/1 var(--f-body); padding: 10px 16px; border-radius: 10px; border: 1px solid var(--volt);
+          background: var(--volt); color: var(--sheet); cursor: pointer; }
+.dy-btn:disabled { opacity: .6; cursor: default; }
+.dy-btn.dy-ghost { background: transparent; color: var(--volt); }
+.dy-cmds { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.dy-cmds li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; border-top: 1px solid var(--line); padding-top: 8px; }
+.dy-cmds li:first-child { border-top: 0; padding-top: 0; }
+.dy-t { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dy-when { font-size: 12px; color: var(--muted); }
+.dy-res { font-size: 14px; color: var(--muted); margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dy-st { font: 600 12px/1 var(--f-body); padding: 5px 9px; border-radius: 999px; white-space: nowrap; }
+.dy-st-new { color: var(--pend); background: color-mix(in srgb, var(--pend) 14%, transparent); }
+.dy-st-doing { color: var(--volt); background: var(--volt-soft); }
+.dy-st-done { color: var(--done); background: var(--done-soft); }
+.dy-st-dropped { color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent); }
+
+/* ── สมุด ── */
+.dy-book { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
+.dy-spine { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); display: grid; gap: 12px; }
+.dy-search { width: 100%; font: 400 15px/1.4 var(--f-body); color: var(--ink); background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.dy-search::placeholder { color: var(--muted); }
+.dy-days { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 70vh; overflow-y: auto; }
+.dy-month { font: 600 12px/1 var(--f-body); letter-spacing: .08em; color: var(--muted); padding: 14px 10px 6px; }
+.dy-day-btn { width: 100%; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; align-items: center; text-align: left;
+              background: transparent; border: 1px solid transparent; border-radius: 10px; padding: 8px 10px; color: var(--ink); cursor: pointer; font: inherit; }
+.dy-day-btn:hover { background: var(--sheet); border-color: var(--line); }
+.dy-day-btn[aria-current="true"] { background: var(--sheet); border-color: var(--volt); }
+.dy-day-btn .dy-num { font: 700 24px/1 var(--f-display); font-variant-numeric: tabular-nums; color: var(--volt); text-align: center; }
+.dy-day-btn .dy-meta { min-width: 0; display: grid; }
+.dy-day-btn .dy-wd { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.dy-day-btn .dy-tt { font-size: 14px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+.dy-sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--r); padding: clamp(20px, 4vw, 40px); display: grid; gap: 26px; min-width: 0; }
+
+/* ตราวันที่ — ตัวเลขใหญ่ + เส้นแสงบาง ๆ */
+.dy-stamp { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 18px; align-items: end; }
+.dy-stamp .dy-big { grid-row: span 2; font: 700 clamp(64px, 12vw, 96px)/.85 var(--f-display); font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.dy-stamp .dy-wd { font: 600 15px/1.2 var(--f-display); color: var(--volt); }
+.dy-stamp .dy-my { font: 500 15px/1.2 var(--f-body); color: var(--muted); }
+.dy-streak { height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--volt), color-mix(in srgb, var(--volt) 0%, transparent) 70%); }
+.dy-sheet h2 { margin: 0; font: 700 clamp(24px, 3.4vw, 32px)/1.25 var(--f-display); text-wrap: balance; color: var(--ink); }
+.dy-story { margin: 0; max-width: 66ch; font-size: 17px; }
+.dy-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.dy-chip { font: 500 13px/1 var(--f-body); padding: 7px 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
+.dy-chip.dy-area { color: var(--volt); border-color: color-mix(in srgb, var(--volt) 40%, var(--line)); }
+
+.dy-sec { display: grid; gap: 12px; }
+.dy-sec h3 { margin: 0; font: 600 13px/1 var(--f-body); letter-spacing: .1em; color: var(--muted); }
+.dy-high { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 70ch; }
+.dy-high li::marker { color: var(--volt); }
+
+.dy-works { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.dy-work { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 6px; }
+.dy-work:first-child { border-top: 0; padding-top: 0; }
+.dy-work h4 { margin: 0; font: 600 18px/1.4 var(--f-display); color: var(--ink); }
+.dy-work dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; }
+.dy-work dt { color: var(--muted); font-size: 14px; }
+.dy-work dd { margin: 0; min-width: 0; }
+.dy-refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.dy-ref { font: 500 12px/1 var(--f-mono); padding: 6px 8px; border-radius: 6px; background: var(--volt-soft); color: var(--volt); text-decoration: none; }
+.dy-ref.dy-ref-wl { font-family: var(--f-body); font-size: 12.5px; background: transparent; border: 1px solid var(--line); color: var(--muted); }
+.dy-ref:hover { text-decoration: underline; }
+.dy-root code { font: 500 .88em var(--f-mono); background: var(--volt-soft); color: var(--volt); padding: 1px 5px; border-radius: 5px; }
+
+.dy-dec { width: 100%; border-collapse: collapse; font-size: 15px; }
+.dy-dec th { text-align: left; font: 600 13px/1.3 var(--f-body); color: var(--muted); padding: 0 10px 8px 0; border-bottom: 1px solid var(--line); }
+.dy-dec td { padding: 10px 10px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.dy-dec .dy-ch { color: var(--gold); font-weight: 600; }
+.dy-dec .dy-no { color: var(--muted); }
+.dy-dec-wrap { overflow-x: auto; }
+
+/* ── ค้าง / รอตัดสินใจ ── */
+.dy-todo { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.dy-todo li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start; }
+.dy-todo input[type="checkbox"] { width: 18px; height: 18px; margin: 4px 0 0; accent-color: var(--done); }
+.dy-todo label { cursor: pointer; }
+.dy-todo li.dy-done label { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+.dy-owner { display: inline-block; font: 600 11px/1 var(--f-body); letter-spacing: .04em; padding: 3px 7px; border-radius: 999px;
+            border: 1px solid var(--line); color: var(--muted); margin-left: 6px; vertical-align: 2px; white-space: nowrap; }
+.dy-owner-you { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); }
+.dy-owner-decide { color: var(--pend); border-color: color-mix(in srgb, var(--pend) 45%, var(--line)); }
+.dy-owner-claude { color: var(--volt); border-color: color-mix(in srgb, var(--volt) 45%, var(--line)); }
+.dy-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dy-opt { font: 500 13px/1.3 var(--f-body); padding: 7px 11px; border-radius: 10px; border: 1px solid var(--line); background: var(--sheet); color: var(--ink); cursor: pointer; text-align: left; max-width: 100%; }
+.dy-opt:hover { border-color: var(--volt); }
+.dy-opt[aria-pressed="true"] { border-color: var(--volt); background: var(--volt-soft); color: var(--volt); }
+.dy-rec { font-size: 11px; color: var(--gold); margin-left: 6px; }
+.dy-opt small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.dy-opt:disabled { cursor: default; opacity: .7; }
+.dy-other { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin-top: 6px; }
+.dy-other input { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); color: var(--ink); min-width: 0; }
+.dy-choice { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.dy-choice b { color: var(--volt); font-weight: 600; }
+
+.dy-note { color: var(--muted); font-size: 14px; margin: 0; }
+.dy-empty { background: var(--sheet); border: 1px dashed var(--line); border-radius: var(--r); padding: 40px 24px; display: grid; gap: 8px; justify-items: start; }
+.dy-empty h2 { margin: 0; font: 600 22px/1.3 var(--f-display); color: var(--ink); }
+.dy-empty p { margin: 0; color: var(--muted); max-width: 56ch; }
+.dy-err { color: var(--pend); font-size: 14px; margin: 0; }
+
+@media (max-width: 860px) {
+  .dy-book { grid-template-columns: minmax(0, 1fr); }
+  .dy-spine { position: static; }
+  .dy-days { display: flex; overflow-x: auto; overflow-y: hidden; max-height: none; gap: 6px; padding-bottom: 4px; scroll-snap-type: x proximity; }
+  .dy-days .dy-month { display: none; }
+  .dy-days li { flex: 0 0 auto; scroll-snap-align: start; }
+  .dy-day-btn { width: auto; grid-template-columns: auto; justify-items: center; gap: 2px; padding: 8px 12px; background: var(--sheet); border-color: var(--line); }
+  .dy-day-btn .dy-tt { display: none; }
+  .dy-work dl { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .dy-work dt { margin-top: 6px; }
+  .dy-cmds li { grid-template-columns: minmax(0, 1fr); }
+  .dy-cmds .dy-st { justify-self: start; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dy-sheet { animation: dy-rise .25s ease-out; }
+  @keyframes dy-rise { from { transform: translateY(6px); opacity: .6; } to { transform: none; opacity: 1; } }
+}

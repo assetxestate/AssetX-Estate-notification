@@ -4,7 +4,9 @@
   "link_style": "markdown",
   "public_repo": true,
   "commit": true,
-  "diary_artifact": "https://claude.ai/artifact/NCQeqaQQ7X8cro92GhY2nF",
+  "diary_url": "https://assetx-estate.vercel.app/diary",
+  "diary_sync": "scripts/diary-sync.mjs",
   "diary_days_dir": ".claude/diary/days",
-  "diary_page": ".claude/diary/diary.html"
+  "diary_page": "src/DiaryPage.jsx",
+  "diary_moved_from_artifact": "https://claude.ai/artifact/NCQeqaQQ7X8cro92GhY2nF"
 }

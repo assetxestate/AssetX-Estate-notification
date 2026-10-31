@@ -21,6 +21,8 @@
     "test:topup-schedule": "node --test src/lib/topupSchedule.test.mjs",
     "test:refinance-prefill": "node --test src/lib/refinanceFromCustomer.test.mjs",
     "test:deed-assessment": "node --test src/lib/deedAssessment.test.mjs",
+    "test:diary": "node --test server/diary.test.mjs tests/telegram-diary.test.mjs",
+    "diary": "node scripts/diary-sync.mjs",
     "preview": "vite preview",
     "migrate": "node migrate.js"
   },

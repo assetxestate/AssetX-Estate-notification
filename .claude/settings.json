@@ -14,7 +14,7 @@
           {
             "type": "command",
             "command": "node .claude/hooks/diary-brief.mjs",
-            "timeout": 15,
+            "timeout": 25,
             "statusMessage": "อ่านไดอารี่งาน…"
           }
         ]

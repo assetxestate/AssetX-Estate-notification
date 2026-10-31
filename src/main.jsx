@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client'
 const App = lazy(() => import('./App.jsx'))
 const LoginPage = lazy(() => import('./LoginPage.jsx'))
 const AssessPage = lazy(() => import('./AssessPage.jsx'))
+const DiaryPage = lazy(() => import('./DiaryPage.jsx'))
 const AUTH_STORAGE_VERSION = 'assetx-auth-2026-09-11'
 
 function PageLoading() {
@@ -58,6 +59,9 @@ function Root() {
   if (sessionError) return <main><p role="alert">{sessionError}</p><button onClick={() => setSessionAttempt((value) => value + 1)}>ลองใหม่</button></main>
 
   if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />
+
+  // ไดอารี่งาน — หน้าแยกหลังล็อกอินของแอป (ไม่ต้องมีบัญชี claude.ai) · เข้าจากปุ่มในแอปหรือปุ่ม /diary ในเทเลแกรม
+  if (window.location.pathname === '/diary') return <DiaryPage onLogout={handleLogout} />
 
   const initialView = window.location.pathname === '/marketing'
     ? 'marketing'

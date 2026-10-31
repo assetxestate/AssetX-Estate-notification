@@ -9,6 +9,7 @@
   },
   "rewrites": [
     { "source": "/api/notices", "destination": "/api/marketing?feature=notices" },
+    { "source": "/api/diary", "destination": "/api/marketing?feature=diary" },
     { "source": "/api/chat", "destination": "/api/chat" },
     { "source": "/api/line-webhook", "destination": "/api/line-webhook" },
     { "source": "/api/marketing-image", "destination": "/api/marketing?feature=image" },
