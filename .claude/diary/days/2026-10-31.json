@@ -15,81 +15,155 @@
       "why": "คอมพิวเตอร์ดับก่อนเจ้าของได้ commit จึงกังวลว่างานหาย",
       "result": "ไม่มีงานหาย การแก้ข้อมูลใน Supabase ของวันนั้นก็อยู่ในฐานข้อมูลอยู่แล้ว · บรรทัด permission ค้างถูก commit รวมไปกับระบบไดอารี่",
       "outside": "อ่าน transcript ของ session ก่อนจากโฟลเดอร์ ~/.claude/projects ของเครื่องนี้",
-      "refs": [{ "type": "commit", "id": "e752654" }]
+      "refs": [
+        {
+          "type": "commit",
+          "id": "e752654"
+        }
+      ]
     },
     {
       "title": "ระบบไดอารี่งาน รุ่นแรกบน claude.ai",
       "what": "โฟลเดอร์ `docs/daily/` (ไฟล์ละวัน + index) ตามแม่แบบของ skill daily-log · หน้าเว็บส่วนตัวบน claude.ai แสดงบันทึกรายวัน รายการค้างรวม กล่อง \"สั่งงาน Claude\" ปุ่มเลือกทางสำหรับข้อ \"รอเลือก\" และช่องติ๊กเรื่องค้าง · hook SessionStart เตือน Claude ให้อ่านคำสั่ง/ตัวเลือกจากหน้าไดอารี่ · CLAUDE.md บันทึกกติกา (ติ๊ก = จบแล้ว ไม่ใช่สั่งงาน · คำสั่งมาจากกล่องสั่งงานและตัวเลือกเท่านั้น · ห้ามข้อมูลลูกค้าในไฟล์เพราะรีโปสาธารณะ)",
       "why": "เจ้าของอยากได้สรุปรายวันแบบหน้าไดอารี่ของ DivisionX Card และอยากสั่งงานหรือติ๊กจากหน้านั้นแล้วให้ Claude เข้าไปตรวจและทำเองทุกครั้งที่คุย",
       "result": "เจ้าของเปิดจากหน้าเว็บจริงตอน 14:55 ติ๊กจบ 2 ข้อและเลือกทาง \"ไม่ต้องย้อนหลัง\" ได้สำเร็จ (Claude อ่านเจอและซิงก์เข้าไฟล์แล้ว) · แต่หน้าบน claude.ai เปิดได้เฉพาะบัญชีที่ล็อกอิน claude.ai → นำไปสู่งานข้อ 3",
-      "refs": [{ "type": "commit", "id": "0d3db47" }, { "type": "file", "id": ".claude/hooks/diary-brief.mjs" }]
+      "refs": [
+        {
+          "type": "commit",
+          "id": "0d3db47"
+        },
+        {
+          "type": "file",
+          "id": ".claude/hooks/diary-brief.mjs"
+        }
+      ]
     },
     {
       "title": "ย้ายไดอารี่เข้าแอป AssetX + ปุ่ม /diary ในเทเลแกรม",
       "what": "หน้า `/diary` ใน React ย้ายหน้าเดิมมาทั้งชุด (สมุดรายวัน ค้างรวม กล่องสั่งงาน ปุ่มเลือกทาง ติ๊ก) อยู่หลังล็อกอินเดิมของแอป มีปุ่ม \"📓 ไดอารี่\" บนแถบหัวแอป · API `/api/diary` ตรวจ session แล้วอ่าน/เขียนตาราง `diary_days` / `diary_commands` ด้วย service role (เบราว์เซอร์ไม่แตะตารางตรง ไม่มี DELETE การแก้ข้อค้างใช้ version กันเขียนทับกัน) · `supabase_diary.sql` สร้างตาราง · `scripts/diary-sync.mjs` ให้ Claude ใช้: brief / pull-days / push-day / command / acted / done และ hook SessionStart เรียก brief ให้เอง · บอทเทเลแกรม: `/diary` ส่งข้อความพร้อมปุ่มลิงก์แล้วปักหมุด ตั้งปุ่มเมนูข้างช่องพิมพ์ (แชทส่วนตัว) และลงทะเบียนรายการคำสั่ง · หน้า claude.ai เดิมเปลี่ยนเป็นป้ายบอกทางมาที่ `/diary`",
       "why": "เจ้าของอยากเปิดจากเครื่องหรือบัญชีไหนก็ได้โดยไม่ต้องมีบัญชี Claude ซึ่งฐานข้อมูลของหน้า claude.ai ไม่ให้ข้อมูลกับคนที่ไม่ล็อกอินเลย จึงต้องย้ายมาอยู่บนล็อกอินของแอปเอง (ผู้ใช้มีคนเดียว) · กล่องสั่งงานต้องอยู่หลังล็อกอินเสมอ เพราะเป็นช่องสั่งงาน Claude ที่มีสิทธิ์เขียนฐานข้อมูล",
       "result": "เทสต์ `npm run test:diary` 11 กรณีผ่าน (API + เทเลแกรม) · `npm run build` ผ่าน · hook ทดสอบด้วย stdin จริง รายงานถูกว่าตารางยังไม่ถูกสร้าง · **ยังไม่ได้ทดสอบบนเว็บจริง**: ต้องรัน `supabase_diary.sql` ใน Supabase ก่อน แล้ว push/deploy หน้า `/diary` จึงใช้ได้ · ปุ่มเทเลแกรมยังไม่ได้ลองกับบอทจริง (token อยู่บน Vercel เท่านั้น)",
-      "refs": [{ "type": "commit", "id": "4ecafaf" }, { "type": "file", "id": "src/DiaryPage.jsx" }, { "type": "file", "id": "server/diary.js" }, { "type": "file", "id": "scripts/diary-sync.mjs" }, { "type": "file", "id": "supabase_diary.sql" }]
+      "refs": [
+        {
+          "type": "commit",
+          "id": "4ecafaf"
+        },
+        {
+          "type": "file",
+          "id": "src/DiaryPage.jsx"
+        },
+        {
+          "type": "file",
+          "id": "server/diary.js"
+        },
+        {
+          "type": "file",
+          "id": "scripts/diary-sync.mjs"
+        },
+        {
+          "type": "file",
+          "id": "supabase_diary.sql"
+        }
+      ]
     }
   ],
   "decisions": [
-    { "topic": "ช่องทางสั่งงาน Claude", "chose": "หน้าไดอารี่ (ติ๊ก / เลือกทาง / พิมพ์คำสั่ง) และ Claude ตรวจเองทุกต้น session", "rejected": "พิมพ์สั่งในแชทอย่างเดียว" },
-    { "topic": "รูปแบบสรุปรายวัน", "chose": "ตามหน้าไดอารี่งาน DivisionX Card (เรื่องราวรายวัน + เรื่องค้าง)", "rejected": "" },
-    { "topic": "ที่อยู่ของหน้าไดอารี่", "chose": "ในแอป AssetX (`/diary`) หลังล็อกอินเดิม ไม่ต้องมีบัญชี Claude (ใช้คนเดียว)", "rejected": "คงไว้บน claude.ai แล้วแชร์ให้บัญชี Claude อื่น" },
-    { "topic": "ย้อนหลังไดอารี่วันก่อน ๆ", "chose": "ไม่ต้อง เริ่มที่ 29 ต.ค. (เลือกจากหน้าไดอารี่)", "rejected": "ย้อน 27–28 ต.ค. ด้วย" },
-    { "topic": "ทางเข้าไดอารี่จากเทเลแกรม", "chose": "คำสั่ง `/diary` ให้ข้อความปักหมุดพร้อมปุ่มลิงก์ + ปุ่มเมนู", "rejected": "" }
+    {
+      "topic": "ช่องทางสั่งงาน Claude",
+      "chose": "หน้าไดอารี่ (ติ๊ก / เลือกทาง / พิมพ์คำสั่ง) และ Claude ตรวจเองทุกต้น session",
+      "rejected": "พิมพ์สั่งในแชทอย่างเดียว"
+    },
+    {
+      "topic": "รูปแบบสรุปรายวัน",
+      "chose": "ตามหน้าไดอารี่งาน DivisionX Card (เรื่องราวรายวัน + เรื่องค้าง)",
+      "rejected": ""
+    },
+    {
+      "topic": "ที่อยู่ของหน้าไดอารี่",
+      "chose": "ในแอป AssetX (`/diary`) หลังล็อกอินเดิม ไม่ต้องมีบัญชี Claude (ใช้คนเดียว)",
+      "rejected": "คงไว้บน claude.ai แล้วแชร์ให้บัญชี Claude อื่น"
+    },
+    {
+      "topic": "ย้อนหลังไดอารี่วันก่อน ๆ",
+      "chose": "ไม่ต้อง เริ่มที่ 29 ต.ค. (เลือกจากหน้าไดอารี่)",
+      "rejected": "ย้อน 27–28 ต.ค. ด้วย"
+    },
+    {
+      "topic": "ทางเข้าไดอารี่จากเทเลแกรม",
+      "chose": "คำสั่ง `/diary` ให้ข้อความปักหมุดพร้อมปุ่มลิงก์ + ปุ่มเมนู",
+      "rejected": ""
+    }
   ],
   "pending": [
     {
       "id": "backfill-earlier-days",
-      "owner": "decide",
-      "text": "ย้อนหลังไดอารี่วันก่อน ๆ ด้วยไหม?",
-      "options": [
-        { "id": "a", "label": "ไม่ต้อง เริ่มที่ 29 ต.ค.", "note": "งานก่อนหน้านั้นมีอยู่ใน git log แล้ว" },
-        { "id": "b", "label": "ย้อน 27–28 ต.ค. ด้วย", "note": "วันย้ายเครื่อง + งานวงเงินเพิ่ม/รายงาน PDF · Claude เขียนเพิ่มอีก 2 วัน" }
-      ],
-      "recommended": "a",
-      "choice": "a",
-      "choice_note": null,
-      "choice_at": "2026-10-31T07:55:36.478Z",
-      "acted": true,
-      "acted_at": "2026-10-31T09:40:00.000Z",
       "done": true,
-      "done_at": "2026-10-31T07:55:39.419Z"
+      "text": "ย้อนหลังไดอารี่วันก่อน ๆ ด้วยไหม?",
+      "acted": true,
+      "owner": "decide",
+      "choice": "a",
+      "done_at": "2026-10-31T07:55:39.419Z",
+      "options": [
+        {
+          "id": "a",
+          "note": "งานก่อนหน้านั้นมีอยู่ใน git log แล้ว",
+          "label": "ไม่ต้อง เริ่มที่ 29 ต.ค."
+        },
+        {
+          "id": "b",
+          "note": "วันย้ายเครื่อง + งานวงเงินเพิ่ม/รายงาน PDF · Claude เขียนเพิ่มอีก 2 วัน",
+          "label": "ย้อน 27–28 ต.ค. ด้วย"
+        }
+      ],
+      "acted_at": "2026-10-31T09:40:00.000Z",
+      "choice_at": "2026-10-31T07:55:36.478Z",
+      "choice_note": null,
+      "recommended": "a"
     },
     {
       "id": "diary-first-test",
-      "owner": "you",
-      "text": "เปิดหน้าไดอารี่จาก claude.ai ครั้งแรก แล้วลองติ๊ก 1 ข้อหรือพิมพ์คำสั่งทดสอบ 1 รายการ เพื่อยืนยันว่า Claude เห็นในครั้งถัดไป",
       "done": true,
+      "text": "เปิดหน้าไดอารี่จาก claude.ai ครั้งแรก แล้วลองติ๊ก 1 ข้อหรือพิมพ์คำสั่งทดสอบ 1 รายการ เพื่อยืนยันว่า Claude เห็นในครั้งถัดไป",
+      "owner": "you",
       "done_at": "2026-10-31T07:55:18.287Z"
     },
     {
       "id": "run-diary-sql",
-      "owner": "you",
+      "done": true,
       "text": "รัน `supabase_diary.sql` ใน Supabase Dashboard → SQL Editor (รันซ้ำได้) — ตารางพร้อมแล้ว Claude จะ push บันทึก 29 และ 31 ต.ค. เข้าไปให้",
-      "done": false
+      "owner": "you",
+      "done_at": "2026-10-31T09:26:25.677Z"
     },
     {
       "id": "push-days-to-table",
-      "owner": "claude",
+      "done": true,
       "text": "push บันทึกวันที่ 29 และ 31 ต.ค. เข้าตาราง `diary_days` ด้วย `push-day` หลังตารางพร้อม",
-      "done": false
+      "owner": "claude",
+      "done_at": "2026-10-31T09:26:26.185Z"
     },
     {
       "id": "diary-app-first-test",
-      "owner": "you",
+      "done": false,
       "text": "หลัง push และ deploy: เปิด `assetx-estate.vercel.app/diary` ลองติ๊ก 1 ข้อหรือพิมพ์คำสั่งทดสอบ 1 รายการ",
-      "done": false
+      "owner": "you"
     },
     {
       "id": "telegram-diary-button",
-      "owner": "you",
+      "done": false,
       "text": "พิมพ์ `/diary` ในห้องบอทเทเลแกรม AssetX แล้วดูว่าได้ข้อความปักหมุดพร้อมปุ่มเปิดไดอารี่",
-      "done": false
+      "owner": "you"
     }
   ],
-  "stats": { "commits": 2, "files": 20, "added": 2287, "deleted": 905 },
-  "areas": ["ไดอารี่งาน", "เครื่องมือ Claude Code", "บอทเทเลแกรม"],
+  "stats": {
+    "commits": 2,
+    "files": 20,
+    "added": 2287,
+    "deleted": 905
+  },
+  "areas": [
+    "ไดอารี่งาน",
+    "เครื่องมือ Claude Code",
+    "บอทเทเลแกรม"
+  ],
   "source": "docs/daily/2026-10-31.md"
 }
