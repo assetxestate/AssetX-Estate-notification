@@ -115,57 +115,59 @@
     },
     {
       "id": "hermes-facebook-access",
-      "owner": "decide",
       "done": false,
       "text": "จะให้ Hermes สำรวจเพจเฟซบุ๊กในลิสต์ด้วยวิธีไหน? (สกิล social-research บันทึกว่าอนุมัติทางบัญชีสำรองใน Chrome profile แยกไว้แล้ว — ถ้าใช้ทางนั้นเลือก ก. แล้วระบุว่าบัญชีสำรอง)",
+      "owner": "decide",
       "options": [
         {
           "id": "a",
-          "label": "เบราว์เซอร์ที่ล็อกอินเฟซบุ๊ก (บัญชีเจ้าของหรือบัญชีสำรอง)",
-          "note": "Claude/Hermes ใช้เครื่องมือเบราว์เซอร์ไล่อ่านทีละเพจ สัปดาห์ละครั้ง ฟรี แต่ช้าและต้องเปิดเครื่อง · บัญชีสำรองเสี่ยงถูกปิดตามข้อกำหนด Meta"
+          "note": "Claude/Hermes ใช้เครื่องมือเบราว์เซอร์ไล่อ่านทีละเพจ สัปดาห์ละครั้ง ฟรี แต่ช้าและต้องเปิดเครื่อง · บัญชีสำรองเสี่ยงถูกปิดตามข้อกำหนด Meta",
+          "label": "เบราว์เซอร์ที่ล็อกอินเฟซบุ๊ก (บัญชีเจ้าของหรือบัญชีสำรอง)"
         },
         {
           "id": "b",
-          "label": "บริการดึงข้อมูลเพจสำเร็จรูป (เช่น Apify)",
-          "note": "ได้โพสต์และยอด engagement เป็น JSON อัตโนมัติ มีค่าใช้จ่ายรายครั้ง เป็นการ scrape ของบุคคลที่สาม"
+          "note": "ได้โพสต์และยอด engagement เป็น JSON อัตโนมัติ มีค่าใช้จ่ายรายครั้ง เป็นการ scrape ของบุคคลที่สาม",
+          "label": "บริการดึงข้อมูลเพจสำเร็จรูป (เช่น Apify)"
         },
         {
           "id": "c",
-          "label": "ไม่แตะเฟซบุ๊ก ใช้เว็บไซต์/RSS ของสื่อ + เรดาร์ 9 เลนที่สร้างวันนี้",
-          "note": "ใช้ได้ทันทีด้วยของที่มี แต่ไม่เห็นเพจที่มีแต่เฟซบุ๊ก (กลุ่มขายฝาก-จำนอง) และไม่เห็นยอด engagement"
+          "note": "ใช้ได้ทันทีด้วยของที่มี แต่ไม่เห็นเพจที่มีแต่เฟซบุ๊ก (กลุ่มขายฝาก-จำนอง) และไม่เห็นยอด engagement",
+          "label": "ไม่แตะเฟซบุ๊ก ใช้เว็บไซต์/RSS ของสื่อ + เรดาร์ 9 เลนที่สร้างวันนี้"
         }
       ],
       "recommended": "b"
     },
     {
       "id": "run-marketing-ideas-sql",
+      "done": true,
+      "text": "รัน `supabase_marketing_ideas.sql` ใน Supabase → SQL Editor (สร้างตาราง marketing_ideas / marketing_content / leads) — รันซ้ำได้ ไม่ทับข้อมูล",
       "owner": "you",
-      "done": false,
-      "text": "รัน `supabase_marketing_ideas.sql` ใน Supabase → SQL Editor (สร้างตาราง marketing_ideas / marketing_content / leads) — รันซ้ำได้ ไม่ทับข้อมูล"
+      "done_at": "2026-11-02T17:12:48.400Z"
     },
     {
       "id": "research-first-live-run",
+      "done": true,
+      "text": "หลังตารางพร้อม: รัน `npm run research -- run` รอบจริงครั้งแรก ตรวจการ์ด \"เรดาร์รีเสิร์ช\" ในหน้า /marketing และรายงานในเทเลแกรม",
       "owner": "claude",
-      "done": false,
-      "text": "หลังตารางพร้อม: รัน `npm run research -- run` รอบจริงครั้งแรก ตรวจการ์ด \"เรดาร์รีเสิร์ช\" ในหน้า /marketing และรายงานในเทเลแกรม"
+      "done_at": "2026-11-02T17:20:21.316Z"
     },
     {
       "id": "hermes-reachable-for-angles",
-      "owner": "you",
       "done": false,
-      "text": "ให้ Hermes บนเครื่องเก่าตอบจากเครื่องนี้ได้ (วันนี้ HERMES_AGENT_URL ตอบ fetch failed) หรือใส่ GEMINI_API_KEY — ไม่งั้นไอเดียในคิวจะไม่มีมุมเล่า AI"
+      "text": "ให้ Hermes บนเครื่องเก่าตอบจากเครื่องนี้ได้ (วันนี้ HERMES_AGENT_URL ตอบ fetch failed) หรือใส่ GEMINI_API_KEY — ไม่งั้นไอเดียในคิวจะไม่มีมุมเล่า AI",
+      "owner": "you"
     },
     {
       "id": "research-task-scheduler",
-      "owner": "you",
       "done": false,
-      "text": "ตั้ง Task Scheduler รัน `node scripts/research-ideas.mjs run` 07:00 / 07:30 / 08:00 บนเครื่องที่เปิดทุกเช้า — คำสั่ง PowerShell อยู่ใน docs/social-research.md"
+      "text": "ตั้ง Task Scheduler รัน `node scripts/research-ideas.mjs run` 07:00 / 07:30 / 08:00 บนเครื่องที่เปิดทุกเช้า — คำสั่ง PowerShell อยู่ใน docs/social-research.md",
+      "owner": "you"
     },
     {
       "id": "brand-facts-local",
-      "owner": "you",
       "done": false,
-      "text": "เติมพื้นที่ให้บริการ (อำเภอ/จังหวัดที่รับจริง) ค่าธรรมเนียม และช่องติดต่อ ใน `.local/research/brand_facts.local.json` (ไม่เข้า git) ให้ AI ใช้ความจริงของแบรนด์ครบและคำพื้นที่เข้าสูตรคะแนน"
+      "text": "เติมพื้นที่ให้บริการ (อำเภอ/จังหวัดที่รับจริง) ค่าธรรมเนียม และช่องติดต่อ ใน `.local/research/brand_facts.local.json` (ไม่เข้า git) ให้ AI ใช้ความจริงของแบรนด์ครบและคำพื้นที่เข้าสูตรคะแนน",
+      "owner": "you"
     }
   ],
   "stats": {
