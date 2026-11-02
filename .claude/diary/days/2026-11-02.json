@@ -64,9 +64,10 @@
     },
     {
       "id": "telegram-allowed-chat-id",
-      "done": false,
+      "done": true,
       "text": "ใส่ `ASSETX_TELEGRAM_ALLOWED_CHAT_ID` บน Vercel (พิมพ์ `/id` ในห้องบอทเพื่อเอาเลขห้อง) เพื่อล็อกให้บอทรับคำสั่งเฉพาะห้องของเจ้าของ — ตอนนี้ว่างอยู่ ใครที่หาบอทเจอก็คุยได้",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-02T10:50:50.457Z"
     }
   ],
   "stats": {
