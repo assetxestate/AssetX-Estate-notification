@@ -104,10 +104,15 @@ async function doCollect({ cfg, brand, calendar, store, state }) {
   const now = new Date()
   const existing = await store.existing({ eventWindowDays: cfg.queue?.event_window_days ?? 7, now })
   const leads = await store.leadsRecent(9, now)
-  const { rows, report } = await collectIdeas({ cfg, brand, calendar, fetcher, now, existing, leads, state, log })
+  // dry-run: ไม่ดูและไม่แสตมป์รอบเวลาเลน (ไม่งั้นรอบจริงถัดไปข้ามเลนที่ dry-run เพิ่งยิง — เจอจริง 3 พ.ย. 2569: รอบจริงแรกได้ 13/34 เลน)
+  const dry = store.kind === 'dry-run'
+  const laneState = dry ? { ...state, lane_last_run: {} } : state
+  const { rows, report } = await collectIdeas({ cfg, brand, calendar, fetcher, now, existing, leads, state: laneState, log })
   const saved = await store.insertIdeas(rows)
-  for (const key of report.ranLanes) state.lane_last_run[key] = now.toISOString()
-  saveState(state)
+  if (!dry) {
+    for (const key of report.ranLanes) state.lane_last_run[key] = now.toISOString()
+    saveState(state)
+  }
   const text = formatCollectReport({ rows, report }, { topTitles: cfg.report?.top_titles ?? 5, inserted: saved.inserted })
   out(text)
   out(`[ideas] fetch ${fetcher.stats.requests} ครั้ง · บล็อก ${fetcher.stats.blocked} · error ${fetcher.stats.errors} · กุญแจเดิมในฐาน ${existing.total}${store.kind === 'dry-run' ? ` · dry-run → ${store.file}` : ''}`)
