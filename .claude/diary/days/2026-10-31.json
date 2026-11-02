@@ -149,9 +149,10 @@
     },
     {
       "id": "telegram-diary-button",
-      "done": false,
+      "done": true,
       "text": "พิมพ์ `/diary` ในห้องบอทเทเลแกรม AssetX แล้วดูว่าได้ข้อความปักหมุดพร้อมปุ่มเปิดไดอารี่",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-02T10:27:44.241Z"
     }
   ],
   "stats": {
