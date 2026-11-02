@@ -15,8 +15,14 @@
       "result": "`getWebhookInfo` ยืนยัน webhook ชี้ที่ `/api/telegram-webhook` ข้อความค้าง 0 ไม่มี error · ครั้งแรกเจ้าของพิมพ์ผิดเป็น `/dialy` บอทจึงส่งต่อให้ส่วน AI ตอบเป็นรายงานแทน พิมพ์ `/diary` ถูกแล้วได้ปุ่มทันที · ตอนนี้บอทลงทะเบียนคำสั่ง `/diary` ไว้ในเมนูแล้ว เลือกจากรายการได้ไม่ต้องสะกดเอง",
       "outside": "Vercel → Environment Variables (เจ้าของ) · BotFather (เจ้าของ) · setWebhook (เจ้าของรัน) · `.env.local` ในเครื่องนี้ (ไม่เข้า git)",
       "refs": [
-        { "type": "file", "id": "api/telegram-webhook.js" },
-        { "type": "file", "id": "scripts/set-assetx-telegram-webhook.mjs" }
+        {
+          "type": "file",
+          "id": "api/telegram-webhook.js"
+        },
+        {
+          "type": "file",
+          "id": "scripts/set-assetx-telegram-webhook.mjs"
+        }
       ]
     },
     {
@@ -25,8 +31,14 @@
       "why": "เจ้าของบอกว่าจะเปิดไดอารี่จากปุ่มในเทเลแกรมแทน ไม่ต้องมีปุ่มบนเว็บ",
       "result": "`npm run build` ผ่าน · commit แล้วแต่ **ยังไม่ push/deploy** ปุ่มบนเว็บจริงจะหายหลัง push · commit ครั้งแรกเผลอเปลี่ยน line ending ทั้งไฟล์ (sed บน Git Bash เขียน LF ทับ CRLF) แก้ด้วยการคืน CRLF แล้ว amend ให้เหลือ diff แค่ 16 บรรทัด",
       "refs": [
-        { "type": "commit", "id": "3b644ae" },
-        { "type": "file", "id": "src/App.jsx" }
+        {
+          "type": "commit",
+          "id": "3b644ae"
+        },
+        {
+          "type": "file",
+          "id": "src/App.jsx"
+        }
       ]
     }
   ],
@@ -45,18 +57,27 @@
   "pending": [
     {
       "id": "push-remove-diary-button",
-      "owner": "you",
+      "done": true,
       "text": "push commit `3b644ae` ขึ้น GitHub เพื่อให้ปุ่มไดอารี่หายจากเว็บจริง — พิมพ์ \"push\" ในแชทให้ Claude",
-      "done": false
+      "owner": "you",
+      "done_at": "2026-11-02T10:35:31.257Z"
     },
     {
       "id": "telegram-allowed-chat-id",
-      "owner": "you",
+      "done": false,
       "text": "ใส่ `ASSETX_TELEGRAM_ALLOWED_CHAT_ID` บน Vercel (พิมพ์ `/id` ในห้องบอทเพื่อเอาเลขห้อง) เพื่อล็อกให้บอทรับคำสั่งเฉพาะห้องของเจ้าของ — ตอนนี้ว่างอยู่ ใครที่หาบอทเจอก็คุยได้",
-      "done": false
+      "owner": "you"
     }
   ],
-  "stats": { "commits": 1, "files": 1, "added": 0, "deleted": 16 },
-  "areas": ["บอทเทเลแกรม", "ไดอารี่งาน"],
+  "stats": {
+    "commits": 1,
+    "files": 1,
+    "added": 0,
+    "deleted": 16
+  },
+  "areas": [
+    "บอทเทเลแกรม",
+    "ไดอารี่งาน"
+  ],
   "source": "docs/daily/2026-11-02.md"
 }
