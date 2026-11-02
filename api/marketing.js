@@ -4,6 +4,7 @@ import referencesHandler from '../server/marketing-references.js'
 import radarHandler from '../server/marketing-radar.js'
 import knowledgeSaveHandler from '../server/marketing-knowledge-save.js'
 import facebookHandler from '../server/marketing-facebook.js'
+import ideasHandler from '../server/marketing-ideas.js'
 import noticesHandler from '../server/notices.js'
 import diaryHandler from '../server/diary.js'
 
@@ -17,6 +18,8 @@ const handlers = {
   radar: radarHandler,
   'knowledge-save': knowledgeSaveHandler,
   facebook: facebookHandler,
+  // คิวไอเดียจากระบบรีเสิร์ช (research/ + scripts/research-ideas.mjs) — ตาราง marketing_ideas
+  ideas: ideasHandler,
 }
 
 function inferFeature(req) {
@@ -33,6 +36,7 @@ function inferFeature(req) {
   if (path.endsWith('/marketing-radar')) return 'radar'
   if (path.endsWith('/marketing-knowledge-save')) return 'knowledge-save'
   if (path.endsWith('/marketing-facebook')) return 'facebook'
+  if (path.endsWith('/marketing-ideas')) return 'ideas'
   return ''
 }
 

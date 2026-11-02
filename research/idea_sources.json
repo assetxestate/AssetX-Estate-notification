@@ -1,0 +1,134 @@
+{
+  "_about": "คอนฟิกเรดาร์เทรนด์ของ AssetX (ระบบ social-research โปรไฟล์อสังหาฯ ขายฝาก/จำนอง) · แก้ไฟล์นี้ไม่ต้องแตะโค้ด · ทุก _note คือเหตุผล/ผลทดสอบจริง อ่านก่อนแก้",
+  "_tested": "แหล่งทุกแถวทดสอบยิงจริงแบบเบามือ 2 พ.ย. 2569 (ค.ศ. 2026) ตามโปรไฟล์ · ก่อนเปิดเลนที่ tos=pending ให้อ่าน ToS ของเว็บนั้นก่อน · รัน `node scripts/research-ideas.mjs probe` เพื่อทดสอบซ้ำ",
+
+  "owner_decisions": {
+    "_note": "บันทึกคำตัดสินของเจ้าของ · ตัวเก็บข้ามเลนที่ allowed ไม่ใช่ true แล้วพิมพ์ '[ideas] ข้าม <เลน> — ยังไม่ได้รับอนุมัติ' · แหล่งในหมวดนี้ขัด robots.txt/ToS ของแพลตฟอร์ม เจ้าของรับความเสี่ยงเอง (ตัดสิน 2 พ.ย. 2569 แบบเดียวกับโปรเจกต์ DivisionX)",
+    "google_news_rss": { "allowed": true, "date": "2026-11-02", "note": "robots ของ Google ห้าม /rss/ · เจ้าของรับความเสี่ยง · ยิง ≤ 12 คำ/วัน เว้น ≥ 2.5 วิ" },
+    "youtube_rss": { "allowed": true, "date": "2026-11-02", "note": "robots ห้าม /feeds/videos.xml · ทางแทนถ้าจะเลิกเสี่ยง: YouTube Data API v3 (คีย์ Google Cloud ฟรี)" },
+    "yt_dlp": { "allowed": true, "date": "2026-11-02", "note": "ถอดคำบรรยายคลิป · ยังไม่เปิดใช้: เครื่องนี้ไม่มี yt-dlp (ขั้น grounding ยังไม่สร้าง)" },
+    "facebook_watch": { "allowed": true, "date": "2026-11-02", "note": "อ่านอย่างเดียวผ่านบัญชีสำรองใน Chrome profile แยก · ยังไม่เปิดใช้: ตัวเฝ้าเพจเป็นขั้นที่ 7 ต้องมีบัญชีสำรองที่วอร์มแล้ว ~1 สัปดาห์ · รายชื่อเพจอยู่ใน vault การตลาด facebook-pages-watchlist.json" },
+    "reddit": { "allowed": true, "date": "2026-11-02", "note": "อนุมัติแต่ไม่เปิด — ไม่ตรงลูกค้าไทย" },
+    "tos_forbidden_sites": { "allowed": false, "note": "กรมธนารักษ์ · REIC · DDproperty · Kaidee · ราชกิจจาฯ · Meta Ad Library ฯลฯ = คนดูเองตาม research/manual-checklist.md" },
+    "led_numbers_in_posts": { "allowed": false, "note": "ข้อมูลกรมบังคับคดีเป็น CC BY-NC · ยกตัวเลขลงโพสต์การตลาดต้องได้อนุญาตจากกรมเป็นหนังสือ · ใช้วิเคราะห์ภายในพร้อมอ้างที่มาได้" }
+  },
+
+  "user_agent": "AssetXResearchBot/1.0 (+https://assetx-estate.vercel.app)",
+  "timeout_ms": 30000,
+  "host_delay_sec": { "default": 1.5, "data.go.th": 10, "opendata.led.go.th": 10, "news.google.com": 2.5, "youtube.com": 2.0, "pantip.com": 3.0 },
+
+  "news_queries": {
+    "_note": "Google News RSS (หมวด ⚠️) · ห้ามเขียน when: ในคำค้น ตัวเก็บต่อให้เอง · ผลทดสอบ 2 พ.ย. 2569 อยู่ในโปรไฟล์ real-estate.md ข้อ 3 · cadence: daily | weekly (จันทร์) | mpc_window (วันประชุม กนง. ถึง +3 วัน จาก calendar.json)",
+    "items": [
+      { "q": "จำนองบ้าน", "when_days": 14, "cadence": "daily", "_note": "14 วันได้ 6 ตรง 5" },
+      { "q": "ขายฝาก", "when_days": 90, "cadence": "weekly", "drop": "ทอง", "_note": "14 วันได้ 2 ทั้งคู่เป็นขายฝากทอง → ยิงสัปดาห์ละครั้ง 90 วัน ทิ้งหัวที่มี ทอง" },
+      { "q": "(หลอก OR โกง OR แก๊ง OR ฉ้อโกง) ขายฝาก", "when_days": 60, "cadence": "weekly", "subtype": "scam", "_note": "ได้ 3/3" },
+      { "q": "ราคาประเมินที่ดิน", "when_days": 14, "cadence": "daily", "subtype": "valuation", "_note": "47 ชิ้น ตรง ~12–16 ต้องตัดสำนักต่างประเทศ" },
+      { "q": "(ค่าโอน OR ค่าธรรมเนียมการโอน) จดจำนอง", "when_days": 30, "cadence": "daily", "subtype": "fee_measure", "_note": "ได้ 7 ตรง 6 (คำกว้าง 'ลดค่าธรรมเนียมโอน' ได้ขยะ 'ลดค่า GP')" },
+      { "q": "LTV อสังหา", "when_days": 30, "cadence": "weekly", "subtype": "fee_measure", "_note": "ข่าวเดียว 5 สำนัก → ต้องรวมด้วย event_key" },
+      { "q": "ดอกเบี้ยนโยบาย กนง.", "when_days": 14, "cadence": "mpc_window", "subtype": "rate", "_note": "70 ชิ้นจากเหตุการณ์เดียว → ยิงเฉพาะช่วงวันประชุม" },
+      { "q": "\"บ้านมือสอง\"", "when_days": 14, "cadence": "daily", "subtype": "market", "_note": "49 ชิ้น ตรง ~19" },
+      { "q": "\"ขายทอดตลาด\"", "when_days": 30, "cadence": "weekly", "subtype": "auction_npa", "_note": "'ที่ดิน ขายทอดตลาด' 14 วันได้ 8 ตรง 1–2" },
+      { "q": "\"สินเชื่อบ้าน\"", "when_days": 14, "cadence": "daily", "subtype": "credit_market" },
+      { "q": "นายหน้าอสังหา", "when_days": 14, "cadence": "daily", "subtype": "market", "_note": "29 ชิ้น ตรง ~8 · Head Topics ซ้ำ 12 → source_drop" }
+    ],
+    "max_items_per_query": 8
+  },
+
+  "feeds": {
+    "_note": "เลนที่ robots ไม่ห้าม · kind: rss | gnews_sitemap | html_bot_mpc | html_dol | pantip_tag | ckan · tos: ok = ตรวจแล้ว · pending = ยังไม่ได้อ่าน ToS (เปิดได้แต่ควรอ่านก่อน) · enabled:false = ปิดไว้",
+    "items": [
+      { "key": "bot_mpc", "kind": "html_bot_mpc", "url": "https://www.bot.or.th/th/our-roles/monetary-policy/mpc-meeting.html", "source": "official", "label": "ธนาคารแห่งประเทศไทย", "subtype": "rate", "cadence": "weekly", "tos": "ok", "_note": "ToS ธปท. อนุญาตใช้ข้อมูลเป็นการทั่วไป · หน้ารวมข่าวโหลดด้วย JS อย่าใช้ · ลิงก์แถลงข่าวมีรหัสสุ่ม อ่านจากตารางเท่านั้น" },
+      { "key": "prachachat_re", "kind": "rss", "url": "https://www.prachachat.net/real-estate/feed", "source": "news", "label": "ประชาชาติธุรกิจ", "cadence": "daily", "tos": "pending", "_note": "~4 ข่าว/วัน · เก็บแค่หัว+ลิงก์ (content:encoded มีเนื้อเต็ม ห้ามเก็บ) · ฟีดค้นหา ?s= ติด Cloudflare ห้ามใช้" },
+      { "key": "thansettakij", "kind": "gnews_sitemap", "url": "https://www.thansettakij.com/sitemap/latest", "source": "news", "label": "ฐานเศรษฐกิจ", "path_keep": "/(real-estate|finance)/", "cadence": "daily", "tos": "ok", "_note": "llms.txt อนุญาต AI agent ≤ 10 req/วิ · ต้องอ้าง 'ฐานเศรษฐกิจ' ในโพสต์ ห้ามลงบทความเต็ม · ตาม 308 ไปโดเมน api." },
+      { "key": "bangkokbiznews", "kind": "gnews_sitemap", "url": "https://www.bangkokbiznews.com/sitemap/latest", "source": "news", "label": "กรุงเทพธุรกิจ", "path_keep": "/business/property/|/news/prnews/", "cadence": "daily", "tos": "pending", "_note": "ข่าว ธอส. อยู่ /news/prnews/ · API ภายใน newsfeed. ห้ามใช้" },
+      { "key": "bkkpost_property", "kind": "rss", "url": "https://www.bangkokpost.com/rss/data/property.xml", "source": "news", "label": "Bangkok Post", "cadence": "daily", "tos": "ok", "_note": "ตอบเป็น gzip ไม่มี Content-Encoding (fetcher ถอดเอง) · ข้อ 7 ของเว็บ: เผยแพร่ซ้ำได้แค่หัว + สรุป 100–150 ตัว + ลิงก์ ต้องอ้างแหล่ง · ห้ามข่าว AP/AFP/Reuters" },
+      { "key": "pantip_home", "kind": "rss", "url": "https://pantip.com/forum/home/feed", "source": "community", "label": "Pantip ชายคา", "subtype": "community_q", "cadence": "daily", "tos": "pending", "_note": "~17 กระทู้/วัน · ทิ้ง dc:creator และ description เสมอ (มีชื่อ/เบอร์) · ไม่มีใครพิมพ์ 'ขายฝาก' → ใช้คำ pain + หมวด" },
+      { "key": "pantip_sinthorn", "kind": "rss", "url": "https://pantip.com/forum/sinthorn/feed", "source": "community", "label": "Pantip สินธร", "subtype": "community_q", "cadence": "daily", "require_group": ["pain", "transaction", "asset"], "tos": "pending", "_note": "ห้องการเงิน ไม่ใช่อสังหา ~100+/วัน → ต้องเจอคำกลุ่ม pain/transaction/asset ก่อนเก็บ" },
+      { "key": "pantip_tag_re", "kind": "pantip_tag", "url": "https://pantip.com/tag/อสังหาริมทรัพย์", "source": "community", "label": "Pantip tag อสังหาริมทรัพย์", "subtype": "community_q", "cadence": "daily", "max_items": 5, "tos": "pending", "_note": "JSON ใน __NEXT_DATA__ มียอดวิว/คอมเมนต์ · ≤ 5 กระทู้/วัน · ทิ้ง author · คะแนนเพดาน ~5.5" },
+      { "key": "led_auction", "kind": "ckan", "url": "https://data.go.th/api/3/action/package_show?id=led_it_0002", "package": "led_it_0002", "source": "auction", "label": "กรมบังคับคดี (open data)", "subtype": "auction_npa", "cadence": "monthly", "tos": "ok", "_note": "CC BY-NC · ใช้วิเคราะห์ภายในพร้อมอ้างที่มา · ตัวเลขลงโพสต์ต้องได้อนุญาตเป็นหนังสือ · เว้น ≥ 10 วิ · ชื่อไฟล์ CSV เปลี่ยนทุกเดือน กุญแจใช้ package+เดือน · ปีงบ ต.ค. 2569 = FY2570" },
+      { "key": "sam", "kind": "rss", "url": "https://sam.or.th/site/sam/feed/", "source": "auction", "label": "บริษัทบริหารสินทรัพย์สุขุมวิท (SAM)", "subtype": "auction_npa", "cadence": "daily", "keep_category": "ประชาสัมพันธ์", "tos": "pending", "_note": "เก็บเฉพาะหมวดประชาสัมพันธ์ (จัดซื้อจัดจ้างเป็นอักษรเพี้ยน) · ไม่พบหน้า ToS" },
+      { "key": "dol_pr", "kind": "html_dol", "url": "https://www.dol.go.th/department-news/dol-news/press-releases/public-relations-department-of-lands/", "source": "official", "label": "กรมที่ดิน", "cadence": "weekly", "tos": "pending", "_note": "หน้า 1 เท่านั้น · ขยะจัดซื้อเยอะ กรองด้วย PROCUREMENT_RE · ห้ามแตะ announce.dol.go.th (มีชื่อผู้ยื่นคำขอ)" }
+    ]
+  },
+
+  "youtube": {
+    "_note": "channel RSS (หมวด ⚠️ เจ้าของอนุมัติ) · ≤ 7 วัน · ≤ 3 คลิป/ช่อง · ต้องเจอคำกลุ่ม require_group · kind ใช้แยกในบทเรียน · เรต/ผลตอบแทนในคลิปคู่แข่งเป็นโฆษณา ไม่ใช่ข้อเท็จจริง · เช็กอัปโหลดล่าสุด 2 พ.ย. 2569",
+    "max_age_days": 7,
+    "max_per_channel": 3,
+    "channels": [
+      { "label": "Land for Loan", "channel_id": "UCR6Satoz7Ont31fEE7exgPQ", "kind": "lender", "subtype": "competitor" },
+      { "label": "InnoHome", "channel_id": "UCDtSG1auszulcOkUaQryvEA", "kind": "lender", "subtype": "competitor" },
+      { "label": "มิตรเมืองไทย", "channel_id": "UCysx53rlKU9rywS3Ctc3Yxw", "kind": "lender", "subtype": "competitor", "enabled": false, "_note": "หยุดอัปโหลด ~6 เดือน" },
+      { "label": "Antonio Attorney", "channel_id": "UCcADQXY_tZ4vHBfWCK0lTSw", "kind": "expert", "require_group": ["transaction", "policy", "asset"] },
+      { "label": "Winner Channel", "channel_id": "UCDM9W7uNggHiHYdVrnKHNcQ", "kind": "broker" },
+      { "label": "My Property Pro", "channel_id": "UCYdc_0bvCFp5OVsRHlliNJw", "kind": "broker" },
+      { "label": "HomeDDcenter", "channel_id": "UC5u3wUVzPBW6zd1ffjhbLvw", "kind": "broker" },
+      { "label": "GreenWay Station", "channel_id": "UCRsbgXFhFXJZCXBg-8z6zBg", "kind": "broker", "enabled": false, "_note": "คลังความรู้ ไม่อัปเดต" },
+      { "label": "ThinkofLiving", "channel_id": "UCi3ih_LnXQmemxsQto0uqJw", "kind": "market", "require_group": ["transaction", "policy"], "_note": "ช่องรีวิวโครงการ — ถ้าให้คำ asset ผ่านจะได้รีวิวคอนโดเปิดใหม่ท่วม (dry-run 2 พ.ย. 2569) จึงต้องเจอคำธุรกรรม/นโยบาย" },
+      { "label": "CondoNewb", "channel_id": "UCj0d-5DuYAenV3r9pt_inyg", "kind": "market", "require_group": ["transaction", "policy"] },
+      { "label": "ธนาคารอาคารสงเคราะห์", "channel_id": "UCOedRpPpC9vPvX-7HY3LBuQ", "kind": "official" },
+      { "label": "กรมบังคับคดี", "channel_id": "UCdsoXg0npMHhV3XgUzI1mXw", "kind": "official", "subtype": "auction_npa" },
+      { "label": "Property Expert Live", "channel_id": "UCGRkm6GsOoRbIV9moHVXp7Q", "kind": "market", "require_group": ["transaction", "policy"], "_note": "กว้างเกิน ต้องกรองคำธุรกรรม/นโยบาย (asset อย่างเดียวไม่พอ)" }
+    ]
+  },
+
+  "subtypes": {
+    "_note": "subtype ที่ไม่อยู่ในนี้ = ตัวเก็บปฏิเสธ (กันพิมพ์ผิด) · max_age_days ใช้ทั้งกรองตอนเก็บและคำนวณวันหมดอายุ · audience = กลุ่มหลัก A เจ้าของทรัพย์ต้องการเงิน · B นักลงทุนรับซื้อฝาก/รับจำนอง · C เจ้าของที่อยากขาย · D ผู้ซื้อ · cap = จำนวนสูงสุดในคิว (status new) ต่อ source+subtype",
+    "rate": { "max_age_days": 14, "audience": ["A", "B", "D"], "cap": 3 },
+    "fee_measure": { "max_age_days": 30, "audience": ["C", "D"], "cap": 4 },
+    "valuation": { "max_age_days": 60, "audience": ["A", "B", "C", "D"], "cap": 3 },
+    "law": { "max_age_days": 90, "audience": ["A", "B"], "cap": 3 },
+    "scam": { "max_age_days": 90, "audience": ["A"], "cap": 3 },
+    "credit_market": { "max_age_days": 30, "audience": ["A", "D"], "cap": 3 },
+    "market": { "max_age_days": 30, "audience": ["B", "C", "D"], "cap": 4 },
+    "auction_npa": { "max_age_days": 30, "audience": ["B", "D"], "cap": 3 },
+    "community_q": { "max_age_days": 14, "audience": ["A", "C", "D"], "cap": 5 },
+    "competitor": { "max_age_days": 14, "audience": [], "cap": 3 },
+    "internal": { "max_age_days": 7, "audience": [], "cap": 3 },
+    "calendar": { "max_age_days": 400, "audience": ["A", "B", "C", "D"], "cap": 6 }
+  },
+
+  "subtype_rules": {
+    "_note": "ตัวจัดประเภทจากหัวข่าวสำหรับฟีดที่ไม่ได้บอก subtype · เรียงลำดับ ตัวแรกที่ตรงชนะ",
+    "rules": [
+      ["scam", "หลอก|โกง|มิจฉา|ฉ้อโกง|ปลอม(แปลง)?โฉนด|แก๊ง"],
+      ["law", "พ\\.ร\\.บ\\.|ประมวลกฎหมาย|ศาล|คำพิพากษา|สคบ\\.|กฎกระทรวง|ราชกิจจา"],
+      ["valuation", "ราคาประเมิน"],
+      ["fee_measure", "ค่าโอน|ค่าธรรมเนียม(การ)?โอน|จดจำนอง|LTV"],
+      ["rate", "กนง\\.|ดอกเบี้ยนโยบาย"],
+      ["auction_npa", "ขายทอดตลาด|NPA|บังคับคดี|ประมูล"],
+      ["credit_market", "สินเชื่อ|ปฏิเสธสินเชื่อ|รีเจกต์|ธอส\\.|รีไฟแนนซ์"],
+      ["market", ".*"]
+    ]
+  },
+
+  "scoring": {
+    "_note": "สูตร Σ_กลุ่ม w × min(จำนวนคำต่างกันที่เจอ, 2) + โบนัสความสด · topic gate ต้องเจอคำใน transaction/policy/asset อย่างน้อย 1 คำ (pain อย่างเดียวไม่พอ) · area.words เติมจาก brand_facts.service_area ตอนรัน ไม่ต้องพิมพ์ซ้ำ",
+    "weights": {
+      "transaction": { "w": 2.0, "words": ["ขายฝาก", "จำนอง", "ไถ่ถอน", "สินไถ่", "รับซื้อฝาก", "รับจำนอง", "รีไฟแนนซ์", "สินเชื่อบ้าน", "บ้านแลกเงิน", "reverse mortgage", "ฝากขาย", "นายหน้า"] },
+      "pain": { "w": 1.5, "words": ["หนี้", "กู้ไม่ผ่าน", "ติดบูโร", "แบงก์ไม่อนุมัติ", "รีเจกต์", "ปฏิเสธสินเชื่อ", "เงินด่วน", "อายัด", "ปิดหนี้", "ขายไม่ออก"] },
+      "policy": { "w": 1.5, "words": ["ราคาประเมิน", "ค่าโอน", "จดจำนอง", "LTV", "ดอกเบี้ยนโยบาย", "กนง.", "ภาษีที่ดิน", "ผังเมือง", "ราชกิจจา"] },
+      "asset": { "w": 1.0, "words": ["ที่ดิน", "โฉนด", "น.ส.3", "บ้านเดี่ยว", "ทาวน์โฮม", "ตึกแถว", "อาคารพาณิชย์", "คอนโด", "ห้องชุด", "บ้านมือสอง", "NPA", "ขายทอดตลาด"] },
+      "area": { "w": 1.5, "words": [] }
+    },
+    "topic_gate": ["transaction", "policy", "asset"],
+    "pantip_categories": ["ที่ดิน", "สินเชื่อเพื่อที่อยู่อาศัย", "รีไฟแนนซ์บ้าน", "คอนโดมิเนียม", "อสังหาริมทรัพย์", "บ้าน", "ซื้อขายบ้าน"],
+    "title_drop": "ขายฝากทอง|ทองคำ|ค่า GP|รถมือสอง|ไอโฟน|มือถือมือสอง",
+    "source_drop": ["Vietnam.vn", "VOV", "Head Topics", "Sortir à Paris"],
+    "min_score": 1.0
+  },
+
+  "queue": {
+    "_note": "purge_after_days = อายุขั้นต่ำก่อนตั้ง status=expired (ไม่ลบแถว กุญแจกันซ้ำยังอยู่) · อายุจริงต่อ subtype = max(purge_after_days, subtypes.<x>.max_age_days) · event_window_days = ข่าวเหตุการณ์เดียวกันภายใน N วันไม่ใส่ซ้ำ",
+    "purge_after_days": 14,
+    "event_window_days": 7,
+    "max_new_per_run": 40
+  },
+
+  "report": {
+    "_note": "ส่งสรุปรอบเข้าเทเลแกรมเจ้าของ (ASSETX_TELEGRAM_BOT_TOKEN + ASSETX_TELEGRAM_ALLOWED_CHAT_ID จาก .env.local) · เฉพาะจำนวนและหัวข้อที่ผ่านตัวลบข้อมูลบุคคล",
+    "telegram": true,
+    "top_titles": 5
+  }
+}

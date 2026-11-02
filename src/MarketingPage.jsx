@@ -12,6 +12,35 @@ import { organizeMarketingQueue } from './lib/marketingQueuePlan.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
+// การ์ดไอเดียจากระบบรีเสิร์ช (ตาราง marketing_ideas ผ่าน /api/marketing-ideas) → รูปเดียวกับไอเดียอื่นในหน้านี้
+const researchSubtypeLabels = {
+  rate: 'ดอกเบี้ย/กนง.', fee_measure: 'ค่าโอน/มาตรการรัฐ', valuation: 'ราคาประเมิน', law: 'กฎหมาย', scam: 'เตือนภัยมิจฉาชีพ',
+  credit_market: 'สินเชื่อ', market: 'ตลาด', auction_npa: 'ขายทอดตลาด/NPA', community_q: 'คำถามจากชุมชน', competitor: 'คู่แข่ง', internal: 'ลีดของเรา', calendar: 'ปฏิทิน',
+}
+const researchSourceLabels = { news: 'ข่าว', official: 'ทางการ', community: 'ชุมชน', auction: 'ขายทอดตลาด', youtube: 'YouTube', social: 'โซเชียล', internal: 'ลีดของเรา', manual: 'วางเอง' }
+const researchAudienceLabels = { A: 'เจ้าของทรัพย์', B: 'นักลงทุน', C: 'เจ้าของที่อยากขาย', D: 'ผู้ซื้อ' }
+
+function researchIdeaToCard(row) {
+  const cite = ['news', 'official', 'auction'].includes(row.source) && row.source_label
+  const audience = Array.isArray(row.audience) && row.audience.length ? row.audience.map((a) => researchAudienceLabels[a] || a).join(' · ') : 'ทุกกลุ่ม'
+  return {
+    id: `research-${row.id}`,
+    dbId: row.id,
+    source: cite ? `${researchSourceLabels[row.source] || row.source} · ${row.source_label}` : (researchSourceLabels[row.source] || row.source),
+    type: researchSubtypeLabels[row.subtype] || row.subtype || 'ตลาด',
+    // คะแนนเรดาร์อยู่ช่วง ~1–9 ส่วนไอเดียเดิมในหน้าใช้ 0–100 → ยืดสเกลให้เรียงรวมกันได้
+    score: Math.round(Math.min(99, 40 + Number(row.score || 0) * 7)),
+    title: row.title,
+    angle: row.angles?.[0]?.brief || row.summary || 'รอ AI เขียนมุมเล่า — เลือกได้เลยถ้าหัวข้อตรงใจ',
+    audience,
+    channel: 'Facebook',
+    status: `เรดาร์รีเสิร์ช · คะแนน ${row.score}`,
+    url: row.url || '',
+    angles: Array.isArray(row.angles) ? row.angles : [],
+    eventDate: row.event_date || null,
+  }
+}
+
 const defaultStudio = {
   prompt: '',
   objective: 'lead_owner',
@@ -938,8 +967,9 @@ export default function MarketingPage({ onBack }) {
   const [facebookConnection, setFacebookConnection] = useState({ loading: true, connected: false })
   const [facebookPublishingId, setFacebookPublishingId] = useState(null)
   const [artworkBrief, setArtworkBrief] = useState(null)
+  const [researchIdeas, setResearchIdeas] = useState([])
 
-  const ideaPool = useMemo(() => prioritizeMarketingIdeas([...(workspace.radarIdeas || []), ...seedIdeas]), [workspace.radarIdeas])
+  const ideaPool = useMemo(() => prioritizeMarketingIdeas([...researchIdeas, ...(workspace.radarIdeas || []), ...seedIdeas]), [researchIdeas, workspace.radarIdeas])
   const allDrafts = useMemo(
     () => [...workspace.posts, ...seedDrafts.filter((post) => !workspace.hiddenPostIds.includes(post.id))],
     [workspace.posts, workspace.hiddenPostIds],
@@ -973,6 +1003,22 @@ export default function MarketingPage({ onBack }) {
     setWorkspace(next)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   }
+
+  // คิวไอเดียจากระบบรีเสิร์ช — ไม่มีตาราง/ไม่ได้ตั้งค่า = เงียบ (หน้ายังใช้ไอเดียเดิมได้)
+  const loadResearchIdeas = async () => {
+    try {
+      const res = await fetch('/api/marketing-ideas?status=new&limit=30')
+      if (!res.ok) return
+      const data = await res.json().catch(() => ({}))
+      setResearchIdeas((Array.isArray(data.ideas) ? data.ideas : []).map(researchIdeaToCard))
+    } catch {
+      /* เครือข่าย/ยังไม่ติดตั้ง — ข้าม */
+    }
+  }
+
+  useEffect(() => {
+    loadResearchIdeas()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -1287,6 +1333,37 @@ export default function MarketingPage({ onBack }) {
       : [{ ...idea, savedAt: new Date().toISOString() }, ...workspace.savedIdeas]
     save({ ...workspace, savedIdeas })
     notify(exists ? 'ไอเดียนี้อยู่ในคลังแล้ว' : 'เก็บไอเดียไว้ในผลงานทั้งหมดแล้ว')
+  }
+
+  const postResearchIdea = async (body) => {
+    const res = await fetch('/api/marketing-ideas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'บันทึกไม่สำเร็จ')
+    return data
+  }
+
+  // เลือกไอเดียจากเรดาร์ = สร้างร่างเหมือนไอเดียอื่น + บอกระบบว่าเลือกแล้ว (status picked) จะไม่โผล่ซ้ำ
+  const pickResearchIdea = (prompt, idea) => {
+    if (idea?.dbId) {
+      postResearchIdea({ action: 'pick', id: idea.dbId, chosen_angle: idea.angles?.[0]?.label || null })
+        .then(() => setResearchIdeas((items) => items.filter((item) => item.dbId !== idea.dbId)))
+        .catch((err) => notify(`บันทึกว่าเลือกไอเดียไม่สำเร็จ: ${err.message}`, 'error'))
+    }
+    createApprovalContentFromIdea(prompt, idea)
+  }
+
+  // ทิ้ง = ใส่เหตุผลสั้น ๆ (ใช้ปรับเกณฑ์เรดาร์ทีหลัง) · ไม่ลบแถว
+  const dismissResearchIdea = async (idea) => {
+    if (!idea?.dbId) return
+    const reason = window.prompt('ทิ้งไอเดียนี้เพราะอะไร (สั้น ๆ ช่วยปรับเกณฑ์เรดาร์)', 'ไม่เกี่ยวกับธุรกิจเรา')
+    if (reason === null) return
+    try {
+      await postResearchIdea({ action: 'dismiss', id: idea.dbId, reason })
+      setResearchIdeas((items) => items.filter((item) => item.dbId !== idea.dbId))
+      notify('ทิ้งไอเดียแล้ว')
+    } catch (err) {
+      notify(err.message || 'ทิ้งไอเดียไม่สำเร็จ', 'error')
+    }
   }
 
   const updateReferenceForm = (patch) => {
@@ -1674,14 +1751,16 @@ export default function MarketingPage({ onBack }) {
             showAll={showAllIdeas}
             total={ideaPool.length}
             seedCount={seedIdeas.length}
+            researchCount={researchIdeas.length}
             radarCount={workspace.radarIdeas?.length || 0}
             radarLoading={radarLoading}
             manualIdea={workspace.manualIdea}
             onManualChange={(manualIdea) => save({ ...workspace, manualIdea })}
             onAddManual={addManualIdea}
             onToggle={() => setShowAllIdeas((value) => !value)}
-            onCreate={createApprovalContentFromIdea}
+            onCreate={pickResearchIdea}
             onSaveIdea={saveIdeaForLater}
+            onDismiss={dismissResearchIdea}
             onLoadRadar={loadTrendRadar}
           />
         )}
@@ -2016,6 +2095,7 @@ function IdeasView({
   showAll,
   total,
   seedCount,
+  researchCount = 0,
   radarCount,
   radarLoading,
   manualIdea,
@@ -2024,6 +2104,7 @@ function IdeasView({
   onToggle,
   onCreate,
   onSaveIdea,
+  onDismiss,
   onLoadRadar,
 }) {
   return (
@@ -2032,7 +2113,7 @@ function IdeasView({
         <div>
           <div className="mx-kicker">ไอเดียวันนี้</div>
           <h1>เลือกหัวข้อที่ควรทำก่อน แล้วให้ AssetX จัดแพ็กคอนเทนต์</h1>
-          <p>ข้อมูลเราเอง {seedCount} หัวข้อ · Trend Radar {radarCount} หัวข้อ · เรียงจากความสำคัญ โอกาสสร้าง lead และคุณค่าความรู้ต่อผู้อ่าน</p>
+          <p>ข้อมูลเราเอง {seedCount} หัวข้อ · เรดาร์รีเสิร์ช {researchCount} หัวข้อ · Trend Radar {radarCount} หัวข้อ · เรียงจากความสำคัญ โอกาสสร้าง lead และคุณค่าความรู้ต่อผู้อ่าน</p>
         </div>
         <div className="mx-page-actions">
           <button className="mx-secondary" onClick={onLoadRadar} disabled={radarLoading}>{radarLoading ? 'กำลังสำรวจ...' : 'สำรวจตลาดด้วย Tavily'}</button>
@@ -2055,15 +2136,22 @@ function IdeasView({
               ) : idea.title}
             </h2>
             <p>{idea.angle}</p>
+            {idea.angles?.length > 1 && (
+              <div className="mx-tags">
+                {idea.angles.map((item) => <span key={item.label} title={item.brief}>มุม: {item.label}</span>)}
+              </div>
+            )}
             <div className="mx-tags">
               <span>{idea.source}</span>
               <span>{idea.audience}</span>
               <span>{idea.status}</span>
+              {idea.eventDate && <span>วันที่ {idea.eventDate}</span>}
               {idea.url && <a href={idea.url} target="_blank" rel="noreferrer">เปิดแหล่งข่าว</a>}
             </div>
             <div className="mx-card-actions">
               <button className="mx-primary" onClick={() => onCreate(idea.title, idea)}>เริ่มทำคอนเทนต์</button>
               <button className="mx-ghost" onClick={() => onSaveIdea(idea)}>เก็บไว้ก่อน</button>
+              {idea.dbId && onDismiss && <button className="mx-ghost" onClick={() => onDismiss(idea)}>ทิ้ง</button>}
             </div>
           </article>
         ))}

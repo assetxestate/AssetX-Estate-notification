@@ -18,6 +18,7 @@
     { "source": "/api/marketing-radar", "destination": "/api/marketing?feature=radar" },
     { "source": "/api/marketing-knowledge-save", "destination": "/api/marketing?feature=knowledge-save" },
     { "source": "/api/marketing-facebook", "destination": "/api/marketing?feature=facebook" },
+    { "source": "/api/marketing-ideas", "destination": "/api/marketing?feature=ideas" },
     { "source": "/api/telegram-webhook", "destination": "/api/telegram-webhook" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],

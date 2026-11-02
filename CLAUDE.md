@@ -25,6 +25,8 @@ npm run dev       # รัน development server
 npm run build     # build สำหรับ production
 npm run preview   # preview หลัง build
 npm run report:contracts   # สร้าง PDF สรุปสัญญาที่มีผล (A4 แนวนอน) จากข้อมูลสดใน Supabase ไปที่โฟลเดอร์แม่ของโปรเจกต์
+npm run research -- run    # รอบรีเสิร์ชโซเชียล/เทรนด์ประจำวัน (probe · collect --dry-run · angles · stats · report) ดู docs/social-research.md
+npm run test:research      # เทสต์ระบบรีเสิร์ช (ตัวลบข้อมูลบุคคล · ด่านดอกเบี้ย · parser · ตัวเก็บ · API)
 
 ## Project Structure
 
