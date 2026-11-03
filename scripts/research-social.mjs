@@ -3,7 +3,7 @@
 // ข้อตกลง 2 ระบบ (ต้องทำครบทุกข้อ): ~/.claude/skills/social-research/profiles/shared-browser-dvx-assetx.md · เครื่องยนต์: server/research/social-watch.js
 //
 // node scripts/research-social.mjs run [--dry-run] [--limit N] [--target คำ] [--no-report]
-//     รอบประจำวัน (Task Scheduler 11:30 + สำรอง 14:30 · ห่างจากรอบรีเสิร์ช 07:00–08:30 และรอบ DVX ~07:03):
+//     รอบประจำวัน (Task Scheduler 21:00 + สำรอง 23:00 ช่วงกลางคืนตามที่เจ้าของเลือก · ทั้งคู่ก่อนเที่ยงคืนให้อยู่วันไทยเดียวกัน · ห่างจากรอบรีเสิร์ช 07:00–08:30 และรอบ DVX ~07:03):
 //     ตรวจแถวพักร่วม/โควตา → ถือกุญแจกลาง (รอได้ 20 นาที) → อ่าน ≤ 4 เพจที่ถึงรอบ ≤ ~7 นาที → ปล่อยกุญแจ →
 //     คัดโพสต์แรงกว่าปกติของเพจเข้าคิว marketing_ideas (source social) → รายงานเทเลแกรม
 //     วันละ 1 รอบ: ~/.research-browser/usage.jsonl มีแถว assetx วันนี้แล้ว = ข้าม (รอบสำรองข้ามเอง) · ทุกรอบลง runs.jsonl รวมรอบที่ข้าม
