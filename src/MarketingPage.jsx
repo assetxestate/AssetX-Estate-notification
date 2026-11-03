@@ -9,6 +9,7 @@ import { importHermesDraft } from './lib/hermesMarketingDraft.js'
 import { assetxImageStyles, buildGalleryFireflyPrompt } from './lib/assetxImageStyles.js'
 import { marketingChannelSetup, validateManualPublicationReference } from './lib/marketingChannels.js'
 import { organizeMarketingQueue } from './lib/marketingQueuePlan.js'
+import { SESSION_EXPIRED_MESSAGE, errorMessage, friendlyApiError } from './lib/marketingErrors.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -57,6 +58,7 @@ function displaySource(source = '') {
     .replace(/Hermes \+ Tavily/i, 'สำรวจตลาด')
     .replace(/Tavily Trend Radar|Tavily/gi, 'สำรวจตลาด')
     .replace(/AssetX Studio/i, 'เขียนเอง')
+    .replace(/^Reference · /, 'ตัวอย่างโฆษณา · ')
     .replace(/^Brand Brain$|^ระบบสัญญา$|^คำถามลูกค้า(บ่อย)?$|^ฟอร์มประเมินทรัพย์$|^ฐานข้อมูลทรัพย์$/, 'หัวข้อตัวอย่าง')
     .replace(/^ไอเดียวันนี้$/, 'จากไอเดีย')
 }
@@ -80,18 +82,7 @@ const thaiTime = (value) => {
   return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
 }
 
-// ข้อความผิดพลาดจาก API ที่ปลอดภัยต่อการแสดงบนหน้า: 401 = เซสชันหมดอายุ · ข้อความที่มีชื่อตัวแปร/โค้ด/ชื่อไฟล์/อังกฤษล้วน = ใช้ข้อความสำรอง
-const SESSION_EXPIRED_MESSAGE = 'เซสชันหมดอายุ กดเข้าสู่ระบบใหม่'
-// fetch ล้มทั้งก้อน (เครือข่าย/เซิร์ฟเวอร์ไม่ตอบ) → เบราว์เซอร์โยน TypeError ภาษาอังกฤษ ("Failed to fetch") → แปลเป็นคำที่คนอ่านเข้าใจ
-const errorMessage = (error, fallback) => (error instanceof TypeError ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง' : (error?.message || fallback))
-function friendlyApiError(status, data, fallback) {
-  if (status === 401) return SESSION_EXPIRED_MESSAGE
-  const raw = String(data?.error || data?.message || '').split(' — Facebook (')[0].trim()
-  if (!raw) return fallback
-  const leaky = /[A-Z]{2,}_[A-Z_]+|Environment Variables|\.env|\.sql|\.md|HTTP \d{3}|API \d{3}|Graph API|\bcode \d+|Supabase|Tavily|Hermes|Obsidian|OpenAI|Gemini|server/i.test(raw)
-  const thai = /[฀-๿]/.test(raw)
-  return leaky || !thai ? fallback : raw
-}
+// ข้อความผิดพลาดที่ปลอดภัยต่อการแสดงบนหน้า (SESSION_EXPIRED_MESSAGE · friendlyApiError · errorMessage) อยู่ใน ./lib/marketingErrors.js
 
 const defaultStudio = {
   prompt: '',
@@ -121,7 +112,7 @@ const seedIdeas = [
   {
     id: 'owner-liquidity',
     source: 'คำถามลูกค้า',
-    type: 'Lead เจ้าของทรัพย์',
+    type: 'ลีดเจ้าของทรัพย์',
     score: 88,
     title: 'เจ้าของที่ดินต้องการเงินก้อน แต่ยังไม่อยากขายขาด',
     angle: 'เล่าให้เข้าใจความต่างระหว่างขายฝาก จำนอง และขายขาดแบบระมัดระวัง',
@@ -132,7 +123,7 @@ const seedIdeas = [
   {
     id: 'seller-land',
     source: 'ฟอร์มประเมินทรัพย์',
-    type: 'Lead ขายทรัพย์',
+    type: 'ลีดขายทรัพย์',
     score: 80,
     title: 'เจ้าของต้องการขายที่ดินแต่ยังไม่รู้ราคาตลาด',
     angle: 'ชวนเตรียมเอกสารและข้อมูลทำเล ก่อนส่งให้ทีมประเมินช่วยดูราคาเบื้องต้น',
@@ -259,7 +250,7 @@ const inboxCases = [
     id: 'lead-owner-liquidity',
     source: 'LINE OA',
     risk: 'กลาง',
-    intent: 'Lead เจ้าของทรัพย์',
+    intent: 'ลูกค้าเจ้าของทรัพย์',
     question: 'มีโฉนดที่ดินต่างจังหวัด อยากได้เงินก้อนแต่ยังไม่อยากขายขาด ทำได้ไหม',
     suggestedReply: 'สามารถส่งข้อมูลเบื้องต้นให้ทีมประเมินได้ครับ ได้แก่ จังหวัด/อำเภอ/ตำบล ประเภททรัพย์ เนื้อที่ และรูปหน้าโฉนดที่ปิดข้อมูลสำคัญบางส่วน ทีมงานจะช่วยดูทางเลือกเบื้องต้น เช่น จำนอง ขายฝาก หรือแนวทางขายทรัพย์ โดยยังไม่ฟันธงวงเงินจนกว่าจะตรวจเอกสารและทำเลจริงครับ',
     action: 'ตอบได้หลังตรวจข้อความ',
@@ -321,35 +312,35 @@ const referenceSources = [
     id: 'meta-ads',
     name: 'Meta Ads Library',
     type: 'โฆษณา Facebook / Instagram',
-    strength: 'ดู hook, ภาพปก, carousel, CTA และข้อความโฆษณาของตลาดจริง',
+    strength: 'ดูประโยคเปิด ภาพปก ภาพชุด ปุ่มชวนติดต่อ และข้อความโฆษณาของตลาดจริง',
     searchUrl: (query) => `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TH&media_type=all&q=${encodeURIComponent(query)}&search_type=keyword_unordered`,
   },
   {
     id: 'tiktok-top-ads',
     name: 'TikTok Creative Center',
-    type: 'วิดีโอสั้น / Top Ads',
-    strength: 'ดู hook 3 วินาทีแรก, script, pacing และ visual angle สำหรับ Reels/TikTok',
+    type: 'วิดีโอสั้น / โฆษณายอดนิยม',
+    strength: 'ดูประโยคเปิด 3 วินาทีแรก สคริปต์ จังหวะ และมุมภาพสำหรับ Reels/TikTok',
     searchUrl: () => 'https://ads.tiktok.com/business/creativecenter/inspiration/topads/pc/en?period=30&region=TH',
   },
   {
     id: 'pinterest-trends',
     name: 'Pinterest Trends',
-    type: 'Moodboard / Visual trend',
-    strength: 'หา mood, keyword, layout และ direction ของภาพอสังหา/บ้าน/ที่ดิน',
+    type: 'มู้ดบอร์ด / เทรนด์ภาพ',
+    strength: 'หาอารมณ์ภาพ คีย์เวิร์ด เลย์เอาต์ และทิศทางของภาพอสังหา/บ้าน/ที่ดิน',
     searchUrl: (query) => `https://trends.pinterest.com/?geo=TH&q=${encodeURIComponent(query)}`,
   },
   {
     id: 'pinterest-search',
     name: 'Pinterest Search',
-    type: 'Visual reference',
-    strength: 'เก็บไอเดีย composition, โทนสี และ mood ของภาพโดยไม่ลอกภาพเดิม',
+    type: 'ตัวอย่างภาพ',
+    strength: 'เก็บไอเดียการจัดองค์ประกอบ โทนสี และอารมณ์ของภาพโดยไม่ลอกภาพเดิม',
     searchUrl: (query) => `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(query)}`,
   },
   {
     id: 'google-creative',
     name: 'Google Image / Web',
     type: 'ภาพและบทความ',
-    strength: 'หา reference กว้าง ๆ จากคีย์เวิร์ดไทยและอังกฤษ',
+    strength: 'หาตัวอย่างกว้าง ๆ จากคีย์เวิร์ดไทยและอังกฤษ',
     searchUrl: (query) => `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`,
   },
 ]
@@ -373,7 +364,7 @@ const defaultReferenceForm = {
   audience: 'เจ้าของทรัพย์',
   channel: 'Facebook',
   risk: 'medium',
-  tags: 'ขายฝาก, โฉนด, lead',
+  tags: 'ขายฝาก, โฉนด, ลีด',
   notes: '',
 }
 
@@ -754,17 +745,17 @@ function buildReferenceBrief(reference) {
   const source = sourceFromId(reference.sourceId)
   const tags = Array.isArray(reference.tags) ? reference.tags.join(', ') : reference.tags
   return [
-    `Reference: ${reference.title}`,
-    `Source: ${source.name}${reference.url ? ` (${reference.url})` : ''}`,
-    `Audience: ${reference.audience || 'เจ้าของทรัพย์'}`,
-    `Channel: ${reference.channel || 'Facebook'}`,
+    `ตัวอย่าง: ${reference.title}`,
+    `แหล่งที่มา: ${source.name}${reference.url ? ` (${reference.url})` : ''}`,
+    `กลุ่มเป้าหมาย: ${reference.audience || 'เจ้าของทรัพย์'}`,
+    `ช่องทาง: ${reference.channel || 'Facebook'}`,
     `ประโยคเปิดที่น่าสนใจ: ${reference.hook || 'ยังไม่ระบุ'}`,
-    `Pattern ภาพ/วิดีโอ: ${reference.visualPattern || 'ยังไม่ระบุ'}`,
+    `รูปแบบภาพ/วิดีโอ: ${reference.visualPattern || 'ยังไม่ระบุ'}`,
     `มุมที่ควรทำแบบ AssetX: ${reference.contentAngle || 'ถอดเป็นคอนเทนต์ให้ความรู้ที่ไม่สัญญาเกินจริง'}`,
-    `Tags: ${tags || '-'}`,
+    `ป้ายกำกับ: ${tags || '-'}`,
     '',
-    'AssetX rule:',
-    '- ใช้ reference เพื่อเรียนรู้ pattern เท่านั้น ห้ามลอกภาพ/โลโก้/ข้อความคู่แข่ง',
+    'กติกา AssetX:',
+    '- ใช้ตัวอย่างเพื่อเรียนรู้รูปแบบเท่านั้น ห้ามลอกภาพ/โลโก้/ข้อความคู่แข่ง',
     '- ไม่ใส่ข้อมูลส่วนตัว เลขโฉนด เบอร์โทร ที่อยู่ หรือภาพลูกค้าจริง',
     '- ไม่สัญญาว่าอนุมัติแน่นอน ได้เงินทันที หรือรับประกันผลตอบแทน',
     `- โทนภาพ: สมจริง พรีเมี่ยม สะอาด น่าเชื่อถือ ใช้สีตามโลโก้ AssetX (${assetxPalettePrompt})`,
@@ -775,14 +766,14 @@ function referenceToIdea(reference) {
   const source = sourceFromId(reference.sourceId)
   return {
     id: `ref-idea-${reference.id}`,
-    source: `Reference · ${source.name}`,
-    type: 'Creative Reference',
+    source: `ตัวอย่างโฆษณา · ${source.name}`,
+    type: 'ตัวอย่างโฆษณา',
     score: reference.risk === 'low' ? 86 : reference.risk === 'high' ? 70 : 80,
     title: reference.title,
-    angle: reference.contentAngle || reference.hook || 'นำ reference นี้มาถอดเป็นคอนเทนต์ในภาษาของ AssetX',
+    angle: reference.contentAngle || reference.hook || 'นำตัวอย่างนี้มาถอดเป็นคอนเทนต์ในภาษาของ AssetX',
     audience: reference.audience || 'เจ้าของทรัพย์',
     channel: reference.channel || 'Facebook',
-    status: 'ถอด pattern แล้ว',
+    status: 'ถอดรูปแบบแล้ว',
     url: reference.url || '',
   }
 }
@@ -1109,23 +1100,31 @@ export default function MarketingPage({ onBack }) {
       .then(async (remote) => {
         const incomingId = new URLSearchParams(window.location.search).get('hermesDraft')
         if (incomingId) {
-          if (!/^[a-f0-9]{32}$/.test(incomingId)) throw new Error('Invalid Hermes draft link')
-          const incoming = await getMarketingWorkspace(`hermes-draft-${incomingId}`)
-          if (cancelled) return
-          if (!incoming?.payload || incoming.payload.id !== incomingId) throw new Error('Hermes draft not found')
-          const base = remote?.payload && hasWorkspaceContent(remote.payload) ? normalizeWorkspace(remote.payload) : loadWorkspace()
-          const imported = importHermesDraft(base, incoming.payload)
-          if (imported !== base) await saveMarketingWorkspace(imported)
-          if (cancelled) return
-          remote = { payload: imported, updated_at: new Date().toISOString() }
-          setView('approvals')
-          setSelectedId(`hermes-${incomingId}`)
+          // ลิงก์ร่างจาก Telegram เสีย/หมดอายุ → แจ้งแล้วโหลดข้อมูลตามปกติต่อ (เดิมลิงก์เสียทำให้หยุดบันทึกขึ้นระบบทั้ง session)
+          try {
+            if (!/^[a-f0-9]{32}$/.test(incomingId)) throw new Error('Invalid Hermes draft link')
+            const incoming = await getMarketingWorkspace(`hermes-draft-${incomingId}`)
+            if (cancelled) return
+            if (!incoming?.payload || incoming.payload.id !== incomingId) throw new Error('Hermes draft not found')
+            const base = remote?.payload && hasWorkspaceContent(remote.payload) ? normalizeWorkspace(remote.payload) : loadWorkspace()
+            const imported = importHermesDraft(base, incoming.payload)
+            if (imported !== base) await saveMarketingWorkspace(imported)
+            if (cancelled) return
+            remote = { payload: imported, updated_at: new Date().toISOString() }
+            setView('approvals')
+            setSelectedId(`hermes-${incomingId}`)
+          } catch (importError) {
+            if (cancelled) return
+            console.warn('hermes draft import failed:', importError?.message || importError)
+            notify('นำเข้าร่างจากผู้ช่วย Telegram ไม่สำเร็จ ลิงก์อาจหมดอายุหรือไม่ถูกต้อง', 'error')
+          }
         }
         if (cancelled) return
         if (remote?.payload && hasWorkspaceContent(remote.payload)) {
           const next = normalizeWorkspace(remote.payload)
           setWorkspace(next)
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+          // พื้นที่ในเบราว์เซอร์เต็มต้องไม่ทำให้หยุดบันทึกขึ้นระบบ — ข้อมูลชุดนี้มาจากระบบอยู่แล้ว
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* ข้ามได้ */ }
           setSyncState({ state: 'saved', at: remote.updated_at || null })
         } else {
           setSyncState({ state: 'saved', at: null })
@@ -1134,10 +1133,7 @@ export default function MarketingPage({ onBack }) {
       })
       .catch((error) => {
         if (cancelled) return
-        if (new URLSearchParams(window.location.search).has('hermesDraft')) {
-          console.warn('hermes draft import failed:', error?.message || error)
-          notify('นำเข้าร่างจากผู้ช่วย Telegram ไม่สำเร็จ ลิงก์อาจหมดอายุหรือไม่ถูกต้อง', 'error')
-        }
+        console.warn('load marketing workspace failed:', error?.message || error)
         setSyncState({ state: 'local', at: null })
         setCloudReady(false)
       })
@@ -1172,6 +1168,15 @@ export default function MarketingPage({ onBack }) {
       })
     return () => { cancelled = true }
   }, [])
+
+  // บันทึกขึ้นระบบไม่สำเร็จ → กดลองใหม่ได้ทันที (ส่งก้อนเดียวกับที่ autosave จะส่ง · เกิดจากการกดของคนเท่านั้น ไม่ใช่ตอนเปิดหน้า)
+  const retrySave = () => {
+    if (!cloudReady) return
+    setSyncState((prev) => ({ ...prev, state: 'saving' }))
+    saveMarketingWorkspace(workspace)
+      .then(() => setSyncState({ state: 'saved', at: new Date().toISOString() }))
+      .catch(() => setSyncState({ state: 'failed', at: null }))
+  }
 
   const notify = (message, type = 'success') => {
     setToast({ message, type })
@@ -1243,7 +1248,7 @@ export default function MarketingPage({ onBack }) {
 
   const publishToFacebook = async (post) => {
     if (!facebookConnection.connected) {
-      notify('ยังไม่ได้เชื่อม Facebook Page', 'error')
+      notify('ยังไม่เชื่อม Facebook', 'error')
       return
     }
     const media = findMediaForPost(workspace.mediaAssets || [], post)
@@ -1347,6 +1352,7 @@ export default function MarketingPage({ onBack }) {
     const generated = runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || ''))
     save({ ...workspace, studio: input, generated })
     goTo('studio')
+    notify('ร่างโพสต์แล้ว · ตรวจแล้วกด ส่งเข้ารอตรวจ')
   }
 
   const createApprovalContentFromIdea = (prompt, sourceIdea) => {
@@ -1452,10 +1458,10 @@ export default function MarketingPage({ onBack }) {
     createApprovalContentFromIdea(prompt, chosen?.brief ? { ...idea, angle: chosen.brief } : idea)
   }
 
-  // ทิ้ง = ใส่เหตุผลสั้น ๆ (ใช้ปรับเกณฑ์เรดาร์ทีหลัง) · ไม่ลบแถว
+  // ทิ้ง = ใส่เหตุผลสั้น ๆ (ใช้ปรับเกณฑ์คัดไอเดียทีหลัง) · ไม่ลบแถว
   const dismissResearchIdea = async (idea) => {
     if (!idea?.dbId) return
-    const reason = window.prompt('ทิ้งไอเดียนี้เพราะอะไร (สั้น ๆ ช่วยปรับเกณฑ์เรดาร์)', 'ไม่เกี่ยวกับธุรกิจเรา')
+    const reason = window.prompt('ทิ้งไอเดียนี้เพราะอะไร (สั้น ๆ ช่วยปรับเกณฑ์คัดไอเดีย)', 'ไม่เกี่ยวกับธุรกิจเรา')
     if (reason === null) return
     try {
       await postResearchIdea({ action: 'dismiss', id: idea.dbId, reason })
@@ -1510,7 +1516,6 @@ export default function MarketingPage({ onBack }) {
   const createFromReference = (reference) => {
     const brief = buildReferenceBrief(reference)
     generateContent(`${reference.title}\n\n${brief}`, referenceToIdea(reference))
-    notify('ร่างโพสต์จากตัวอย่างแล้ว · ตรวจแล้วกดส่งเข้ารอตรวจ')
   }
 
   const saveReferenceAsIdea = (reference) => {
@@ -1699,9 +1704,9 @@ export default function MarketingPage({ onBack }) {
         // โค้ดจากเซิร์ฟเวอร์ (เช่น โควต้าหมด / ยังไม่ตั้งคีย์) → บอกเป็นภาษาคน ไม่โชว์โค้ดหรือชื่อตัวแปร
         const code = String(data.code || '')
         const reason = /QUOTA/i.test(code)
-          ? 'บริการสร้างภาพใช้โควต้าหมดชั่วคราว — คัดลอกบรีฟภาพด้านล่างไปใช้กับเครื่องมืออื่นได้'
+          ? 'บริการสร้างภาพใช้โควต้าหมดชั่วคราว — คัดลอกบรีฟรูปด้านล่างไปใช้กับเครื่องมืออื่นได้'
           : /AUTH|KEY/i.test(code) || /_API_KEY/.test(String(data.error || ''))
-            ? 'ยังไม่ได้เชื่อมบริการสร้างภาพอัตโนมัติ — ใช้บรีฟภาพด้านล่างกับเครื่องมือที่มีอยู่แทนได้'
+            ? 'ยังไม่ได้เชื่อมบริการสร้างภาพอัตโนมัติ — ใช้บรีฟรูปด้านล่างกับเครื่องมือที่มีอยู่แทนได้'
             : friendlyApiError(res.status, data, type === 'video' ? 'สร้างวิดีโอไม่สำเร็จ ลองใหม่อีกครั้ง' : 'สร้างรูปไม่สำเร็จ ลองใหม่อีกครั้ง')
         if (data.fallbackPrompt) {
           setMediaResult({
@@ -1710,7 +1715,7 @@ export default function MarketingPage({ onBack }) {
             targetType: type,
             title: brief.title,
             prompt: data.fallbackPrompt,
-            model: 'บรีฟภาพสำหรับคัดลอก',
+            model: 'บรีฟรูปสำหรับคัดลอก',
           })
           notify(reason, 'error')
           return
@@ -1828,7 +1833,7 @@ export default function MarketingPage({ onBack }) {
               <span className="mx-brand-name">AssetX · การตลาด</span>
             </div>
           </div>
-          <StatusStrip feed={researchFeed} syncState={syncState} facebookConnection={facebookConnection} onReload={loadResearchIdeas} />
+          <StatusStrip feed={researchFeed} syncState={syncState} facebookConnection={facebookConnection} onReload={loadResearchIdeas} onRetrySave={cloudReady ? retrySave : null} />
         </header>
         <nav className="mx-tabs" aria-label="ส่วนหลักของหน้าการตลาด">
           <TabButton id="ideas" active={activeTab === 'ideas'} label="ไอเดีย" count={dashboardCounts.ideas} onClick={() => goTo('ideas')} />
@@ -2101,7 +2106,7 @@ function ReferenceRadarView({
           </label>
           <label>
             ลิงก์ที่มา
-            <input value={form.url} onChange={(event) => onFormChange({ url: event.target.value })} placeholder="วางลิงก์โฆษณา ข่าว หรือหน้า reference" />
+            <input value={form.url} onChange={(event) => onFormChange({ url: event.target.value })} placeholder="วางลิงก์โฆษณา ข่าว หรือหน้าตัวอย่าง" />
           </label>
           <div className="mx-form-grid">
             <label>
@@ -2221,6 +2226,7 @@ function IdeasView({
   const [sort, setSort] = useState('newest')
   const [showAll, setShowAll] = useState(false)
   const [angleChoice, setAngleChoice] = useState({})
+  const [expanded, setExpanded] = useState({})
   const syncState = feed.syncState || { state: 'saved' }
   const ordered = useMemo(() => {
     const byDate = (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
@@ -2242,7 +2248,7 @@ function IdeasView({
     return (
       <article className={`mx-idea-card ${isExample ? 'example' : ''}`} key={idea.id}>
         <div className="mx-idea-top">
-          <span>{isExample ? 'ตัวอย่าง' : idea.type}</span>
+          <span>{isExample ? 'ตัวอย่าง' : idea.kind === 'radar' ? 'สำรวจตลาด' : idea.type}</span>
           <strong>{isResearch ? (idea.createdAt ? thaiDate(idea.createdAt) : 'ใหม่') : isExample ? 'จากแม่แบบ' : 'จากการสำรวจตลาด'}</strong>
         </div>
         <h2>
@@ -2261,7 +2267,12 @@ function IdeasView({
             ))}
           </fieldset>
         )}
-        <p>{angleText}</p>
+        <p className={expanded[idea.id] ? 'open' : ''}>{angleText}</p>
+        {String(angleText || '').length > 160 && (
+          <button type="button" className="mx-more-link" aria-expanded={Boolean(expanded[idea.id])} onClick={() => setExpanded((prev) => ({ ...prev, [idea.id]: !prev[idea.id] }))}>
+            {expanded[idea.id] ? 'ย่อ' : 'อ่านต่อ'}
+          </button>
+        )}
         <div className="mx-tags">
           {!isExample && <span>{displaySource(idea.source)}</span>}
           {idea.audience && <span>{idea.audience}</span>}
@@ -2329,7 +2340,7 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
       <div className="mx-page-head compact">
         <div>
           <div className="mx-kicker">ร่าง · เขียนโพสต์ใหม่</div>
-          <h1>พิมพ์หัวข้อ แล้วให้ระบบร่างแคปชั่น บรีฟภาพ และสคริปต์ให้</h1>
+          <h1>พิมพ์หัวข้อ แล้วให้ระบบร่างแคปชั่น บรีฟรูป และสคริปต์ให้</h1>
           <p>ขั้นต่อไป (ใส่ภาพ · ตั้งเวลา · โพสต์) ทำในแท็บ ร่าง และ โพสต์</p>
         </div>
         <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onBack}>← กลับไปร่างที่รอตรวจ</button></div>
@@ -2352,7 +2363,7 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
               <span className="mx-pass">โครงสร้าง {generated.meta?.captionQuality?.score ?? '-'}/100</span>
             </div>
             <ContentBlock title="แคปชั่น" value={generated.caption} onCopy={() => onCopy(generated.caption)} />
-            <ContentBlock title="บรีฟภาพโปสเตอร์ (ภาษาอังกฤษ สำหรับโปรแกรมสร้างภาพ)" value={posterPrompt} onCopy={() => onCopy(posterPrompt)} collapsed />
+            <ContentBlock title="บรีฟรูป (ภาษาอังกฤษ สำหรับโปรแกรมสร้างภาพ)" value={posterPrompt} onCopy={() => onCopy(posterPrompt)} collapsed />
             <ContentBlock title="สคริปต์วิดีโอ" value={generated.videoScript} onCopy={() => onCopy(generated.videoScript)} collapsed />
             <div className="mx-card-actions end">
               <button className="mx-primary" onClick={() => onQueue('pending')}>ส่งเข้ารอตรวจ</button>
@@ -2394,7 +2405,7 @@ function ApprovalsView({
           <h1>ตรวจร่างก่อนโพสต์</h1>
           <p>ผ่านเกณฑ์ {drafts.filter((post) => post.reviewStatus === 'passed').length} · ติดเกณฑ์ {drafts.filter((post) => post.reviewStatus !== 'passed').length} · ทุกร่างต้องกดอนุมัติก่อนไปตั้งเวลา</p>
         </div>
-        <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onNewDraft}>+ เขียนโพสต์ใหม่</button></div>
+        <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onNewDraft}>เขียนโพสต์ใหม่</button></div>
       </div>
       {drafts.length === 0 ? (
         <div className="mx-empty">ยังไม่มีร่างรอตรวจ — เลือกไอเดียในแท็บ ไอเดีย แล้วกด ร่างโพสต์ หรือกด เขียนโพสต์ใหม่</div>
@@ -2527,7 +2538,7 @@ function ChannelsView({ posts, facebookConnection, onCreate, onQueue }) {
                 <tr key={channel.id}>
                   <th scope="row">{channel.label}</th>
                   <td>{channel.preparation}</td>
-                  <td><span className={facebookReady ? 'mx-channel-ready' : 'mx-channel-manual'}>{facebookReady ? 'โพสต์อัตโนมัติได้' : channel.id === 'facebook' ? 'ยังไม่เชื่อมต่อ' : 'โพสต์เองก่อน'}</span></td>
+                  <td><span className={facebookReady ? 'mx-channel-ready' : 'mx-channel-manual'}>{facebookReady ? 'โพสต์อัตโนมัติได้' : channel.id === 'facebook' ? 'ยังไม่เชื่อม Facebook' : 'โพสต์เองก่อน'}</span></td>
                   <td>{pending}</td>
                   <td>{queued}</td>
                   <td><a href={channel.managerUrl} target="_blank" rel="noreferrer">เปิดบัญชี</a></td>
@@ -2580,7 +2591,7 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
       {facebookConnection?.missing?.length > 0 && <p role="alert" className="mx-warn">ยังไม่เชื่อม Facebook Page — ตั้งค่าการเชื่อมต่อฝั่งเซิร์ฟเวอร์ แล้วดูสถานะที่หน้าช่องทาง</p>}
       {dueCount > 0 && <p className="mx-queue-due" role="status">มี {dueCount} โพสต์ที่ถึงกำหนดหรือเลยกำหนดแล้ว ต้องตรวจและเผยแพร่จริงตามช่องทาง</p>}
       {verificationCount > 0 && <p className="mx-queue-verify" role="status">มี {verificationCount} โพสต์ที่ตั้งเวลาบน Facebook และเวลาผ่านแล้ว กรุณาตรวจผลจริงใน Meta Business Suite</p>}
-      <div className="mx-queue-tabs" aria-label="สถานะคิวโพสต์">
+      <div className="mx-queue-tabs" aria-label="สถานะโพสต์">
         {[
           ['action', 'รอโพสต์'],
           ['platformScheduled', 'ตั้งเวลาแล้ว'],
@@ -2715,7 +2726,7 @@ function GalleryView({
       title: post.title,
       imagePrompt: post.imagePrompt,
       videoScript: post.videoScript,
-      source: post.channel || 'AssetX',
+      source: channelLabel(post.channel),
     })),
   ]
   const selectedStyle = visualStyles.find((style) => style.id === visualStyleId) || visualStyles[0]
@@ -2729,13 +2740,13 @@ function GalleryView({
           <h1>เตรียมภาพสำหรับคอนเทนต์</h1>
         </div>
       </div>
-      {!briefs.length && <div className="mx-gallery-empty">ยังไม่มีร่างที่มีบรีฟภาพ <button className="mx-secondary" type="button" onClick={onCreateContent}>เขียนโพสต์ใหม่</button></div>}
+      {!briefs.length && <div className="mx-gallery-empty">ยังไม่มีร่างที่มีบรีฟรูป <button className="mx-secondary" type="button" onClick={onCreateContent}>เขียนโพสต์ใหม่</button></div>}
       <div className="mx-gallery-flow">
         <div className="mx-gallery-fields">
           <label>
             คอนเทนต์
             <select value={selectedBrief ? String(selectedBrief.id) : ''} onChange={(event) => onSelectBrief(event.target.value)} disabled={!briefs.length}>
-              {!briefs.length && <option value="">ยังไม่มีบรีฟภาพ</option>}
+              {!briefs.length && <option value="">ยังไม่มีบรีฟรูป</option>}
               {briefs.map((brief) => <option key={brief.id} value={String(brief.id)}>{brief.title}</option>)}
             </select>
           </label>
@@ -2752,12 +2763,12 @@ function GalleryView({
           </label>
         </div>
         <div className="mx-gallery-prompt-head">
-          <strong>ข้อความสั่งสร้างภาพ (ภาษาอังกฤษ สำหรับวางใน Firefly)</strong>
+          <strong>บรีฟรูป (ภาษาอังกฤษ สำหรับวางใน Firefly)</strong>
           <span>{selectedStyle.allowPosterText ? 'ภาพพื้นหลังแนวโปสเตอร์ เพิ่มข้อความภายหลัง' : selectedStyle.description}</span>
         </div>
-        <textarea aria-label="ข้อความสั่งสร้างภาพ (ภาษาอังกฤษ สำหรับวางใน Firefly)" value={fireflyPrompt} readOnly placeholder="เลือกร่างเพื่อดูข้อความสั่งสร้างภาพ" />
+        <textarea aria-label="บรีฟรูป (ภาษาอังกฤษ สำหรับวางใน Firefly)" value={fireflyPrompt} readOnly placeholder="เลือกร่างเพื่อดูบรีฟรูป" />
         <div className="mx-gallery-prompt-actions">
-          <button className="mx-primary" type="button" disabled={!fireflyPrompt} onClick={() => onCopy(fireflyPrompt)}>คัดลอกข้อความสั่งสร้างภาพ</button>
+          <button className="mx-primary" type="button" disabled={!fireflyPrompt} onClick={() => onCopy(fireflyPrompt)}>คัดลอกบรีฟรูป</button>
           <a className="mx-secondary as-link" href="https://firefly.adobe.com/" target="_blank" rel="noreferrer">เปิด Firefly</a>
         </div>
       </div>
@@ -2790,13 +2801,11 @@ function GalleryView({
         <div className="mx-visual-copy">
           <div className="mx-kicker">แนวภาพของ AssetX</div>
           <h2>โทนภาพหลัก: สมจริง พรีเมี่ยม น่าเชื่อถือ</h2>
-          <p>ใช้ reference เป็นแรงบันดาลใจได้ แต่ผลลัพธ์ต้องเป็นภาพใหม่ในภาษาภาพของ AssetX: สะอาด โปร่ง ข้อมูลครบแต่ไม่เปิดเผยข้อมูลลูกค้า และไม่มีข้อความไทยฝังในภาพ</p>
+          <p>ใช้ตัวอย่างโฆษณาเป็นแรงบันดาลใจได้ แต่ผลลัพธ์ต้องเป็นภาพใหม่ในภาษาภาพของ AssetX: สะอาด โปร่ง ข้อมูลครบแต่ไม่เปิดเผยข้อมูลลูกค้า และไม่มีข้อความไทยฝังในภาพ</p>
           <div className="mx-workflow-steps">
-            <span>1 เลือกบรีฟ</span>
-            <span>2 เลือกสไตล์</span>
-            <span>3 สร้างภาพ/วิดีโอ</span>
-            <span>4 ตรวจความเสี่ยง</span>
-            <span>5 ดาวน์โหลดไปใช้</span>
+            <span>1 เลือกร่าง</span>
+            <span>2 เลือกแนวภาพ</span>
+            <span>3 สร้างภาพหรือวิดีโอ</span>
           </div>
         </div>
         <div className="mx-style-grid">
@@ -2876,10 +2885,10 @@ function GalleryView({
           {mediaResult.type === 'prompt' ? (
             <>
               <div className="mx-quota-note">
-                สร้างภาพอัตโนมัติไม่ได้ในตอนนี้ — ระบบเตรียมข้อความสั่งสร้างภาพที่ครบกฎแบรนด์ไว้ให้แล้ว คัดลอกไปวางในเครื่องมือสร้างภาพที่ใช้อยู่ (เช่น Firefly) หรือกลับมาลองใหม่ภายหลังได้
+                สร้างภาพอัตโนมัติไม่ได้ในตอนนี้ — ระบบเตรียมบรีฟรูปที่ครบกฎแบรนด์ไว้ให้แล้ว คัดลอกไปวางในเครื่องมือสร้างภาพที่ใช้อยู่ (เช่น Firefly) หรือกลับมาลองใหม่ภายหลังได้
               </div>
               <pre className="mx-fallback-prompt">{mediaResult.prompt}</pre>
-              <button className="mx-primary media-download" onClick={() => onCopy(mediaResult.prompt)}>คัดลอกข้อความสั่งสร้างภาพ</button>
+              <button className="mx-primary media-download" onClick={() => onCopy(mediaResult.prompt)}>คัดลอกบรีฟรูป</button>
             </>
           ) : (
             <>
@@ -3191,7 +3200,7 @@ function MetricsView({ metrics: allMetrics, form, onFormChange, onAdd, onDelete 
             <label>คุณภาพ<input type="number" min="0" value={form.qualified} onChange={(event) => onFormChange({ ...form, qualified: event.target.value })} /></label>
             <label>นัดหมาย<input type="number" min="0" value={form.appointments} onChange={(event) => onFormChange({ ...form, appointments: event.target.value })} /></label>
           </div>
-          <label>หมายเหตุ<textarea value={form.notes} onChange={(event) => onFormChange({ ...form, notes: event.target.value })} placeholder="เช่น ได้ lead จากเจ้าของที่ดิน 2 ราย / คำถามเรื่องขายฝากเยอะ" /></label>
+          <label>หมายเหตุ<textarea value={form.notes} onChange={(event) => onFormChange({ ...form, notes: event.target.value })} placeholder="เช่น ได้ลีดจากเจ้าของที่ดิน 2 ราย / คำถามเรื่องขายฝากเยอะ" /></label>
           <button className="mx-primary" onClick={onAdd}>บันทึกผล</button>
         </article>
         <div className="mx-list">
@@ -3246,10 +3255,11 @@ function PipelineView({ feed, syncState, facebookConnection, counts, onReload })
             {meta && (
               <span>
                 รอเลือก {meta.total ?? feed.ideas.length} หัวข้อ · มีมุมเล่าจาก AI แล้ว {meta.with_angles ?? 0} หัวข้อ
-                {bySource.length ? ` · ตามแหล่ง: ${bySource.map(([source, count]) => `${researchSourceLabels[source] || source} ${count}`).join(' · ')}` : ''}
+                {bySource.length ? ` · ตามแหล่ง: ${bySource.map(([source, count]) => `${researchSourceLabels[source] || 'อื่น ๆ'} ${count}`).join(' · ')}` : ''}
+                {feed.state !== 'ok' && feed.fetchedAt ? ` (ข้อมูลเมื่อ ${thaiTime(feed.fetchedAt)})` : ''}
               </span>
             )}
-            {freshness && <span className={`mx-pipe-note ${freshness.tone}`}>{freshness.text}</span>}
+            {freshness && feed.state === 'ok' && <span className={`mx-pipe-note ${freshness.tone}`}>{freshness.text}</span>}
           </div>
           <em className={research.tone}>{research.tone === 'ok' ? 'ปกติ' : research.tone === 'muted' ? 'กำลังโหลด' : 'ติดปัญหา'}</em>
         </article>
@@ -3259,7 +3269,7 @@ function PipelineView({ feed, syncState, facebookConnection, counts, onReload })
         </article>
         <article className="mx-pipe-card">
           <div><strong>Facebook Page</strong><span>{facebook.text}</span></div>
-          <em className={facebook.tone}>{facebook.tone === 'ok' ? 'เชื่อมแล้ว' : facebook.tone === 'muted' ? 'กำลังตรวจ' : 'ยังไม่เชื่อม'}</em>
+          <em className={facebook.tone}>{facebook.tone === 'ok' ? 'เชื่อมแล้ว' : facebook.tone === 'muted' ? 'กำลังตรวจ' : facebook.tone === 'error' ? 'ตรวจไม่ได้' : 'ยังไม่เชื่อม'}</em>
         </article>
         <article className="mx-pipe-card">
           <div><strong>งานในมือ</strong><span>ร่างรอตรวจ {counts.approvals} · รอโพสต์ {counts.ready} · ไอเดียที่เก็บไว้ {counts.saved}</span></div>
@@ -3355,8 +3365,8 @@ function reloadForLogin(syncState) {
 function describeSyncState(syncState) {
   if (syncState.state === 'loading') return { tone: 'muted', text: 'กำลังโหลดข้อมูล…' }
   if (syncState.state === 'saving') return { tone: 'muted', text: 'กำลังบันทึก…' }
-  if (syncState.state === 'local') return { tone: 'warn', text: 'โหลดจากระบบไม่ได้ ใช้ข้อมูลในเครื่อง' }
-  if (syncState.state === 'failed') return { tone: 'error', text: 'บันทึกขึ้นระบบไม่สำเร็จ ข้อมูลอยู่ในเครื่องนี้' }
+  if (syncState.state === 'local') return { tone: 'warn', text: 'โหลดจากระบบไม่ได้ · การแก้ไขตอนนี้ยังไม่ขึ้นระบบ' }
+  if (syncState.state === 'failed') return { tone: 'error', text: 'บันทึกขึ้นระบบไม่สำเร็จ · อย่าเพิ่งรีเฟรชหน้า', action: 'retry-save' }
   return { tone: 'ok', text: syncState.at ? `บันทึกแล้ว ${thaiTime(syncState.at)}` : 'บันทึกแล้ว' }
 }
 
@@ -3364,10 +3374,11 @@ function describeFacebook(connection) {
   if (connection?.unauthorized) return null
   if (connection?.loading) return { tone: 'muted', text: 'กำลังตรวจ Facebook' }
   if (connection?.connected) return { tone: 'ok', text: `Facebook · ${connection.pageName || 'เชื่อมแล้ว'}` }
+  if (connection?.error) return { tone: 'error', text: 'ตรวจ Facebook ไม่ได้' }
   return { tone: 'warn', text: 'ยังไม่เชื่อม Facebook' }
 }
 
-function StatusStrip({ feed, syncState, facebookConnection, onReload }) {
+function StatusStrip({ feed, syncState, facebookConnection, onReload, onRetrySave }) {
   const research = describeResearchFeed(feed)
   const sync = describeSyncState(syncState)
   const facebook = describeFacebook(facebookConnection)
@@ -3379,8 +3390,12 @@ function StatusStrip({ feed, syncState, facebookConnection, onReload }) {
         {research.action === 'login' && <button type="button" onClick={() => reloadForLogin(syncState)}>เข้าสู่ระบบใหม่</button>}
         {research.action === 'retry' && <button type="button" onClick={onReload}>ลองใหม่</button>}
       </span>
-      <span className={`mx-chip ${sync.tone}`}><span className="mx-chip-dot" aria-hidden="true" />{sync.text}</span>
+      <span className={`mx-chip ${sync.tone}`}>
+        <span className="mx-chip-dot" aria-hidden="true" />{sync.text}
+        {sync.action === 'retry-save' && onRetrySave && <button type="button" onClick={onRetrySave}>บันทึกอีกครั้ง</button>}
+      </span>
       {facebook && <span className={`mx-chip ${facebook.tone}`}><span className="mx-chip-dot" aria-hidden="true" />{facebook.text}</span>}
+      <button type="button" className="mx-strip-refresh" onClick={onReload} title="โหลดสถานะคิวไอเดียใหม่">รีเฟรช</button>
     </div>
   )
 }
@@ -3461,6 +3476,9 @@ const styles = `
   .mx-chip em { font-style: normal; color: var(--mx-sky); font-weight: 700; }
   .mx-chip button { border: 1px solid var(--mx-line-2); background: rgba(66,199,216,.12); color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
   .mx-chip button:hover { background: rgba(66,199,216,.24); }
+  .mx-strip-refresh { border: 1px solid var(--mx-line); background: transparent; color: var(--mx-ink-2); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .mx-strip-refresh:hover { border-color: var(--mx-line-2); color: #fff; }
+  .mx-page .ax-artwork input::placeholder, .mx-page .ax-artwork textarea::placeholder { color: #6b7c86; }
   .mx-chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mx-cyan); flex: 0 0 auto; }
   .mx-chip.ok .mx-chip-dot { background: var(--mx-ok); box-shadow: 0 0 10px rgba(74,222,128,.8); }
   .mx-chip.muted .mx-chip-dot { background: var(--mx-cyan); animation: mx-pulse 1.6s ease-out infinite; }
@@ -3523,7 +3541,7 @@ const styles = `
   .mx-more-row { display: flex; justify-content: center; margin-top: 16px; }
 
   /* ── การ์ดและพื้นผิว ── */
-  .mx-idea-card, .mx-review-card, .mx-preview, .mx-empty, .mx-chart-card, .mx-pipe-card, .mx-row-card, .mx-metric-card { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: var(--mx-radius); box-shadow: var(--mx-shadow); backdrop-filter: blur(10px); }
+  .mx-idea-card, .mx-review-card, .mx-preview, .mx-empty, .mx-chart-card, .mx-pipe-card, .mx-row-card, .mx-metric-card { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: var(--mx-radius); box-shadow: var(--mx-shadow); }
   .mx-idea-card, .mx-row-card, .mx-approval-card, .mx-pipe-card, .mx-metric-card, .mx-source-card, .mx-brand-rule, .mx-reference-item { animation: mx-rise .45s cubic-bezier(.2,.7,.2,1) both; }
   .mx-idea-grid > :nth-child(2), .mx-list > :nth-child(2), .mx-pipeline > :nth-child(2), .mx-metric-grid > :nth-child(2) { animation-delay: 60ms; }
   .mx-idea-grid > :nth-child(3), .mx-list > :nth-child(3), .mx-pipeline > :nth-child(3), .mx-metric-grid > :nth-child(3) { animation-delay: 120ms; }
@@ -3543,6 +3561,9 @@ const styles = `
   .mx-idea-title-link { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }
   .mx-idea-title-link:hover { color: var(--mx-sky); border-bottom-color: var(--mx-line-2); }
   .mx-idea-card p { margin: 0; color: var(--mx-ink-2); font-size: 15px; line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .mx-idea-card p.open { display: block; -webkit-line-clamp: unset; overflow: visible; }
+  .mx-more-link { align-self: flex-start; border: 0; background: transparent; color: var(--mx-sky); font-size: 13px; font-weight: 600; padding: 2px 0; cursor: pointer; margin-top: -4px; }
+  .mx-more-link:hover { text-decoration: underline; }
   .mx-angle-pick { margin: 0; padding: 6px 10px 8px; border: 1px solid var(--mx-line); border-radius: 12px; display: flex; flex-wrap: wrap; gap: 5px; background: rgba(5,11,24,.35); }
   .mx-angle-pick legend { padding: 0 6px; font-size: 13px; color: var(--mx-muted); font-weight: 600; }
   .mx-angle-pick label { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--mx-line); border-radius: 999px; padding: 4px 10px; font-size: 13px; color: var(--mx-ink-2); cursor: pointer; }
@@ -3594,7 +3615,7 @@ const styles = `
 
   /* ── ร่าง (approvals) ── */
   .mx-approval-feed { display: grid; gap: 14px; max-width: 1120px; }
-  .mx-approval-card { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 18px; padding: 18px; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; box-shadow: var(--mx-shadow); cursor: pointer; backdrop-filter: blur(10px); }
+  .mx-approval-card { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 18px; padding: 18px; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; box-shadow: var(--mx-shadow); cursor: pointer; }
   .mx-approval-card.active { border-color: var(--mx-line-2); box-shadow: var(--mx-shadow), var(--mx-glow); }
   .mx-approval-media-column { display: grid; gap: 8px; align-content: start; }
   .mx-approval-card-image { width: 100%; aspect-ratio: 4 / 5; border: 1px solid var(--mx-line); border-radius: 12px; overflow: hidden; background: rgba(5,11,24,.4); display: grid; }
@@ -3859,7 +3880,7 @@ const styles = `
     .mx-topbar { padding: 10px 16px; gap: 8px 12px; }
     .mx-strip { width: 100%; gap: 6px; }
     .mx-chip { padding: 4px 10px 4px 8px; white-space: normal; }
-    .mx-tools-current { display: none; }
+    .mx-tools-current, .mx-strip-refresh { display: none; }
     .mx-manual { grid-template-columns: 1fr; }
     .mx-tabs { padding: 0 8px 8px; gap: 2px; flex-wrap: nowrap; }
     .mx-tab, .mx-tools > summary { padding: 8px 9px; font-size: 13px; gap: 6px; }

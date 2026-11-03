@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ARTWORK_FORMATS, ARTWORK_THEMES, defaultArtwork, readArtworkImage, renderArtwork } from './lib/marketingArtwork.js'
+import { errorMessage, friendlyApiError } from './lib/marketingErrors.js'
 import './ArtworkEditor.css'
 
 export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
@@ -31,7 +32,7 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
       renderArtwork(source, design).then((result) => {
         if (!cancelled) setPreview(result)
       }).catch((err) => {
-        if (!cancelled) setRenderError(err.message)
+        if (!cancelled) setRenderError(errorMessage(err, 'แสดงตัวอย่างภาพไม่สำเร็จ ลองเลือกภาพใหม่'))
       }).finally(() => { if (!cancelled) setRendering(false) })
     }, 180)
     return () => { cancelled = true; clearTimeout(timer) }
@@ -59,11 +60,10 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
         }),
       })
       const data = await response.json().catch(() => ({}))
-      if (!response.ok || !data.dataUrl) throw new Error(response.status === 401
-        ? 'กรุณาเข้าสู่ระบบใหม่ หรือตรวจการตั้งค่าบริการสร้างภาพ' : data.error || 'สร้างภาพไม่สำเร็จ กรุณาลองอีกครั้ง')
+      if (!response.ok || !data.dataUrl) throw new Error(friendlyApiError(response.status, data, 'สร้างภาพไม่สำเร็จ กรุณาลองอีกครั้ง'))
       await useSource(data.dataUrl, 'ai')
     } catch (err) {
-      if (err.name !== 'AbortError') setError(err.message)
+      if (err.name !== 'AbortError') setError(errorMessage(err, 'สร้างภาพไม่สำเร็จ กรุณาลองอีกครั้ง'))
     } finally { setBusy(false) }
   }
 
@@ -91,7 +91,7 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
     const url = URL.createObjectURL(file)
     setBusy(true)
     try { await useSource(url, 'upload') }
-    catch (err) { setError(err.message) }
+    catch (err) { setError(errorMessage(err, 'อ่านไฟล์รูปไม่สำเร็จ กรุณาเลือกภาพใหม่')) }
     finally { URL.revokeObjectURL(url); setBusy(false) }
   }
 
@@ -100,7 +100,7 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
     setBusy(true)
     setError('')
     try { await onSave({ ...preview, design, sourceDataUrl: source }); onClose() }
-    catch (err) { setError(err.message || 'บันทึกภาพไม่สำเร็จ') }
+    catch (err) { setError(errorMessage(err, 'บันทึกภาพไม่สำเร็จ ลองใหม่อีกครั้ง')) }
     finally { setBusy(false) }
   }
 

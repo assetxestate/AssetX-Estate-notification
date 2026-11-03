@@ -77,6 +77,8 @@ test('pick/dismiss: ล้าง PII ในเหตุผล · ไอเดี
   assert.equal(res.code, 200)
   const update = db.calls.find((c) => c.op === 'update')
   assert.equal(update.patch.status, 'dismissed')
+  // คำสั่งเสริมของ meta (นับหัวตาราง · แถวล่าสุด) วิ่งเฉพาะ GET — POST ต้องไม่แตะ
+  assert.equal(db.calls.some((c) => c.head || c.columns === 'created_at'), false)
   assert.match(update.patch.dismiss_reason, /\[ลบ\]/)
   res = response()
   await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'POST', body: { action: 'pick', id: 8, chosen_angle: 'เช็กลิสต์' } }, res)
