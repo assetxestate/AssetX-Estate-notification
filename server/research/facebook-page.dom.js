@@ -1,8 +1,11 @@
-// Facebook page reader for OpenCLI `browser eval` — copied VERBATIM from DivisionX Card deploy/agents/social_watch.py (FB_JS).
+// Facebook page reader for OpenCLI `browser eval` — copied from DivisionX Card deploy/agents/social_watch.py (FB_JS)
+// + ONE AssetX addition (2026-11-03, marked "AssetX addition"): reaction count from aria-label "Like: 47 people" when the
+// "All reactions:" text line is gone (observed on 2026-11-03: Facebook now renders counts digit-by-digit with decoys, so the
+// innerText path returns null). Relay this to the DVX session so both copies stay in sync (agreement section 7 / 10).
 // Loaded with fs.readFileSync and passed to OpenCLI as-is. Never paste this into a JS template literal:
 // `\/`, `\d`, `\s` would be mangled and the login/checkpoint detector would silently stop working.
 // Returns only captions + counts + media ids. No commenter names or comment text.
-// Source of truth for DOM fixes is the DVX file; re-run scratchpad extract-fbjs.mjs after DVX changes it.
+// Source of truth for DOM fixes is the DVX file; after re-running scratchpad extract-fbjs.mjs, re-apply the AssetX addition.
 
 (() => {
   const clean = s => (s || '').replace(/[\u200b-\u200f\u034f\u2060\ufeff]/g, '');
@@ -37,6 +40,15 @@
       for (const k of ['comments', 'shares', 'views']) {
         if (m[k] != null) continue;
         for (const rx of RX[k]) { const x = l.match(rx); if (x) { m[k] = num(x[1]); break; } }
+      }
+    }
+    // AssetX addition 2026-11-03: counts from aria-label when the text lines are missing (English UI "Like: 47 people" · "12 comments" · "3 shares")
+    if (m.reactions == null || m.comments == null || m.shares == null) {
+      for (const el of a.querySelectorAll('[aria-label]')) {
+        const lab = (el.getAttribute('aria-label') || '').trim();
+        if (m.reactions == null) { const x = lab.match(/^(?:Like|ถูกใจ):\s*([\d.,]+\s*[KkMm]?)/i); if (x) { m.reactions = num(x[1]); continue; } }
+        if (m.comments == null) { const x = lab.match(/^([\d.,]+\s*[KkMm]?)\s+comments?$/i); if (x) { m.comments = num(x[1]); continue; } }
+        if (m.shares == null) { const x = lab.match(/^([\d.,]+\s*[KkMm]?)\s+shares?$/i); if (x) { m.shares = num(x[1]); continue; } }
       }
     }
     const msgEl = a.querySelector('[data-ad-comet-preview="message"], [data-ad-preview="message"]');

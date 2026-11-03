@@ -82,6 +82,10 @@ test('FB_JS เป็น IIFE ล้วนที่ parse ผ่าน และ
     assert.ok(FB_JS.includes(must), `ขาดข้อความต้นฉบับ: ${must}`)
   }
   assert.ok(!FB_JS.includes('`'), 'ต้นฉบับไม่มี backtick')
+  // ส่วนเพิ่มของ AssetX 3 พ.ย. 2569: อ่านยอดจาก aria-label "Like: 47 people" เมื่อบรรทัด "All reactions:" หายไป (FB แสดงตัวเลขแยกหลักพร้อมตัวลวง)
+  assert.ok(FB_JS.includes('AssetX addition'), 'ต้องมีส่วนเพิ่มของ AssetX (aria-label fallback)')
+  assert.ok(/\(\?:Like\|ถูกใจ\):/.test(FB_JS), 'regex ยอดรีแอคชันจาก aria-label')
+  assert.ok(FB_JS.indexOf('AssetX addition') < FB_JS.indexOf('const msgEl'), 'ส่วนเพิ่มอยู่ก่อนอ่านแคปชั่น (ยังอยู่ในลูปโพสต์)')
 })
 
 // ── pure functions ─────────────────────────────────────────────────────────
