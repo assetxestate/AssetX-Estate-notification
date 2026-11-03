@@ -513,12 +513,23 @@ test('dry-run: ยังถือกุญแจ + จด usage.jsonl ของ�
   assert.equal(out.pages.length, 2)
 })
 
-test('--target: กรองชื่อเพจ ไม่สนรอบ แต่ยังเคารพแถวพัก/โควตา (AssetX ไม่มีข้อยกเว้นแบบ DVX --target)', async () => {
+test('--target (เจ้าของสั่ง): กรองชื่อเพจ ไม่สนรอบ ไม่สนว่าวันนี้อ่านแล้ว แต่ยังเคารพแถวพัก/เพดาน 12/4 (ข้อตกลง 4.7)', async () => {
   const h = harness()
   fs.writeFileSync(path.join(h.storeDir, 'state.json'), JSON.stringify({ visits: { [targetId(TARGETS[1])]: TODAY } }))
+  fs.writeFileSync(path.join(h.base, 'usage.jsonl'), `${JSON.stringify({ project: 'assetx', date: TODAY, pages: { facebook: 1 }, result: 'open' })}\n`)
   const out = await h.run({ targetFilter: 'ทดสอบ B' })
-  assert.equal(out.status, 'ok')
+  assert.equal(out.status, 'ok', 'อ่านแล้ววันนี้ 1 เพจ แต่เจ้าของสั่ง --target ยังอ่านได้ (เหลือโควตา 3)')
   assert.deepEqual(out.pages.map((p) => p.name), ['เพจทดสอบ B'])
+  assert.equal(usageRows(h.base).filter((r) => r.result === 'open').length, 2)
+  assert.ok(out.lines.some((l) => /ตามคำสั่งเจ้าของ/.test(l)))
+  // ส่วนของ AssetX ครบ 4 แล้ว → --target ก็ไม่อ่าน
+  const h4 = harness()
+  fs.writeFileSync(path.join(h4.base, 'usage.jsonl'), `${JSON.stringify({ project: 'assetx', date: TODAY, pages: { facebook: 4 }, result: 'open' })}\n`)
+  assert.equal((await h4.run({ targetFilter: 'ทดสอบ' })).status, 'quota_full')
+  assert.equal(h4.oc.calls.length, 0)
+  const hb = harness()
+  const dvx = new Lock('dvx', { base: hb.base }); dvx.tryAcquire(); dvx.setBlocked('facebook', 'checkpoint', TODAY); dvx.release()
+  assert.equal((await hb.run({ targetFilter: 'ทดสอบ' })).status, 'blocked_shared', '--target ไม่ข้ามแถวพักร่วม')
   const h2 = harness()
   fs.writeFileSync(path.join(h2.base, 'usage.jsonl'), `${JSON.stringify({ project: 'dvx', date: TODAY, pages: { facebook: 12 } })}\n`)
   assert.equal((await h2.run({ targetFilter: 'ทดสอบ' })).status, 'quota_full')

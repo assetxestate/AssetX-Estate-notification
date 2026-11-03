@@ -446,11 +446,13 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
     return out
   }
   let q = quota()
-  if (q.own > 0) {
+  // วันละ 1 รอบ (รอบสำรองข้ามเอง) — ยกเว้นเจ้าของสั่งอ่านเพจเฉพาะ (--target) ซึ่งยังต้องอยู่ในเพดาน 12/4 และเคารพแถวพักร่วม (ข้อตกลง 4.7: AssetX ไม่มีข้อยกเว้นอื่น เว้นแต่เจ้าของสั่ง)
+  if (q.own > 0 && !targetFilter) {
     out.status = 'already_today'
     say(`[social] วันนี้ AssetX อ่าน Facebook แล้ว ${q.own} เพจ — ข้าม (วันละ 1 รอบ)`)
     return out
   }
+  if (q.own > 0 && targetFilter) say(`[social] อ่านเพจตามคำสั่งเจ้าของ (--target) แม้วันนี้ AssetX อ่านแล้ว ${q.own} เพจ — เหลือโควตา ${Math.max(q.left, 0)} เพจ`)
   const all = (targets || []).filter((t) => t && t.enabled !== false && t.url)
   let picks
   if (targetFilter) {
@@ -490,7 +492,7 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
     const b1 = blockedFor(PLATFORM, today, base)
     if (b1) { out.status = 'blocked_shared'; say(`⚠️ [social] Facebook พักอยู่ (${b1.by || '?'} เจอระหว่างที่เรารอกุญแจ) — ข้ามรอบ`); return out }
     q = quota()
-    if (q.own > 0) { out.status = 'already_today'; say('[social] AssetX อีกตัวอ่านไปแล้วระหว่างรอ — ข้าม'); return out }
+    if (q.own > 0 && !targetFilter) { out.status = 'already_today'; say('[social] AssetX อีกตัวอ่านไปแล้วระหว่างรอ — ข้าม'); return out }
     picks = picks.slice(0, Math.max(0, q.left))
     if (!picks.length) { out.status = 'quota_full'; say(`[social] โควตา Facebook วันนี้เต็มแล้ว (ระหว่างรอ อีกฝั่งใช้ไป · บัญชีร่วม ${q.total}/${CAP_DAY})`); return out }
     out.picked = picks.length
