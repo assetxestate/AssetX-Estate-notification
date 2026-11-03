@@ -26,19 +26,71 @@ function researchIdeaToCard(row) {
   return {
     id: `research-${row.id}`,
     dbId: row.id,
-    source: cite ? `${researchSourceLabels[row.source] || row.source} · ${row.source_label}` : (researchSourceLabels[row.source] || row.source),
-    type: researchSubtypeLabels[row.subtype] || row.subtype || 'ตลาด',
-    // คะแนนเรดาร์อยู่ช่วง ~1–9 ส่วนไอเดียเดิมในหน้าใช้ 0–100 → ยืดสเกลให้เรียงรวมกันได้
+    kind: 'research',
+    source: cite ? `${researchSourceLabels[row.source] || row.source} · ${row.source_label}` : (researchSourceLabels[row.source] || 'ตลาด'),
+    type: researchSubtypeLabels[row.subtype] || 'ตลาด',
+    // คะแนนเรดาร์อยู่ช่วง ~1–9 ส่วนไอเดียเดิมในหน้าใช้ 0–100 → ยืดสเกลให้เรียงรวมกันได้ (ใช้เรียงเท่านั้น ไม่โชว์)
     score: Math.round(Math.min(99, 40 + Number(row.score || 0) * 7)),
+    radarScore: Number(row.score || 0),
     title: row.title,
     angle: row.angles?.[0]?.brief || row.summary || 'รอ AI เขียนมุมเล่า — เลือกได้เลยถ้าหัวข้อตรงใจ',
     audience,
     channel: 'Facebook',
-    status: `เรดาร์รีเสิร์ช · คะแนน ${row.score}`,
     url: row.url || '',
     angles: Array.isArray(row.angles) ? row.angles : [],
     eventDate: row.event_date || null,
+    createdAt: row.created_at || null,
   }
+}
+
+// ป้ายช่องทางสำหรับแสดงผล (ค่าที่บันทึกเป็น facebook / line-oa / Facebook ปะปนกัน)
+function channelLabel(value = '') {
+  const found = assetxChannels.find((channel) => channel.value === value || channel.label === value)
+  return found?.label || value || 'ไม่ระบุช่องทาง'
+}
+
+// แหล่งที่มาของโพสต์สำหรับแสดงผล — ไม่แก้ค่าที่บันทึก แค่แปลชื่อระบบเป็นคำที่คนอ่านเข้าใจ
+function displaySource(source = '') {
+  if (!source) return 'เขียนเอง'
+  return String(source)
+    .replace(/Hermes \/ Telegram/i, 'ร่างจาก Telegram')
+    .replace(/Hermes \+ Tavily/i, 'สำรวจตลาด')
+    .replace(/Tavily Trend Radar|Tavily/gi, 'สำรวจตลาด')
+    .replace(/AssetX Studio/i, 'เขียนเอง')
+    .replace(/^Brand Brain$|^ระบบสัญญา$|^คำถามลูกค้า(บ่อย)?$|^ฟอร์มประเมินทรัพย์$|^ฐานข้อมูลทรัพย์$/, 'หัวข้อตัวอย่าง')
+    .replace(/^ไอเดียวันนี้$/, 'จากไอเดีย')
+}
+
+const thaiDateTime = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+const thaiDate = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+}
+const thaiTime = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+}
+
+// ข้อความผิดพลาดจาก API ที่ปลอดภัยต่อการแสดงบนหน้า: 401 = เซสชันหมดอายุ · ข้อความที่มีชื่อตัวแปร/โค้ด/ชื่อไฟล์/อังกฤษล้วน = ใช้ข้อความสำรอง
+const SESSION_EXPIRED_MESSAGE = 'เซสชันหมดอายุ กดเข้าสู่ระบบใหม่'
+// fetch ล้มทั้งก้อน (เครือข่าย/เซิร์ฟเวอร์ไม่ตอบ) → เบราว์เซอร์โยน TypeError ภาษาอังกฤษ ("Failed to fetch") → แปลเป็นคำที่คนอ่านเข้าใจ
+const errorMessage = (error, fallback) => (error instanceof TypeError ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง' : (error?.message || fallback))
+function friendlyApiError(status, data, fallback) {
+  if (status === 401) return SESSION_EXPIRED_MESSAGE
+  const raw = String(data?.error || data?.message || '').split(' — Facebook (')[0].trim()
+  if (!raw) return fallback
+  const leaky = /[A-Z]{2,}_[A-Z_]+|Environment Variables|\.env|\.sql|\.md|HTTP \d{3}|API \d{3}|Graph API|\bcode \d+|Supabase|Tavily|Hermes|Obsidian|OpenAI|Gemini|server/i.test(raw)
+  const thai = /[฀-๿]/.test(raw)
+  return leaky || !thai ? fallback : raw
 }
 
 const defaultStudio = {
@@ -98,17 +150,6 @@ const seedIdeas = [
     audience: 'นักลงทุน',
     channel: 'Facebook',
     status: 'พร้อมทำ',
-  },
-  {
-    id: 'market-radar',
-    source: 'Hermes + Tavily',
-    type: 'Trend Radar',
-    score: 72,
-    title: 'สำรวจทำเลที่เริ่มมีสัญญาณน่าสนใจ',
-    angle: 'ให้ Hermes สรุปข่าวอสังหา ดอกเบี้ย และประกาศขายในพื้นที่ แล้วแปลงเป็นหัวข้อคอนเทนต์',
-    audience: 'ทีมการตลาด',
-    channel: 'Blog + Facebook',
-    status: 'รอต่อ API',
   },
   {
     id: 'faq-legal',
@@ -203,17 +244,7 @@ const seedDrafts = [
   },
 ]
 
-const pipelineJobs = [
-  ['Supabase workspace sync', 'ใช้งานได้', 'บันทึกโพสต์ ไอเดีย และคิวงานของหน้า Marketing ลง marketing_workspaces'],
-  ['Tavily Trend Radar', 'ใช้งานได้เมื่อมีคีย์', 'อ่านข่าว ทำเล ดอกเบี้ย และประกาศขายที่เกี่ยวข้องเพื่อสร้างไอเดีย'],
-  ['Creative Radar / Reference Vault', 'ใช้งานได้', 'เปิดแหล่งสำรวจ Meta, TikTok, Pinterest และบันทึก reference เพื่อถอด pattern เป็น brief ของ AssetX'],
-  ['ดึงเคสจากระบบหลังบ้าน', 'ออกแบบแล้ว', 'ดึงสัญญาครบกำหนด ลูกค้าค้างชำระ และ lead ล่าสุด'],
-  ['จัดอันดับไอเดียวันนี้', 'พร้อมใช้แบบ mock', 'ให้คะแนนจากความเร่งด่วน ความเสี่ยง และโอกาสทางยอดขาย'],
-  ['ร่างคอนเทนต์', 'ใช้งานได้', 'ใช้ template fallback เพื่อลดเครดิต และต่อโมเดลเมื่อจำเป็น'],
-  ['ตรวจความเสี่ยง', 'ใช้งานได้บางส่วน', 'ตรวจคำสัญญาเกินจริง ข้อมูลส่วนตัว และความเสี่ยงทางกฎหมาย'],
-  ['ส่งเข้ารออนุมัติ', 'ใช้งานได้', 'ให้เจ้าของงานเลือกอนุมัติ แก้ หรือพักไว้ก่อนโพสต์'],
-]
-
+// ตัวอย่างข้อความสำหรับหน้า "ตอบคอมเมนต์ (ตัวอย่าง)" — เขียนไว้ล่วงหน้า ยังไม่ได้เชื่อมคอมเมนต์จริง
 const inboxCases = [
   {
     id: 'legal-sale-with-redemption',
@@ -438,14 +469,41 @@ function hasWorkspaceContent(workspace) {
   )
 }
 
+// สถานะโพสต์ → คำเดียวต่อสถานะ (draft / pending / needs_edit อยู่ในรายการ "รอตรวจ" เดียวกัน จึงใช้คำเดียว · ผลตรวจเกณฑ์เป็นอีกแกน: ผ่านเกณฑ์ / ติดเกณฑ์)
 const statusLabels = {
-  draft: 'ร่าง',
+  draft: 'รอตรวจ',
   pending: 'รอตรวจ',
-  needs_edit: 'ควรแก้',
+  needs_edit: 'รอตรวจ',
   approved: 'อนุมัติแล้ว',
-  scheduled: 'จองวันแล้ว',
+  scheduled: 'ตั้งเวลาแล้ว',
   posted: 'โพสต์แล้ว',
   archived: 'พักไว้',
+}
+
+// สถานะคิว (จาก organizeMarketingQueue) → คำเดียวต่อสถานะ ใช้ทั้งคิวและปฏิทิน
+const queueStateLabels = {
+  overdue: 'เลยกำหนด',
+  today: 'ถึงกำหนดวันนี้',
+  upcoming: 'ตั้งเวลาแล้ว · รอส่ง',
+  unscheduled: 'ยังไม่ตั้งเวลา',
+  platformScheduled: 'ตั้งเวลาแล้ว · Facebook จะโพสต์เอง',
+  posted: 'โพสต์แล้ว',
+}
+
+const isSamplePost = (post) => String(post?.id || '').startsWith('sample-')
+const reviewLabel = (post) => (post?.reviewStatus === 'passed' ? 'ผ่านเกณฑ์' : 'ติดเกณฑ์')
+
+// ผลตรวจเกณฑ์ซ้ำกันทุกช่อง (หัวข้อ/แคปชั่น/สคริปต์) → แสดงครั้งเดียว โดยตัดป้ายช่องออกเมื่อข้อความเดียวกันซ้ำ
+function uniqueReviewNotes(notes = []) {
+  const seen = new Set()
+  const out = []
+  for (const note of notes) {
+    const key = String(note).replace(/\[[^\]]*\]\s*/g, '').trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(key === String(note).trim() ? note : String(note).replace(/\s*\[[^\]]*\]\s*/, ' ').trim())
+  }
+  return out
 }
 
 function getPostTime(post) {
@@ -700,9 +758,9 @@ function buildReferenceBrief(reference) {
     `Source: ${source.name}${reference.url ? ` (${reference.url})` : ''}`,
     `Audience: ${reference.audience || 'เจ้าของทรัพย์'}`,
     `Channel: ${reference.channel || 'Facebook'}`,
-    `Hook ที่น่าสนใจ: ${reference.hook || 'ยังไม่ระบุ'}`,
+    `ประโยคเปิดที่น่าสนใจ: ${reference.hook || 'ยังไม่ระบุ'}`,
     `Pattern ภาพ/วิดีโอ: ${reference.visualPattern || 'ยังไม่ระบุ'}`,
-    `Angle ที่ควรทำในแบบ AssetX: ${reference.contentAngle || 'ถอดเป็นคอนเทนต์ให้ความรู้ที่ไม่สัญญาเกินจริง'}`,
+    `มุมที่ควรทำแบบ AssetX: ${reference.contentAngle || 'ถอดเป็นคอนเทนต์ให้ความรู้ที่ไม่สัญญาเกินจริง'}`,
     `Tags: ${tags || '-'}`,
     '',
     'AssetX rule:',
@@ -948,7 +1006,7 @@ async function compressImageFile(file, maxSize = 1500, quality = 0.84) {
 export default function MarketingPage({ onBack }) {
   const [workspace, setWorkspace] = useState(loadWorkspace)
   const [view, setView] = useState('ideas')
-  const [showAllIdeas, setShowAllIdeas] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
   const [libraryFilter, setLibraryFilter] = useState('active')
   const [librarySort, setLibrarySort] = useState('newest')
@@ -960,16 +1018,22 @@ export default function MarketingPage({ onBack }) {
   const [selectedBriefId, setSelectedBriefId] = useState('generated')
   const [selectedReferenceId, setSelectedReferenceId] = useState(null)
   const [cloudReady, setCloudReady] = useState(false)
-  const [syncStatus, setSyncStatus] = useState('กำลังเชื่อม Supabase')
+  // สถานะการบันทึกเวิร์กสเปซ: loading | saved | saving | local (โหลดจากระบบไม่ได้) | failed (บันทึกขึ้นระบบไม่สำเร็จ)
+  const [syncState, setSyncState] = useState({ state: 'loading', at: null })
   const [radarLoading, setRadarLoading] = useState(false)
   const [referenceLoading, setReferenceLoading] = useState(false)
   const [toast, setToast] = useState(null)
   const [facebookConnection, setFacebookConnection] = useState({ loading: true, connected: false })
   const [facebookPublishingId, setFacebookPublishingId] = useState(null)
   const [artworkBrief, setArtworkBrief] = useState(null)
-  const [researchIdeas, setResearchIdeas] = useState([])
+  // คิวไอเดียจากระบบรีเสิร์ช: state = loading | ok | unauthorized | unavailable | error (ไม่เงียบอีกต่อไป)
+  const [researchFeed, setResearchFeed] = useState({ state: 'loading', ideas: [], total: 0, meta: null, httpStatus: null, fetchedAt: null })
+  const researchIdeas = researchFeed.ideas
+  const setResearchIdeas = (updater) => setResearchFeed((feed) => ({ ...feed, ideas: typeof updater === 'function' ? updater(feed.ideas) : updater }))
 
-  const ideaPool = useMemo(() => prioritizeMarketingIdeas([...researchIdeas, ...(workspace.radarIdeas || []), ...seedIdeas]), [researchIdeas, workspace.radarIdeas])
+  // ไอเดียจากการสำรวจตลาด (เก็บในเวิร์กสเปซ) และหัวข้อตัวอย่างจากแม่แบบ — แยกกองกับไอเดียรีเสิร์ช ไม่ปนลำดับกัน
+  const radarCards = useMemo(() => (workspace.radarIdeas || []).map((idea) => ({ ...idea, kind: 'radar' })), [workspace.radarIdeas])
+  const exampleCards = useMemo(() => prioritizeMarketingIdeas(seedIdeas).map((idea) => ({ ...idea, kind: 'example' })), [])
   const allDrafts = useMemo(
     () => [...workspace.posts, ...seedDrafts.filter((post) => !workspace.hiddenPostIds.includes(post.id))],
     [workspace.posts, workspace.hiddenPostIds],
@@ -987,10 +1051,9 @@ export default function MarketingPage({ onBack }) {
   const approvedDrafts = allDrafts.filter((post) => post.status === 'approved' || post.status === 'scheduled' || post.status === 'posted')
   const queueGroups = organizeMarketingQueue(approvedDrafts)
   const selectedDraft = allDrafts.find((post) => post.id === selectedId) || allDrafts[0]
-  const visibleIdeas = showAllIdeas ? ideaPool : ideaPool.slice(0, 4)
   const dashboardCounts = {
-    ideas: ideaPool.length,
-    approvals: pendingDrafts.length,
+    ideas: researchIdeas.length,
+    approvals: pendingDrafts.filter((post) => !isSamplePost(post)).length,
     ready: queueGroups.action.length,
     saved: workspace.savedIdeas.length,
     references: workspace.references?.length || 0,
@@ -1001,23 +1064,43 @@ export default function MarketingPage({ onBack }) {
 
   const save = (next) => {
     setWorkspace(next)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    } catch {
+      // พื้นที่เก็บในเบราว์เซอร์เต็ม (รูปใหญ่หลายรูป) — ข้อมูลยังอยู่ในหน้าและจะบันทึกขึ้นระบบตามปกติ ไม่โยน DOMException ภาษาอังกฤษขึ้นจอ
+      notify('พื้นที่เก็บในเบราว์เซอร์เต็ม ข้อมูลยังอยู่ในหน้านี้และจะบันทึกขึ้นระบบต่อไป', 'error')
+    }
   }
 
-  // คิวไอเดียจากระบบรีเสิร์ช — ไม่มีตาราง/ไม่ได้ตั้งค่า = เงียบ (หน้ายังใช้ไอเดียเดิมได้)
+  // คิวไอเดียจากระบบรีเสิร์ช — บอกสถานะจริงเสมอ: โหลดอยู่ / โหลดได้ / เซสชันหมดอายุ / ฝั่งเซิร์ฟเวอร์ยังไม่พร้อม / โหลดไม่ได้
   const loadResearchIdeas = async () => {
+    setResearchFeed((feed) => ({ ...feed, state: feed.ideas.length ? feed.state : 'loading' }))
     try {
-      const res = await fetch('/api/marketing-ideas?status=new&limit=30')
-      if (!res.ok) return
-      const data = await res.json().catch(() => ({}))
-      setResearchIdeas((Array.isArray(data.ideas) ? data.ideas : []).map(researchIdeaToCard))
+      // per_subtype=10 (เพดานของ API) + limit=60 → ได้ทุกใบในคิวปกติ ไม่ติดเพดาน 3 ใบต่อประเภท ตัวเลขบนแท็บจึงตรงกับคิวจริง
+      const res = await fetch('/api/marketing-ideas?status=new&per_subtype=10&limit=60')
+      const data = await res.json().catch(() => null)
+      if (res.status === 401) return setResearchFeed((feed) => ({ ...feed, state: 'unauthorized', httpStatus: 401 }))
+      if (res.status === 503) return setResearchFeed((feed) => ({ ...feed, state: 'unavailable', httpStatus: 503 }))
+      if (!res.ok || !data || !Array.isArray(data.ideas)) return setResearchFeed((feed) => ({ ...feed, state: 'error', httpStatus: res.status }))
+      setResearchFeed({
+        state: 'ok',
+        ideas: data.ideas.map(researchIdeaToCard),
+        total: Number(data.total) || data.ideas.length,
+        meta: data.meta || null,
+        httpStatus: res.status,
+        fetchedAt: new Date().toISOString(),
+      })
     } catch {
-      /* เครือข่าย/ยังไม่ติดตั้ง — ข้าม */
+      setResearchFeed((feed) => ({ ...feed, state: 'error', httpStatus: null }))
     }
   }
 
   useEffect(() => {
     loadResearchIdeas()
+    // กลับมาที่แท็บนี้หลังปล่อยทิ้งไว้ → โหลดคิวใหม่ (อ่านอย่างเดียว) ให้แถบสถานะไม่ค้างค่าเก่า
+    const onVisible = () => { if (document.visibilityState === 'visible') loadResearchIdeas() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
 
   useEffect(() => {
@@ -1043,16 +1126,19 @@ export default function MarketingPage({ onBack }) {
           const next = normalizeWorkspace(remote.payload)
           setWorkspace(next)
           localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-          setSyncStatus(`Sync แล้ว ${remote.updated_at ? new Date(remote.updated_at).toLocaleString('th-TH') : ''}`.trim())
+          setSyncState({ state: 'saved', at: remote.updated_at || null })
         } else {
-          setSyncStatus('พร้อม sync')
+          setSyncState({ state: 'saved', at: null })
         }
         setCloudReady(true)
       })
       .catch((error) => {
         if (cancelled) return
-        if (new URLSearchParams(window.location.search).has('hermesDraft')) notify(`นำเข้าร่าง Hermes ไม่สำเร็จ: ${error.message}`, 'error')
-        setSyncStatus('ใช้ข้อมูลในเครื่อง')
+        if (new URLSearchParams(window.location.search).has('hermesDraft')) {
+          console.warn('hermes draft import failed:', error?.message || error)
+          notify('นำเข้าร่างจากผู้ช่วย Telegram ไม่สำเร็จ ลิงก์อาจหมดอายุหรือไม่ถูกต้อง', 'error')
+        }
+        setSyncState({ state: 'local', at: null })
         setCloudReady(false)
       })
     return () => { cancelled = true }
@@ -1061,9 +1147,10 @@ export default function MarketingPage({ onBack }) {
   useEffect(() => {
     if (!cloudReady) return undefined
     const timer = window.setTimeout(() => {
+      setSyncState((prev) => ({ ...prev, state: 'saving' }))
       saveMarketingWorkspace(workspace)
-        .then(() => setSyncStatus('Sync แล้ว'))
-        .catch(() => setSyncStatus('ใช้ข้อมูลในเครื่อง'))
+        .then(() => setSyncState({ state: 'saved', at: new Date().toISOString() }))
+        .catch(() => setSyncState({ state: 'failed', at: null }))
     }, 700)
     return () => window.clearTimeout(timer)
   }, [workspace, cloudReady])
@@ -1073,11 +1160,15 @@ export default function MarketingPage({ onBack }) {
     fetch('/api/marketing-facebook')
       .then(async (response) => {
         const data = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(data.error || 'ตรวจการเชื่อมต่อ Facebook ไม่สำเร็จ')
+        if (response.status === 401) {
+          if (!cancelled) setFacebookConnection({ loading: false, connected: false, unauthorized: true })
+          return
+        }
+        if (!response.ok) throw new Error(friendlyApiError(response.status, data, 'ตรวจการเชื่อมต่อ Facebook ไม่สำเร็จ'))
         if (!cancelled) setFacebookConnection({ loading: false, ...data })
       })
       .catch((error) => {
-        if (!cancelled) setFacebookConnection({ loading: false, connected: false, error: error.message })
+        if (!cancelled) setFacebookConnection({ loading: false, connected: false, error: errorMessage(error, 'ตรวจการเชื่อมต่อ Facebook ไม่สำเร็จ') })
       })
     return () => { cancelled = true }
   }, [])
@@ -1104,9 +1195,10 @@ export default function MarketingPage({ onBack }) {
       }
     }
     if (String(id).startsWith('sample-')) {
+      // ร่างตัวอย่างแก้ครั้งแรก = กลายเป็นร่างจริงของเรา และซ่อนตัวอย่างเดิม (ไม่งั้นได้สำเนาเพิ่มทุกครั้งที่พิมพ์)
       const cloned = allDrafts.find((post) => post.id === id)
-      const post = { ...cloned, id: Date.now(), ...patch }
-      save({ ...workspace, posts: [post, ...workspace.posts] })
+      const post = { ...cloned, id: Date.now(), sampleOf: id, ...patch }
+      save({ ...workspace, posts: [post, ...workspace.posts], hiddenPostIds: [...new Set([...(workspace.hiddenPostIds || []), id])] })
       setSelectedId(post.id)
       if (message) notify(message)
       return
@@ -1136,7 +1228,12 @@ export default function MarketingPage({ onBack }) {
       mediaAssets: [asset, ...(workspace.mediaAssets || [])],
     }
     // Persist first: a failed storage write must not report a successful attachment.
-    if (cloudReady) await saveMarketingWorkspace(next)
+    if (cloudReady) {
+      try { await saveMarketingWorkspace(next) } catch (error) {
+        console.warn('save artwork failed:', error?.message || error)
+        throw new Error('บันทึกภาพขึ้นระบบไม่สำเร็จ ลองใหม่อีกครั้ง')
+      }
+    }
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) }
     catch { if (!cloudReady) throw new Error('พื้นที่เก็บข้อมูลในเครื่องเต็ม กรุณาเชื่อมต่อระบบจัดเก็บก่อนบันทึกภาพ') }
     setWorkspace(next)
@@ -1176,7 +1273,7 @@ export default function MarketingPage({ onBack }) {
         }),
       })
       const data = await response.json().catch(() => ({}))
-      if (!response.ok || !data.success) throw new Error(data.error || 'โพสต์ Facebook ไม่สำเร็จ')
+      if (!response.ok || !data.success) throw new Error(friendlyApiError(response.status, data, 'โพสต์ Facebook ไม่สำเร็จ ลองใหม่หรือตรวจการเชื่อมต่อในหน้าช่องทาง'))
       updatePost(post.id, {
         status: data.scheduled ? 'scheduled' : 'posted',
         postedAt: data.scheduled ? '' : new Date().toISOString(),
@@ -1186,8 +1283,9 @@ export default function MarketingPage({ onBack }) {
         publishError: '',
       }, data.scheduled ? 'ตั้งเวลาโพสต์บน Facebook แล้ว' : 'โพสต์ไปยัง Facebook Page แล้ว')
     } catch (error) {
-      updatePost(post.id, { publishError: error.message }, '')
-      notify(error.message || 'โพสต์ Facebook ไม่สำเร็จ', 'error')
+      const message = errorMessage(error, 'โพสต์ Facebook ไม่สำเร็จ')
+      updatePost(post.id, { publishError: message }, '')
+      notify(message, 'error')
     } finally {
       setFacebookPublishingId(null)
     }
@@ -1214,11 +1312,11 @@ export default function MarketingPage({ onBack }) {
   }
 
   const archivePost = (id) => {
-    updatePost(id, { status: 'archived' }, 'พักโพสต์ไว้ในคลังแล้ว')
+    updatePost(id, { status: 'archived' }, 'พักไว้แล้ว · ดูหรือกู้คืนได้ที่คลังผลงาน')
   }
 
   const restorePost = (id) => {
-    updatePost(id, { status: 'draft', reviewStatus: 'needs_edit' }, 'กู้คืนเป็นร่างแล้ว')
+    updatePost(id, { status: 'draft', reviewStatus: 'needs_edit' }, 'กู้คืนแล้ว · รอตรวจ')
   }
 
   const deletePost = (id) => {
@@ -1228,7 +1326,7 @@ export default function MarketingPage({ onBack }) {
       : { ...workspace, posts: workspace.posts.filter((post) => post.id !== id) }
     save(next)
     if (selectedId === id) setSelectedId(null)
-    notify('ลบออกจากคลังแล้ว')
+    notify(isSample ? 'ซ่อนร่างตัวอย่างแล้ว' : 'ลบออกจากคลังแล้ว')
   }
 
   const deleteSavedIdea = (id) => {
@@ -1248,7 +1346,7 @@ export default function MarketingPage({ onBack }) {
     }
     const generated = runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || ''))
     save({ ...workspace, studio: input, generated })
-    setView('studio')
+    goTo('studio')
   }
 
   const createApprovalContentFromIdea = (prompt, sourceIdea) => {
@@ -1282,8 +1380,8 @@ export default function MarketingPage({ onBack }) {
     }
     save({ ...workspace, studio: input, generated, posts: [post, ...workspace.posts] })
     setSelectedId(post.id)
-    setView('approvals')
-    notify('สร้างคอนเทนต์และส่งเข้ารออนุมัติแล้ว')
+    goTo('approvals')
+    notify('ร่างโพสต์แล้ว อยู่ในแท็บ ร่าง รอตรวจ')
   }
 
   const addGeneratedToQueue = (status = 'pending') => {
@@ -1313,8 +1411,8 @@ export default function MarketingPage({ onBack }) {
     }
     save({ ...workspace, posts: [post, ...workspace.posts] })
     setSelectedId(post.id)
-    setView('approvals')
-    notify(status === 'approved' ? 'อนุมัติไว้ก่อนแล้ว' : 'ส่งเข้าคิวรออนุมัติแล้ว')
+    goTo('approvals')
+    notify(status === 'approved' ? 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์' : 'ส่งเข้ารอตรวจแล้ว')
   }
 
   const addManualIdea = () => {
@@ -1332,24 +1430,26 @@ export default function MarketingPage({ onBack }) {
       ? workspace.savedIdeas
       : [{ ...idea, savedAt: new Date().toISOString() }, ...workspace.savedIdeas]
     save({ ...workspace, savedIdeas })
-    notify(exists ? 'ไอเดียนี้อยู่ในคลังแล้ว' : 'เก็บไอเดียไว้ในผลงานทั้งหมดแล้ว')
+    notify(exists ? 'ไอเดียนี้อยู่ในคลังแล้ว' : 'เก็บไอเดียไว้ในคลังผลงานแล้ว')
   }
 
   const postResearchIdea = async (body) => {
     const res = await fetch('/api/marketing-ideas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.error || 'บันทึกไม่สำเร็จ')
+    if (!res.ok) throw new Error(friendlyApiError(res.status, data, 'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง'))
     return data
   }
 
   // เลือกไอเดียจากเรดาร์ = สร้างร่างเหมือนไอเดียอื่น + บอกระบบว่าเลือกแล้ว (status picked) จะไม่โผล่ซ้ำ
-  const pickResearchIdea = (prompt, idea) => {
+  // มุมเล่าที่คนเลือกบนการ์ดส่งไปเป็น chosen_angle และเป็น "offer" ของตัวร่างเดิม (ตัวร่างไม่ถูกแก้)
+  const pickResearchIdea = (prompt, idea, angleIndex = 0) => {
+    const chosen = idea?.angles?.[angleIndex] || idea?.angles?.[0] || null
     if (idea?.dbId) {
-      postResearchIdea({ action: 'pick', id: idea.dbId, chosen_angle: idea.angles?.[0]?.label || null })
+      postResearchIdea({ action: 'pick', id: idea.dbId, chosen_angle: chosen?.label || null })
         .then(() => setResearchIdeas((items) => items.filter((item) => item.dbId !== idea.dbId)))
-        .catch((err) => notify(`บันทึกว่าเลือกไอเดียไม่สำเร็จ: ${err.message}`, 'error'))
+        .catch((err) => notify(`ร่างแล้ว แต่บันทึกว่าเลือกไอเดียนี้ไม่สำเร็จ — ${errorMessage(err, 'ลองใหม่อีกครั้ง')}`, 'error'))
     }
-    createApprovalContentFromIdea(prompt, idea)
+    createApprovalContentFromIdea(prompt, chosen?.brief ? { ...idea, angle: chosen.brief } : idea)
   }
 
   // ทิ้ง = ใส่เหตุผลสั้น ๆ (ใช้ปรับเกณฑ์เรดาร์ทีหลัง) · ไม่ลบแถว
@@ -1360,9 +1460,9 @@ export default function MarketingPage({ onBack }) {
     try {
       await postResearchIdea({ action: 'dismiss', id: idea.dbId, reason })
       setResearchIdeas((items) => items.filter((item) => item.dbId !== idea.dbId))
-      notify('ทิ้งไอเดียแล้ว')
+      notify('ทิ้งแล้ว')
     } catch (err) {
-      notify(err.message || 'ทิ้งไอเดียไม่สำเร็จ', 'error')
+      notify(errorMessage(err, 'ทิ้งไอเดียไม่สำเร็จ'), 'error')
     }
   }
 
@@ -1374,7 +1474,7 @@ export default function MarketingPage({ onBack }) {
     const form = { ...defaultReferenceForm, ...(workspace.referenceForm || {}) }
     const title = form.title.trim()
     if (!title) {
-      notify('กรุณาใส่ชื่อ reference หรือหัวข้อที่เจอ', 'error')
+      notify('กรุณาใส่ชื่อตัวอย่างหรือหัวข้อที่เจอ', 'error')
       return
     }
     const reference = {
@@ -1398,19 +1498,19 @@ export default function MarketingPage({ onBack }) {
       referenceForm: { ...defaultReferenceForm, sourceId: form.sourceId, audience: form.audience, channel: form.channel, tags: form.tags },
     })
     setSelectedReferenceId(reference.id)
-    notify('บันทึก reference แล้ว')
+    notify('บันทึกตัวอย่างแล้ว')
   }
 
   const deleteReference = (id) => {
     save({ ...workspace, references: (workspace.references || []).filter((item) => item.id !== id) })
     if (selectedReferenceId === id) setSelectedReferenceId(null)
-    notify('ลบ reference แล้ว')
+    notify('ลบตัวอย่างแล้ว')
   }
 
   const createFromReference = (reference) => {
     const brief = buildReferenceBrief(reference)
     generateContent(`${reference.title}\n\n${brief}`, referenceToIdea(reference))
-    notify('ส่ง reference เข้า Studio แล้ว')
+    notify('ร่างโพสต์จากตัวอย่างแล้ว · ตรวจแล้วกดส่งเข้ารอตรวจ')
   }
 
   const saveReferenceAsIdea = (reference) => {
@@ -1426,9 +1526,9 @@ export default function MarketingPage({ onBack }) {
         body: JSON.stringify({ query: workspace.referenceQuery || referenceStarterQueries[0] }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.success) throw new Error(data.error || 'ดึง Creative Radar ไม่สำเร็จ')
+      if (!res.ok || !data.success) throw new Error(friendlyApiError(res.status, data, 'ค้นตัวอย่างอัตโนมัติไม่สำเร็จ ลองใหม่อีกครั้ง'))
       const incoming = Array.isArray(data.references) ? data.references : []
-      if (!incoming.length) throw new Error('ยังไม่พบ reference ที่นำมาใช้ได้')
+      if (!incoming.length) throw new Error('ยังไม่พบตัวอย่างที่นำมาใช้ได้')
       const existingKeys = new Set((workspace.references || []).map((item) => item.url || item.title))
       const fresh = incoming.filter((item) => !existingKeys.has(item.url || item.title))
       const nextReferences = [...fresh, ...(workspace.references || [])]
@@ -1438,9 +1538,9 @@ export default function MarketingPage({ onBack }) {
       ], (note) => note.sourceUrl || `${note.kind}:${note.title}`)
       save({ ...workspace, references: nextReferences, knowledgeNotes: nextKnowledgeNotes })
       if (fresh[0]) setSelectedReferenceId(fresh[0].id)
-      notify(fresh.length ? `ดึง reference ใหม่แล้ว ${fresh.length} รายการ และเก็บเป็น knowledge note แล้ว` : 'รายการที่พบอยู่ในคลังแล้ว')
+      notify(fresh.length ? `ได้ตัวอย่างใหม่ ${fresh.length} รายการ และเก็บเป็นโน้ตความรู้แล้ว` : 'รายการที่พบอยู่ในคลังแล้ว')
     } catch (err) {
-      notify(err.message || 'ดึง Creative Radar ไม่สำเร็จ', 'error')
+      notify(errorMessage(err, 'ค้นตัวอย่างอัตโนมัติไม่สำเร็จ'), 'error')
     } finally {
       setReferenceLoading(false)
     }
@@ -1455,18 +1555,17 @@ export default function MarketingPage({ onBack }) {
         body: JSON.stringify({ niche: `${workspace.studio.province} ${workspace.studio.audience} ${workspace.studio.offer}` }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.success) throw new Error(data.error || 'ดึง Trend Radar ไม่สำเร็จ')
+      if (!res.ok || !data.success) throw new Error(friendlyApiError(res.status, data, 'สำรวจตลาดอัตโนมัติไม่สำเร็จ ลองใหม่อีกครั้ง'))
       const nextIdeas = Array.isArray(data.ideas) ? data.ideas : []
-      if (!nextIdeas.length) throw new Error('Tavily ยังไม่พบประเด็นที่นำมาใช้ได้')
+      if (!nextIdeas.length) throw new Error('ยังไม่พบประเด็นใหม่ที่นำมาใช้ได้')
       const nextKnowledgeNotes = uniqueByKey([
         ...nextIdeas.map((item) => ideaToKnowledgeNote(item, { query: data.query || '' })),
         ...(workspace.knowledgeNotes || []),
       ], (note) => note.sourceUrl || `${note.kind}:${note.title}`)
       save({ ...workspace, radarIdeas: nextIdeas, knowledgeNotes: nextKnowledgeNotes })
-      notify(`ดึง Trend Radar แล้ว ${nextIdeas.length} หัวข้อ และเก็บเป็น knowledge note แล้ว`)
-      setShowAllIdeas(true)
+      notify(`ได้หัวข้อใหม่จากการสำรวจตลาด ${nextIdeas.length} หัวข้อ และเก็บเป็นโน้ตความรู้แล้ว`)
     } catch (err) {
-      notify(err.message || 'ดึง Trend Radar ไม่สำเร็จ', 'error')
+      notify(errorMessage(err, 'สำรวจตลาดอัตโนมัติไม่สำเร็จ'), 'error')
     } finally {
       setRadarLoading(false)
     }
@@ -1553,7 +1652,7 @@ export default function MarketingPage({ onBack }) {
         title: asset.title,
         dataUrl: asset.dataUrl,
         mimeType: asset.mimeType,
-        model: 'Uploaded artwork',
+        model: 'ภาพที่อัปโหลด',
       })
       notify('แนบรูปเข้ากับบรีฟแล้ว')
     } catch (err) {
@@ -1597,6 +1696,13 @@ export default function MarketingPage({ onBack }) {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.success) {
+        // โค้ดจากเซิร์ฟเวอร์ (เช่น โควต้าหมด / ยังไม่ตั้งคีย์) → บอกเป็นภาษาคน ไม่โชว์โค้ดหรือชื่อตัวแปร
+        const code = String(data.code || '')
+        const reason = /QUOTA/i.test(code)
+          ? 'บริการสร้างภาพใช้โควต้าหมดชั่วคราว — คัดลอกบรีฟภาพด้านล่างไปใช้กับเครื่องมืออื่นได้'
+          : /AUTH|KEY/i.test(code) || /_API_KEY/.test(String(data.error || ''))
+            ? 'ยังไม่ได้เชื่อมบริการสร้างภาพอัตโนมัติ — ใช้บรีฟภาพด้านล่างกับเครื่องมือที่มีอยู่แทนได้'
+            : friendlyApiError(res.status, data, type === 'video' ? 'สร้างวิดีโอไม่สำเร็จ ลองใหม่อีกครั้ง' : 'สร้างรูปไม่สำเร็จ ลองใหม่อีกครั้ง')
         if (data.fallbackPrompt) {
           setMediaResult({
             id: Date.now(),
@@ -1604,12 +1710,12 @@ export default function MarketingPage({ onBack }) {
             targetType: type,
             title: brief.title,
             prompt: data.fallbackPrompt,
-            model: data.code || 'Prompt fallback',
+            model: 'บรีฟภาพสำหรับคัดลอก',
           })
-          notify(data.error || 'โควต้าเต็ม จึงเตรียม prompt พร้อมนำไปใช้แทน', 'error')
+          notify(reason, 'error')
           return
         }
-        throw new Error(data.error || (type === 'video' ? 'สร้างวิดีโอไม่สำเร็จ' : 'สร้างรูปไม่สำเร็จ'))
+        throw new Error(reason)
       }
       setMediaResult({
         id: Date.now(),
@@ -1617,7 +1723,7 @@ export default function MarketingPage({ onBack }) {
         title: brief.title,
         dataUrl: data.dataUrl,
         mimeType: data.mimeType,
-        model: data.model,
+        model: type === 'video' ? 'วิดีโอที่สร้างด้วย AI' : 'ภาพที่สร้างด้วย AI',
       })
       if (type === 'image') {
         const generatedImage = await loadImage(data.dataUrl)
@@ -1648,7 +1754,7 @@ export default function MarketingPage({ onBack }) {
       }
       notify(type === 'video' ? 'สร้างวิดีโอแล้ว' : 'สร้างรูปแล้ว')
     } catch (err) {
-      notify(err.message || 'สร้างสื่อไม่สำเร็จ', 'error')
+      notify(errorMessage(err, 'สร้างสื่อไม่สำเร็จ'), 'error')
     } finally {
       setMediaLoading(null)
     }
@@ -1659,19 +1765,19 @@ export default function MarketingPage({ onBack }) {
   const exportKnowledgeBase = () => {
     const notes = workspace.knowledgeNotes || []
     if (!notes.length) {
-      notify('ยังไม่มี knowledge note ให้ส่งออก กดสำรวจด้วย Tavily ก่อน', 'error')
+      notify('ยังไม่มีโน้ตความรู้ กดสำรวจตลาดหรือค้นตัวอย่างอัตโนมัติก่อน', 'error')
       return
     }
     const content = buildObsidianExport(notes, { query: workspace.referenceQuery || '' })
     const filename = `${new Date().toISOString().slice(0, 10)}-assetx-marketing-knowledge.md`
     downloadMarkdown(filename, content)
-    notify('ส่งออก Markdown สำหรับ Obsidian แล้ว')
+    notify('ดาวน์โหลดโน้ตความรู้แล้ว')
   }
 
   const saveKnowledgeBaseToObsidian = async () => {
     const notes = workspace.knowledgeNotes || []
     if (!notes.length) {
-      notify('ยังไม่มี knowledge note ให้บันทึก กดสำรวจด้วย Tavily ก่อน', 'error')
+      notify('ยังไม่มีโน้ตความรู้ กดสำรวจตลาดหรือค้นตัวอย่างอัตโนมัติก่อน', 'error')
       return
     }
     try {
@@ -1683,85 +1789,87 @@ export default function MarketingPage({ onBack }) {
         body: JSON.stringify({ filename, content }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.success) throw new Error(data.error || 'บันทึกเข้า Obsidian ไม่สำเร็จ')
-      notify(`บันทึกเข้า Obsidian แล้ว: ${data.filename}`)
+      if (res.status === 400) throw new Error('เครื่องนี้ยังไม่ได้ตั้งโฟลเดอร์คลังความรู้ — ใช้ปุ่มดาวน์โหลดแทนได้')
+      if (!res.ok || !data.success) throw new Error(friendlyApiError(res.status, data, 'บันทึกโน้ตความรู้ไม่สำเร็จ ลองใหม่อีกครั้ง'))
+      notify('บันทึกโน้ตความรู้ลงคลังในเครื่องแล้ว')
     } catch (err) {
-      notify(err.message || 'บันทึกเข้า Obsidian ไม่สำเร็จ', 'error')
+      notify(errorMessage(err, 'บันทึกโน้ตความรู้ไม่สำเร็จ'), 'error')
     }
+  }
+
+  // แท็บหลัก 3 อัน (ไอเดีย → ร่าง → โพสต์) · Studio เป็นสถานะย่อยของ "ร่าง" · ปฏิทินเป็นสถานะย่อยของ "โพสต์" · ที่เหลืออยู่ในเมนูเครื่องมือ
+  const activeTab = view === 'ideas' ? 'ideas' : ['approvals', 'studio'].includes(view) ? 'drafts' : ['queue', 'calendar'].includes(view) ? 'posts' : 'tools'
+  const toolViews = [
+    ['library', 'คลังผลงาน', dashboardCounts.library],
+    ['gallery', 'ห้องภาพ'],
+    ['channels', 'ช่องทาง'],
+    ['references', 'คลังตัวอย่างโฆษณา', dashboardCounts.references],
+    ['metrics', 'ตัวเลข'],
+    ['pipeline', 'สถานะระบบ'],
+    ['brand', 'กติกาแบรนด์'],
+    ['inbox', 'ตอบคอมเมนต์ (ตัวอย่าง)'],
+  ]
+  const activeTool = toolViews.find(([id]) => id === view)
+  const goTo = (next) => {
+    setView(next)
+    setToolsOpen(false)
+    window.scrollTo({ top: 0 })
   }
 
   return (
     <div className="mx-page">
       <style>{styles}</style>
-      <aside className="mx-sidebar">
-        <div className="mx-brand">
-          <img src="/logo.jpg" alt="AssetX Estate" className="mx-brand-logo" />
-          <div>
-            <div className="mx-brand-name">AssetX Estate</div>
-            <div className="mx-brand-sub">Marketing OS</div>
-          </div>
-        </div>
-        <button className="mx-create" onClick={() => setView('studio')}>+ สร้างโพสต์</button>
-        <NavSection title="วันนี้">
-          <NavButton active={view === 'ideas'} label="ไอเดียวันนี้" count={dashboardCounts.ideas} onClick={() => setView('ideas')} />
-          <NavButton active={view === 'approvals'} label="รออนุมัติ" count={dashboardCounts.approvals} onClick={() => setView('approvals')} />
-          <NavButton active={view === 'queue'} label="รอโพสต์" count={dashboardCounts.ready} onClick={() => setView('queue')} />
-          <NavButton active={view === 'calendar'} label="ปฏิทินโพสต์" onClick={() => setView('calendar')} />
-        </NavSection>
-        <NavSection title="สร้าง">
-          <NavButton active={view === 'references'} label="สำรวจ Reference" count={dashboardCounts.references} onClick={() => setView('references')} />
-          <NavButton active={view === 'gallery'} label="ห้องภาพ" onClick={() => setView('gallery')} />
-          <NavButton active={view === 'channels'} label="ช่องทาง" onClick={() => setView('channels')} />
-        </NavSection>
-        <NavSection title="แบรนด์ของฉัน">
-          <NavButton active={view === 'brand'} label="Brand Brain" onClick={() => setView('brand')} />
-          <NavButton active={view === 'library'} label="ผลงานทั้งหมด" count={dashboardCounts.library} onClick={() => setView('library')} />
-        </NavSection>
-        <NavSection title="ดูผล">
-          <NavButton active={view === 'metrics'} label="ตัวเลข" onClick={() => setView('metrics')} />
-        </NavSection>
-        <NavSection title="ระบบ">
-          <NavButton active={view === 'pipeline'} label="สายพานการผลิต" onClick={() => setView('pipeline')} />
-          <NavButton active={view === 'inbox'} label="ตอบคอมเมนต์ เฟส 3" onClick={() => setView('inbox')} />
-        </NavSection>
-        <div className="mx-today-card">
-          <div className="mx-card-title">งานวันนี้</div>
-          <MetricLine label="ไอเดียพร้อมใช้" value={dashboardCounts.ideas} />
-          <MetricLine label="รอตรวจ" value={dashboardCounts.approvals} />
-          <MetricLine label="พร้อมโพสต์" value={dashboardCounts.ready} />
-        </div>
-      </aside>
-      <main className="mx-main">
+      <div className="mx-head">
         <header className="mx-topbar">
-          <button className="mx-back" onClick={onBack}>กลับหน้าหลัก</button>
-          <div className="mx-top-actions">
-            <span className="mx-status">Online</span>
-            <button className="mx-pill">{syncStatus}</button>
-            <button className="mx-pill">มาตรฐาน AssetX</button>
-            <button className="mx-pill">40 เครดิต</button>
-            <div className="mx-avatar">C</div>
+          <div className="mx-topbar-left">
+            <button className="mx-back" onClick={onBack}>← หน้าหลัก</button>
+            <div className="mx-brand">
+              <img src="/logo.jpg" alt="" className="mx-brand-logo" />
+              <span className="mx-brand-name">AssetX · การตลาด</span>
+            </div>
           </div>
+          <StatusStrip feed={researchFeed} syncState={syncState} facebookConnection={facebookConnection} onReload={loadResearchIdeas} />
         </header>
-        <div className="mx-notice">
-          <span>Studio พร้อมสร้างคอนเทนต์ · Creative Radar เก็บ reference ได้ · Workspace sync กับ Supabase แล้ว</span>
-        </div>
+        <nav className="mx-tabs" aria-label="ส่วนหลักของหน้าการตลาด">
+          <TabButton id="ideas" active={activeTab === 'ideas'} label="ไอเดีย" count={dashboardCounts.ideas} onClick={() => goTo('ideas')} />
+          <TabButton id="drafts" active={activeTab === 'drafts'} label="ร่าง" count={dashboardCounts.approvals} onClick={() => goTo('approvals')} />
+          <TabButton id="posts" active={activeTab === 'posts'} label="โพสต์" count={dashboardCounts.ready} onClick={() => goTo('queue')} />
+          <details className={`mx-tools ${activeTab === 'tools' ? 'active' : ''}`} open={toolsOpen} onToggle={(event) => setToolsOpen(event.currentTarget.open)}>
+            <summary data-view="tools">เครื่องมือ{activeTool ? <span className="mx-tools-current"> · {activeTool[1]}</span> : null}<span aria-hidden="true"> ▾</span></summary>
+            <div className="mx-tools-menu">
+              {toolViews.map(([id, label, count]) => (
+                <button key={id} type="button" data-view={id} className={view === id ? 'active' : ''} onClick={() => goTo(id)}>
+                  <span>{label}</span>{typeof count === 'number' && count > 0 && <strong>{count}</strong>}
+                </button>
+              ))}
+            </div>
+          </details>
+        </nav>
+      </div>
+      <main className="mx-main">
+        {activeTab === 'posts' && (
+          <div className="mx-content mx-subtabs-wrap">
+            <div className="mx-subtabs" role="tablist" aria-label="มุมมองโพสต์">
+              <button type="button" role="tab" aria-selected={view === 'queue'} className={view === 'queue' ? 'active' : ''} onClick={() => setView('queue')}>รายการ</button>
+              <button type="button" role="tab" aria-selected={view === 'calendar'} className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}>ปฏิทิน</button>
+            </div>
+          </div>
+        )}
         {view === 'ideas' && (
           <IdeasView
-            ideas={visibleIdeas}
-            showAll={showAllIdeas}
-            total={ideaPool.length}
-            seedCount={seedIdeas.length}
-            researchCount={researchIdeas.length}
-            radarCount={workspace.radarIdeas?.length || 0}
+            feed={{ ...researchFeed, syncState }}
+            research={researchIdeas}
+            radar={radarCards}
+            examples={exampleCards}
             radarLoading={radarLoading}
             manualIdea={workspace.manualIdea}
             onManualChange={(manualIdea) => save({ ...workspace, manualIdea })}
             onAddManual={addManualIdea}
-            onToggle={() => setShowAllIdeas((value) => !value)}
             onCreate={pickResearchIdea}
             onSaveIdea={saveIdeaForLater}
             onDismiss={dismissResearchIdea}
             onLoadRadar={loadTrendRadar}
+            onReload={loadResearchIdeas}
           />
         )}
         {view === 'studio' && (
@@ -1776,6 +1884,7 @@ export default function MarketingPage({ onBack }) {
             onGenerate={() => generateContent(workspace.studio.prompt)}
             onQueue={addGeneratedToQueue}
             onCopy={copyText}
+            onBack={() => goTo('approvals')}
           />
         )}
         {view === 'approvals' && (
@@ -1792,6 +1901,8 @@ export default function MarketingPage({ onBack }) {
             onUploadArtwork={uploadArtwork}
             onDeleteMediaAsset={deleteMediaAsset}
             onDelete={deletePost}
+            onArchive={archivePost}
+            onNewDraft={() => goTo('studio')}
           />
         )}
         {view === 'queue' && (
@@ -1800,7 +1911,7 @@ export default function MarketingPage({ onBack }) {
             mediaAssets={workspace.mediaAssets || []}
             facebookConnection={facebookConnection}
             publishingId={facebookPublishingId}
-            onCreate={() => setView('ideas')}
+            onCreate={() => goTo('ideas')}
             onUpdate={updatePost}
             onPublishFacebook={publishToFacebook}
             onRecordManual={recordManualPublication}
@@ -1811,8 +1922,8 @@ export default function MarketingPage({ onBack }) {
           <ChannelsView
             posts={allDrafts}
             facebookConnection={facebookConnection}
-            onCreate={() => setView('studio')}
-            onQueue={() => setView('queue')}
+            onCreate={() => goTo('studio')}
+            onQueue={() => goTo('queue')}
           />
         )}
         {view === 'references' && (
@@ -1847,7 +1958,7 @@ export default function MarketingPage({ onBack }) {
             mediaAssets={workspace.mediaAssets || []}
             selectedBriefId={selectedBriefId}
             onSelectBrief={setSelectedBriefId}
-            onCreateContent={() => setView('studio')}
+            onCreateContent={() => goTo('studio')}
             posterCopy={workspace.posterCopy || defaultPosterCopy}
             visualStyles={assetxVisualStyles}
             visualStyleId={visualStyleId}
@@ -1891,7 +2002,7 @@ export default function MarketingPage({ onBack }) {
             onDelete={deleteMetricRecord}
           />
         )}
-        {view === 'pipeline' && <PipelineView />}
+        {view === 'pipeline' && <PipelineView feed={researchFeed} syncState={syncState} facebookConnection={facebookConnection} counts={dashboardCounts} onReload={loadResearchIdeas} />}
         {view === 'inbox' && <InboxView onCopy={copyText} onCreate={generateContent} />}
         {artworkBrief && <ArtworkEditor
           key={artworkBrief.id}
@@ -1934,19 +2045,19 @@ function ReferenceRadarView({
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
-          <div className="mx-kicker">Creative Radar</div>
-          <h1>สำรวจตลาด เก็บ Reference แล้วถอดเป็นภาษาภาพของ AssetX</h1>
-          <p>ใช้แหล่งจริงเพื่อดู pattern ของโฆษณา/ภาพ/วิดีโอ แล้วบันทึกเฉพาะ insight ที่นำมาสร้างงานใหม่ได้อย่างปลอดภัย</p>
+          <div className="mx-kicker">คลังตัวอย่างโฆษณา</div>
+          <h1>ดูตัวอย่างโฆษณาในตลาด แล้วถอดเป็นแนวทางของ AssetX</h1>
+          <p>เปิดแหล่งจริงเพื่อดูรูปแบบโฆษณา ภาพ และวิดีโอ แล้วบันทึกเฉพาะข้อสังเกตที่นำมาสร้างงานใหม่ได้อย่างปลอดภัย</p>
         </div>
         <div className="mx-page-actions">
           <button className="mx-secondary" onClick={onSaveKnowledge} disabled={!knowledgeCount}>
-            บันทึกเข้า Obsidian{knowledgeCount ? ` (${knowledgeCount})` : ''}
+            บันทึกโน้ตความรู้ลงเครื่อง{knowledgeCount ? ` (${knowledgeCount})` : ''}
           </button>
           <button className="mx-secondary" onClick={onExportKnowledge} disabled={!knowledgeCount}>
-            ส่งออก Obsidian MD{knowledgeCount ? ` (${knowledgeCount})` : ''}
+            ดาวน์โหลดโน้ตความรู้ (.md){knowledgeCount ? ` (${knowledgeCount})` : ''}
           </button>
           <button className="mx-secondary" onClick={onLoadRadar} disabled={loading}>
-            {loading ? 'กำลังสำรวจ...' : 'สำรวจอัตโนมัติด้วย Tavily'}
+            {loading ? 'กำลังค้น...' : 'ค้นตัวอย่างอัตโนมัติ'}
           </button>
         </div>
       </div>
@@ -1979,17 +2090,17 @@ function ReferenceRadarView({
         <article className="mx-reference-form">
           <div className="mx-section-head">
             <div>
-              <div className="mx-kicker">Reference Vault</div>
+              <div className="mx-kicker">บันทึกตัวอย่าง</div>
               <h2>บันทึกสิ่งที่เจอจากตลาด</h2>
             </div>
             <a className="mx-mini-button" href={activeSource.searchUrl(query)} target="_blank" rel="noreferrer">เปิด {activeSource.name}</a>
           </div>
           <label>
-            หัวข้อ / ชื่อ reference
+            หัวข้อ / ชื่อตัวอย่าง
             <input value={form.title} onChange={(event) => onFormChange({ title: event.target.value })} placeholder="เช่น Hook โฆษณาเจ้าของที่ดินต้องการเงินก้อน" />
           </label>
           <label>
-            URL แหล่งที่มา
+            ลิงก์ที่มา
             <input value={form.url} onChange={(event) => onFormChange({ url: event.target.value })} placeholder="วางลิงก์โฆษณา ข่าว หรือหน้า reference" />
           </label>
           <div className="mx-form-grid">
@@ -2019,32 +2130,32 @@ function ReferenceRadarView({
             </label>
           </div>
           <label>
-            Hook ที่น่าสนใจ
-            <textarea value={form.hook} onChange={(event) => onFormChange({ hook: event.target.value })} placeholder="ประโยคเปิด / pain point / คำถามที่ดึงความสนใจ" />
+            ประโยคเปิดที่น่าสนใจ
+            <textarea value={form.hook} onChange={(event) => onFormChange({ hook: event.target.value })} placeholder="ประโยคเปิด ปัญหาที่คนเจอ หรือคำถามที่ดึงความสนใจ" />
           </label>
           <label>
-            Pattern ภาพหรือวิดีโอ
+            รูปแบบภาพหรือวิดีโอ
             <textarea value={form.visualPattern} onChange={(event) => onFormChange({ visualPattern: event.target.value })} placeholder="เช่น โต๊ะเอกสาร โฉนดถูกปิดข้อมูล แผนที่ แสงธรรมชาติ โทนพรีเมี่ยม" />
           </label>
           <label>
-            Angle ที่ควรทำในแบบ AssetX
+            มุมที่ควรทำแบบ AssetX
             <textarea value={form.contentAngle} onChange={(event) => onFormChange({ contentAngle: event.target.value })} placeholder="แปลงเป็นแนวคิดของเรา ไม่ลอกข้อความเดิม" />
           </label>
           <label>
-            Tags
+            ป้ายกำกับ
             <input value={form.tags} onChange={(event) => onFormChange({ tags: event.target.value })} placeholder="ขายฝาก, โฉนด, นักลงทุน" />
           </label>
           <label>
             หมายเหตุ
             <textarea value={form.notes} onChange={(event) => onFormChange({ notes: event.target.value })} placeholder="ข้อควรระวัง หรือสิ่งที่อยากลองกับแบรนด์เรา" />
           </label>
-          <button className="mx-primary" onClick={onAdd}>บันทึก Reference</button>
+          <button className="mx-primary" onClick={onAdd}>บันทึกตัวอย่าง</button>
         </article>
 
         <div className="mx-reference-side">
           <article className="mx-pattern-panel">
-            <div className="mx-kicker">Pattern Extractor</div>
-            <h2>{selectedReference ? selectedReference.title : 'ยังไม่มี reference ที่เลือก'}</h2>
+            <div className="mx-kicker">ถอดรูปแบบ</div>
+            <h2>{selectedReference ? selectedReference.title : 'ยังไม่ได้เลือกตัวอย่าง'}</h2>
             {selectedReference ? (
               <>
                 <div className="mx-reference-meta">
@@ -2052,33 +2163,33 @@ function ReferenceRadarView({
                   {selectedReference.url && <span>{hostFromUrl(selectedReference.url)}</span>}
                   <span className={`risk-${selectedReference.risk}`}>{selectedReference.risk === 'high' ? 'เสี่ยงสูง' : selectedReference.risk === 'low' ? 'เสี่ยงต่ำ' : 'เสี่ยงกลาง'}</span>
                 </div>
-                <ContentBlock title="Brief พร้อมใช้" value={buildReferenceBrief(selectedReference)} onCopy={() => onCopy(selectedReference)} collapsed />
+                <ContentBlock title="บรีฟพร้อมใช้" value={buildReferenceBrief(selectedReference)} onCopy={() => onCopy(selectedReference)} collapsed />
                 <div className="mx-card-actions">
-                  <button className="mx-primary" onClick={() => onCreate(selectedReference)}>ส่งเข้า Studio</button>
-                  <button className="mx-secondary" onClick={() => onSaveIdea(selectedReference)}>เก็บเป็นไอเดีย</button>
+                  <button className="mx-primary" onClick={() => onCreate(selectedReference)}>ร่างโพสต์</button>
+                  <button className="mx-secondary" onClick={() => onSaveIdea(selectedReference)}>เก็บไว้ก่อน</button>
                   {selectedReference.url && <a className="mx-secondary as-link" href={selectedReference.url} target="_blank" rel="noreferrer">อ่านต้นทาง</a>}
                 </div>
               </>
             ) : (
-              <p>เริ่มจากกดสำรวจอัตโนมัติ หรือเปิดแหล่งสำรวจด้านบนแล้วบันทึก reference แรก เพื่อให้ระบบถอด brief ให้</p>
+              <p>เริ่มจากกดค้นตัวอย่างอัตโนมัติ หรือเปิดแหล่งด้านบนแล้วบันทึกตัวอย่างแรก ระบบจะสรุปบรีฟให้</p>
             )}
           </article>
 
           <div className="mx-reference-list">
-            {references.length === 0 && <div className="mx-empty">ยังไม่มี reference ในคลัง กดสำรวจอัตโนมัติด้วย Tavily หรือเปิด Meta Ads Library / TikTok Creative Center แล้วบันทึก insight แรกเข้ามาได้เลย</div>}
+            {references.length === 0 && <div className="mx-empty">ยังไม่มีตัวอย่างในคลัง กดค้นตัวอย่างอัตโนมัติ หรือเปิด Meta Ads Library / TikTok Creative Center แล้วบันทึกรายการแรกเข้ามาได้เลย</div>}
             {references.map((reference) => (
               <article className={`mx-reference-item ${selectedReference?.id === reference.id ? 'active' : ''}`} key={reference.id}>
                 <button onClick={() => onSelect(reference.id)}>
                   <span>{sourceFromId(reference.sourceId).name}</span>
                   <strong>{reference.title}</strong>
-                  <p>{reference.contentAngle || reference.hook || reference.visualPattern || 'ยังไม่ได้ถอด pattern'}</p>
+                  <p>{reference.contentAngle || reference.hook || reference.visualPattern || 'ยังไม่ได้ถอดรูปแบบ'}</p>
                 </button>
                 <div className="mx-reference-tags">
                   {(reference.tags || []).map((tag) => <span key={tag}>{tag}</span>)}
                 </div>
                 <div className="mx-card-actions">
-                  <button className="mx-mini-button" onClick={() => onCreate(reference)}>ทำคอนเทนต์</button>
-                  <button className="mx-mini-button" onClick={() => onCopy(reference)}>คัดลอก brief</button>
+                  <button className="mx-mini-button" onClick={() => onCreate(reference)}>ร่างโพสต์</button>
+                  <button className="mx-mini-button" onClick={() => onCopy(reference)}>คัดลอกบรีฟ</button>
                   <button className="mx-mini-button danger" onClick={() => onDelete(reference.id)}>ลบ</button>
                 </div>
               </article>
@@ -2090,119 +2201,162 @@ function ReferenceRadarView({
   )
 }
 
+// ไอเดีย: การ์ดจากรีเสิร์ชขึ้นก่อน (ใหม่สุดก่อน) → การ์ดจากการสำรวจตลาด → หัวข้อตัวอย่างพับไว้ท้ายหน้า
 function IdeasView({
-  ideas,
-  showAll,
-  total,
-  seedCount,
-  researchCount = 0,
-  radarCount,
+  feed,
+  research,
+  radar,
+  examples,
   radarLoading,
   manualIdea,
   onManualChange,
   onAddManual,
-  onToggle,
   onCreate,
   onSaveIdea,
   onDismiss,
   onLoadRadar,
+  onReload,
 }) {
+  const PAGE_SIZE = 6
+  const [sort, setSort] = useState('newest')
+  const [showAll, setShowAll] = useState(false)
+  const [angleChoice, setAngleChoice] = useState({})
+  const syncState = feed.syncState || { state: 'saved' }
+  const ordered = useMemo(() => {
+    const byDate = (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+    const byScore = (a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)
+    return [...research].sort(sort === 'score' ? byScore : byDate)
+  }, [research, sort])
+  const live = [...ordered, ...radar]
+  const visible = showAll ? live : live.slice(0, PAGE_SIZE)
+  const hidden = Math.max(0, live.length - visible.length)
+  const status = describeResearchFeed(feed)
+  const showNotice = feed.state !== 'ok' || research.length === 0
+
+  const renderCard = (idea) => {
+    const isResearch = idea.kind === 'research'
+    const isExample = idea.kind === 'example'
+    const angles = Array.isArray(idea.angles) ? idea.angles : []
+    const angleIndex = angleChoice[idea.id] ?? 0
+    const angleText = angles[angleIndex]?.brief || idea.angle
+    return (
+      <article className={`mx-idea-card ${isExample ? 'example' : ''}`} key={idea.id}>
+        <div className="mx-idea-top">
+          <span>{isExample ? 'ตัวอย่าง' : idea.type}</span>
+          <strong>{isResearch ? (idea.createdAt ? thaiDate(idea.createdAt) : 'ใหม่') : isExample ? 'จากแม่แบบ' : 'จากการสำรวจตลาด'}</strong>
+        </div>
+        <h2>
+          {idea.url ? (
+            <a className="mx-idea-title-link" href={idea.url} target="_blank" rel="noreferrer">{idea.title}</a>
+          ) : idea.title}
+        </h2>
+        {angles.length > 1 && (
+          <fieldset className="mx-angle-pick">
+            <legend>เลือกมุมเล่า</legend>
+            {angles.map((item, index) => (
+              <label key={`${idea.id}-${index}`} className={angleIndex === index ? 'active' : ''}>
+                <input type="radio" name={`angle-${idea.id}`} checked={angleIndex === index} onChange={() => setAngleChoice((prev) => ({ ...prev, [idea.id]: index }))} />
+                <span>{item.label}</span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+        <p>{angleText}</p>
+        <div className="mx-tags">
+          {!isExample && <span>{displaySource(idea.source)}</span>}
+          {idea.audience && <span>{idea.audience}</span>}
+          {idea.eventDate && <span>วันที่ {thaiDate(idea.eventDate) || idea.eventDate}</span>}
+          {idea.url && <a href={idea.url} target="_blank" rel="noreferrer">เปิดต้นทาง</a>}
+        </div>
+        <div className="mx-card-actions">
+          <button className="mx-primary" onClick={() => onCreate(idea.title, idea, angleIndex)}>ร่างโพสต์</button>
+          <button className="mx-ghost" onClick={() => onSaveIdea(idea)}>เก็บไว้ก่อน</button>
+          {idea.dbId && onDismiss && <button className="mx-ghost" onClick={() => onDismiss(idea)}>ทิ้ง</button>}
+        </div>
+      </article>
+    )
+  }
+
   return (
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
-          <div className="mx-kicker">ไอเดียวันนี้</div>
-          <h1>เลือกหัวข้อที่ควรทำก่อน แล้วให้ AssetX จัดแพ็กคอนเทนต์</h1>
-          <p>ข้อมูลเราเอง {seedCount} หัวข้อ · เรดาร์รีเสิร์ช {researchCount} หัวข้อ · Trend Radar {radarCount} หัวข้อ · เรียงจากความสำคัญ โอกาสสร้าง lead และคุณค่าความรู้ต่อผู้อ่าน</p>
+          <div className="mx-kicker">ไอเดีย</div>
+          <h1>เลือกไอเดียที่จะทำเป็นโพสต์</h1>
+          <p>จากรีเสิร์ช {research.length} หัวข้อ{feed.total > research.length ? ` (คิวมี ${feed.total} แสดงได้ ${research.length})` : ''}{radar.length ? ` · จากการสำรวจตลาด ${radar.length} หัวข้อ` : ''} · เรียง{sort === 'score' ? 'ตามคะแนน' : 'ใหม่สุดก่อน'}</p>
         </div>
         <div className="mx-page-actions">
-          <button className="mx-secondary" onClick={onLoadRadar} disabled={radarLoading}>{radarLoading ? 'กำลังสำรวจ...' : 'สำรวจตลาดด้วย Tavily'}</button>
-          <button className="mx-secondary" onClick={onToggle}>{showAll ? 'แสดงเฉพาะตัวเด่น' : `ดูเพิ่ม (${Math.max(0, total - ideas.length)})`}</button>
+          <div className="mx-segment" role="group" aria-label="เรียงไอเดีย">
+            <button type="button" className={sort === 'newest' ? 'active' : ''} aria-pressed={sort === 'newest'} onClick={() => setSort('newest')}>ใหม่สุด</button>
+            <button type="button" className={sort === 'score' ? 'active' : ''} aria-pressed={sort === 'score'} onClick={() => setSort('score')}>คะแนนสูงสุด</button>
+          </div>
+          <button className="mx-secondary" onClick={onLoadRadar} disabled={radarLoading}>{radarLoading ? 'กำลังสำรวจ...' : 'สำรวจตลาดอัตโนมัติ'}</button>
         </div>
       </div>
+      {showNotice && (
+        <div className={`mx-feed-notice ${status.tone}`} role="status">
+          <span>{feed.state === 'ok' ? 'ยังไม่มีไอเดียจากรีเสิร์ชในคิว — ตัวเก็บรันบนเครื่องของเจ้าของตามตารางเวลา กลับมาดูใหม่หลังรอบถัดไป' : status.text}</span>
+          {status.action === 'login' && <button type="button" className="mx-secondary" onClick={() => reloadForLogin(syncState)}>เข้าสู่ระบบใหม่</button>}
+          {status.action === 'retry' && <button type="button" className="mx-secondary" onClick={onReload}>ลองใหม่</button>}
+        </div>
+      )}
+      {live.length > 0 && <div className="mx-idea-grid">{visible.map(renderCard)}</div>}
+      {live.length > PAGE_SIZE && (
+        <div className="mx-more-row">
+          <button className="mx-secondary" type="button" onClick={() => setShowAll((value) => !value)}>{showAll ? 'แสดงน้อยลง' : `ดูเพิ่ม (${hidden})`}</button>
+        </div>
+      )}
       <div className="mx-manual">
-        <input value={manualIdea} onChange={(event) => onManualChange(event.target.value)} placeholder="เพิ่มไอเดียเอง เช่น ทำคอนเทนต์เจ้าของที่ดินต้องการเงินก้อน" />
-        <button onClick={onAddManual} disabled={!manualIdea.trim()}>เก็บไว้และเริ่มร่าง</button>
+        <label htmlFor="mx-manual-idea">เพิ่มไอเดียเอง</label>
+        <input id="mx-manual-idea" value={manualIdea} onChange={(event) => onManualChange(event.target.value)} placeholder="เช่น ทำคอนเทนต์เจ้าของที่ดินต้องการเงินก้อน" />
+        <button onClick={onAddManual} disabled={!manualIdea.trim()}>ร่างโพสต์</button>
       </div>
-      <div className="mx-idea-grid">
-        {ideas.map((idea) => (
-          <article className="mx-idea-card" key={idea.id}>
-            <div className="mx-idea-top"><span>{idea.type}</span><strong>คะแนน {idea.score}</strong></div>
-            <h2>
-              {idea.url ? (
-                <a className="mx-idea-title-link" href={idea.url} target="_blank" rel="noreferrer">
-                  {idea.title}
-                </a>
-              ) : idea.title}
-            </h2>
-            <p>{idea.angle}</p>
-            {idea.angles?.length > 1 && (
-              <div className="mx-tags">
-                {idea.angles.map((item) => <span key={item.label} title={item.brief}>มุม: {item.label}</span>)}
-              </div>
-            )}
-            <div className="mx-tags">
-              <span>{idea.source}</span>
-              <span>{idea.audience}</span>
-              <span>{idea.status}</span>
-              {idea.eventDate && <span>วันที่ {idea.eventDate}</span>}
-              {idea.url && <a href={idea.url} target="_blank" rel="noreferrer">เปิดแหล่งข่าว</a>}
-            </div>
-            <div className="mx-card-actions">
-              <button className="mx-primary" onClick={() => onCreate(idea.title, idea)}>เริ่มทำคอนเทนต์</button>
-              <button className="mx-ghost" onClick={() => onSaveIdea(idea)}>เก็บไว้ก่อน</button>
-              {idea.dbId && onDismiss && <button className="mx-ghost" onClick={() => onDismiss(idea)}>ทิ้ง</button>}
-            </div>
-          </article>
-        ))}
-      </div>
+      <details className="mx-example-fold">
+        <summary>หัวข้อตัวอย่างจากแม่แบบ ({examples.length}) — ไม่ได้มาจากรีเสิร์ช</summary>
+        <div className="mx-idea-grid">{examples.map(renderCard)}</div>
+      </details>
     </section>
   )
 }
 
-function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onChannelChange, onPromptChange, onGenerate, onQueue, onCopy }) {
+function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onChannelChange, onPromptChange, onGenerate, onQueue, onCopy, onBack }) {
   const posterPrompt = generated ? buildSocialPosterPrompt({
     title: generated.headline || studio.prompt,
     imagePrompt: generated.imagePrompt,
   }, posterCopy) : ''
   return (
     <section className="mx-content mx-studio">
-      <div className="mx-stepper">
-        {['หัวข้อ', 'คอนเทนต์', 'เลือกภาพ', 'ตั้งเวลา', 'โพสต์'].map((step, index) => (
-          <div className={`mx-step ${index < (generated ? 2 : 1) ? 'active' : ''}`} key={step}>
-            <span>{index + 1}</span>{step}
-          </div>
-        ))}
-      </div>
       <div className="mx-page-head compact">
         <div>
-          <div className="mx-kicker">สร้างโพสต์ใหม่</div>
-          <h1>เริ่มจากหัวข้อเดียว แล้วให้ AssetX ร่างแคปชั่น ภาพ และสคริปต์</h1>
+          <div className="mx-kicker">ร่าง · เขียนโพสต์ใหม่</div>
+          <h1>พิมพ์หัวข้อ แล้วให้ระบบร่างแคปชั่น บรีฟภาพ และสคริปต์ให้</h1>
+          <p>ขั้นต่อไป (ใส่ภาพ · ตั้งเวลา · โพสต์) ทำในแท็บ ร่าง และ โพสต์</p>
         </div>
+        <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onBack}>← กลับไปร่างที่รอตรวจ</button></div>
       </div>
       <div className="mx-prompt-box">
         <textarea value={studio.prompt} onChange={(event) => onPromptChange(event.target.value)} placeholder="พิมพ์หัวข้อที่อยากโพสต์ เช่น เจ้าของที่ดินต้องการเงินก่อน แต่ไม่อยากขายขาด" />
-        <button className="mx-primary" onClick={onGenerate}>สร้างโพสต์</button>
+        <button className="mx-primary" onClick={onGenerate}>ร่างโพสต์</button>
       </div>
       <label className="mx-schedule-row">ช่องทาง
         <select value={studio.channel} onChange={(event) => onChannelChange(event.target.value)}>
           {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
         </select>
       </label>
-      <div className="mx-model-note">ใช้ template fallback ของ AssetX เป็นหลัก เพื่อประหยัดเครดิต แล้วค่อยต่อ AI เมื่อต้องการร่างละเอียด</div>
+      <div className="mx-model-note">ร่างจากแม่แบบของ AssetX — ตรวจข้อเท็จจริงและแก้ข้อความก่อนส่งตรวจทุกครั้ง</div>
       {generated && (
         <div className="mx-generated-grid">
           <article className="mx-review-card wide">
             <div className="mx-review-head">
-              <div><div className="mx-kicker">คอนเทนต์พร้อมตรวจ</div><h2>{generated.headline}</h2></div>
+              <div><div className="mx-kicker">ร่างพร้อมตรวจ</div><h2>{generated.headline}</h2></div>
               <span className="mx-pass">โครงสร้าง {generated.meta?.captionQuality?.score ?? '-'}/100</span>
             </div>
             <ContentBlock title="แคปชั่น" value={generated.caption} onCopy={() => onCopy(generated.caption)} />
-            <ContentBlock title="บรีฟภาพโปสเตอร์พร้อมใช้" value={posterPrompt} onCopy={() => onCopy(posterPrompt)} collapsed />
+            <ContentBlock title="บรีฟภาพโปสเตอร์ (ภาษาอังกฤษ สำหรับโปรแกรมสร้างภาพ)" value={posterPrompt} onCopy={() => onCopy(posterPrompt)} collapsed />
             <ContentBlock title="สคริปต์วิดีโอ" value={generated.videoScript} onCopy={() => onCopy(generated.videoScript)} collapsed />
             <div className="mx-card-actions end">
-              <button className="mx-primary" onClick={() => onQueue('pending')}>ส่งรออนุมัติ</button>
-              <button className="mx-secondary" onClick={() => onQueue('approved')}>อนุมัติไว้ก่อน</button>
+              <button className="mx-primary" onClick={() => onQueue('pending')}>ส่งเข้ารอตรวจ</button>
+              <button className="mx-secondary" onClick={() => onQueue('approved')}>อนุมัติ</button>
             </div>
           </article>
           <aside className="mx-preview">
@@ -2229,18 +2383,21 @@ function ApprovalsView({
   onUploadArtwork,
   onDeleteMediaAsset,
   onDelete,
+  onArchive,
+  onNewDraft,
 }) {
   return (
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
-          <div className="mx-kicker">รออนุมัติ</div>
-          <h1>ตรวจโพสต์ก่อนนำไปใช้จริง</h1>
-          <p>ผ่าน — โพสต์ได้เลย · {drafts.filter((post) => post.reviewStatus === 'passed').length} / ควรแก้ก่อนโพสต์ · {drafts.filter((post) => post.reviewStatus !== 'passed').length}</p>
+          <div className="mx-kicker">ร่าง</div>
+          <h1>ตรวจร่างก่อนโพสต์</h1>
+          <p>ผ่านเกณฑ์ {drafts.filter((post) => post.reviewStatus === 'passed').length} · ติดเกณฑ์ {drafts.filter((post) => post.reviewStatus !== 'passed').length} · ทุกร่างต้องกดอนุมัติก่อนไปตั้งเวลา</p>
         </div>
+        <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onNewDraft}>+ เขียนโพสต์ใหม่</button></div>
       </div>
       {drafts.length === 0 ? (
-        <div className="mx-empty">ยังไม่มีโพสต์รอตรวจ</div>
+        <div className="mx-empty">ยังไม่มีร่างรอตรวจ — เลือกไอเดียในแท็บ ไอเดีย แล้วกด ร่างโพสต์ หรือกด เขียนโพสต์ใหม่</div>
       ) : (
         <div className="mx-approval-feed">
           {drafts.map((post) => {
@@ -2250,7 +2407,7 @@ function ApprovalsView({
               imagePrompt: post.imagePrompt,
             }, posterCopy)
             return (
-              <article className={`mx-approval-card ${selected?.id === post.id ? 'active' : ''}`} key={post.id} onClick={() => onSelect(post.id)}>
+              <article className={`mx-approval-card ${selected?.id === post.id ? 'active' : ''}`} key={post.sampleOf || post.id} onClick={() => onSelect(post.id)}>
                 <div className="mx-approval-media-column">
                   <div className="mx-approval-card-image">
                     {postMedia ? (
@@ -2286,10 +2443,10 @@ function ApprovalsView({
                 <div className="mx-approval-copy-column">
                   <div className="mx-review-head">
                     <div>
-                      <div className="mx-kicker">#{post.id} · {post.channel} · {post.source || 'AssetX Studio'}</div>
+                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
                       <h2>{post.title}</h2>
                     </div>
-                    <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{post.reviewStatus === 'passed' ? 'ผ่าน' : 'ควรแก้'}</span>
+                    <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{reviewLabel(post)}</span>
                   </div>
                   <textarea
                     className="mx-approval-caption"
@@ -2303,32 +2460,36 @@ function ApprovalsView({
                     </select>
                   </label>
                   <div className="mx-review-notes compact">
-                    <strong>ผลตรวจ</strong>
-                    {post.reviewNotes?.map((note, index) => <span key={index}>{note}</span>)}
+                    <strong>ผลตรวจเกณฑ์</strong>
+                    {uniqueReviewNotes(post.reviewNotes).map((note, index) => <span key={index}>{note}</span>)}
                   </div>
                   <div className="mx-schedule-row compact" onClick={(event) => event.stopPropagation()}>
                     <label>
-                      วันที่จะโพสต์
+                      กำหนดวันโพสต์ (ไม่บังคับ)
                       <input
                         type="datetime-local"
                         value={scheduleInputValue(post.scheduledAt)}
-                        onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : post.status }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
+                        onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value }, event.target.value ? 'บันทึกวันโพสต์แล้ว สถานะจะเปลี่ยนเมื่ออนุมัติ' : 'ล้างวันโพสต์แล้ว')}
                       />
                     </label>
-                    {postMedia && <span>{postMedia.width} x {postMedia.height}px · {postMedia.originalName || 'generated image'}</span>}
+                    {post.scheduledAt && <span>จะโพสต์ {thaiDateTime(post.scheduledAt)}</span>}
+                    {postMedia && <span>{postMedia.width} × {postMedia.height} px</span>}
                   </div>
                   <div className="mx-card-actions">
-                    {!post.facebookPostId && post.status !== 'posted' && /facebook/i.test(post.channel || '') && !/#[\p{L}\p{N}_]/u.test(post.caption || '') && <button className="mx-secondary" onClick={(event) => {
-                      event.stopPropagation()
-                      const suggested = runAssetxMarketingModel({ prompt: post.topic || post.title, channel: 'facebook' })
-                      onUpdate(post.id, { caption: appendMarketingHashtags(post.caption, suggested.hashtags) }, 'เพิ่มแฮชแท็กแล้ว กรุณาตรวจและอนุมัติอีกครั้ง')
-                    }}>เพิ่มแฮชแท็ก</button>}
-                    <button className="mx-primary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: post.scheduledAt ? 'scheduled' : 'approved', reviewStatus: 'passed', mediaAssetId: postMedia?.id || post.mediaAssetId || null }, post.scheduledAt ? 'อนุมัติและเข้าปฏิทินแล้ว' : 'อนุมัติแล้ว') }}>อนุมัติ</button>
-                    <button className="mx-secondary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: 'needs_edit', reviewStatus: 'needs_edit' }, 'ส่งกลับแก้แล้ว') }}>แก้</button>
-                    <button className="mx-ghost" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: 'draft' }, 'พักโพสต์ไว้ก่อนแล้ว') }}>พัก</button>
-                    <button className="mx-secondary" onClick={(event) => { event.stopPropagation(); onCopy(postPosterPrompt) }}>คัดลอกบรีฟรูป</button>
-                    {postMedia && <a className="mx-mini-button" href={postMedia.dataUrl} download={`assetx-artwork-${postMedia.id}.jpg`} onClick={(event) => event.stopPropagation()}>ดาวน์โหลดรูป</a>}
-                    <button className="mx-mini-button danger" onClick={(event) => { event.stopPropagation(); onDelete(post.id) }}>ลบคอนเทนต์</button>
+                    <button className="mx-primary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: post.scheduledAt ? 'scheduled' : 'approved', reviewStatus: 'passed', mediaAssetId: postMedia?.id || post.mediaAssetId || null }, post.scheduledAt ? 'อนุมัติแล้ว · ตั้งเวลาตามวันที่กำหนด' : 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์') }}>อนุมัติ</button>
+                    <button className="mx-ghost" onClick={(event) => { event.stopPropagation(); onArchive(post.id) }}>พักไว้</button>
+                    <details className="mx-more" onClick={(event) => event.stopPropagation()}>
+                      <summary>เพิ่มเติม ▾</summary>
+                      <div className="mx-more-menu">
+                        {!post.facebookPostId && post.status !== 'posted' && /facebook/i.test(post.channel || '') && !/#[\p{L}\p{N}_]/u.test(post.caption || '') && <button type="button" onClick={() => {
+                          const suggested = runAssetxMarketingModel({ prompt: post.topic || post.title, channel: 'facebook' })
+                          onUpdate(post.id, { caption: appendMarketingHashtags(post.caption, suggested.hashtags) }, 'เพิ่มแฮชแท็กแล้ว กรุณาตรวจและอนุมัติอีกครั้ง')
+                        }}>เพิ่มแฮชแท็ก</button>}
+                        <button type="button" onClick={() => onCopy(postPosterPrompt)}>คัดลอกบรีฟรูป</button>
+                        {postMedia && <a href={postMedia.dataUrl} download={`assetx-artwork-${postMedia.id}.jpg`}>ดาวน์โหลดรูป</a>}
+                        <button type="button" className="danger" onClick={() => onDelete(post.id)}>ลบร่างนี้</button>
+                      </div>
+                    </details>
                   </div>
                 </div>
               </article>
@@ -2349,13 +2510,13 @@ function ChannelsView({ posts, facebookConnection, onCreate, onQueue }) {
           <h1>สถานะช่องทางการตลาด</h1>
         </div>
         <div className="mx-row-actions">
-          <button className="mx-primary" onClick={onCreate}>สร้างคอนเทนต์</button>
-          <button className="mx-secondary" onClick={onQueue}>ดูคิวโพสต์</button>
+          <button className="mx-primary" onClick={onCreate}>เขียนโพสต์ใหม่</button>
+          <button className="mx-secondary" onClick={onQueue}>ไปที่โพสต์</button>
         </div>
       </div>
       <div className="mx-channel-table-wrap">
         <table className="mx-channel-table">
-          <thead><tr><th>ช่องทาง</th><th>สิ่งที่ต้องเตรียม</th><th>การส่งโพสต์</th><th>รออนุมัติ</th><th>อยู่ในคิว</th><th>บัญชี</th></tr></thead>
+          <thead><tr><th>ช่องทาง</th><th>สิ่งที่ต้องเตรียม</th><th>วิธีโพสต์</th><th>รอตรวจ</th><th>อนุมัติแล้ว</th><th>บัญชี</th></tr></thead>
           <tbody>
             {marketingChannelSetup.map((channel) => {
               const channelPosts = posts.filter((post) => post.channel === channel.id)
@@ -2366,7 +2527,7 @@ function ChannelsView({ posts, facebookConnection, onCreate, onQueue }) {
                 <tr key={channel.id}>
                   <th scope="row">{channel.label}</th>
                   <td>{channel.preparation}</td>
-                  <td><span className={facebookReady ? 'mx-channel-ready' : 'mx-channel-manual'}>{facebookReady ? 'API พร้อมใช้' : channel.id === 'facebook' ? 'ยังไม่เชื่อม API' : 'ส่งเองก่อน · รอเชื่อม API'}</span></td>
+                  <td><span className={facebookReady ? 'mx-channel-ready' : 'mx-channel-manual'}>{facebookReady ? 'โพสต์อัตโนมัติได้' : channel.id === 'facebook' ? 'ยังไม่เชื่อมต่อ' : 'โพสต์เองก่อน'}</span></td>
                   <td>{pending}</td>
                   <td>{queued}</td>
                   <td><a href={channel.managerUrl} target="_blank" rel="noreferrer">เปิดบัญชี</a></td>
@@ -2376,7 +2537,9 @@ function ChannelsView({ posts, facebookConnection, onCreate, onQueue }) {
           </tbody>
         </table>
       </div>
-      {facebookConnection?.tokenHealth?.warning && <p className="mx-channel-warning" role="status">Facebook: {facebookConnection.tokenHealth.warning}</p>}
+      {facebookConnection?.unauthorized && <p className="mx-channel-warning" role="alert">{SESSION_EXPIRED_MESSAGE}</p>}
+      {facebookConnection?.tokenHealth?.warning && facebookConnection.tokenHealth.state !== 'unknown' && <p className="mx-channel-warning" role="status">Facebook: {facebookConnection.tokenHealth.warning}</p>}
+      {facebookConnection?.tokenHealth?.state === 'unknown' && <p className="mx-channel-warning" role="status">Facebook: ยังไม่ทราบวันหมดอายุของการเชื่อมต่อ — เชื่อมแล้วใช้โพสต์ได้ตามปกติ</p>}
     </section>
   )
 }
@@ -2396,30 +2559,31 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
-          <div className="mx-kicker">รอโพสต์</div>
-          <h1>คิวโพสต์ที่ผ่านการอนุมัติแล้ว</h1>
-          <p>Facebook ส่งผ่าน API; ช่องทางอื่นเตรียมไฟล์และบันทึกผลหลังโพสต์จริง</p>
+          <div className="mx-kicker">โพสต์</div>
+          <h1>โพสต์ที่อนุมัติแล้ว รอตั้งเวลาและส่ง</h1>
+          <p>Facebook ส่งอัตโนมัติจากหน้านี้ได้ ช่องทางอื่นเตรียมไฟล์แล้วบันทึกผลหลังโพสต์จริง</p>
         </div>
         <div className="mx-row-actions">
           <span className={facebookConnection?.connected ? 'mx-pass' : 'mx-warn'}>
             {facebookConnection?.loading
               ? 'กำลังตรวจ Facebook'
               : facebookConnection?.connected
-                ? `เชื่อมแล้ว · ${facebookConnection.pageName}`
-                : 'ยังไม่ได้เชื่อม Facebook'}
+                ? `Facebook · ${facebookConnection.pageName}`
+                : 'ยังไม่เชื่อม Facebook'}
           </span>
-          <button className="mx-secondary" onClick={onCreate}>หาไอเดียเพิ่ม</button>
+          <button className="mx-secondary" onClick={onCreate}>ไปที่ไอเดีย</button>
         </div>
       </div>
+      {facebookConnection?.unauthorized && <p role="alert" className="mx-warn">{SESSION_EXPIRED_MESSAGE}</p>}
       {facebookConnection?.error && <p role="alert" className="mx-warn">{facebookConnection.error}</p>}
-      {facebookConnection?.tokenHealth?.warning && <p role="status" className="mx-warn" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{facebookConnection.tokenHealth.warning}</p>}
-      {facebookConnection?.missing?.length > 0 && <p role="alert" className="mx-warn">ยังไม่ได้ตั้งค่า {facebookConnection.missing.join(', ')}</p>}
+      {facebookConnection?.tokenHealth?.warning && facebookConnection.tokenHealth.state !== 'unknown' && <p role="status" className="mx-warn" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{facebookConnection.tokenHealth.warning}</p>}
+      {facebookConnection?.missing?.length > 0 && <p role="alert" className="mx-warn">ยังไม่เชื่อม Facebook Page — ตั้งค่าการเชื่อมต่อฝั่งเซิร์ฟเวอร์ แล้วดูสถานะที่หน้าช่องทาง</p>}
       {dueCount > 0 && <p className="mx-queue-due" role="status">มี {dueCount} โพสต์ที่ถึงกำหนดหรือเลยกำหนดแล้ว ต้องตรวจและเผยแพร่จริงตามช่องทาง</p>}
       {verificationCount > 0 && <p className="mx-queue-verify" role="status">มี {verificationCount} โพสต์ที่ตั้งเวลาบน Facebook และเวลาผ่านแล้ว กรุณาตรวจผลจริงใน Meta Business Suite</p>}
       <div className="mx-queue-tabs" aria-label="สถานะคิวโพสต์">
         {[
-          ['action', 'ต้องดำเนินการ'],
-          ['platformScheduled', 'ตั้งเวลาบน Facebook'],
+          ['action', 'รอโพสต์'],
+          ['platformScheduled', 'ตั้งเวลาแล้ว'],
           ['posted', 'โพสต์แล้ว'],
         ].map(([key, label]) => (
           <button key={key} type="button" className={queueFilter === key ? 'active' : ''} aria-pressed={queueFilter === key} onClick={() => setQueueFilter(key)}>
@@ -2441,9 +2605,9 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
               {postMedia && <ArtworkPreview className="mx-row-thumb" src={postMedia.dataUrl} alt={post.title} />}
               <div>
                 <strong>{post.title}</strong>
-                <span>{assetxChannels.find((channel) => channel.value === post.channel)?.label || post.channel} · {post.source || 'AssetX Studio'}{isPosted ? (post.postedAt ? ` · โพสต์ ${new Date(post.postedAt).toLocaleString('th-TH')}` : '') : (post.scheduledAt ? ` · วางแผน ${new Date(post.scheduledAt).toLocaleString('th-TH')}` : '')}</span>
-                <span className={`mx-queue-state ${queueState}`}>{queueState === 'platformScheduled' && post.scheduledAt && new Date(post.scheduledAt) <= now ? 'เวลาผ่านแล้ว · ตรวจผลจริงบน Facebook' : ({ overdue: 'เลยกำหนด', today: 'ถึงกำหนดวันนี้', upcoming: 'กำหนดวันแล้ว', unscheduled: 'ยังไม่กำหนดวัน', platformScheduled: 'Facebook รับตั้งเวลาแล้ว', posted: 'โพสต์แล้ว' })[queueState]}</span>
-                {post.publishError && <span style={{ color: '#FCA5A5' }}>{post.publishError}</span>}
+                <span>{channelLabel(post.channel)} · {displaySource(post.source)}{isPosted ? (post.postedAt ? ` · โพสต์แล้ว ${thaiDateTime(post.postedAt)}` : '') : (post.scheduledAt ? ` · กำหนด ${thaiDateTime(post.scheduledAt)}` : '')}</span>
+                <span className={`mx-queue-state ${queueState}`}>{queueState === 'platformScheduled' && post.scheduledAt && new Date(post.scheduledAt) <= now ? 'ถึงเวลาแล้ว · ตรวจผลจริงบน Facebook' : queueStateLabels[queueState]}</span>
+                {post.publishError && <span className="mx-publish-error">{String(post.publishError).split(' — Facebook (')[0]}</span>}
               </div>
               <div className="mx-row-actions">
                 <input
@@ -2565,7 +2729,7 @@ function GalleryView({
           <h1>เตรียมภาพสำหรับคอนเทนต์</h1>
         </div>
       </div>
-      {!briefs.length && <div className="mx-gallery-empty">ยังไม่มีคอนเทนต์ที่มีบรีฟภาพ <button className="mx-secondary" type="button" onClick={onCreateContent}>สร้างคอนเทนต์</button></div>}
+      {!briefs.length && <div className="mx-gallery-empty">ยังไม่มีร่างที่มีบรีฟภาพ <button className="mx-secondary" type="button" onClick={onCreateContent}>เขียนโพสต์ใหม่</button></div>}
       <div className="mx-gallery-flow">
         <div className="mx-gallery-fields">
           <label>
@@ -2588,19 +2752,19 @@ function GalleryView({
           </label>
         </div>
         <div className="mx-gallery-prompt-head">
-          <strong>พร้อมต์สำหรับ Firefly</strong>
+          <strong>ข้อความสั่งสร้างภาพ (ภาษาอังกฤษ สำหรับวางใน Firefly)</strong>
           <span>{selectedStyle.allowPosterText ? 'ภาพพื้นหลังแนวโปสเตอร์ เพิ่มข้อความภายหลัง' : selectedStyle.description}</span>
         </div>
-        <textarea aria-label="พร้อมต์สำหรับ Firefly" value={fireflyPrompt} readOnly placeholder="เลือกคอนเทนต์เพื่อดูพร้อมต์" />
+        <textarea aria-label="ข้อความสั่งสร้างภาพ (ภาษาอังกฤษ สำหรับวางใน Firefly)" value={fireflyPrompt} readOnly placeholder="เลือกร่างเพื่อดูข้อความสั่งสร้างภาพ" />
         <div className="mx-gallery-prompt-actions">
-          <button className="mx-primary" type="button" disabled={!fireflyPrompt} onClick={() => onCopy(fireflyPrompt)}>คัดลอกพร้อมต์</button>
+          <button className="mx-primary" type="button" disabled={!fireflyPrompt} onClick={() => onCopy(fireflyPrompt)}>คัดลอกข้อความสั่งสร้างภาพ</button>
           <a className="mx-secondary as-link" href="https://firefly.adobe.com/" target="_blank" rel="noreferrer">เปิด Firefly</a>
         </div>
       </div>
       <article className="mx-upload-panel">
         <div>
-          <div className="mx-kicker">Artwork Library</div>
-          <h2>นำภาพจาก Firefly กลับเข้าระบบ</h2>
+          <div className="mx-kicker">คลังภาพ</div>
+          <h2>นำภาพที่สร้างเสร็จกลับเข้าระบบ</h2>
           <p>ภาพที่เลือกจะถูกบีบอัดและผูกกับคอนเทนต์ด้านบน</p>
         </div>
         <div className="mx-upload-actions">
@@ -2621,10 +2785,10 @@ function GalleryView({
         </div>
       </article>
       <details className="mx-gallery-advanced">
-        <summary>ตัวเลือกขั้นสูง: โปสเตอร์และการสร้างภาพผ่าน API</summary>
+        <summary>ตัวเลือกขั้นสูง: ข้อความบนโปสเตอร์และการสร้างภาพอัตโนมัติ</summary>
       <div className="mx-visual-system">
         <div className="mx-visual-copy">
-          <div className="mx-kicker">AssetX Visual System</div>
+          <div className="mx-kicker">แนวภาพของ AssetX</div>
           <h2>โทนภาพหลัก: สมจริง พรีเมี่ยม น่าเชื่อถือ</h2>
           <p>ใช้ reference เป็นแรงบันดาลใจได้ แต่ผลลัพธ์ต้องเป็นภาพใหม่ในภาษาภาพของ AssetX: สะอาด โปร่ง ข้อมูลครบแต่ไม่เปิดเผยข้อมูลลูกค้า และไม่มีข้อความไทยฝังในภาพ</p>
           <div className="mx-workflow-steps">
@@ -2645,9 +2809,9 @@ function GalleryView({
             </button>
           ))}
           <label className="mx-style-picker">
-            <strong>AI Drawing Style (10)</strong>
+            <strong>สไตล์ภาพวาด (10 แบบ)</strong>
             <select value={selectedStyle.artistic ? selectedStyle.id : ''} onChange={(event) => event.target.value && onVisualStyleChange(event.target.value)}>
-              <option value="">Choose a drawing style</option>
+              <option value="">เลือกสไตล์ภาพวาด</option>
               {visualStyles.filter((style) => style.artistic).map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
             </select>
             {selectedStyle.artistic && <em>{selectedStyle.description}</em>}
@@ -2657,7 +2821,7 @@ function GalleryView({
       <article className="mx-poster-editor">
         <div className="mx-section-head">
           <div>
-            <div className="mx-kicker">Poster Copy Editor</div>
+            <div className="mx-kicker">ข้อความบนโปสเตอร์</div>
             <h2>กำหนดข้อความบนภาพก่อนสร้างโปสเตอร์</h2>
             <p>เลือกบรีฟด้านล่างเพื่อให้ระบบเติมข้อความตั้งต้นตามคอนเทนต์นั้น แล้วปรับแก้เองก่อนสร้างรูปได้</p>
           </div>
@@ -2665,39 +2829,39 @@ function GalleryView({
         </div>
         <div className="mx-poster-form">
           <label>
-            Headline
+            หัวเรื่อง
             <input value={posterCopy.headline || ''} onChange={(event) => onPosterCopyChange({ headline: event.target.value })} />
           </label>
           <label>
-            Subheadline
+            หัวเรื่องรอง
             <input value={posterCopy.subheadline || ''} onChange={(event) => onPosterCopyChange({ subheadline: event.target.value })} />
           </label>
           <label>
-            Badge 1
+            จุดเด่น 1
             <input value={posterCopy.badge1 || ''} onChange={(event) => onPosterCopyChange({ badge1: event.target.value })} />
           </label>
           <label>
-            Badge 2
+            จุดเด่น 2
             <input value={posterCopy.badge2 || ''} onChange={(event) => onPosterCopyChange({ badge2: event.target.value })} />
           </label>
           <label>
-            Badge 3
+            จุดเด่น 3
             <input value={posterCopy.badge3 || ''} onChange={(event) => onPosterCopyChange({ badge3: event.target.value })} />
           </label>
           <label>
-            Trust line
+            ข้อความความน่าเชื่อถือ
             <input value={posterCopy.trustLine || ''} onChange={(event) => onPosterCopyChange({ trustLine: event.target.value })} />
           </label>
           <label>
-            Area line
+            พื้นที่ให้บริการ
             <input value={posterCopy.areaLine || ''} onChange={(event) => onPosterCopyChange({ areaLine: event.target.value })} />
           </label>
           <label>
-            CTA
+            ข้อความชวนติดต่อ
             <input value={posterCopy.cta || ''} onChange={(event) => onPosterCopyChange({ cta: event.target.value })} />
           </label>
           <label className="wide">
-            Contact line (ใส่เฉพาะข้อมูลจริงที่ต้องการใช้)
+            ช่องทางติดต่อ (ใส่เฉพาะข้อมูลจริงที่ต้องการใช้)
             <input value={posterCopy.contactLine || ''} onChange={(event) => onPosterCopyChange({ contactLine: event.target.value })} placeholder="เช่น โทร 092-xxx-xxxx / LINE: @assetx" />
           </label>
         </div>
@@ -2706,16 +2870,16 @@ function GalleryView({
       {mediaResult && (
         <article className="mx-media-result">
           <div>
-            <div className="mx-kicker">ผลลัพธ์ล่าสุด · {mediaResult.model}</div>
+            <div className="mx-kicker">ผลลัพธ์ล่าสุด · {displaySource(mediaResult.model)}</div>
             <h2>{mediaResult.title}</h2>
           </div>
           {mediaResult.type === 'prompt' ? (
             <>
               <div className="mx-quota-note">
-                โควต้า OpenAI ยังไม่พร้อมสร้างไฟล์จริง ระบบเตรียม prompt แบบครบกฎแบรนด์ไว้ให้แล้ว สามารถคัดลอกไปใช้กับเครื่องมืออื่น เช่น Firefly, Midjourney, Runway หรือกลับมาลองใหม่หลัง quota พร้อม
+                สร้างภาพอัตโนมัติไม่ได้ในตอนนี้ — ระบบเตรียมข้อความสั่งสร้างภาพที่ครบกฎแบรนด์ไว้ให้แล้ว คัดลอกไปวางในเครื่องมือสร้างภาพที่ใช้อยู่ (เช่น Firefly) หรือกลับมาลองใหม่ภายหลังได้
               </div>
               <pre className="mx-fallback-prompt">{mediaResult.prompt}</pre>
-              <button className="mx-primary media-download" onClick={() => onCopy(mediaResult.prompt)}>คัดลอก Prompt</button>
+              <button className="mx-primary media-download" onClick={() => onCopy(mediaResult.prompt)}>คัดลอกข้อความสั่งสร้างภาพ</button>
             </>
           ) : (
             <>
@@ -2728,7 +2892,7 @@ function GalleryView({
         </article>
       )}
       <details className="mx-gallery-advanced">
-        <summary>ดูบรีฟทั้งหมดและสร้างภาพหรือวิดีโอผ่าน API</summary>
+        <summary>ดูบรีฟทั้งหมดและสร้างภาพหรือวิดีโออัตโนมัติ</summary>
       <div className="mx-brief-grid">
         {briefs.map((brief) => (
           <article className={`mx-brief-card ${String(brief.id) === String(selectedBriefId) ? 'active' : ''}`} key={brief.id}>
@@ -2737,7 +2901,7 @@ function GalleryView({
               <strong>{brief.title}</strong>
               <p>{brief.imagePrompt}</p>
               <div className="mx-visual-note">
-                <span>Style</span>
+                <span>แนวภาพ</span>
                 <p>{selectedStyle.scenes}</p>
               </div>
             </div>
@@ -2789,7 +2953,7 @@ function BrandBrainView() {
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
-          <div className="mx-kicker">Brand Brain</div>
+          <div className="mx-kicker">กติกาแบรนด์</div>
           <h1>กติกาแบรนด์สำหรับคอนเทนต์ AssetX Estate</h1>
           <p>ใช้เป็นสมองกลางให้ทุกโพสต์คุมโทน ความเสี่ยง และความน่าเชื่อถือไปในทิศทางเดียวกัน</p>
         </div>
@@ -2826,7 +2990,8 @@ function LibraryView({
     .filter((post) => {
       if (filter === 'all') return true
       if (filter === 'active') return post.status !== 'archived' && post.status !== 'posted'
-      if (filter === 'needs_edit') return post.status === 'needs_edit' || post.reviewStatus === 'needs_edit'
+      if (filter === 'pending') return ['pending', 'draft', 'needs_edit'].includes(post.status)
+      if (filter === 'needs_edit') return post.reviewStatus === 'needs_edit'
       return post.status === filter
     })
     .sort((a, b) => {
@@ -2843,9 +3008,9 @@ function LibraryView({
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
-          <div className="mx-kicker">ผลงานทั้งหมด</div>
+          <div className="mx-kicker">คลังผลงาน</div>
           <h1>รวมโพสต์ที่ร่างแล้วและไอเดียที่เก็บไว้</h1>
-          <p>จัดระเบียบงานก่อนต่อ Supabase จริงในรอบถัดไป: กรองสถานะ พักงาน ลบงาน และดูตัวอย่างแต่ละช่องทาง</p>
+          <p>กรองตามสถานะ พักงาน ลบงาน และดูตัวอย่างการแสดงผลแต่ละช่องทาง</p>
         </div>
       </div>
       <div className="mx-filter-bar">
@@ -2854,11 +3019,10 @@ function LibraryView({
           <select value={filter} onChange={(event) => onFilterChange(event.target.value)}>
             <option value="active">งานที่ยังใช้ต่อ</option>
             <option value="all">ทั้งหมด</option>
-            <option value="draft">ร่าง</option>
             <option value="pending">รอตรวจ</option>
-            <option value="needs_edit">ควรแก้</option>
+            <option value="needs_edit">ติดเกณฑ์</option>
             <option value="approved">อนุมัติแล้ว</option>
-            <option value="scheduled">จองวันแล้ว</option>
+            <option value="scheduled">ตั้งเวลาแล้ว</option>
             <option value="posted">โพสต์แล้ว</option>
             <option value="archived">พักไว้</option>
           </select>
@@ -2891,10 +3055,10 @@ function LibraryView({
               {findMediaForPost(mediaAssets, post) && <ArtworkPreview className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
               <div>
                 <strong>{post.title}</strong>
-                <span>{post.channel} · {statusLabels[post.status] || post.status} · {post.source || 'AssetX Studio'}</span>
+                <span>{channelLabel(post.channel)} · {statusLabels[post.status] || post.status} · {displaySource(post.source)}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</span>
               </div>
               <div className="mx-post-actions">
-                <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{post.reviewStatus === 'passed' ? 'ผ่าน' : 'ควรแก้'}</span>
+                <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{reviewLabel(post)}</span>
                 {post.status === 'archived'
                   ? <button className="mx-mini-button" onClick={() => onRestore(post.id)}>กู้คืน</button>
                   : <button className="mx-mini-button" onClick={() => onArchive(post.id)}>พักไว้</button>}
@@ -2932,12 +3096,12 @@ function LibraryView({
             </div>
           </article>
           <h2 className="mx-section-title">ไอเดียที่เก็บไว้</h2>
-          {savedIdeas.length === 0 && <div className="mx-empty">ยังไม่มีไอเดียที่เก็บไว้ กด “เก็บไว้ก่อน” จากหน้าไอเดียวันนี้เพื่อสะสมหัวข้อ</div>}
+          {savedIdeas.length === 0 && <div className="mx-empty">ยังไม่มีไอเดียที่เก็บไว้ กด “เก็บไว้ก่อน” จากแท็บ ไอเดีย เพื่อสะสมหัวข้อ</div>}
           {savedIdeas.map((idea) => (
             <article className="mx-row-card" key={idea.id}>
-              <div><strong>{idea.title}</strong><span>{idea.source} · คะแนน {idea.score}</span></div>
+              <div><strong>{idea.title}</strong><span>{displaySource(idea.source)}{idea.savedAt ? ` · เก็บเมื่อ ${thaiDate(idea.savedAt)}` : ''}</span></div>
               <div className="mx-post-actions">
-                <button className="mx-primary" onClick={() => onCreate(idea.title, idea)}>เริ่มทำ</button>
+                <button className="mx-primary" onClick={() => onCreate(idea.title, idea)}>ร่างโพสต์</button>
                 <button className="mx-mini-button danger" onClick={() => onDeleteSavedIdea(idea.id)}>ลบ</button>
               </div>
             </article>
@@ -2965,18 +3129,19 @@ function CalendarView({ posts = [], onQueue }) {
   return (
     <section className="mx-content">
       <div className="mx-page-head">
-        <div><div className="mx-kicker">ปฏิทินโพสต์</div><h1>{new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(month)}</h1></div>
+        <div><div className="mx-kicker">โพสต์ · ปฏิทิน</div><h1>{new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(month)}</h1></div>
         <div className="mx-row-actions"><button className="mx-secondary" onClick={() => setMonthOffset(monthOffset - 1)}>เดือนก่อน</button><button className="mx-secondary" onClick={() => setMonthOffset(0)}>เดือนนี้</button><button className="mx-secondary" onClick={() => setMonthOffset(monthOffset + 1)}>เดือนถัดไป</button></div>
       </div>
-      {unscheduled > 0 && <div className="mx-calendar-unscheduled">อนุมัติแล้วแต่ยังไม่กำหนดวัน {unscheduled} โพสต์ <button className="mx-secondary" onClick={onQueue}>ไปคิวโพสต์</button></div>}
+      {unscheduled > 0 && <div className="mx-calendar-unscheduled">อนุมัติแล้วแต่ยังไม่ตั้งเวลา {unscheduled} โพสต์ <button className="mx-secondary" onClick={onQueue}>ไปตั้งเวลาในรายการ</button></div>}
+      {Object.keys(postsByDay).length === 0 && <div className="mx-calendar-unscheduled">ไม่มีโพสต์ที่ตั้งเวลาหรือโพสต์แล้วในเดือนนี้</div>}
       <div className="mx-calendar">
         {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((day) => <div className="mx-weekday" key={day}>{day}</div>)}
         {Array.from({ length: month.getDay() }, (_, index) => <div className="mx-day-empty" key={`blank-${index}`} />)}
         {days.map((day) => (
-          <div className={`mx-day ${postsByDay[day]?.length ? 'has' : ''}`} key={day}>
-            <strong>{day}</strong>
+          <div className={`mx-day ${postsByDay[day]?.length ? 'has' : ''} ${monthOffset === 0 && day === today.getDate() ? 'today' : ''}`} key={day} aria-current={monthOffset === 0 && day === today.getDate() ? 'date' : undefined}>
+            <strong>{day}{monthOffset === 0 && day === today.getDate() ? ' · วันนี้' : ''}</strong>
             {postsByDay[day]?.map((post) => (
-              <div className="mx-calendar-item" key={post.id}><strong>{post.title}</strong><span>{assetxChannels.find((channel) => channel.value === post.channel)?.label || post.channel} · {post.status === 'posted' ? 'โพสต์แล้ว' : post.facebookPostId ? 'ตั้งเวลาบน Facebook' : 'วันในแผน'}</span></div>
+              <div className="mx-calendar-item" key={post.id}><strong>{post.title}</strong><span>{channelLabel(post.channel)} · {post.status === 'posted' ? statusLabels.posted : post.facebookPostId ? queueStateLabels.platformScheduled : queueStateLabels.upcoming}</span></div>
             ))}
           </div>
         ))}
@@ -2985,7 +3150,12 @@ function CalendarView({ posts = [], onQueue }) {
   )
 }
 
-function MetricsView({ metrics, form, onFormChange, onAdd, onDelete }) {
+function MetricsView({ metrics: allMetrics, form, onFormChange, onAdd, onDelete }) {
+  // ช่วงเวลา: null = ทั้งหมด · ตัวเลข = วันย้อนหลัง (กรองจาก createdAt ของแต่ละรายการ)
+  const [rangeDays, setRangeDays] = useState(null)
+  const metrics = rangeDays
+    ? allMetrics.filter((item) => item.createdAt && Date.now() - new Date(item.createdAt).getTime() <= rangeDays * 86400000)
+    : allMetrics
   const totals = metrics.reduce((acc, item) => ({
     leads: acc.leads + (Number(item.leads) || 0),
     qualified: acc.qualified + (Number(item.qualified) || 0),
@@ -2998,14 +3168,18 @@ function MetricsView({ metrics, form, onFormChange, onAdd, onDelete }) {
   return (
     <section className="mx-content">
       <div className="mx-page-head">
-        <div><div className="mx-kicker">ตัวเลข</div><h1>วัดผลการตลาดจาก lead และเคสประเมิน</h1><p>เริ่มจากการกรอกสถานะโพสต์เองก่อน แล้วค่อยต่อ Meta/LINE/TikTok API ในระยะถัดไป</p></div>
-        <div className="mx-range"><button>7 วัน</button><button>14 วัน</button><button>30 วัน</button></div>
+        <div><div className="mx-kicker">ตัวเลข</div><h1>วัดผลการตลาดจากลีดและเคสประเมิน</h1><p>บันทึกผลโพสต์ด้วยตนเองเพื่อดูแนวโน้มลีด{rangeDays ? ` · แสดง ${rangeDays} วันล่าสุด` : ' · แสดงทั้งหมด'}</p></div>
+        <div className="mx-range" role="group" aria-label="ช่วงเวลา">
+          {[[null, 'ทั้งหมด'], [7, '7 วัน'], [14, '14 วัน'], [30, '30 วัน']].map(([days, label]) => (
+            <button key={label} type="button" className={rangeDays === days ? 'active' : ''} aria-pressed={rangeDays === days} onClick={() => setRangeDays(days)}>{label}</button>
+          ))}
+        </div>
       </div>
       <div className="mx-metric-grid">
-        <MetricCard label="Lead ใหม่" value={totals.leads} delta={`${metrics.length} โพสต์`} />
-        <MetricCard label="Lead คุณภาพ" value={totals.qualified} delta="จากที่กรอกเอง" />
-        <MetricCard label="นัดหมาย" value={totals.appointments} delta={`${leadToAppointment}% ของ lead`} />
-        <MetricCard label="โพสต์ที่บันทึกผล" value={metrics.length} delta="manual tracking" />
+        <MetricCard label="ลีดใหม่" value={totals.leads} delta={`จาก ${metrics.length} โพสต์`} />
+        <MetricCard label="ลีดคุณภาพ" value={totals.qualified} delta="กรอกเอง" />
+        <MetricCard label="นัดหมาย" value={totals.appointments} delta={`${leadToAppointment}% ของลีด`} />
+        <MetricCard label="โพสต์ที่บันทึกผล" value={metrics.length} delta="กรอกเอง" />
       </div>
       <div className="mx-metrics-layout">
         <article className="mx-metric-form">
@@ -3013,7 +3187,7 @@ function MetricsView({ metrics, form, onFormChange, onAdd, onDelete }) {
           <label>ชื่อโพสต์ / แคมเปญ<input value={form.title} onChange={(event) => onFormChange({ ...form, title: event.target.value })} placeholder="เช่น ขายฝากกับจำนองต่างกันอย่างไร" /></label>
           <label>ช่องทาง<select value={form.channel} onChange={(event) => onFormChange({ ...form, channel: event.target.value })}>{assetxChannels.map((channel) => <option key={channel.value} value={channel.label}>{channel.label}</option>)}<option>Website</option></select></label>
           <div className="mx-metric-inputs">
-            <label>Lead<input type="number" min="0" value={form.leads} onChange={(event) => onFormChange({ ...form, leads: event.target.value })} /></label>
+            <label>ลีด<input type="number" min="0" value={form.leads} onChange={(event) => onFormChange({ ...form, leads: event.target.value })} /></label>
             <label>คุณภาพ<input type="number" min="0" value={form.qualified} onChange={(event) => onFormChange({ ...form, qualified: event.target.value })} /></label>
             <label>นัดหมาย<input type="number" min="0" value={form.appointments} onChange={(event) => onFormChange({ ...form, appointments: event.target.value })} /></label>
           </div>
@@ -3022,10 +3196,10 @@ function MetricsView({ metrics, form, onFormChange, onAdd, onDelete }) {
         </article>
         <div className="mx-list">
           <h2 className="mx-section-title">ผลลัพธ์ล่าสุด</h2>
-          {metrics.length === 0 && <div className="mx-empty">ยังไม่มีข้อมูลผลโพสต์ ลองบันทึกจากโพสต์ที่ลงจริงแล้วเพื่อดูแนวโน้ม lead</div>}
+          {metrics.length === 0 && <div className="mx-empty">{rangeDays ? `ไม่มีผลโพสต์ที่บันทึกในช่วง ${rangeDays} วันล่าสุด` : 'ยังไม่มีข้อมูลผลโพสต์ ลองบันทึกจากโพสต์ที่ลงจริงแล้วเพื่อดูแนวโน้มลีด'}</div>}
           {metrics.map((item) => (
             <article className="mx-row-card" key={item.id}>
-              <div><strong>{item.title}</strong><span>{item.channel} · Lead {item.leads} · คุณภาพ {item.qualified} · นัด {item.appointments}</span></div>
+              <div><strong>{item.title}</strong><span>{item.channel} · ลีด {item.leads} · คุณภาพ {item.qualified} · นัด {item.appointments}{item.createdAt ? ` · ${thaiDate(item.createdAt)}` : ''}</span></div>
               <button className="mx-mini-button danger" onClick={() => onDelete(item.id)}>ลบ</button>
             </article>
           ))}
@@ -3033,18 +3207,64 @@ function MetricsView({ metrics, form, onFormChange, onAdd, onDelete }) {
       </div>
       <div className="mx-chart-card">
         <div className="mx-bars">{(barData.length ? barData : [{ leads: 1 }]).map((item, index) => <span title={item.title || 'ยังไม่มีข้อมูล'} style={{ height: `${Math.max(8, ((Number(item.leads) || 0) / maxLeads) * 100)}%` }} key={item.id || index} />)}</div>
-        <p>จุดนี้จะใช้ overlay วันที่โพสต์กับจำนวน lead เพื่อดูว่าคอนเทนต์ไหนช่วยขยับผลลัพธ์จริง</p>
+        <p>แท่งละหนึ่งโพสต์ที่บันทึกผล (ล่าสุด 12 รายการ) ความสูงตามจำนวนลีด</p>
       </div>
     </section>
   )
 }
 
-function PipelineView() {
+// สถานะระบบ — อ่านจากข้อมูลจริงเท่านั้น: คิวไอเดียจาก API (meta) · การบันทึกเวิร์กสเปซ · Facebook · จำนวนร่าง/คิวในหน้านี้
+function PipelineView({ feed, syncState, facebookConnection, counts, onReload }) {
+  const research = describeResearchFeed(feed)
+  const sync = describeSyncState(syncState)
+  const facebook = describeFacebook(facebookConnection) || { tone: 'error', text: SESSION_EXPIRED_MESSAGE }
+  const meta = feed.meta
+  const bySource = Object.entries(meta?.by_source || {}).sort((a, b) => b[1] - a[1])
+  const freshness = (() => {
+    if (!meta?.latest_created_at) return null
+    const hours = (Date.now() - new Date(meta.latest_created_at).getTime()) / 3600000
+    if (!Number.isFinite(hours)) return null
+    if (hours < 36) return { tone: 'ok', text: 'มีของใหม่ภายใน 36 ชม.' }
+    if (hours < 24 * 4) return { tone: 'warn', text: `ไม่มีไอเดียใหม่มา ${Math.round(hours / 24)} วัน` }
+    return { tone: 'error', text: `ไม่มีไอเดียใหม่มา ${Math.round(hours / 24)} วัน — ตรวจตารางเวลาบนเครื่องที่รันตัวเก็บ` }
+  })()
   return (
     <section className="mx-content">
-      <div className="mx-page-head"><div><div className="mx-kicker">สายพานการผลิต</div><h1>สถานะงานอัตโนมัติของการตลาด</h1><p>ช่วยให้เห็นว่า Hermes, Tavily และโมเดลคอนเทนต์กำลังทำอะไรอยู่</p></div></div>
+      <div className="mx-page-head">
+        <div>
+          <div className="mx-kicker">สถานะระบบ</div>
+          <h1>ระบบที่หน้านี้ใช้อยู่ ทำงานถึงไหน</h1>
+          <p>ตัวเก็บไอเดียรันบนเครื่องของเจ้าของตามตารางเวลา หน้านี้เห็นเฉพาะผลที่เข้าตารางคิวแล้ว</p>
+        </div>
+        <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onReload}>โหลดสถานะใหม่</button></div>
+      </div>
       <div className="mx-pipeline">
-        {pipelineJobs.map(([name, status, detail]) => <article className="mx-pipe-card" key={name}><div><strong>{name}</strong><span>{detail}</span></div><em>{status}</em></article>)}
+        <article className="mx-pipe-card">
+          <div>
+            <strong>คิวไอเดียจากรีเสิร์ช</strong>
+            <span>{research.text}{research.extra ? ` · ${research.extra}` : ''}</span>
+            {meta && (
+              <span>
+                รอเลือก {meta.total ?? feed.ideas.length} หัวข้อ · มีมุมเล่าจาก AI แล้ว {meta.with_angles ?? 0} หัวข้อ
+                {bySource.length ? ` · ตามแหล่ง: ${bySource.map(([source, count]) => `${researchSourceLabels[source] || source} ${count}`).join(' · ')}` : ''}
+              </span>
+            )}
+            {freshness && <span className={`mx-pipe-note ${freshness.tone}`}>{freshness.text}</span>}
+          </div>
+          <em className={research.tone}>{research.tone === 'ok' ? 'ปกติ' : research.tone === 'muted' ? 'กำลังโหลด' : 'ติดปัญหา'}</em>
+        </article>
+        <article className="mx-pipe-card">
+          <div><strong>เวิร์กสเปซของหน้านี้ (ร่าง รูป ตัวเลข)</strong><span>{sync.text}</span></div>
+          <em className={sync.tone}>{sync.tone === 'ok' ? 'ปกติ' : sync.tone === 'muted' ? 'กำลังทำ' : 'ติดปัญหา'}</em>
+        </article>
+        <article className="mx-pipe-card">
+          <div><strong>Facebook Page</strong><span>{facebook.text}</span></div>
+          <em className={facebook.tone}>{facebook.tone === 'ok' ? 'เชื่อมแล้ว' : facebook.tone === 'muted' ? 'กำลังตรวจ' : 'ยังไม่เชื่อม'}</em>
+        </article>
+        <article className="mx-pipe-card">
+          <div><strong>งานในมือ</strong><span>ร่างรอตรวจ {counts.approvals} · รอโพสต์ {counts.ready} · ไอเดียที่เก็บไว้ {counts.saved}</span></div>
+          <em className={counts.approvals + counts.ready > 0 ? 'warn' : 'ok'}>{counts.approvals + counts.ready > 0 ? 'มีงานค้าง' : 'ไม่มีงานค้าง'}</em>
+        </article>
       </div>
     </section>
   )
@@ -3059,9 +3279,9 @@ function InboxView({ onCopy, onCreate }) {
     <section className="mx-content">
       <div className="mx-page-head">
         <div>
-          <div className="mx-kicker">ตอบคอมเมนต์ เฟส 3</div>
-          <h1>กล่องข้อความสำหรับเคสที่ AI ตอบเองไม่ได้</h1>
-          <p>ตอนนี้เป็น workflow จำลองสำหรับทีมตอบแชท: แยกความเสี่ยง ร่างคำตอบ และส่งหัวข้อกลับไปทำคอนเทนต์ได้</p>
+          <div className="mx-kicker">ตอบคอมเมนต์ · ตัวอย่าง</div>
+          <h1>ตัวอย่างการคัดกรองข้อความก่อนตอบ</h1>
+          <p>ข้อความ 3 รายการนี้เขียนไว้เป็นตัวอย่าง ยังไม่ได้เชื่อมกับคอมเมนต์จริง — ใช้ดูวิธีแยกความเสี่ยง ร่างคำตอบ และส่งหัวข้อไปร่างโพสต์</p>
         </div>
       </div>
       <div className="mx-inbox-layout">
@@ -3093,7 +3313,7 @@ function InboxView({ onCopy, onCreate }) {
               audience: selected.intent,
               angle: selected.question,
               channel: selected.source.includes('LINE') ? 'LINE OA' : 'Facebook',
-            })}>ทำเป็นโพสต์</button>
+            })}>ร่างโพสต์</button>
           </div>
         </article>
       </div>
@@ -3101,20 +3321,68 @@ function InboxView({ onCopy, onCreate }) {
   )
 }
 
-function NavSection({ title, children }) {
-  return <div className="mx-nav-section"><div className="mx-nav-title">{title}</div>{children}</div>
-}
-
-function NavButton({ label, count, active, onClick }) {
+function TabButton({ id, label, count, active, onClick }) {
   return (
-    <button className={`mx-nav ${active ? 'active' : ''}`} onClick={onClick}>
-      <span className="mx-nav-dot" /><span>{label}</span>{typeof count === 'number' && <strong>{count}</strong>}
+    <button type="button" className={`mx-tab ${active ? 'active' : ''}`} data-view={id} aria-current={active ? 'page' : undefined} onClick={onClick}>
+      <span>{label}</span>{typeof count === 'number' && count > 0 && <strong>{count}</strong>}
     </button>
   )
 }
 
-function MetricLine({ label, value }) {
-  return <div className="mx-metric-line"><span>{label}</span><strong>{value}</strong></div>
+// แถบสถานะจริงบนหัวหน้า: คิวไอเดีย (จาก API meta) · การบันทึกเวิร์กสเปซ · Facebook — ไม่มีป้ายตายตัว
+function describeResearchFeed(feed) {
+  if (feed.state === 'loading') return { tone: 'muted', text: 'กำลังโหลดคิวไอเดีย…' }
+  if (feed.state === 'unauthorized') return { tone: 'error', text: 'เซสชันหมดอายุ', action: 'login' }
+  if (feed.state === 'unavailable') return { tone: 'warn', text: 'ระบบคิวไอเดียยังไม่พร้อม (ฝั่งเซิร์ฟเวอร์)' }
+  if (feed.state === 'error') return { tone: 'error', text: 'โหลดไอเดียไม่ได้', action: 'retry' }
+  const latest = feed.meta?.latest_created_at
+  if (!latest && !feed.ideas.length) return { tone: 'ok', text: 'ยังไม่มีไอเดียในคิว' }
+  const recent = Number(feed.meta?.arrived_last_24h)
+  return {
+    tone: 'ok',
+    text: latest ? `ไอเดียล่าสุดเข้าคิว ${thaiDateTime(latest)}` : `ไอเดียรอเลือก ${feed.ideas.length} หัวข้อ`,
+    extra: Number.isFinite(recent) ? `ใน 24 ชม. +${recent}` : '',
+  }
+}
+
+// โหลดหน้าใหม่เพื่อเข้าสู่ระบบ — ถ้าการแก้ไขล่าสุดยังไม่ได้ขึ้นระบบ (บันทึกไม่สำเร็จ/โหลดจากระบบไม่ได้) บอกก่อน เพราะตอนโหลดใหม่ข้อมูลจากระบบจะชนะข้อมูลในเครื่อง
+function reloadForLogin(syncState) {
+  const unsaved = syncState?.state === 'failed' || syncState?.state === 'local' || syncState?.state === 'saving'
+  if (unsaved && !window.confirm('การแก้ไขล่าสุดยังไม่ได้บันทึกขึ้นระบบ ถ้าโหลดหน้าใหม่ตอนนี้ข้อมูลส่วนนั้นอาจหาย — โหลดใหม่เลยไหม?')) return
+  window.location.reload()
+}
+
+function describeSyncState(syncState) {
+  if (syncState.state === 'loading') return { tone: 'muted', text: 'กำลังโหลดข้อมูล…' }
+  if (syncState.state === 'saving') return { tone: 'muted', text: 'กำลังบันทึก…' }
+  if (syncState.state === 'local') return { tone: 'warn', text: 'โหลดจากระบบไม่ได้ ใช้ข้อมูลในเครื่อง' }
+  if (syncState.state === 'failed') return { tone: 'error', text: 'บันทึกขึ้นระบบไม่สำเร็จ ข้อมูลอยู่ในเครื่องนี้' }
+  return { tone: 'ok', text: syncState.at ? `บันทึกแล้ว ${thaiTime(syncState.at)}` : 'บันทึกแล้ว' }
+}
+
+function describeFacebook(connection) {
+  if (connection?.unauthorized) return null
+  if (connection?.loading) return { tone: 'muted', text: 'กำลังตรวจ Facebook' }
+  if (connection?.connected) return { tone: 'ok', text: `Facebook · ${connection.pageName || 'เชื่อมแล้ว'}` }
+  return { tone: 'warn', text: 'ยังไม่เชื่อม Facebook' }
+}
+
+function StatusStrip({ feed, syncState, facebookConnection, onReload }) {
+  const research = describeResearchFeed(feed)
+  const sync = describeSyncState(syncState)
+  const facebook = describeFacebook(facebookConnection)
+  return (
+    <div className="mx-strip" role="status" aria-live="polite">
+      <span className={`mx-chip ${research.tone}`}>
+        <span className="mx-chip-dot" aria-hidden="true" />
+        {research.text}{research.extra ? <em>{research.extra}</em> : null}
+        {research.action === 'login' && <button type="button" onClick={() => reloadForLogin(syncState)}>เข้าสู่ระบบใหม่</button>}
+        {research.action === 'retry' && <button type="button" onClick={onReload}>ลองใหม่</button>}
+      </span>
+      <span className={`mx-chip ${sync.tone}`}><span className="mx-chip-dot" aria-hidden="true" />{sync.text}</span>
+      {facebook && <span className={`mx-chip ${facebook.tone}`}><span className="mx-chip-dot" aria-hidden="true" />{facebook.text}</span>}
+    </div>
+  )
 }
 
 function MetricCard({ label, value, delta }) {
@@ -3139,341 +3407,479 @@ function ContentBlock({ title, value, onCopy, collapsed }) {
 }
 
 const styles = `
-  .mx-page { min-height: 100vh; display: grid; grid-template-columns: 244px minmax(0, 1fr); background: #f5f8fc; color: #11233d; font-family: "Noto Sans Thai", "Segoe UI", sans-serif; }
+  /* ── โทเค็น: ธีม "ศูนย์บัญชาการ" โทนเข้มของแบรนด์ (น้ำเงินกลางคืน · ฟ้าไซยาน · ม่วงลึก) ทุกคู่สีตัวอักษรผ่าน 4.5:1 ── */
+  .mx-page {
+    --mx-bg: #050b18; --mx-bg-2: #0a1630;
+    --mx-panel: rgba(14, 30, 58, .78); --mx-panel-2: rgba(19, 38, 72, .74); --mx-panel-solid: #10203f; --mx-field: rgba(5, 11, 24, .55);
+    --mx-line: rgba(112, 215, 232, .16); --mx-line-2: rgba(112, 215, 232, .36);
+    --mx-ink: #eef4ff; --mx-ink-2: #c9d7ee; --mx-muted: #9db1d2;
+    --mx-cyan: #42c7d8; --mx-sky: #7fe1f0; --mx-blue: #2f9fe6; --mx-violet: #7c5cff; --mx-coral: #ff8e73;
+    --mx-ok: #4ade80; --mx-warn: #fbbf24; --mx-err: #fb7185; --mx-err-soft: #ffd1d6;
+    --mx-glow: 0 0 0 1px rgba(66,199,216,.35), 0 0 24px rgba(66,199,216,.22);
+    --mx-shadow: 0 18px 44px rgba(2, 8, 24, .45);
+    --mx-radius: 16px;
+    position: relative; isolation: isolate; min-height: 100vh; display: block;
+    background: var(--mx-bg); color: var(--mx-ink);
+    font-family: "Noto Sans Thai", "Segoe UI", sans-serif; font-size: 15px; line-height: 1.55; font-weight: 400;
+  }
   .mx-page * { box-sizing: border-box; }
-  .mx-sidebar { background: #eef4fb; border-right: 1px solid #d8e3f2; padding: 18px 10px; }
-  .mx-brand { display: flex; align-items: center; gap: 10px; padding: 8px 10px 18px; }
-  .mx-brand-logo { width: 42px; height: 42px; border-radius: 11px; object-fit: cover; object-position: 50% 30%; background: #fff; border: 1px solid #d8e3f2; }
-  .mx-brand-name { font-size: 15px; font-weight: 900; color: #163150; letter-spacing: 0; }
-  .mx-brand-sub { font-size: 11px; color: #657894; font-weight: 800; margin-top: 1px; }
-  .mx-create { width: 100%; border: 2px solid #1d74ee; background: #2f73d8; color: #fff; border-radius: 12px; padding: 14px 16px; font-weight: 900; cursor: pointer; box-shadow: inset 0 0 0 2px #d9e9ff, 0 16px 26px rgba(47,115,216,.2); }
-  .mx-nav-section { margin-top: 18px; }
-  .mx-nav-title { padding: 0 14px 8px; color: #8290a7; font-size: 12px; font-weight: 900; }
-  .mx-nav { width: 100%; border: 0; background: transparent; color: #253855; display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 10px; text-align: left; cursor: pointer; font-size: 14px; }
-  .mx-nav.active, .mx-nav:hover { background: #e2ecfa; color: #1556ae; }
-  .mx-nav-dot { width: 12px; height: 12px; border: 1px solid #516b8d; border-radius: 3px; }
-  .mx-nav strong { font-size: 12px; color: #1f65c8; }
-  .mx-today-card { margin: 26px 6px 0; border: 1px solid #d8e3f2; background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 10px 24px rgba(30,64,124,.06); }
-  .mx-card-title { color: #193455; font-weight: 900; margin-bottom: 8px; }
-  .mx-metric-line { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #687a95; padding-top: 9px; }
-  .mx-main { min-width: 0; background: radial-gradient(circle at 78% 8%, rgba(45,166,161,.12), transparent 28%), linear-gradient(180deg, #f8fbff 0%, #f4f7fb 100%); }
-  .mx-topbar { height: 64px; display: flex; justify-content: space-between; align-items: center; padding: 0 24px; background: rgba(249,252,255,.9); border-bottom: 1px solid #d8e3f2; position: sticky; top: 0; z-index: 4; backdrop-filter: blur(14px); }
-  .mx-back { border: 0; background: transparent; color: #27466f; font-weight: 800; cursor: pointer; }
-  .mx-top-actions { display: flex; align-items: center; gap: 10px; }
-  .mx-status { color: #047857; font-size: 12px; font-weight: 900; }
-  .mx-pill { border: 1px solid #aac8f4; background: #edf6ff; color: #1f65c8; border-radius: 999px; padding: 8px 13px; font-weight: 800; }
-  .mx-avatar { width: 42px; height: 42px; border-radius: 50%; background: #2f73d8; color: #fff; display: grid; place-items: center; font-weight: 900; }
-  .mx-notice { margin: 24px 24px 0; border: 1px solid #b8d8ff; background: #eaf4ff; color: #1557c5; border-radius: 7px; padding: 10px 16px; font-size: 13px; }
+  .mx-page button, .mx-page input, .mx-page select, .mx-page textarea { font: inherit; color: inherit; }
+  .mx-page :focus-visible:not(.ax-artwork *) { outline: 2px solid var(--mx-sky); outline-offset: 2px; }
+  .mx-page ::selection { background: rgba(66,199,216,.35); }
+  .mx-page ::-webkit-scrollbar { width: 8px; height: 6px; }
+  .mx-page ::-webkit-scrollbar-thumb { background: rgba(112,215,232,.28); border-radius: 999px; }
+  .mx-page a:not(.ax-artwork a) { color: var(--mx-sky); }
+  .mx-angle-pick label:has(input:focus-visible), .mx-upload-button:has(input:focus-visible) { outline: 2px solid var(--mx-sky); outline-offset: 2px; }
+  .mx-approval-card:has(.mx-more[open]) { z-index: 5; }
+  .mx-approval-card { position: relative; }
+
+  /* ── แสงออโรราเคลื่อนช้า ๆ ด้านหลัง (ปิดเมื่อผู้ใช้ตั้งลดการเคลื่อนไหว) ── */
+  .mx-page::before, .mx-page::after { content: ''; position: fixed; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(70px); opacity: .55; }
+  .mx-page::before { width: 60vw; height: 60vw; top: -25vw; right: -15vw; background: radial-gradient(circle at 40% 40%, rgba(66,199,216,.55), rgba(47,159,230,.25) 45%, transparent 70%); animation: mx-drift-a 26s ease-in-out infinite alternate; }
+  .mx-page::after { width: 55vw; height: 55vw; bottom: -30vw; left: -20vw; background: radial-gradient(circle at 60% 60%, rgba(124,92,255,.5), rgba(75,42,130,.3) 45%, transparent 70%); animation: mx-drift-b 32s ease-in-out infinite alternate; }
+  @keyframes mx-drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-8vw, 10vh, 0) scale(1.15); } }
+  @keyframes mx-drift-b { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(10vw, -8vh, 0) scale(1.1); } }
+  @keyframes mx-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes mx-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(66,199,216,.6); } 70% { box-shadow: 0 0 0 7px rgba(66,199,216,0); } }
+  @keyframes mx-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  @keyframes mx-scan { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+  /* ── หัวหน้า: กระจกเบลอ + ตารางจาง + แถบสถานะจริง + แท็บ ── */
+  .mx-head { position: sticky; top: 0; z-index: 40; background: rgba(6, 14, 32, .72); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); border-bottom: 1px solid var(--mx-line); overflow: visible; }
+  .mx-head::before { content: ''; position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(rgba(112,215,232,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(112,215,232,.05) 1px, transparent 1px); background-size: 32px 32px; mask-image: linear-gradient(180deg, rgba(0,0,0,.9), transparent); -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.9), transparent); }
+  .mx-head::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: linear-gradient(90deg, transparent, rgba(66,199,216,.9), rgba(124,92,255,.8), transparent); opacity: .8; }
+  .mx-topbar { position: relative; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 18px; min-height: 60px; height: auto; padding: 10px 24px; }
+  .mx-topbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .mx-back { border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: var(--mx-ink-2); border-radius: 10px; padding: 8px 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .mx-back:hover { border-color: var(--mx-line-2); color: #fff; }
+  .mx-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .mx-brand-logo { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; object-position: 50% 30%; background: #fff; border: 1px solid var(--mx-line-2); box-shadow: 0 0 18px rgba(66,199,216,.25); }
+  .mx-brand-name { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: .01em; white-space: nowrap; }
+
+  .mx-strip { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .mx-chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: var(--mx-ink-2); border-radius: 999px; padding: 6px 12px 6px 10px; font-size: 13px; font-weight: 500; white-space: nowrap; max-width: 100%; }
+  .mx-chip em { font-style: normal; color: var(--mx-sky); font-weight: 700; }
+  .mx-chip button { border: 1px solid var(--mx-line-2); background: rgba(66,199,216,.12); color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .mx-chip button:hover { background: rgba(66,199,216,.24); }
+  .mx-chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mx-cyan); flex: 0 0 auto; }
+  .mx-chip.ok .mx-chip-dot { background: var(--mx-ok); box-shadow: 0 0 10px rgba(74,222,128,.8); }
+  .mx-chip.muted .mx-chip-dot { background: var(--mx-cyan); animation: mx-pulse 1.6s ease-out infinite; }
+  .mx-chip.warn { border-color: rgba(251,191,36,.45); color: #fde68a; }
+  .mx-chip.warn .mx-chip-dot { background: var(--mx-warn); box-shadow: 0 0 10px rgba(251,191,36,.7); }
+  .mx-chip.error { border-color: rgba(251,113,133,.5); color: var(--mx-err-soft); }
+  .mx-chip.error .mx-chip-dot { background: var(--mx-err); box-shadow: 0 0 10px rgba(251,113,133,.8); animation: mx-pulse 1.2s ease-out infinite; }
+
+  .mx-tabs { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 0 24px 10px; overflow: visible; }
+  .mx-tab, .mx-tools > summary { display: inline-flex; align-items: center; gap: 8px; border: 1px solid transparent; background: transparent; color: var(--mx-ink-2); border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease; }
+  .mx-tab:hover, .mx-tools > summary:hover { background: rgba(255,255,255,.04); color: #fff; }
+  .mx-tab.active, .mx-tools.active > summary { background: rgba(66,199,216,.12); border-color: var(--mx-line-2); color: #fff; box-shadow: var(--mx-glow); }
+  .mx-tab strong { font-size: 13px; font-weight: 700; color: #06203c; background: var(--mx-cyan); border-radius: 999px; padding: 1px 8px; line-height: 1.5; box-shadow: 0 0 12px rgba(66,199,216,.45); }
+  .mx-tools { position: relative; margin-left: auto; }
+  .mx-tools > summary { list-style: none; }
+  .mx-tools > summary::-webkit-details-marker { display: none; }
+  .mx-tools-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; min-width: 260px; display: grid; gap: 2px; padding: 8px; border: 1px solid var(--mx-line-2); border-radius: 14px; background: #0d1a33; box-shadow: var(--mx-shadow), var(--mx-glow); animation: mx-rise .18s ease both; }
+  .mx-tools-menu button { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; border: 0; background: transparent; color: var(--mx-ink-2); border-radius: 10px; padding: 10px 12px; text-align: left; cursor: pointer; font-size: 15px; font-weight: 500; }
+  .mx-tools-menu button:hover, .mx-tools-menu button.active { background: rgba(66,199,216,.12); color: #fff; }
+  .mx-tools-menu button strong { font-size: 13px; color: var(--mx-sky); }
+
+  /* ── โครงเนื้อหา ── */
+  .mx-main { min-width: 0; }
   .mx-content { max-width: 1180px; margin: 26px auto 80px; padding: 0 24px; }
+  .mx-subtabs-wrap { margin: 22px auto 0; }
+  .mx-subtabs, .mx-segment { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--mx-line); border-radius: 12px; background: rgba(255,255,255,.03); }
+  .mx-subtabs button, .mx-segment button { border: 0; background: transparent; color: var(--mx-ink-2); border-radius: 9px; padding: 7px 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .mx-subtabs button.active, .mx-segment button.active { background: rgba(66,199,216,.16); color: #fff; box-shadow: inset 0 0 0 1px rgba(112,215,232,.4); }
   .mx-page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 18px; }
   .mx-page-head.compact { margin-bottom: 14px; }
-  .mx-page-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-  .mx-kicker { color: #5d7393; font-size: 12px; font-weight: 900; }
-  .mx-page-head h1, .mx-review-head h2 { margin: 3px 0 0; font-size: 25px; line-height: 1.35; letter-spacing: 0; color: #12243d; }
-  .mx-page-head p { margin: 6px 0 0; color: #70839f; font-size: 13px; }
-  .mx-primary, .mx-secondary, .mx-ghost { border-radius: 9px; padding: 10px 14px; font-weight: 900; cursor: pointer; border: 1px solid transparent; }
-  .mx-primary { background: #2f73d8; color: #fff; }
-  .mx-secondary { background: #fff; color: #2261b7; border-color: #bfd5f2; }
-  .mx-ghost { background: transparent; color: #647894; border-color: #d6e2f2; }
-  .mx-primary:hover, .mx-secondary:hover, .mx-ghost:hover, .mx-create:hover { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(31,75,138,.10); }
-  .mx-primary:disabled, .mx-secondary:disabled, .mx-ghost:disabled, .mx-primary:disabled:hover, .mx-secondary:disabled:hover, .mx-ghost:disabled:hover { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
-  .mx-primary, .mx-secondary, .mx-ghost, .mx-create, .mx-nav, .mx-draft-item { transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease; }
-  .mx-manual { display: grid; grid-template-columns: 1fr auto; gap: 10px; border: 1px solid #d8e3f2; background: #fff; border-radius: 14px; padding: 12px; box-shadow: 0 18px 44px rgba(31,75,138,.07); margin-bottom: 16px; }
-  .mx-manual input, .mx-prompt-box textarea { border: 0; outline: 0; font: inherit; color: #1c2d46; background: transparent; }
-  .mx-manual button:disabled { opacity: .48; cursor: not-allowed; }
-  .mx-idea-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
-  .mx-idea-card, .mx-review-card, .mx-preview, .mx-empty, .mx-chart-card, .mx-pipe-card, .mx-row-card, .mx-metric-card { border: 1px solid #d8e3f2; background: rgba(255,255,255,.94); border-radius: 14px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
-  .mx-idea-card { padding: 16px; min-height: 250px; display: flex; flex-direction: column; gap: 12px; }
-  .mx-idea-top { display: flex; justify-content: space-between; align-items: center; color: #647894; font-size: 12px; font-weight: 800; }
-  .mx-idea-top strong { color: #0f8f83; }
-  .mx-idea-card h2 { margin: 0; font-size: 18px; line-height: 1.35; color: #13243c; letter-spacing: 0; }
+  .mx-page-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+  .mx-kicker { color: var(--mx-sky); font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: none; }
+  .mx-page-head h1, .mx-review-head h2 { margin: 4px 0 0; font-size: 24px; line-height: 1.3; letter-spacing: 0; color: #fff; font-weight: 700; }
+  @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .mx-page-head h1 { background: linear-gradient(90deg, #ffffff, var(--mx-sky) 70%, #c4b5fd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  }
+  .mx-page-head p { margin: 6px 0 0; color: var(--mx-muted); font-size: 15px; }
+
+  /* ── ปุ่ม ── */
+  .mx-primary, .mx-secondary, .mx-ghost { border-radius: 11px; padding: 10px 15px; font-weight: 700; font-size: 15px; cursor: pointer; border: 1px solid transparent; transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease; }
+  .mx-primary { background: linear-gradient(135deg, var(--mx-cyan), var(--mx-blue)); color: #06203c; box-shadow: 0 8px 22px rgba(47,159,230,.28); }
+  .mx-primary:hover { box-shadow: 0 10px 28px rgba(66,199,216,.45), 0 0 0 1px rgba(127,225,240,.6); transform: translateY(-1px); }
+  .mx-secondary { background: rgba(66,199,216,.08); color: #bfeef5; border-color: rgba(112,215,232,.4); }
+  .mx-secondary:hover { background: rgba(66,199,216,.16); border-color: var(--mx-sky); color: #fff; transform: translateY(-1px); }
+  .mx-ghost { background: transparent; color: var(--mx-ink-2); border-color: var(--mx-line); }
+  .mx-ghost:hover { border-color: var(--mx-line-2); color: #fff; }
+  .mx-primary:disabled, .mx-secondary:disabled, .mx-ghost:disabled, .mx-primary:disabled:hover, .mx-secondary:disabled:hover, .mx-ghost:disabled:hover { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .mx-secondary.as-link { text-decoration: none; display: inline-flex; align-items: center; }
+  .mx-mini-button { border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: #bfeef5; border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+  .mx-mini-button:hover { border-color: var(--mx-line-2); background: rgba(66,199,216,.1); color: #fff; }
+  .mx-mini-button.danger { border-color: rgba(251,113,133,.45); color: var(--mx-err-soft); background: rgba(251,113,133,.08); }
+  .mx-more { position: relative; }
+  .mx-more > summary { list-style: none; cursor: pointer; border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: var(--mx-ink-2); border-radius: 11px; padding: 10px 15px; font-weight: 600; font-size: 15px; }
+  .mx-more > summary::-webkit-details-marker { display: none; }
+  .mx-more[open] > summary { border-color: var(--mx-line-2); color: #fff; }
+  .mx-more-menu { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; min-width: 220px; display: grid; gap: 2px; padding: 6px; border: 1px solid var(--mx-line-2); border-radius: 12px; background: rgba(12, 24, 48, .97); box-shadow: var(--mx-shadow); animation: mx-rise .16s ease both; }
+  .mx-more-menu button, .mx-more-menu a { display: block; width: 100%; border: 0; background: transparent; color: var(--mx-ink-2); border-radius: 8px; padding: 9px 12px; text-align: left; font-size: 15px; cursor: pointer; text-decoration: none; }
+  .mx-more-menu button:hover, .mx-more-menu a:hover { background: rgba(66,199,216,.12); color: #fff; }
+  .mx-more-menu .danger { color: var(--mx-err-soft); }
+  .mx-more-row { display: flex; justify-content: center; margin-top: 16px; }
+
+  /* ── การ์ดและพื้นผิว ── */
+  .mx-idea-card, .mx-review-card, .mx-preview, .mx-empty, .mx-chart-card, .mx-pipe-card, .mx-row-card, .mx-metric-card { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: var(--mx-radius); box-shadow: var(--mx-shadow); backdrop-filter: blur(10px); }
+  .mx-idea-card, .mx-row-card, .mx-approval-card, .mx-pipe-card, .mx-metric-card, .mx-source-card, .mx-brand-rule, .mx-reference-item { animation: mx-rise .45s cubic-bezier(.2,.7,.2,1) both; }
+  .mx-idea-grid > :nth-child(2), .mx-list > :nth-child(2), .mx-pipeline > :nth-child(2), .mx-metric-grid > :nth-child(2) { animation-delay: 60ms; }
+  .mx-idea-grid > :nth-child(3), .mx-list > :nth-child(3), .mx-pipeline > :nth-child(3), .mx-metric-grid > :nth-child(3) { animation-delay: 120ms; }
+  .mx-idea-grid > :nth-child(4), .mx-list > :nth-child(4), .mx-pipeline > :nth-child(4), .mx-metric-grid > :nth-child(4) { animation-delay: 180ms; }
+  .mx-idea-grid > :nth-child(5), .mx-list > :nth-child(5) { animation-delay: 240ms; }
+  .mx-idea-grid > :nth-child(6), .mx-list > :nth-child(6) { animation-delay: 300ms; }
+  .mx-idea-card:hover, .mx-row-card:hover, .mx-approval-card:hover, .mx-pipe-card:hover { border-color: var(--mx-line-2); box-shadow: var(--mx-shadow), 0 0 22px rgba(66,199,216,.14); transform: translateY(-2px); transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
+  .mx-idea-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .mx-idea-card { position: relative; padding: 16px 16px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+  .mx-idea-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: linear-gradient(180deg, var(--mx-cyan), var(--mx-violet)); opacity: .9; }
+  .mx-idea-card.example::before { background: rgba(157,177,210,.5); }
+  .mx-idea-card.example { background: rgba(14, 30, 58, .45); border-style: dashed; box-shadow: none; }
+  .mx-idea-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--mx-muted); font-size: 13px; font-weight: 600; }
+  .mx-idea-top span { color: var(--mx-sky); }
+  .mx-idea-top strong { color: var(--mx-ink-2); font-weight: 600; }
+  .mx-idea-card h2 { margin: 0; font-size: 17px; line-height: 1.4; color: #fff; letter-spacing: 0; font-weight: 700; }
   .mx-idea-title-link { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }
-  .mx-idea-title-link:hover { color: #1f65c8; border-bottom-color: #8ab8f6; }
-  .mx-idea-card p { margin: 0; color: #51647f; font-size: 13px; line-height: 1.6; }
+  .mx-idea-title-link:hover { color: var(--mx-sky); border-bottom-color: var(--mx-line-2); }
+  .mx-idea-card p { margin: 0; color: var(--mx-ink-2); font-size: 15px; line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .mx-angle-pick { margin: 0; padding: 6px 10px 8px; border: 1px solid var(--mx-line); border-radius: 12px; display: flex; flex-wrap: wrap; gap: 5px; background: rgba(5,11,24,.35); }
+  .mx-angle-pick legend { padding: 0 6px; font-size: 13px; color: var(--mx-muted); font-weight: 600; }
+  .mx-angle-pick label { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--mx-line); border-radius: 999px; padding: 4px 10px; font-size: 13px; color: var(--mx-ink-2); cursor: pointer; }
+  .mx-angle-pick label.active { border-color: var(--mx-line-2); background: rgba(66,199,216,.14); color: #fff; box-shadow: 0 0 12px rgba(66,199,216,.25); }
+  .mx-angle-pick input { position: absolute; opacity: 0; width: 0; height: 0; }
   .mx-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
-  .mx-tags span, .mx-tags a { border: 1px solid #d7e5f6; background: #f6faff; color: #446181; border-radius: 999px; padding: 5px 8px; font-size: 11px; font-weight: 800; text-decoration: none; }
-  .mx-tags a { color: #1f65c8; background: #edf6ff; border-color: #b8d8ff; }
-  .mx-tags a:hover { background: #dfefff; }
-  .mx-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mx-tags span, .mx-tags a { border: 1px solid var(--mx-line); background: rgba(66,199,216,.06); color: #bfe9f0; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 500; text-decoration: none; }
+  .mx-tags a { color: var(--mx-sky); border-color: var(--mx-line-2); }
+  .mx-tags a:hover { background: rgba(66,199,216,.16); }
+  .mx-card-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .mx-card-actions.end { justify-content: flex-end; margin-top: 14px; }
-  .mx-stepper { height: 70px; display: flex; justify-content: center; align-items: center; gap: 28px; border-bottom: 1px solid #e1e8f1; margin-bottom: 22px; }
-  .mx-step { color: #9aa9bd; font-weight: 900; display: flex; align-items: center; gap: 8px; }
-  .mx-step span { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 2px solid #d8e3f2; }
-  .mx-step.active { color: #13243c; }
-  .mx-step.active span { background: #2f73d8; color: #fff; border-color: #d5e6ff; }
-  .mx-prompt-box { display: grid; grid-template-columns: 1fr auto; gap: 12px; border: 1px solid #d8e3f2; background: #fff; border-radius: 14px; padding: 12px 14px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
+  .mx-feed-notice { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--mx-line); background: var(--mx-panel); color: var(--mx-ink-2); position: relative; overflow: hidden; }
+  .mx-feed-notice.muted::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(66,199,216,.12), transparent); animation: mx-scan 1.8s linear infinite; }
+  .mx-feed-notice.warn { border-color: rgba(251,191,36,.45); color: #fde68a; }
+  .mx-feed-notice.error { border-color: rgba(251,113,133,.5); color: var(--mx-err-soft); }
+  .mx-example-fold { margin-top: 24px; border: 1px dashed var(--mx-line); border-radius: 14px; padding: 4px 14px; }
+  .mx-example-fold > summary { cursor: pointer; padding: 10px 0; color: var(--mx-muted); font-weight: 600; list-style: none; }
+  .mx-example-fold > summary::-webkit-details-marker { display: none; }
+  .mx-example-fold > summary::before { content: '▸ '; color: var(--mx-sky); }
+  .mx-example-fold[open] > summary::before { content: '▾ '; }
+  .mx-example-fold[open] > summary { margin-bottom: 12px; border-bottom: 1px solid var(--mx-line); }
+  .mx-example-fold > .mx-idea-grid { padding-bottom: 14px; }
+
+  .mx-manual { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 14px; padding: 10px 10px 10px 16px; box-shadow: var(--mx-shadow); margin-top: 18px; align-items: center; }
+  .mx-manual label { color: var(--mx-sky); font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .mx-manual input, .mx-prompt-box textarea { border: 0; outline: 0; color: var(--mx-ink); background: transparent; }
+  .mx-manual input::placeholder, .mx-prompt-box textarea::placeholder, .mx-page input::placeholder, .mx-page textarea::placeholder { color: #8ea2c4; }
+  .mx-manual button { border: 1px solid var(--mx-line-2); background: rgba(66,199,216,.12); color: #fff; border-radius: 10px; padding: 9px 14px; font-weight: 700; cursor: pointer; }
+  .mx-manual button:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── Studio ── */
+  .mx-prompt-box { display: grid; grid-template-columns: 1fr auto; gap: 12px; border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 14px; padding: 12px 14px; box-shadow: var(--mx-shadow); align-items: center; }
   .mx-prompt-box textarea { min-height: 54px; resize: vertical; }
-  .mx-model-note { color: #8293ad; font-size: 12px; margin-top: 12px; }
+  .mx-model-note { color: var(--mx-muted); font-size: 13px; margin-top: 12px; }
   .mx-generated-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; margin-top: 20px; }
-  .mx-review-card { padding: 16px; }
+  .mx-review-card { padding: 18px; }
   .mx-review-card.wide { min-width: 0; }
   .mx-review-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-  .mx-pass, .mx-warn { border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 900; white-space: nowrap; }
-  .mx-pass { background: #ecfdf5; border: 1px solid #95d9c8; color: #047857; }
-  .mx-warn { background: #fff8e8; border: 1px solid #f2c874; color: #a15c00; }
+  .mx-review-head h2 { font-size: 19px; }
+  .mx-pass, .mx-warn { border-radius: 999px; padding: 5px 11px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .mx-pass { background: rgba(74,222,128,.12); border: 1px solid rgba(74,222,128,.45); color: #bbf7d0; }
+  .mx-warn { background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.45); color: #fde68a; }
+  p.mx-warn { white-space: normal; border-radius: 12px; padding: 10px 14px; margin: 0 0 12px; }
   .mx-preview { padding: 14px; }
-  .mx-preview-poster { min-height: 220px; display: grid; align-content: space-between; border-radius: 13px; color: #fff; padding: 18px; background: linear-gradient(135deg, #193455 0%, #2f73d8 58%, #21a6a1 100%); }
+  .mx-preview-poster { min-height: 220px; display: grid; align-content: space-between; border-radius: 13px; color: #fff; padding: 18px; background: linear-gradient(135deg, #08213f 0%, #2a66c4 58%, #156f6c 100%); text-shadow: 0 1px 3px rgba(0,0,0,.55); }
   .mx-preview-poster.compact { min-height: 156px; }
-  .mx-preview-poster span, .mx-preview-poster small { font-weight: 900; opacity: .86; }
-  .mx-preview-poster strong { font-size: 22px; line-height: 1.35; letter-spacing: 0; }
+  .mx-preview-poster span, .mx-preview-poster small { font-weight: 700; font-size: 13px; }
+  .mx-preview-poster strong { font-size: 22px; line-height: 1.35; letter-spacing: 0; color: #fff; }
+
+  /* ── ร่าง (approvals) ── */
+  .mx-approval-feed { display: grid; gap: 14px; max-width: 1120px; }
+  .mx-approval-card { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 18px; padding: 18px; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; box-shadow: var(--mx-shadow); cursor: pointer; backdrop-filter: blur(10px); }
+  .mx-approval-card.active { border-color: var(--mx-line-2); box-shadow: var(--mx-shadow), var(--mx-glow); }
+  .mx-approval-media-column { display: grid; gap: 8px; align-content: start; }
+  .mx-approval-card-image { width: 100%; aspect-ratio: 4 / 5; border: 1px solid var(--mx-line); border-radius: 12px; overflow: hidden; background: rgba(5,11,24,.4); display: grid; }
+  .mx-approval-card-image img { width: 100%; height: 100%; object-fit: cover; background: #fff; }
+  .mx-approval-copy-column { min-width: 0; display: grid; gap: 10px; align-content: start; }
+  .mx-approval-caption { width: 100%; min-height: 180px; border: 1px solid transparent; background: transparent; color: var(--mx-ink); padding: 6px; border-radius: 10px; resize: vertical; font-size: 15px; line-height: 1.75; outline: 0; }
+  .mx-approval-caption:focus { background: var(--mx-field); border-color: var(--mx-line-2); padding: 10px; box-shadow: 0 0 0 3px rgba(66,199,216,.14); }
+  .mx-poster-placeholder { min-height: 260px; display: grid; align-content: space-between; gap: 12px; padding: 18px; color: #fff; background: linear-gradient(135deg, #08213f 0%, #2a66c4 56%, #156f6c 100%); text-shadow: 0 1px 3px rgba(0,0,0,.55); }
+  .mx-poster-placeholder.compact { min-height: 100%; padding: 12px; }
+  .mx-poster-placeholder span, .mx-poster-placeholder small { font-size: 13px; font-weight: 700; }
+  .mx-poster-placeholder strong { font-size: 22px; line-height: 1.35; letter-spacing: 0; }
+  .mx-poster-placeholder.compact strong { font-size: 15px; }
+  .mx-review-notes { margin-top: 12px; display: grid; gap: 6px; border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 10px; padding: 12px; }
+  .mx-review-notes.compact { margin-top: 0; }
+  .mx-review-notes strong { color: var(--mx-sky); font-size: 13px; }
+  .mx-review-notes span { color: var(--mx-ink-2); font-size: 15px; line-height: 1.5; }
+  .mx-schedule-row { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-top: 10px; border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 10px; padding: 12px; }
+  .mx-schedule-row.compact { margin-top: 0; padding: 10px; }
+  .mx-schedule-row label { display: grid; gap: 6px; color: var(--mx-muted); font-size: 13px; font-weight: 600; }
+  .mx-schedule-row input, .mx-row-actions input, .mx-schedule-row select { border: 1px solid var(--mx-line); background: var(--mx-field); color: var(--mx-ink); border-radius: 8px; padding: 8px 10px; color-scheme: dark; }
+  .mx-schedule-row span { color: var(--mx-sky); font-size: 13px; font-weight: 600; padding-bottom: 9px; }
+  .mx-upload-button { position: relative; overflow: hidden; border: 1px solid var(--mx-line-2); background: rgba(66,199,216,.1); color: #fff; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .mx-upload-button.slim { min-height: 38px; padding: 8px 12px; font-size: 13px; }
+  .mx-upload-button.disabled { opacity: .5; cursor: not-allowed; }
+  .mx-upload-button input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  /* ── โพสต์ (queue) · รายการ · คิว ── */
+  .mx-list, .mx-pipeline { display: grid; gap: 10px; }
+  .mx-row-card, .mx-pipe-card { padding: 14px 16px; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+  .mx-row-thumb { width: 58px; height: 72px; object-fit: cover; border-radius: 9px; border: 1px solid var(--mx-line); background: #fff; flex: 0 0 auto; }
+  .mx-row-card div, .mx-pipe-card div { display: grid; gap: 4px; min-width: 0; }
+  .mx-row-card strong, .mx-pipe-card strong { color: #fff; font-weight: 700; }
+  .mx-row-card span, .mx-pipe-card span { color: var(--mx-muted); font-size: 15px; }
+  .mx-row-card.muted { background: rgba(14,30,58,.4); }
+  .mx-row-card.muted strong { color: var(--mx-ink-2); }
+  .mx-row-actions { display: flex !important; grid-template-columns: none !important; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .mx-post-actions { display: flex !important; grid-template-columns: none !important; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .mx-queue-due { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--mx-err); background: rgba(251,113,133,.1); color: var(--mx-err-soft); border-radius: 0 12px 12px 0; font-size: 15px; font-weight: 600; }
+  .mx-queue-verify { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--mx-warn); background: rgba(251,191,36,.1); color: #fde68a; border-radius: 0 12px 12px 0; font-size: 15px; font-weight: 600; }
+  .mx-queue-tabs { display: flex; gap: 18px; overflow-x: auto; margin-bottom: 14px; border-bottom: 1px solid var(--mx-line); }
+  .mx-queue-tabs button { flex: 0 0 auto; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--mx-muted); padding: 10px 2px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .mx-queue-tabs button.active { border-color: var(--mx-cyan); color: #fff; text-shadow: 0 0 12px rgba(66,199,216,.6); }
+  .mx-queue-tabs button span { margin-left: 6px; color: var(--mx-sky); }
+  .mx-row-card .mx-queue-state { font-size: 13px; font-weight: 600; color: var(--mx-ink-2); }
+  .mx-row-card .mx-queue-state.overdue { color: var(--mx-err-soft); }
+  .mx-row-card .mx-queue-state.today { color: #fde68a; }
+  .mx-row-card .mx-queue-state.posted { color: #bbf7d0; }
+  .mx-publish-error { color: var(--mx-err-soft); font-size: 13px; }
+  .mx-publish-row { flex-wrap: wrap; }
+  .mx-publish-row a, .mx-channel-table a { color: var(--mx-sky); font-weight: 600; }
+  .mx-manual-handoff { flex: 0 0 100%; border-top: 1px solid var(--mx-line); padding-top: 10px; }
+  .mx-manual-handoff summary { color: var(--mx-sky); font-weight: 600; cursor: pointer; }
+  .mx-publish-row .mx-manual-handoff-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .mx-manual-proof { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+  .mx-manual-proof label { display: grid; gap: 5px; color: var(--mx-muted); font-size: 13px; font-weight: 600; flex: 1 1 250px; }
+  .mx-manual-proof input { width: 100%; min-width: 0; border: 1px solid var(--mx-line); background: var(--mx-field); border-radius: 8px; padding: 9px 10px; color: var(--mx-ink); }
+  .mx-manual-handoff small { display: block; color: #fde68a; margin-top: 8px; font-size: 13px; }
+  .mx-pipe-card em { font-style: normal; border-radius: 999px; padding: 6px 12px; font-weight: 700; white-space: nowrap; font-size: 13px; border: 1px solid var(--mx-line); color: var(--mx-ink-2); }
+  .mx-pipe-card em.ok { color: #bbf7d0; border-color: rgba(74,222,128,.45); background: rgba(74,222,128,.1); }
+  .mx-pipe-card em.warn { color: #fde68a; border-color: rgba(251,191,36,.45); background: rgba(251,191,36,.1); }
+  .mx-pipe-card em.error { color: var(--mx-err-soft); border-color: rgba(251,113,133,.5); background: rgba(251,113,133,.1); }
+  .mx-pipe-card em.muted { color: var(--mx-ink-2); }
+  .mx-pipe-note { font-size: 13px !important; font-weight: 600; }
+  .mx-pipe-note.ok { color: #bbf7d0 !important; }
+  .mx-pipe-note.warn { color: #fde68a !important; }
+  .mx-pipe-note.error { color: var(--mx-err-soft) !important; }
+
+  /* ── ช่องทาง ── */
+  .mx-channel-table-wrap { overflow-x: auto; border: 1px solid var(--mx-line); border-radius: 14px; background: var(--mx-panel); }
+  .mx-channel-table { width: 100%; min-width: 820px; border-collapse: collapse; text-align: left; font-size: 15px; }
+  .mx-channel-table th, .mx-channel-table td { padding: 14px 14px; border-bottom: 1px solid var(--mx-line); vertical-align: top; color: var(--mx-ink-2); }
+  .mx-channel-table thead th { color: var(--mx-muted); background: rgba(5,11,24,.35); font-size: 13px; font-weight: 600; }
+  .mx-channel-table tbody th { color: #fff; white-space: nowrap; font-weight: 700; }
+  .mx-channel-table tbody tr:last-child th, .mx-channel-table tbody tr:last-child td { border-bottom: 0; }
+  .mx-channel-ready { color: #bbf7d0; font-weight: 600; }
+  .mx-channel-manual { color: #fde68a; font-weight: 600; }
+  .mx-channel-warning { color: #fde68a; font-size: 13px; overflow-wrap: anywhere; margin-top: 12px; }
+
+  /* ── ห้องภาพ · โปสเตอร์ ── */
   .mx-brief-grid, .mx-brand-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
-  .mx-brief-card, .mx-brand-rule { border: 1px solid #d8e3f2; background: rgba(255,255,255,.94); border-radius: 14px; padding: 14px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
+  .mx-brief-card, .mx-brand-rule { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 14px; padding: 16px; box-shadow: var(--mx-shadow); }
   .mx-brief-card { display: grid; gap: 12px; }
-  .mx-brief-card.active { border-color: #2f73d8; background: #f3f8ff; box-shadow: 0 18px 44px rgba(47,115,216,.14); }
-  .mx-brief-card strong, .mx-brand-rule strong { color: #143355; }
-  .mx-brief-card p, .mx-brand-rule p { margin: 8px 0 0; color: #51647f; font-size: 13px; line-height: 1.65; }
+  .mx-brief-card.active { border-color: var(--mx-line-2); box-shadow: var(--mx-shadow), var(--mx-glow); }
+  .mx-brief-card strong, .mx-brand-rule strong { color: #fff; }
+  .mx-brief-card p, .mx-brand-rule p { margin: 8px 0 0; color: var(--mx-ink-2); font-size: 15px; line-height: 1.65; }
   .mx-brief-card p { max-height: 154px; overflow: auto; padding-right: 4px; }
-  .mx-preview-poster strong { color: #fff; }
-  .mx-gallery-empty { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; color: #38516e; }
-  .mx-gallery-flow { display: grid; gap: 12px; padding: 4px 0 20px; border-bottom: 1px solid #d8e3f2; margin-bottom: 16px; }
+  .mx-gallery-empty { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; color: var(--mx-ink-2); }
+  .mx-gallery-flow { display: grid; gap: 12px; padding: 4px 0 20px; border-bottom: 1px solid var(--mx-line); margin-bottom: 16px; }
   .mx-gallery-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .mx-gallery-fields label { display: grid; gap: 6px; color: #38516e; font-size: 13px; font-weight: 800; }
-  .mx-gallery-fields select { width: 100%; min-width: 0; border: 1px solid #b9cde2; border-radius: 6px; background: #fff; color: #14243c; padding: 10px 11px; font: inherit; }
-  .mx-gallery-prompt-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; color: #14243c; }
-  .mx-gallery-prompt-head span { color: #61738d; font-size: 12px; text-align: right; }
-  .mx-gallery-flow textarea { width: 100%; min-height: 174px; resize: vertical; border: 1px solid #b9cde2; border-radius: 6px; background: #fff; color: #273d57; padding: 12px; font: inherit; font-size: 13px; line-height: 1.55; }
+  .mx-gallery-fields label { display: grid; gap: 6px; color: var(--mx-muted); font-size: 13px; font-weight: 600; }
+  .mx-gallery-fields select, .mx-style-picker select, .mx-filter-bar select { width: 100%; min-width: 0; border: 1px solid var(--mx-line); border-radius: 10px; background: var(--mx-field); color: var(--mx-ink); padding: 10px 11px; color-scheme: dark; }
+  .mx-gallery-prompt-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; color: #fff; flex-wrap: wrap; }
+  .mx-gallery-prompt-head span { color: var(--mx-muted); font-size: 13px; }
+  .mx-gallery-flow textarea { width: 100%; min-height: 174px; resize: vertical; border: 1px solid var(--mx-line); border-radius: 10px; background: var(--mx-field); color: var(--mx-ink-2); padding: 12px; font-size: 14px; line-height: 1.55; }
   .mx-gallery-prompt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .mx-gallery-advanced { margin-bottom: 14px; }
-  .mx-gallery-advanced summary { cursor: pointer; padding: 10px 0; color: #315477; font-weight: 800; border-bottom: 1px solid #d8e3f2; }
+  .mx-gallery-advanced summary { cursor: pointer; padding: 10px 0; color: var(--mx-sky); font-weight: 600; border-bottom: 1px solid var(--mx-line); }
   .mx-gallery-advanced[open] > .mx-visual-system, .mx-gallery-advanced[open] > .mx-brief-grid { margin-top: 14px; }
-  .mx-visual-system { border: 1px solid #bfd5f2; background: radial-gradient(circle at 100% 0%, rgba(33,166,161,.14), transparent 28%), linear-gradient(180deg, #ffffff, #f3f8ff); border-radius: 18px; padding: 16px; margin-bottom: 16px; display: grid; grid-template-columns: minmax(280px, .9fr) minmax(0, 1.1fr); gap: 14px; box-shadow: 0 20px 50px rgba(31,75,138,.10); }
-  .mx-visual-copy h2 { margin: 3px 0 8px; color: #12243d; font-size: 22px; line-height: 1.35; letter-spacing: 0; }
-  .mx-visual-copy p { margin: 0; color: #51647f; font-size: 13px; line-height: 1.7; }
+  .mx-visual-system { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 18px; padding: 16px; margin-bottom: 16px; display: grid; grid-template-columns: minmax(280px, .9fr) minmax(0, 1.1fr); gap: 14px; box-shadow: var(--mx-shadow); }
+  .mx-visual-copy h2 { margin: 3px 0 8px; color: #fff; font-size: 22px; line-height: 1.35; letter-spacing: 0; }
+  .mx-visual-copy p { margin: 0; color: var(--mx-ink-2); font-size: 15px; line-height: 1.7; }
   .mx-workflow-steps { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
-  .mx-workflow-steps span { border: 1px solid #d7e5f6; background: #fff; color: #27466f; border-radius: 999px; padding: 6px 9px; font-size: 11px; font-weight: 900; }
+  .mx-workflow-steps span { border: 1px solid var(--mx-line); background: rgba(66,199,216,.06); color: #bfe9f0; border-radius: 999px; padding: 5px 10px; font-size: 13px; font-weight: 600; }
   .mx-style-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
-  .mx-style-card { border: 1px solid #d8e3f2; background: rgba(255,255,255,.88); border-radius: 14px; padding: 12px; text-align: left; display: grid; gap: 7px; cursor: pointer; color: #14243c; }
-  .mx-style-card.active { border-color: #2f73d8; background: #eef6ff; box-shadow: inset 0 0 0 1px rgba(47,115,216,.18); }
-  .mx-style-card span { color: #0f8f83; font-size: 11px; font-weight: 900; }
-  .mx-style-card strong { color: #143355; }
-  .mx-style-card em { color: #60738f; font-size: 12px; line-height: 1.45; font-style: normal; }
-  .mx-style-card small { width: fit-content; color: #1f65c8; background: #edf6ff; border: 1px solid #b8d8ff; border-radius: 999px; padding: 4px 7px; font-size: 11px; font-weight: 900; }
-  .mx-style-picker { grid-column: 1 / -1; display: grid; gap: 7px; padding: 12px; border: 1px solid #d8e3f2; border-radius: 8px; background: #fff; color: #143355; }
-  .mx-style-picker select { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #b8cee4; border-radius: 6px; background: #fff; color: #143355; font: inherit; }
-  .mx-style-picker em { color: #60738f; font-size: 12px; font-style: normal; }
-  .mx-poster-editor { border: 1px solid #bfd5f2; background: linear-gradient(180deg, #ffffff, #f6faff); border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
-  .mx-poster-editor .mx-section-head p { margin: 5px 0 0; color: #70839f; font-size: 13px; line-height: 1.6; }
+  .mx-style-card { border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 14px; padding: 12px; text-align: left; display: grid; gap: 7px; cursor: pointer; color: var(--mx-ink-2); }
+  .mx-style-card.active { border-color: var(--mx-line-2); background: rgba(66,199,216,.1); box-shadow: var(--mx-glow); }
+  .mx-style-card span { color: var(--mx-sky); font-size: 13px; font-weight: 700; }
+  .mx-style-card strong { color: #fff; }
+  .mx-style-card em { color: var(--mx-muted); font-size: 13px; line-height: 1.45; font-style: normal; }
+  .mx-style-card small { width: fit-content; color: #bfe9f0; background: rgba(66,199,216,.1); border: 1px solid var(--mx-line); border-radius: 999px; padding: 3px 8px; font-size: 13px; font-weight: 600; }
+  .mx-style-picker { grid-column: 1 / -1; display: grid; gap: 7px; padding: 12px; border: 1px solid var(--mx-line); border-radius: 12px; background: rgba(5,11,24,.35); color: var(--mx-ink-2); }
+  .mx-style-picker em { color: var(--mx-muted); font-size: 13px; font-style: normal; }
+  .mx-poster-editor { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: var(--mx-shadow); }
+  .mx-poster-editor .mx-section-head p { margin: 5px 0 0; color: var(--mx-muted); font-size: 15px; line-height: 1.6; }
   .mx-poster-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
-  .mx-poster-form label { display: grid; gap: 6px; color: #60738f; font-size: 12px; font-weight: 900; }
+  .mx-poster-form label { display: grid; gap: 6px; color: var(--mx-muted); font-size: 13px; font-weight: 600; min-width: 0; }
   .mx-poster-form label.wide { grid-column: 1 / -1; }
-  .mx-poster-form input { border: 1px solid #d8e3f2; background: #fff; color: #243651; border-radius: 10px; padding: 10px 11px; font: inherit; font-size: 13px; outline: 0; }
-  .mx-poster-form input:focus { border-color: #8ab8f6; box-shadow: 0 0 0 3px rgba(47,115,216,.10); }
-  .mx-upload-panel { border: 1px solid #bfd5f2; background: #fff; border-radius: 16px; padding: 16px; margin-bottom: 16px; display: flex; justify-content: space-between; gap: 14px; align-items: center; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
-  .mx-upload-panel h2 { margin: 3px 0 0; color: #14243c; font-size: 19px; line-height: 1.35; letter-spacing: 0; }
-  .mx-upload-panel p { margin: 5px 0 0; color: #70839f; font-size: 13px; line-height: 1.6; }
+  .mx-poster-form input, .mx-reference-search input, .mx-reference-form input, .mx-reference-form select, .mx-reference-form textarea, .mx-metric-form input, .mx-metric-form select, .mx-metric-form textarea { width: 100%; min-width: 0; border: 1px solid var(--mx-line); background: var(--mx-field); color: var(--mx-ink); border-radius: 10px; padding: 10px 11px; font-size: 15px; outline: 0; color-scheme: dark; }
+  .mx-poster-form input:focus, .mx-reference-search input:focus, .mx-reference-form input:focus, .mx-reference-form select:focus, .mx-reference-form textarea:focus, .mx-metric-form input:focus, .mx-metric-form textarea:focus { border-color: var(--mx-line-2); box-shadow: 0 0 0 3px rgba(66,199,216,.14); }
+  .mx-upload-panel { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 16px; padding: 16px; margin-bottom: 16px; display: flex; justify-content: space-between; gap: 14px; align-items: center; box-shadow: var(--mx-shadow); }
+  .mx-upload-panel h2 { margin: 3px 0 0; color: #fff; font-size: 19px; line-height: 1.35; letter-spacing: 0; }
+  .mx-upload-panel p { margin: 5px 0 0; color: var(--mx-muted); font-size: 15px; line-height: 1.6; }
   .mx-upload-actions { display: grid; gap: 9px; justify-items: end; min-width: 260px; }
-  .mx-upload-actions span { color: #60738f; font-size: 12px; font-weight: 800; text-align: right; }
-  .mx-upload-button { position: relative; overflow: hidden; border: 1px solid #2f73d8; background: #2f73d8; color: #fff; border-radius: 10px; padding: 10px 14px; font-weight: 900; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
-  .mx-upload-button.slim { min-height: 38px; padding: 8px 12px; font-size: 13px; }
-  .mx-upload-button.disabled { opacity: .55; cursor: not-allowed; }
-  .mx-upload-button input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .mx-upload-actions span { color: var(--mx-muted); font-size: 13px; font-weight: 600; text-align: right; }
   .mx-artwork-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 16px; }
-  .mx-artwork-card { border: 1px solid #d8e3f2; background: #fff; border-radius: 14px; padding: 12px; display: grid; gap: 10px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
-  .mx-artwork-card img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; border: 1px solid #d8e3f2; background: #f6f8fb; }
-  .mx-artwork-card strong { color: #143355; line-height: 1.35; }
-  .mx-artwork-card span { color: #71849f; font-size: 12px; }
-  .mx-visual-note { border: 1px solid #e0e8f2; background: #fbfdff; border-radius: 10px; padding: 10px; margin-top: 10px; }
-  .mx-visual-note span { display: block; color: #1d3f78; font-size: 11px; font-weight: 900; margin-bottom: 4px; }
-  .mx-visual-note p { margin: 0; max-height: 88px; font-size: 12px; }
-  .mx-media-result { border: 1px solid #bfd5f2; background: linear-gradient(180deg, #fff, #f4f8ff); border-radius: 16px; padding: 16px; margin-bottom: 16px; display: grid; gap: 14px; box-shadow: 0 20px 50px rgba(31,75,138,.10); }
-  .mx-media-result h2 { margin: 3px 0 0; color: #14243c; font-size: 20px; line-height: 1.35; letter-spacing: 0; }
-  .mx-media-result img, .mx-media-result video { width: min(100%, 760px); max-height: 640px; object-fit: contain; border-radius: 14px; border: 1px solid #d8e3f2; background: #fff; justify-self: start; }
+  .mx-artwork-card { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 14px; padding: 12px; display: grid; gap: 10px; box-shadow: var(--mx-shadow); }
+  .mx-artwork-card img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; border: 1px solid var(--mx-line); background: #fff; }
+  .mx-artwork-card strong { color: #fff; line-height: 1.35; }
+  .mx-artwork-card span { color: var(--mx-muted); font-size: 13px; }
+  .mx-visual-note { border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 10px; padding: 10px; margin-top: 10px; }
+  .mx-visual-note span { display: block; color: var(--mx-sky); font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .mx-visual-note p { margin: 0; max-height: 88px; font-size: 13px; color: var(--mx-ink-2); overflow: auto; }
+  .mx-media-result { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 16px; padding: 16px; margin-bottom: 16px; display: grid; gap: 14px; box-shadow: var(--mx-shadow); }
+  .mx-media-result h2 { margin: 3px 0 0; color: #fff; font-size: 20px; line-height: 1.35; letter-spacing: 0; }
+  .mx-media-result img, .mx-media-result video { width: min(100%, 760px); max-height: 640px; object-fit: contain; border-radius: 14px; border: 1px solid var(--mx-line); background: #fff; justify-self: start; }
   .mx-media-result video { max-height: 720px; background: #07111f; }
   .mx-media-result .media-download { width: fit-content; text-decoration: none; display: inline-flex; }
-  .mx-quota-note { border: 1px solid #f2c874; background: #fff8e8; color: #8a4d00; border-radius: 12px; padding: 12px; font-size: 13px; line-height: 1.6; font-weight: 800; }
-  .mx-fallback-prompt { margin: 0; white-space: pre-wrap; border: 1px solid #d8e3f2; background: #fbfdff; color: #243651; border-radius: 12px; padding: 12px; font: inherit; font-size: 12px; line-height: 1.7; max-height: 360px; overflow: auto; }
-  .mx-reference-hero { border: 1px solid #bfd5f2; background: radial-gradient(circle at 100% 0%, rgba(33,166,161,.14), transparent 34%), linear-gradient(180deg, #fff, #f3f8ff); border-radius: 18px; padding: 16px; margin-bottom: 16px; display: grid; gap: 14px; box-shadow: 0 20px 50px rgba(31,75,138,.10); }
-  .mx-reference-search label, .mx-reference-form label { display: grid; gap: 6px; color: #60738f; font-size: 12px; font-weight: 900; }
-  .mx-reference-search input, .mx-reference-form input, .mx-reference-form select, .mx-reference-form textarea { border: 1px solid #d8e3f2; background: #fff; color: #243651; border-radius: 10px; padding: 10px 11px; font: inherit; font-size: 13px; outline: 0; }
-  .mx-reference-search input:focus, .mx-reference-form input:focus, .mx-reference-form select:focus, .mx-reference-form textarea:focus { border-color: #8ab8f6; box-shadow: 0 0 0 3px rgba(47,115,216,.10); }
+  .mx-quota-note { border: 1px solid rgba(251,191,36,.45); background: rgba(251,191,36,.1); color: #fde68a; border-radius: 12px; padding: 12px 14px; font-size: 15px; line-height: 1.6; font-weight: 500; }
+  .mx-fallback-prompt { margin: 0; white-space: pre-wrap; border: 1px solid var(--mx-line); background: var(--mx-field); color: var(--mx-ink-2); border-radius: 12px; padding: 12px; font-size: 13px; line-height: 1.7; max-height: 360px; overflow: auto; }
+
+  /* ── คลังตัวอย่างโฆษณา (references) ── */
+  .mx-reference-hero { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 18px; padding: 16px; margin-bottom: 16px; display: grid; gap: 14px; box-shadow: var(--mx-shadow); }
+  .mx-reference-search label, .mx-reference-form label { display: grid; gap: 6px; color: var(--mx-muted); font-size: 13px; font-weight: 600; min-width: 0; }
   .mx-reference-form textarea { min-height: 78px; resize: vertical; }
   .mx-query-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .mx-query-chips button { border: 1px solid #d7e5f6; background: #fff; color: #245ca8; border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 900; cursor: pointer; }
+  .mx-query-chips button { border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: #bfeef5; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .mx-query-chips button:hover { border-color: var(--mx-line-2); color: #fff; }
   .mx-source-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
-  .mx-source-card { border: 1px solid #d8e3f2; background: rgba(255,255,255,.92); border-radius: 14px; padding: 13px; display: grid; gap: 7px; text-decoration: none; color: #14243c; min-height: 160px; }
-  .mx-source-card:hover { border-color: #8ab8f6; transform: translateY(-1px); box-shadow: 0 14px 32px rgba(31,75,138,.10); }
-  .mx-source-card span { color: #0f8f83; font-size: 11px; font-weight: 900; }
-  .mx-source-card strong { color: #143355; font-size: 15px; }
-  .mx-source-card p { margin: 0; color: #60738f; font-size: 12px; line-height: 1.55; }
-  .mx-source-card em { margin-top: auto; color: #1f65c8; font-style: normal; font-size: 12px; font-weight: 900; }
+  .mx-source-card { border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 14px; padding: 14px; display: grid; gap: 7px; text-decoration: none; color: var(--mx-ink-2); min-height: 160px; transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+  .mx-source-card:hover { border-color: var(--mx-line-2); transform: translateY(-2px); box-shadow: var(--mx-glow); }
+  .mx-source-card span { color: var(--mx-sky); font-size: 13px; font-weight: 700; }
+  .mx-source-card strong { color: #fff; font-size: 15px; }
+  .mx-source-card p { margin: 0; color: var(--mx-muted); font-size: 13px; line-height: 1.55; }
+  .mx-source-card em { margin-top: auto; color: var(--mx-sky); font-style: normal; font-size: 13px; font-weight: 700; }
   .mx-reference-layout { display: grid; grid-template-columns: minmax(320px, .86fr) minmax(0, 1.14fr); gap: 14px; align-items: start; }
-  .mx-reference-form, .mx-pattern-panel, .mx-reference-item { border: 1px solid #d8e3f2; background: rgba(255,255,255,.96); border-radius: 14px; padding: 16px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
+  .mx-reference-form, .mx-pattern-panel, .mx-reference-item { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 14px; padding: 16px; box-shadow: var(--mx-shadow); }
   .mx-reference-form { display: grid; gap: 12px; }
-  .mx-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 2px; }
-  .mx-section-head h2, .mx-pattern-panel h2 { margin: 3px 0 0; color: #14243c; font-size: 19px; line-height: 1.35; letter-spacing: 0; }
+  .mx-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 2px; flex-wrap: wrap; }
+  .mx-section-head h2, .mx-pattern-panel h2 { margin: 3px 0 0; color: #fff; font-size: 19px; line-height: 1.35; letter-spacing: 0; }
   .mx-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .mx-reference-side { display: grid; gap: 12px; }
   .mx-pattern-panel { display: grid; gap: 10px; }
-  .mx-pattern-panel p { margin: 0; color: #60738f; font-size: 13px; line-height: 1.7; }
+  .mx-pattern-panel p { margin: 0; color: var(--mx-ink-2); font-size: 15px; line-height: 1.7; }
   .mx-reference-meta, .mx-reference-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-  .mx-reference-meta span, .mx-reference-tags span { border: 1px solid #d7e5f6; background: #f6faff; color: #446181; border-radius: 999px; padding: 5px 8px; font-size: 11px; font-weight: 800; }
+  .mx-reference-meta span, .mx-reference-tags span, .mx-inbox-meta span { border: 1px solid var(--mx-line); background: rgba(66,199,216,.06); color: #bfe9f0; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 500; }
   .mx-reference-list { display: grid; gap: 10px; }
-  .mx-reference-item { display: grid; gap: 10px; padding: 13px; }
-  .mx-reference-item.active { border-color: #8ab8f6; background: #f3f8ff; }
-  .mx-reference-item > button { border: 0; background: transparent; text-align: left; padding: 0; cursor: pointer; display: grid; gap: 5px; color: #14243c; }
-  .mx-reference-item > button span { color: #60738f; font-size: 12px; font-weight: 900; }
-  .mx-reference-item > button strong { color: #143355; font-size: 15px; line-height: 1.4; }
-  .mx-reference-item > button p { margin: 0; color: #51647f; font-size: 13px; line-height: 1.55; }
-  .mx-secondary.as-link { text-decoration: none; display: inline-flex; align-items: center; }
+  .mx-reference-item { display: grid; gap: 10px; padding: 14px; }
+  .mx-reference-item.active { border-color: var(--mx-line-2); box-shadow: var(--mx-shadow), var(--mx-glow); }
+  .mx-reference-item > button { border: 0; background: transparent; text-align: left; padding: 0; cursor: pointer; display: grid; gap: 5px; color: var(--mx-ink-2); }
+  .mx-reference-item > button span { color: var(--mx-sky); font-size: 13px; font-weight: 700; }
+  .mx-reference-item > button strong { color: #fff; font-size: 16px; line-height: 1.4; }
+  .mx-reference-item > button p { margin: 0; color: var(--mx-ink-2); font-size: 15px; line-height: 1.55; }
+
+  /* ── คลังผลงาน ── */
   .mx-library-split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 14px; align-items: start; }
-  .mx-filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 14px; border: 1px solid #d8e3f2; background: rgba(255,255,255,.88); border-radius: 14px; padding: 12px; box-shadow: 0 14px 36px rgba(31,75,138,.06); }
-  .mx-filter-bar label { display: grid; gap: 6px; color: #60738f; font-size: 12px; font-weight: 900; min-width: 180px; }
-  .mx-filter-bar select { appearance: none; border: 1px solid #cfe0f5; background: #fff; color: #183453; border-radius: 10px; padding: 10px 34px 10px 12px; font: inherit; font-size: 13px; font-weight: 800; outline: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.6); }
-  .mx-filter-bar label { position: relative; }
-  .mx-filter-bar label::after { content: '⌄'; position: absolute; right: 12px; bottom: 10px; color: #5b77a1; pointer-events: none; font-size: 14px; }
+  .mx-filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 14px; border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 14px; padding: 12px; box-shadow: var(--mx-shadow); }
+  .mx-filter-bar label { display: grid; gap: 6px; color: var(--mx-muted); font-size: 13px; font-weight: 600; min-width: 180px; }
   .mx-library-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .mx-library-head span { color: #6b7f9b; font-size: 12px; font-weight: 900; }
-  .mx-row-card.muted { opacity: .72; background: #f6f8fb; }
-  .mx-post-actions { display: flex !important; grid-template-columns: none !important; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-  .mx-mini-button { border: 1px solid #cfe0f5; background: #fff; color: #245ca8; border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 900; cursor: pointer; }
-  .mx-mini-button:hover { border-color: #8ab8f6; background: #f3f8ff; }
-  .mx-mini-button.danger { border-color: #ffd1cc; color: #b42318; background: #fff7f6; }
+  .mx-library-head span { color: var(--mx-muted); font-size: 13px; font-weight: 600; }
   .mx-mini-artwork-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 14px; }
-  .mx-mini-artwork { border: 1px solid #d8e3f2; background: #fff; border-radius: 11px; padding: 8px; text-decoration: none; display: grid; gap: 7px; color: #143355; }
-  .mx-mini-artwork img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; background: #f6f8fb; }
-  .mx-mini-artwork span { color: #51647f; font-size: 11px; font-weight: 800; line-height: 1.35; }
-  .mx-channel-preview { border: 1px solid #d8e3f2; background: #fff; border-radius: 14px; padding: 14px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
-  .mx-preview-box { margin-top: 10px; border: 1px solid #d8e3f2; background: #f9fcff; border-radius: 12px; padding: 14px; min-height: 220px; display: grid; gap: 10px; align-content: start; }
-  .mx-preview-box.facebook { border-color: #c8ddff; background: linear-gradient(180deg, #f8fbff, #edf5ff); }
-  .mx-preview-box.line-oa { border-color: #bee8d2; background: #f3fbf7; }
-  .mx-preview-box.tiktok { border-color: #d7dbea; background: linear-gradient(180deg, #ffffff, #f6f7fb); }
-  .mx-channel-image { width: 100%; max-height: 420px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; border: 1px solid #d8e3f2; background: #fff; }
-  .mx-preview-box strong { color: #14243c; font-size: 16px; line-height: 1.45; }
-  .mx-preview-box pre { margin: 0; white-space: pre-wrap; font: inherit; color: #30445f; font-size: 13px; line-height: 1.7; }
-  .mx-section-title { margin: 0 0 10px; color: #143355; font-size: 17px; letter-spacing: 0; }
-  .mx-content-block { border: 1px solid #e0e8f2; background: #fbfdff; border-radius: 10px; padding: 12px; margin-top: 10px; }
-  .mx-content-title, .mx-content-block summary { display: flex; justify-content: space-between; align-items: center; color: #1d3f78; font-weight: 900; cursor: pointer; }
-  .mx-content-block button { border: 1px solid #cfe0f5; background: #fff; color: #245ca8; border-radius: 7px; padding: 5px 8px; cursor: pointer; }
-  .mx-content-block pre { margin: 9px 0 0; white-space: pre-wrap; font: inherit; font-size: 13px; line-height: 1.7; color: #243651; }
-  .mx-edit-caption { width: 100%; min-height: 210px; margin-top: 10px; border: 1px solid #d8e3f2; border-radius: 10px; padding: 12px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.7; color: #243651; background: #fff; outline: 0; }
-  .mx-edit-caption:focus { border-color: #8ab8f6; box-shadow: 0 0 0 3px rgba(47,115,216,.10); }
-  .mx-schedule-row { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-top: 10px; border: 1px solid #e0e8f2; background: #fbfdff; border-radius: 10px; padding: 12px; }
-  .mx-schedule-row.compact { margin-top: 0; padding: 10px; }
-  .mx-schedule-row label { display: grid; gap: 6px; color: #60738f; font-size: 12px; font-weight: 900; }
-  .mx-schedule-row input, .mx-row-actions input { border: 1px solid #d8e3f2; background: #fff; color: #243651; border-radius: 8px; padding: 8px 10px; font: inherit; }
-  .mx-schedule-row span { color: #0f8f83; font-size: 12px; font-weight: 900; padding-bottom: 9px; }
-  summary::-webkit-details-marker { display: none; }
-  .mx-approval-layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 14px; }
-  .mx-draft-list { display: grid; gap: 8px; align-content: start; }
-  .mx-draft-item { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; text-align: left; border: 1px solid #d8e3f2; background: #fff; border-radius: 11px; padding: 10px; cursor: pointer; color: #17243b; }
-  .mx-draft-item.active, .mx-draft-item:hover { border-color: #8ab8f6; background: #eaf4ff; }
-  .mx-draft-item img { width: 48px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #d8e3f2; background: #f6f8fb; }
-  .mx-draft-thumb-placeholder { width: 48px; height: 60px; border: 1px dashed #cfe0f5; border-radius: 8px; background: #f8fbff; }
-  .mx-draft-copy { display: grid; gap: 4px; min-width: 0; }
-  .mx-draft-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mx-draft-item span { color: #71849f; font-size: 12px; }
-  .mx-image-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-  .mx-image-tools button { border: 1px solid #cfe0f5; background: #f6faff; color: #245ca8; border-radius: 999px; padding: 7px 10px; font-weight: 800; cursor: pointer; }
-  .mx-approval-feed { display: grid; gap: 14px; max-width: 1120px; }
-  .mx-approval-card { border: 1px solid #e0e8f2; background: rgba(255,255,255,.96); border-radius: 18px; padding: 18px; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; box-shadow: 0 18px 44px rgba(31,75,138,.07); cursor: pointer; }
-  .mx-approval-card.active, .mx-approval-card:hover { border-color: #b8d8ff; box-shadow: 0 22px 52px rgba(31,75,138,.10); }
-  .mx-approval-media-column { display: grid; gap: 8px; align-content: start; }
-  .mx-approval-card-image { width: 100%; aspect-ratio: 4 / 5; border: 1px solid #d8e3f2; border-radius: 12px; overflow: hidden; background: #f8fbff; display: grid; }
-  .mx-approval-card-image img { width: 100%; height: 100%; object-fit: cover; background: #fff; }
-  .mx-approval-copy-column { min-width: 0; display: grid; gap: 10px; align-content: start; }
-  .mx-approval-caption { width: 100%; min-height: 116px; border: 0; background: transparent; color: #17243b; padding: 0; resize: vertical; font: inherit; font-size: 14px; line-height: 1.75; outline: 0; }
-  .mx-approval-caption:focus { background: #fbfdff; border: 1px solid #d8e3f2; border-radius: 10px; padding: 10px; box-shadow: 0 0 0 3px rgba(47,115,216,.08); }
-  .mx-poster-placeholder.compact { min-height: 100%; padding: 12px; }
-  .mx-poster-placeholder.compact strong { font-size: 15px; }
-  .mx-approval-artwork { border: 1px solid #bfd5f2; background: linear-gradient(180deg, #ffffff, #f6faff); border-radius: 14px; padding: 12px; display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: 14px; align-items: stretch; margin-bottom: 12px; box-shadow: 0 16px 38px rgba(31,75,138,.07); }
-  .mx-approval-artwork-preview { min-height: 260px; border: 1px solid #d8e3f2; border-radius: 12px; background: #fff; overflow: hidden; display: grid; }
-  .mx-approval-artwork-preview img { width: 100%; height: 100%; aspect-ratio: 4 / 5; object-fit: contain; background: #f8fbff; }
-  .mx-poster-placeholder { min-height: 260px; display: grid; align-content: space-between; gap: 12px; padding: 18px; color: #fff; background: linear-gradient(135deg, #08213f 0%, #2f73d8 56%, #21a6a1 100%); }
-  .mx-poster-placeholder span, .mx-poster-placeholder small { font-size: 12px; font-weight: 900; opacity: .9; }
-  .mx-poster-placeholder strong { font-size: 22px; line-height: 1.35; letter-spacing: 0; }
-  .mx-approval-artwork-side { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; min-width: 0; }
-  .mx-approval-artwork-side h3 { margin: 4px 0 6px; color: #143355; font-size: 18px; line-height: 1.35; letter-spacing: 0; }
-  .mx-approval-artwork-side p { margin: 0; color: #60738f; font-size: 13px; line-height: 1.6; }
-  .mx-approval-artwork-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .mx-review-notes { margin-top: 12px; display: grid; gap: 6px; border: 1px solid #e0e8f2; background: #fbfdff; border-radius: 10px; padding: 12px; }
-  .mx-review-notes.compact { margin-top: 0; background: #ecfdf5; border-color: #b6ead7; }
-  .mx-review-notes strong { color: #1d3f78; }
-  .mx-review-notes span { color: #51647f; font-size: 13px; }
-  .mx-attached-media { border: 1px solid #d8e3f2; background: #f8fbff; border-radius: 12px; padding: 10px; display: grid; grid-template-columns: 96px 1fr; gap: 12px; align-items: center; margin-bottom: 12px; }
-  .mx-attached-media img { width: 96px; height: 120px; object-fit: cover; border-radius: 9px; border: 1px solid #d8e3f2; background: #fff; }
-  .mx-attached-media div { display: grid; gap: 4px; }
-  .mx-attached-media strong { color: #143355; }
-  .mx-attached-media span { color: #71849f; font-size: 12px; }
-  .mx-empty { padding: 28px; color: #71849f; line-height: 1.7; }
-  .mx-list, .mx-pipeline { display: grid; gap: 10px; }
-  .mx-row-card, .mx-pipe-card { padding: 14px; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
-  .mx-row-thumb { width: 58px; height: 72px; object-fit: cover; border-radius: 9px; border: 1px solid #d8e3f2; background: #f6f8fb; flex: 0 0 auto; }
-  .mx-row-card div, .mx-pipe-card div { display: grid; gap: 4px; }
-  .mx-row-card span, .mx-pipe-card span { color: #71849f; font-size: 13px; }
-  .mx-row-actions { display: flex !important; grid-template-columns: none !important; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-  .mx-channel-table-wrap { overflow-x: auto; border-top: 1px solid #d8e3f2; border-bottom: 1px solid #d8e3f2; background: #fff; }
-  .mx-channel-table { width: 100%; min-width: 760px; border-collapse: collapse; text-align: left; font-size: 13px; }
-  .mx-channel-table th, .mx-channel-table td { padding: 14px 12px; border-bottom: 1px solid #e1eaf5; vertical-align: top; }
-  .mx-channel-table thead th { color: #56708e; background: #f4f8fc; font-size: 12px; }
-  .mx-channel-table tbody th { color: #143355; white-space: nowrap; }
-  .mx-channel-table tbody tr:last-child th, .mx-channel-table tbody tr:last-child td { border-bottom: 0; }
-  .mx-channel-table a, .mx-publish-row a { color: #1f65c8; font-weight: 800; }
-  .mx-channel-ready { color: #047857; font-weight: 800; }
-  .mx-channel-manual { color: #9a6200; font-weight: 800; }
-  .mx-channel-warning { color: #9a6200; font-size: 12px; overflow-wrap: anywhere; }
-  .mx-queue-due { margin: 0 0 12px; padding: 10px 12px; border-left: 3px solid #dc2626; background: #fff5f5; color: #991b1b; font-size: 13px; font-weight: 800; }
-  .mx-queue-verify { margin: 0 0 12px; padding: 10px 12px; border-left: 3px solid #d97706; background: #fffbeb; color: #92400e; font-size: 13px; font-weight: 800; }
-  .mx-queue-tabs { display: flex; gap: 16px; overflow-x: auto; margin-bottom: 14px; border-bottom: 1px solid #d8e3f2; }
-  .mx-queue-tabs button { flex: 0 0 auto; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #60738f; padding: 10px 2px; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
-  .mx-queue-tabs button.active { border-color: #0f8f83; color: #133a50; }
-  .mx-queue-tabs button span { margin-left: 5px; color: inherit; }
-  .mx-row-card .mx-queue-state { font-size: 12px; font-weight: 800; color: #41617f; }
-  .mx-row-card .mx-queue-state.overdue { color: #b42318; }
-  .mx-row-card .mx-queue-state.today { color: #a45a00; }
-  .mx-row-card .mx-queue-state.posted { color: #047857; }
-  .mx-publish-row { flex-wrap: wrap; }
-  .mx-manual-handoff { flex: 0 0 100%; border-top: 1px solid #d8e3f2; padding-top: 10px; }
-  .mx-manual-handoff summary { color: #245ca8; font-weight: 800; cursor: pointer; }
-  .mx-publish-row .mx-manual-handoff-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-  .mx-manual-proof { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
-  .mx-manual-proof label { display: grid; gap: 5px; color: #4a607d; font-size: 12px; font-weight: 800; flex: 1 1 250px; }
-  .mx-manual-proof input { width: 100%; min-width: 0; border: 1px solid #b9cde2; border-radius: 6px; padding: 9px 10px; font: inherit; color: #14243c; }
-  .mx-manual-handoff small { display: block; color: #9a6200; margin-top: 8px; }
-  .mx-pipe-card em { font-style: normal; color: #0f8f83; background: #ecfdf5; border: 1px solid #9bdaca; border-radius: 999px; padding: 6px 10px; font-weight: 900; white-space: nowrap; }
+  .mx-mini-artwork { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 11px; padding: 8px; text-decoration: none; display: grid; gap: 7px; color: var(--mx-ink-2); }
+  .mx-mini-artwork img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; background: #fff; }
+  .mx-mini-artwork span { color: var(--mx-muted); font-size: 13px; font-weight: 500; line-height: 1.35; }
+  .mx-channel-preview { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 14px; padding: 14px; box-shadow: var(--mx-shadow); }
+  .mx-preview-box { margin-top: 10px; border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 12px; padding: 14px; min-height: 220px; display: grid; gap: 10px; align-content: start; }
+  .mx-preview-box.facebook { border-color: rgba(47,159,230,.45); }
+  .mx-preview-box.line-oa { border-color: rgba(74,222,128,.45); }
+  .mx-preview-box.tiktok { border-color: rgba(124,92,255,.5); }
+  .mx-channel-image { width: 100%; max-height: 420px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; border: 1px solid var(--mx-line); background: #fff; }
+  .mx-preview-box strong { color: #fff; font-size: 17px; line-height: 1.45; }
+  .mx-preview-box pre { margin: 0; white-space: pre-wrap; font: inherit; color: var(--mx-ink-2); font-size: 15px; line-height: 1.7; }
+  .mx-section-title { margin: 0 0 10px; color: #fff; font-size: 17px; letter-spacing: 0; font-weight: 700; }
+  .mx-content-block { border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 10px; padding: 12px; margin-top: 10px; }
+  .mx-content-title, .mx-content-block summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--mx-sky); font-weight: 700; cursor: pointer; font-size: 14px; }
+  .mx-content-block button { border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: #bfeef5; border-radius: 7px; padding: 5px 10px; cursor: pointer; font-size: 13px; }
+  .mx-content-block pre { margin: 9px 0 0; white-space: pre-wrap; font: inherit; font-size: 15px; line-height: 1.7; color: var(--mx-ink-2); }
+  .mx-page summary::-webkit-details-marker { display: none; }
+  .mx-empty { padding: 26px; color: var(--mx-ink-2); line-height: 1.7; }
+
+  /* ── ปฏิทิน ── */
+  .mx-calendar { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 8px; }
+  .mx-calendar-unscheduled { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; color: var(--mx-ink-2); font-size: 15px; }
+  .mx-weekday { text-align: center; color: var(--mx-muted); font-size: 13px; font-weight: 600; }
+  .mx-day { min-height: 96px; border: 1px solid var(--mx-line); background: rgba(14,30,58,.45); border-radius: 12px; padding: 10px; display: grid; align-content: start; gap: 8px; }
+  .mx-day.has { border-color: var(--mx-line-2); background: rgba(66,199,216,.08); }
+  .mx-day.today { outline: 2px solid var(--mx-cyan); outline-offset: -2px; box-shadow: 0 0 18px rgba(66,199,216,.3); }
+  .mx-day > strong { color: var(--mx-sky); font-size: 13px; font-weight: 700; }
+  .mx-day.today > strong { color: #fff; }
+  .mx-calendar-item { border: 1px solid var(--mx-line); background: rgba(5,11,24,.45); color: var(--mx-ink-2); border-radius: 8px; padding: 6px 8px; font-size: 13px; line-height: 1.4; }
+  .mx-calendar-item strong { display: block; overflow-wrap: anywhere; color: #fff; }
+  .mx-calendar-item span { color: var(--mx-muted); font-size: 13px; }
+
+  /* ── ตัวเลข ── */
+  .mx-range { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mx-range button { border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: #bfeef5; border-radius: 999px; padding: 7px 13px; font-weight: 600; font-size: 13px; cursor: pointer; }
+  .mx-range button.active { background: rgba(66,199,216,.16); border-color: var(--mx-line-2); color: #fff; box-shadow: var(--mx-glow); }
+  .mx-metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .mx-metric-card { padding: 16px; display: grid; gap: 4px; position: relative; overflow: hidden; }
+  .mx-metric-card::after { content: ''; position: absolute; right: -30px; top: -30px; width: 90px; height: 90px; border-radius: 50%; background: radial-gradient(circle, rgba(66,199,216,.25), transparent 70%); }
+  .mx-metric-card span { color: var(--mx-muted); font-size: 13px; font-weight: 600; }
+  .mx-metric-card strong { font-size: 30px; color: #fff; font-weight: 700; letter-spacing: -.01em; }
+  .mx-metric-card em { color: var(--mx-sky); font-style: normal; font-weight: 600; font-size: 13px; }
+  .mx-metrics-layout { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 14px; margin-bottom: 14px; align-items: start; }
+  .mx-metric-form { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 14px; padding: 16px; display: grid; gap: 12px; box-shadow: var(--mx-shadow); min-width: 0; }
+  .mx-metric-form label { display: grid; gap: 6px; color: var(--mx-muted); font-size: 13px; font-weight: 600; min-width: 0; }
+  .mx-metric-form textarea { min-height: 84px; resize: vertical; }
+  .mx-metric-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .mx-chart-card { padding: 18px; }
+  .mx-bars { height: 240px; display: flex; align-items: end; gap: 10px; padding: 16px; border-radius: 12px; background: linear-gradient(180deg, rgba(5,11,24,.2), rgba(5,11,24,.55)); border: 1px solid var(--mx-line); }
+  .mx-bars span { flex: 1; min-width: 10px; border-radius: 8px 8px 0 0; background: linear-gradient(180deg, var(--mx-cyan), var(--mx-violet)); box-shadow: 0 0 14px rgba(66,199,216,.3); }
+  .mx-chart-card p { color: var(--mx-muted); font-size: 15px; margin: 12px 0 0; }
+
+  /* ── ตอบคอมเมนต์ (ตัวอย่าง) ── */
   .mx-inbox-layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; align-items: start; }
   .mx-inbox-list { display: grid; gap: 9px; }
-  .mx-inbox-item { text-align: left; border: 1px solid #d8e3f2; background: rgba(255,255,255,.95); border-radius: 13px; padding: 13px; display: grid; grid-template-columns: 1fr auto; gap: 8px; cursor: pointer; color: #17243b; box-shadow: 0 14px 34px rgba(31,75,138,.06); }
-  .mx-inbox-item.active, .mx-inbox-item:hover { border-color: #8ab8f6; background: #f3f8ff; }
+  .mx-inbox-item { text-align: left; border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 13px; padding: 13px; display: grid; grid-template-columns: 1fr auto; gap: 8px; cursor: pointer; color: var(--mx-ink-2); box-shadow: var(--mx-shadow); }
+  .mx-inbox-item.active, .mx-inbox-item:hover { border-color: var(--mx-line-2); }
   .mx-inbox-item div { display: grid; gap: 3px; }
-  .mx-inbox-item strong { color: #143355; }
-  .mx-inbox-item span { color: #71849f; font-size: 12px; font-weight: 800; }
-  .mx-inbox-item p { grid-column: 1 / -1; margin: 0; color: #51647f; font-size: 13px; line-height: 1.5; }
-  .mx-inbox-item em, .mx-risk { font-style: normal; border-radius: 999px; padding: 6px 9px; font-size: 12px; font-weight: 900; white-space: nowrap; align-self: start; }
-  .risk-high, .mx-risk.high { color: #b42318; background: #fff1f0; border: 1px solid #ffb8b0; }
-  .risk-medium, .mx-risk.medium { color: #a15c00; background: #fff8e8; border: 1px solid #f2c874; }
-  .risk-low, .mx-risk.low { color: #047857; background: #ecfdf5; border: 1px solid #95d9c8; }
-  .mx-inbox-detail { border: 1px solid #d8e3f2; background: rgba(255,255,255,.96); border-radius: 14px; padding: 16px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
+  .mx-inbox-item strong { color: #fff; }
+  .mx-inbox-item span { color: var(--mx-muted); font-size: 13px; font-weight: 600; }
+  .mx-inbox-item p { grid-column: 1 / -1; margin: 0; color: var(--mx-ink-2); font-size: 15px; line-height: 1.5; }
+  .mx-inbox-item em, .mx-risk { font-style: normal; border-radius: 999px; padding: 5px 10px; font-size: 13px; font-weight: 700; white-space: nowrap; align-self: start; }
+  .risk-high, .mx-risk.high { color: var(--mx-err-soft); background: rgba(251,113,133,.1); border: 1px solid rgba(251,113,133,.5); }
+  .risk-medium, .mx-risk.medium { color: #fde68a; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.45); }
+  .risk-low, .mx-risk.low { color: #bbf7d0; background: rgba(74,222,128,.1); border: 1px solid rgba(74,222,128,.45); }
+  .mx-inbox-detail { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: 14px; padding: 16px; box-shadow: var(--mx-shadow); }
   .mx-inbox-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-  .mx-inbox-meta span { border: 1px solid #d7e5f6; background: #f6faff; color: #446181; border-radius: 999px; padding: 6px 9px; font-size: 12px; font-weight: 800; }
-  .mx-calendar { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 8px; }
-  .mx-calendar-unscheduled { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; color: #38516e; font-size: 13px; }
-  .mx-weekday { text-align: center; color: #56708e; font-size: 12px; font-weight: 800; }
-  .mx-day { min-height: 96px; border: 1px solid #d8e3f2; background: #fff; border-radius: 12px; padding: 10px; display: grid; align-content: start; gap: 8px; }
-  .mx-day.has { border-color: #8ab8f6; background: #f3f8ff; }
-  .mx-day span { color: #1f65c8; font-size: 12px; font-weight: 900; }
-  .mx-calendar-item { border: 1px solid #cfe0f5; background: #fff; color: #24466f; border-radius: 8px; padding: 6px 7px; font-size: 11px; line-height: 1.35; }
-  .mx-calendar-item strong { display: block; overflow-wrap: anywhere; }
-  .mx-calendar-item span { color: #60738f; font-size: 11px; }
-  .mx-toast { position: fixed; right: 22px; bottom: 22px; z-index: 20; background: #15395f; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 13px; font-weight: 900; box-shadow: 0 18px 42px rgba(18,36,61,.22); }
-  .mx-toast { max-width: min(640px, calc(100vw - 44px)); box-sizing: border-box; overflow-wrap: anywhere; white-space: pre-line; }
-  .mx-toast.error { background: #b42318; }
-  .mx-range { display: flex; gap: 8px; }
-  .mx-range button { border: 1px solid #cfe0f5; background: #fff; color: #245ca8; border-radius: 999px; padding: 8px 12px; font-weight: 900; }
-  .mx-metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
-  .mx-metric-card { padding: 16px; display: grid; gap: 4px; }
-  .mx-metric-card span { color: #71849f; font-size: 12px; font-weight: 900; }
-  .mx-metric-card strong { font-size: 30px; color: #14243c; }
-  .mx-metric-card em { color: #0f8f83; font-style: normal; font-weight: 900; }
-  .mx-metrics-layout { display: grid; grid-template-columns: minmax(320px, .85fr) minmax(0, 1.15fr); gap: 14px; margin-bottom: 14px; align-items: start; }
-  .mx-metric-form { border: 1px solid #d8e3f2; background: rgba(255,255,255,.96); border-radius: 14px; padding: 16px; display: grid; gap: 12px; box-shadow: 0 18px 44px rgba(31,75,138,.07); }
-  .mx-metric-form label { display: grid; gap: 6px; color: #60738f; font-size: 12px; font-weight: 900; }
-  .mx-metric-form input, .mx-metric-form select, .mx-metric-form textarea { border: 1px solid #d8e3f2; background: #fff; color: #243651; border-radius: 10px; padding: 10px 11px; font: inherit; font-size: 13px; outline: 0; }
-  .mx-metric-form textarea { min-height: 84px; resize: vertical; }
-  .mx-metric-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .mx-chart-card { padding: 18px; }
-  .mx-bars { height: 240px; display: flex; align-items: end; gap: 10px; padding: 16px; border-radius: 12px; background: linear-gradient(180deg, #f5f9ff, #eef5ff); }
-  .mx-bars span { flex: 1; min-width: 10px; border-radius: 8px 8px 0 0; background: linear-gradient(180deg, #2f73d8, #21a6a1); }
-  .mx-chart-card p { color: #71849f; font-size: 13px; margin: 12px 0 0; }
-  @media (max-width: 980px) { .mx-page { grid-template-columns: 1fr; } .mx-sidebar { border-right: 0; border-bottom: 1px solid #d8e3f2; } .mx-topbar { position: static; } .mx-generated-grid, .mx-approval-layout, .mx-library-split, .mx-inbox-layout, .mx-metrics-layout, .mx-visual-system, .mx-reference-layout, .mx-poster-form { grid-template-columns: 1fr; } .mx-upload-panel { align-items: stretch; flex-direction: column; } .mx-upload-actions { justify-items: start; min-width: 0; } .mx-upload-actions span { text-align: left; } }
-  @media (max-width: 720px) { .mx-topbar, .mx-page-head, .mx-row-card, .mx-pipe-card, .mx-section-head { align-items: stretch; flex-direction: column; } .mx-top-actions, .mx-card-actions, .mx-range { flex-wrap: wrap; } .mx-manual, .mx-prompt-box, .mx-metric-inputs, .mx-form-grid, .mx-attached-media, .mx-approval-artwork, .mx-approval-card, .mx-gallery-fields { grid-template-columns: 1fr; } .mx-gallery-prompt-head { display: grid; } .mx-gallery-prompt-head span { text-align: left; } .mx-approval-media-column { max-width: 260px; } .mx-calendar { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mx-weekday, .mx-day-empty { display: none; } .mx-stepper { justify-content: flex-start; overflow-x: auto; gap: 14px; } }
+
+  /* ── toast ── */
+  .mx-toast { position: fixed; right: 22px; bottom: 22px; z-index: 60; background: rgba(12, 24, 48, .96); color: #fff; border: 1px solid var(--mx-line-2); border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 600; box-shadow: var(--mx-shadow), var(--mx-glow); max-width: min(640px, calc(100vw - 44px)); overflow-wrap: anywhere; white-space: pre-line; animation: mx-rise .25s ease both; }
+  .mx-toast.error { border-color: rgba(251,113,133,.6); box-shadow: var(--mx-shadow), 0 0 24px rgba(251,113,133,.35); color: var(--mx-err-soft); }
+
+  /* ── จอเล็ก ── */
+  @media (max-width: 980px) {
+    .mx-generated-grid, .mx-library-split, .mx-inbox-layout, .mx-metrics-layout, .mx-visual-system, .mx-reference-layout, .mx-poster-form { grid-template-columns: 1fr; }
+    .mx-upload-panel { align-items: stretch; flex-direction: column; }
+    .mx-upload-actions { justify-items: start; min-width: 0; }
+    .mx-upload-actions span { text-align: left; }
+  }
+  @media (max-width: 720px) {
+    .mx-head { position: relative; }
+    .mx-topbar { padding: 10px 16px; gap: 8px 12px; }
+    .mx-strip { width: 100%; gap: 6px; }
+    .mx-chip { padding: 4px 10px 4px 8px; white-space: normal; }
+    .mx-tools-current { display: none; }
+    .mx-manual { grid-template-columns: 1fr; }
+    .mx-tabs { padding: 0 8px 8px; gap: 2px; flex-wrap: nowrap; }
+    .mx-tab, .mx-tools > summary { padding: 8px 9px; font-size: 13px; gap: 6px; }
+    .mx-tab strong { padding: 0 6px; }
+    .mx-tools { margin-left: auto; }
+    .mx-tools-menu { right: 0; left: auto; min-width: 230px; }
+    .mx-content { padding: 0 16px; margin-top: 18px; }
+    .mx-page-head, .mx-row-card, .mx-pipe-card, .mx-section-head { align-items: stretch; flex-direction: column; }
+    .mx-page-actions { justify-content: flex-start; }
+    .mx-page-head h1 { font-size: 21px; }
+    .mx-card-actions, .mx-range { flex-wrap: wrap; }
+    .mx-prompt-box, .mx-metric-inputs, .mx-form-grid, .mx-approval-card, .mx-gallery-fields { grid-template-columns: 1fr; }
+    .mx-gallery-prompt-head { display: grid; }
+    .mx-gallery-prompt-head span { text-align: left; }
+    .mx-approval-media-column { max-width: 260px; }
+    .mx-calendar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .mx-weekday, .mx-day-empty { display: none; }
+    .mx-page::before, .mx-page::after { opacity: .4; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mx-page *, .mx-page *::before, .mx-page *::after, .mx-page::before, .mx-page::after { animation: none !important; transition: none !important; }
+  }
 `

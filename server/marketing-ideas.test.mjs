@@ -5,21 +5,33 @@ import { createIdeasHandler, roundRobinBySubtype } from './marketing-ideas.js'
 const response = () => ({ setHeader() {}, status(code) { this.code = code; return this }, json(body) { this.body = body; return this } })
 
 // ฐานข้อมูลปลอมแบบ chainable พอสำหรับ handler นี้
-function fakeDb(rows = []) {
+// · order/limit ทำงานจริง (เรียงหลายคีย์แบบ stable) · gte เทียบเป็นเวลา (handler ใช้กับ created_at เท่านั้น)
+// · select(..., { count: 'exact', head: true }) คืน { count } · count:false จำลอง driver ที่ไม่คืน count · headError จำลองคำสั่งนับพัง
+function fakeDb(rows = [], { count = true, headError = null } = {}) {
   const calls = []
+  const matches = (r, filters) => filters.every(([op, k, v]) => (op === 'eq' ? r[k] === v : op === 'gte' ? Date.parse(r[k]) >= Date.parse(v) : v.includes(r[k])))
   const make = (table) => {
-    const state = { table, op: null, patch: null, filters: [] }
+    const state = { table, op: null, patch: null, filters: [], columns: null, head: false, count: null, orders: [], limit: null }
     const q = {
-      select() { return q },
+      select(columns, opts = {}) { state.columns = columns; state.head = opts.head === true; state.count = opts.count || null; return q },
       eq(k, v) { state.filters.push(['eq', k, v]); return q },
       in(k, v) { state.filters.push(['in', k, v]); return q },
-      order() { return q },
-      limit() { return q },
+      gte(k, v) { state.filters.push(['gte', k, v]); return q },
+      order(k, { ascending = true } = {}) { state.orders.push([k, ascending]); return q },
+      limit(n) { state.limit = n; return q },
       update(patch) { state.op = 'update'; state.patch = patch; return q },
       insert(row) { state.op = 'insert'; state.patch = row; return q },
       upsert(row) { state.op = 'upsert'; state.patch = row; return q },
-      maybeSingle() { calls.push(state); const found = rows.find((r) => state.filters.every(([op, k, v]) => (op === 'eq' ? r[k] === v : v.includes(r[k])))); return Promise.resolve({ data: state.op ? (state.op === 'update' ? (found ? { id: found.id, status: state.patch.status } : null) : { id: 99, ...state.patch }) : found || null, error: null }) },
-      then(resolve) { calls.push(state); resolve({ data: rows.filter((r) => state.filters.every(([op, k, v]) => (op === 'eq' ? r[k] === v : v.includes(r[k])))), error: null }) },
+      maybeSingle() { calls.push(state); const found = rows.find((r) => matches(r, state.filters)); return Promise.resolve({ data: state.op ? (state.op === 'update' ? (found ? { id: found.id, status: state.patch.status } : null) : { id: 99, ...state.patch }) : found || null, error: null }) },
+      then(resolve) {
+        calls.push(state)
+        const hits = rows.filter((r) => matches(r, state.filters))
+        if (state.head) return resolve(headError ? { data: null, count: null, error: headError } : { data: null, count: count ? hits.length : null, error: null })
+        let data = hits
+        for (const [k, ascending] of state.orders.slice().reverse()) data = data.slice().sort((a, b) => (a[k] < b[k] ? -1 : a[k] > b[k] ? 1 : 0) * (ascending ? 1 : -1))
+        if (state.limit !== null) data = data.slice(0, state.limit)
+        resolve({ data, error: null })
+      },
     }
     return q
   }
@@ -52,6 +64,7 @@ test('GET คืนคิว new · สถานะแปลก = 400', async ()
   await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas?status=new' }, res)
   assert.equal(res.code, 200)
   assert.deepEqual(res.body.ideas.map((i) => i.id), [1, 2])
+  assert.equal(res.body.total, 2)
   res = response()
   await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas?status=x' }, res)
   assert.equal(res.code, 400)
@@ -103,6 +116,101 @@ test('lead: รับเฉพาะฟิลด์ที่ไม่ใช่�
 
 test('ตารางยังไม่สร้าง = 503 พร้อมบอกให้รัน SQL', async () => {
   const db = { from: () => ({ select: () => ({ eq: () => ({ order: () => ({ order: () => ({ limit: () => Promise.resolve({ data: null, error: { code: 'PGRST205', message: 'missing' } }) }) }) }) }) }) }
+  const res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas' }, res)
+  assert.equal(res.code, 503)
+  assert.match(res.body.error, /supabase_marketing_ideas\.sql/)
+})
+
+// เวลาคงที่เทียบกับตอนรันเทสต์ ให้หน้าต่าง 24 ชม. ตัดสินได้แน่ (ไม่ตั้งแถวไว้ตรงขอบ 24 ชม. พอดี)
+const hoursAgo = (now, h) => new Date(now - h * 3600e3).toISOString()
+
+test('GET meta: สถานะรอบรีเสิร์ชจากข้อมูลจริง · ideas/total เดิมไม่เปลี่ยน', async () => {
+  const now = Date.now()
+  const db = fakeDb([
+    { id: 1, status: 'new', source: 'news', subtype: 'rate', score: 7, angles: [{ label: 'เช็กลิสต์', brief: 'x' }], created_at: hoursAgo(now, 1) },
+    { id: 2, status: 'new', source: 'news', subtype: 'market', score: 5, angles: [], created_at: hoursAgo(now, 30) },
+    { id: 3, status: 'new', source: 'official', subtype: 'rate', score: 4, angles: null, created_at: hoursAgo(now, 50) },
+    // สถานะอื่น: นับใน latest_created_at และ arrived_last_24h (ทุกสถานะ) แต่ไม่นับใน with_angles / by_source (เฉพาะสถานะที่ขอ)
+    { id: 4, status: 'picked', source: 'manual', subtype: 'market', score: 9, angles: [{ label: 'มุม' }], created_at: hoursAgo(now, 2) },
+    { id: 5, status: 'dismissed', source: 'social', subtype: 'scam', score: 3, angles: null, created_at: hoursAgo(now, 0.5) },
+  ])
+  const res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas?status=new' }, res)
+  assert.equal(res.code, 200)
+  assert.deepEqual(res.body.ideas.map((i) => i.id), [1, 2, 3])
+  assert.equal(res.body.total, 3)
+  const { meta } = res.body
+  assert.deepEqual(Object.keys(meta).sort(), ['arrived_last_24h', 'by_source', 'degraded', 'fetched_at', 'latest_created_at', 'status', 'total', 'with_angles'])
+  assert.equal(meta.degraded, false)
+  assert.equal(meta.status, 'new')
+  assert.equal(meta.total, res.body.total)
+  assert.equal(meta.latest_created_at, hoursAgo(now, 0.5)) // แถวใหม่สุดคือ dismissed id 5 — มองทุกสถานะ
+  assert.equal(meta.arrived_last_24h, 3) // id 1 (1 ชม.) · id 4 (2 ชม.) · id 5 (0.5 ชม.) — id 2 อายุ 30 ชม. ไม่นับ
+  assert.equal(meta.with_angles, 1) // id 1 เท่านั้น: [] และ null ไม่นับ · id 4 คนละสถานะ
+  assert.deepEqual(meta.by_source, { news: 2, official: 1 })
+  assert.ok(Math.abs(Date.parse(meta.fetched_at) - now) < 60e3)
+  // รูปร่างคำสั่งเสริม 2 ตัวตามสเปก: นับหัวตารางด้วย gte created_at · แถวล่าสุดด้วย order created_at desc limit 1
+  const head = db.calls.find((c) => c.head)
+  assert.equal(head.count, 'exact')
+  assert.deepEqual(head.filters.map(([op, k]) => [op, k]), [['gte', 'created_at']])
+  const latest = db.calls.find((c) => c.columns === 'created_at')
+  assert.deepEqual(latest.orders, [['created_at', false]])
+  assert.equal(latest.limit, 1)
+})
+
+test('GET meta: driver ไม่คืน count → ทางสำรองนับจากแถวของสถานะนี้ที่ดึงมา', async () => {
+  const now = Date.now()
+  const rows = [
+    { id: 1, status: 'new', source: 'news', score: 7, created_at: hoursAgo(now, 1) },
+    { id: 2, status: 'new', source: 'news', score: 5, created_at: hoursAgo(now, 30) },
+    { id: 4, status: 'picked', source: 'manual', score: 9, created_at: hoursAgo(now, 2) },
+  ]
+  let res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => fakeDb(rows, { count: false }) })({ method: 'GET', url: '/api/marketing-ideas?status=new' }, res)
+  assert.equal(res.code, 200)
+  assert.equal(res.body.meta.arrived_last_24h, 1) // ทางสำรองเห็นแค่ new: id 1 (id 4 เป็น picked · id 2 เกิน 24 ชม.)
+  res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => fakeDb(rows) })({ method: 'GET', url: '/api/marketing-ideas?status=new' }, res)
+  assert.equal(res.body.meta.arrived_last_24h, 2) // count จริงนับทุกสถานะ: id 1 + id 4
+})
+
+test('GET meta: ตารางว่าง → latest_created_at null · ตัวนับ 0 · by_source ว่าง', async () => {
+  const res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => fakeDb([]) })({ method: 'GET', url: '/api/marketing-ideas' }, res)
+  assert.equal(res.code, 200)
+  assert.deepEqual(res.body.ideas, [])
+  assert.equal(res.body.total, 0)
+  const { meta } = res.body
+  assert.equal(meta.status, 'new')
+  assert.equal(meta.total, 0)
+  assert.equal(meta.latest_created_at, null)
+  assert.equal(meta.arrived_last_24h, 0)
+  assert.equal(meta.with_angles, 0)
+  assert.deepEqual(meta.by_source, {})
+  assert.match(meta.fetched_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+})
+
+test('GET meta: คำสั่งเสริมพัง → คิวยังมาครบ meta ใช้ค่าสำรองและติดธง degraded (ไม่ทำให้ทั้ง GET ล้ม)', async () => {
+  const createdAt = new Date().toISOString()
+  const db = fakeDb([{ id: 1, status: 'new', source: 'news', score: 5, created_at: createdAt }], { headError: { code: '42P01', message: 'relation missing' } })
+  const res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas' }, res)
+  assert.equal(res.code, 200)
+  assert.deepEqual(res.body.ideas.map((i) => i.id), [1])
+  assert.equal(res.body.meta.degraded, true)
+  assert.equal(res.body.meta.arrived_last_24h, 1) // ทางสำรองนับจากแถวของสถานะนี้
+  assert.equal(res.body.meta.latest_created_at, new Date(createdAt).toISOString())
+  assert.doesNotMatch(JSON.stringify(res.body), /relation missing/)
+})
+
+test('GET: คำสั่งหลักพัง (ตารางหาย) ยังเป็น 503 เหมือนเดิม', async () => {
+  const db = {
+    from: () => {
+      const q = { select: () => q, eq: () => q, order: () => q, limit: () => q, then: (resolve) => resolve({ data: null, error: { code: '42P01', message: 'relation missing' } }) }
+      return q
+    },
+  }
   const res = response()
   await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas' }, res)
   assert.equal(res.code, 503)

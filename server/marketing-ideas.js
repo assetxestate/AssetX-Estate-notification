@@ -1,6 +1,7 @@
 // คิวไอเดียรีเสิร์ช — API ฝั่งเซิร์ฟเวอร์ของหน้า /marketing (ไอเดียวันนี้)
 // ให้เฉพาะคนที่ล็อกอินแอป (session cookie) · เบราว์เซอร์ไม่แตะตาราง marketing_ideas ตรง
-// GET  /api/marketing-ideas?status=new&per_subtype=3&limit=30   → { ideas } วนรอบต่อ subtype ไม่ให้ท็อปเป็นประเภทเดียวกันหมด
+// GET  /api/marketing-ideas?status=new&per_subtype=3&limit=30   → { ideas, total, meta } วนรอบต่อ subtype ไม่ให้ท็อปเป็นประเภทเดียวกันหมด
+//      meta = สถานะรอบรีเสิร์ช (แถวล่าสุดทุกสถานะ · มาใหม่ใน 24 ชม. · มีมุมเล่าแล้ว · แยกตามแหล่ง · เวลาที่อ่าน) อ่านอย่างเดียว ไม่มีตารางใหม่
 // POST /api/marketing-ideas { action: "pick", id, chosen_angle }  → status picked (คนเลือกมุม → ระบบสร้างร่าง)
 // POST /api/marketing-ideas { action: "dismiss", id, reason }     → status dismissed + เหตุผล (ใช้ปรับเกณฑ์)
 // POST /api/marketing-ideas { action: "manual", title, url, note } → ไอเดียที่คนวางเอง (source manual · คะแนน 6)
@@ -55,6 +56,13 @@ function pick(obj, allowed) {
   return out
 }
 
+// เวลาจากฐานข้อมูล (timestamptz เช่น 2026-11-03T01:23:45.678901+00:00) → ISO แบบ Z ให้หน้าเว็บเทียบกับ fetched_at ได้ตรง ๆ · ไม่มีค่า = null · แปลงไม่ได้ = คืนค่าเดิม
+function toIso(value) {
+  if (value === null || value === undefined || value === '') return null
+  const ms = Date.parse(value)
+  return Number.isNaN(ms) ? String(value) : new Date(ms).toISOString()
+}
+
 export function createIdeasHandler({ authorized = verifySession, database = defaultDatabase } = {}) {
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store')
@@ -73,7 +81,35 @@ export function createIdeasHandler({ authorized = verifySession, database = defa
           .select('id,status,source,source_label,subtype,title,summary,url,angles,chosen_angle,score,audience,event_date,created_at')
           .eq('status', status).order('score', { ascending: false }).order('created_at', { ascending: false }).limit(200)
         if (error) throw error
-        return res.status(200).json({ ideas: roundRobinBySubtype(data || [], { perSubtype, limit }), total: (data || []).length })
+        const rows = data || []
+
+        // meta: สถานะรอบรีเสิร์ชแบบตรงไปตรงมา ให้หน้า /marketing บอกได้ว่าคิวสดหรือค้าง — อ่านอย่างเดียว ไม่มีตารางใหม่
+        // คำสั่งเสริม 2 ตัว (ถูกมาก: แถวเดียว + นับหัวตาราง) วิ่งหลังคำสั่งหลักผ่านแล้ว · ถ้าตัวเสริมพัง คิวต้องไม่หาย → ใช้ค่าสำรองจากแถวที่ดึงมาแล้ว และบอกใน meta.degraded
+        const now = new Date()
+        const sinceMs = now.getTime() - 24 * 60 * 60 * 1000
+        const settle = (query) => Promise.resolve(query).then((result) => result || {}).catch((error) => ({ error }))
+        const [latest, recent] = await Promise.all([
+          settle(db.from('marketing_ideas').select('created_at').order('created_at', { ascending: false }).limit(1)),
+          settle(db.from('marketing_ideas').select('id', { count: 'exact', head: true }).gte('created_at', new Date(sinceMs).toISOString())),
+        ])
+        const degraded = Boolean(latest.error || recent.error)
+        if (degraded) console.warn('marketing-ideas meta degraded:', (latest.error || recent.error)?.message || latest.error || recent.error)
+        const newestFetched = rows.reduce((max, r) => (r.created_at && (!max || r.created_at > max) ? r.created_at : max), null)
+        // ฐานข้อมูลจริงคืน count มาเสมอ · ถ้า driver/mock ไม่ให้ count หรือคำสั่งเสริมพัง → นับจากแถวที่ดึงมาของสถานะนี้แทน (เห็นแค่สถานะที่ขอ จึงอาจต่ำกว่าจริง แต่ไม่เดา)
+        const arrivedLast24h = !recent.error && typeof recent.count === 'number' ? recent.count : rows.filter((r) => Date.parse(r.created_at) >= sinceMs).length
+        const bySource = {}
+        for (const r of rows) { const key = r.source || 'unknown'; bySource[key] = (bySource[key] || 0) + 1 }
+        const meta = {
+          status,
+          total: rows.length,
+          latest_created_at: toIso(!latest.error ? latest.data?.[0]?.created_at : newestFetched),
+          arrived_last_24h: arrivedLast24h,
+          with_angles: rows.filter((r) => Array.isArray(r.angles) && r.angles.length > 0).length,
+          by_source: bySource,
+          fetched_at: now.toISOString(),
+          degraded,
+        }
+        return res.status(200).json({ ideas: roundRobinBySubtype(rows, { perSubtype, limit }), total: rows.length, meta })
       }
 
       const body = req.body && typeof req.body === 'object' ? req.body : {}

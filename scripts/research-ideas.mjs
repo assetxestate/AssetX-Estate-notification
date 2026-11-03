@@ -142,7 +142,7 @@ function buildTelegramText({ collect, angles, expire, calendar, warnings }) {
   const watch = calendarWatchItems(calendar)
   if (watch.length) lines.push(`👀 เช็กลิสต์คนดูเอง: ${watch.join(' · ')}`)
   for (const w of warnings || []) lines.push(w)
-  lines.push('เลือกไอเดียที่หน้า /marketing → ไอเดียวันนี้')
+  lines.push('เลือกไอเดียที่หน้า /marketing → แท็บ ไอเดีย')
   return lines.join('\n')
 }
 

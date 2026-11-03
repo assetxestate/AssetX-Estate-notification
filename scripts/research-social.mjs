@@ -82,7 +82,7 @@ function buildTelegramText(result, queued, cfg) {
   }
   for (const r of result.rows.slice().sort((a, b) => b.ratio - a.ratio).slice(0, 5)) lines.push(`  ▲ ${r.ratio.toFixed(1)} เท่า · ${r.name} · ${headline(r.row)}`)
   for (const w of result.warnings.slice(0, 5)) if (!lines.includes(w)) lines.push(w)
-  if (result.status === 'ok' && result.rows.length) lines.push('เลือกไอเดียที่หน้า /marketing → ไอเดียวันนี้')
+  if (result.status === 'ok' && result.rows.length) lines.push('เลือกไอเดียที่หน้า /marketing → แท็บ ไอเดีย')
   return lines.join('\n')
 }
 
