@@ -21,7 +21,7 @@
   node scripts/research-ideas.mjs run
     1 expire    ตั้ง status=expired ให้ไอเดียเก่า (ไม่ลบแถว)
     2 collect   ทุกเลน → ตรวจ subtype → ลบ PII → คะแนน → รวมข่าวซ้ำตามเหตุการณ์ → กันซ้ำ → cap → upsert
-    3 angles    AI (Hermes → Gemini) เขียน 3 มุมเล่าคนละรูปแบบ ให้ไอเดียที่ยังไม่มี (เขียนทีละแถว)
+    3 angles    AI (Hermes → Ollama ในเครื่อง → Gemini) เขียน 3 มุมเล่าคนละรูปแบบ ให้ไอเดียที่ยังไม่มี (เขียนทีละแถว)
     4 report    สรุปเข้าเทเลแกรมเจ้าของ + เช็กลิสต์แหล่งที่คนต้องดูเองที่ถึงรอบ
         ↓
   ตาราง marketing_ideas (status new) → หน้า /marketing "ไอเดียวันนี้" (การ์ด "เรดาร์รีเสิร์ช")
@@ -35,7 +35,7 @@
 | ส่วน | ไฟล์ |
 |---|---|
 | คอนฟิก (แก้ได้ไม่ต้องแตะโค้ด) | `research/idea_sources.json` · `research/brand_facts.json` (+ `.local/research/brand_facts.local.json` ทับ) · `research/calendar.json` · `research/manual-checklist.md` |
-| เครื่องยนต์ (pure function มีเทสต์) | `server/research/parsers.js` อ่านฟีด/HTML/JSON · `classify.js` subtype คะแนน กุญแจ · `pii.js` ตัวลบข้อมูลบุคคล · `gate.js` ด่านการเงิน · `collector.js` รอบเก็บ · `calendar.js` · `internal.js` สัญญาณลีด · `angles.js` prompt มุมเล่า · `llm.js` Hermes→Gemini · `fetcher.js` มารยาทการดึง · `store.js` Supabase/dry-run · `notify.js` เทเลแกรม |
+| เครื่องยนต์ (pure function มีเทสต์) | `server/research/parsers.js` อ่านฟีด/HTML/JSON · `classify.js` subtype คะแนน กุญแจ · `pii.js` ตัวลบข้อมูลบุคคล · `gate.js` ด่านการเงิน · `collector.js` รอบเก็บ · `calendar.js` · `internal.js` สัญญาณลีด · `angles.js` prompt มุมเล่า · `llm.js` Hermes→Ollama→Gemini · `fetcher.js` มารยาทการดึง · `store.js` Supabase/dry-run · `notify.js` เทเลแกรม |
 | ตัวรัน | `scripts/research-ideas.mjs` (`run` · `collect` · `angles` · `expire` · `probe` · `stats` · `report`) |
 | API หน้าเว็บ | `server/marketing-ideas.js` ← `/api/marketing-ideas` (rewrite ใน `vercel.json` → `api/marketing.js?feature=ideas`) |
 | หน้าเว็บ | `src/MarketingPage.jsx` — การ์ดจาก `researchIdeaToCard()` ปุ่ม "เริ่มทำคอนเทนต์" (pick) และ "ทิ้ง" (dismiss) |
@@ -73,7 +73,7 @@
 | 1 คำค้น | ✅ 11 คำ (ผลทดสอบต่อคำอยู่ใน `_note`) |
 | 2 ตาราง ideas | ✅ `supabase_marketing_ideas.sql` — **เจ้าของต้องรันใน Supabase SQL Editor** |
 | 3 เลน + parser + เทสต์ | ✅ 9 เลน · 71 เทสต์ |
-| 4 มุมเล่า AI | ✅ Hermes (HERMES_AGENT_URL) → Gemini · ยังไม่ได้ทดสอบกับ Hermes จริง (เครื่องเก่า) |
+| 4 มุมเล่า AI | ✅ Hermes (HERMES_AGENT_URL) → Ollama ในเครื่อง (OLLAMA_MODEL) → Gemini · ใช้จริงครั้งแรก 3 พ.ย. 2569 ด้วย qwen2.5:14b · Hermes เครื่องเก่ายังไม่เคยตอบจากเครื่องนี้ |
 | 5 หน้าเลือกไอเดีย | ✅ การ์ดในหน้า /marketing + pick/dismiss/manual API · ยังไม่มี UI กรอกลีด (ใช้ API `action:"lead"`) |
 | 6 ถอดเนื้อหาจริง (yt-dlp) | ⬜ ยังไม่สร้าง — เครื่องนี้ไม่มี yt-dlp · คลิปทุกตัวติดป้าย ⚠️ |
 | 7 ตัวเฝ้าเพจ Facebook | ⬜ ยังไม่สร้าง — ต้องมีบัญชีสำรองวอร์ม ~1 สัปดาห์ + OpenCLI + Chrome profile บนเครื่องที่เปิดค้าง · ลิสต์ 47 เพจอยู่ใน vault |
@@ -104,7 +104,14 @@ foreach ($t in '07:00','07:30','08:00') {
 }
 ```
 
-ค่าใน `.env.local` ที่ใช้: `VITE_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (ฐานข้อมูล) · `HERMES_AGENT_URL` (+ `HERMES_AGENT_FORMAT` `HERMES_AGENT_MODEL` `HERMES_AGENT_API_KEY`) หรือ `GEMINI_API_KEY` (มุมเล่า) · `ASSETX_TELEGRAM_BOT_TOKEN` + `ASSETX_TELEGRAM_ALLOWED_CHAT_ID` (รายงาน)
+ค่าใน `.env.local` ที่ใช้: `VITE_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (ฐานข้อมูล) · มุมเล่า: `HERMES_AGENT_URL` (+ `HERMES_AGENT_FORMAT` `HERMES_AGENT_MODEL` `HERMES_AGENT_API_KEY`) → `OLLAMA_MODEL` (+ `OLLAMA_URL` ค่าเริ่มต้น localhost:11434 · `OLLAMA_TIMEOUT_MS` ค่าเริ่มต้น 240000) → `GEMINI_API_KEY` — ตั้งตัวใดตัวหนึ่งก็พอ · `ASSETX_TELEGRAM_BOT_TOKEN` + `ASSETX_TELEGRAM_ALLOWED_CHAT_ID` (รายงาน)
+
+### มุมเล่าด้วย Ollama ในเครื่อง (ไม่ต้องมี Gemini)
+
+- ติดตั้ง Ollama แล้ว `ollama pull qwen2.5:14b` · ใส่ `OLLAMA_MODEL=qwen2.5:14b` ใน `.env.local` (`OLLAMA_URL` เฉพาะเมื่อไม่ใช่ localhost:11434) · ตัวเรียกยิงเส้นทาง `/v1/chat/completions` แบบ OpenAI ของ Ollama ด้วย prompt เดียวกับ Hermes
+- วัดจริง 3 พ.ย. 2569 บนเครื่องหลัก (โมเดล 10 GB เกินการ์ดจอ รันครึ่ง CPU ครึ่ง GPU): โหลดครั้งแรก ~70 วิ · ~45 วิ/ไอเดีย · ได้ 3 มุมครบ ภาษาไทยอ่านรู้เรื่อง · `qwen2.5:7b` เร็วกว่า 3 เท่า (~15 วิ/ไอเดีย) แต่มุมกว้างและบางครั้งได้แค่ 2 มุม — ใช้ 14b เป็นค่าเริ่มต้น
+- ลำดับยังเป็น Hermes ก่อน: ผู้ให้บริการที่ "ติดต่อไม่ได้" (fetch failed · ปฏิเสธการเชื่อมต่อ · หมดเวลา) ถูกข้ามตลอดรอบที่เหลือ ไม่เสีย timeout ซ้ำทุกไอเดีย · รอบถัดไปลองใหม่ทุกตัว · ตอบไม่ใช่ JSON หรือ HTTP 5xx ไม่นับว่าติดต่อไม่ได้ (ลองใหม่ไอเดียถัดไป)
+- รอบ 07:00 ที่มีไอเดียใหม่ 10–20 ชิ้นใช้ราว 10–15 นาทีบนเครื่องนี้ · การ์ดในหน้า `/marketing` ใช้ได้ตั้งแต่ก่อนมีมุม (ขึ้นว่า "รอ AI เขียนมุมเล่า")
 
 ## ประเภทย่อย คะแนน และคิว
 
@@ -138,3 +145,4 @@ foreach ($t in '07:00','07:30','08:00') {
 - ตัวเก็บต้องไม่รันซ้อน (ล็อกไฟล์ · stale 2 ชม.) · upsert ignore-duplicates ทำให้รันซ้ำปลอดภัย
 - `collect --dry-run` ไม่ดูและไม่แสตมป์รอบเวลาเลน (`state.lane_last_run`) — เจอจริง 3 พ.ย. 2569: dry-run เมื่อคืนทำให้รอบจริงแรกได้แค่ 13/34 เลน เพราะเลน daily ถือว่า "รันแล้ว" (เกณฑ์ ≥ 12 ชม.) · ถ้าต้องการให้รอบจริงยิงทุกเลนใหม่ ลบ `lane_last_run` ใน `.local/research/state.json` แล้ว `collect`
 - หัวข่าว "ผ่าทรัพย์สิน/บัญชีทรัพย์สิน" ของนักการเมืองเข้าประเภท valuation เพราะคำ "ที่ดิน…เพิ่มขึ้น" → เพิ่มใน `title_drop` แล้ว (รอบแรกหลุดมา 1 ชิ้น เจ้าของทิ้งจากหน้าเว็บได้)
+- ชื่อมุม (label) ถูกตัดที่ 22 ตัวอักษรตามกติกาใน prompt — โมเดลในเครื่องชอบเขียนยาวแล้วโดนตัดกลางคำ (เช่น "กฎหมายใหม่ ธปท. 57/256") · ถ้าจะแก้ ให้แก้ที่ prompt หรือ `parseAngles` ไม่ใช่ที่ UI

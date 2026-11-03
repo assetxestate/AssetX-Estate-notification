@@ -5,14 +5,14 @@
 //     รอบประจำวัน: หมดอายุ → เก็บไอเดีย → มุมเล่า AI → รายงานเทเลแกรม · เช็ก "วันนี้รันแล้วหรือยัง" (ไม่ใช่ตรงเวลาไหม)
 //     รันซ้ำวันเดียวกัน = ข้าม (บันทึกลง runs.jsonl ด้วย) · ล็อกกันรันซ้อน · เก็บล้ม = รอบล้ม (Task Scheduler ตั้งซ้ำ 07:00/07:30/08:00 ได้)
 // node scripts/research-ideas.mjs collect [--dry-run]       เก็บอย่างเดียว (--dry-run เขียน .local/research/dry-run.json ไม่แตะ DB)
-// node scripts/research-ideas.mjs angles [--limit N]        เขียนมุมเล่าให้ไอเดียที่ยังไม่มี (Hermes → Gemini)
+// node scripts/research-ideas.mjs angles [--limit N]        เขียนมุมเล่าให้ไอเดียที่ยังไม่มี (Hermes → Ollama ในเครื่อง → Gemini)
 // node scripts/research-ideas.mjs expire                    ตั้ง status=expired ให้ไอเดียเก่า (ไม่ลบแถว)
 // node scripts/research-ideas.mjs probe                     ทดสอบทุกแหล่งแบบเบามือ (ยิง 1 ครั้ง/แหล่ง · สถานะ · จำนวน · วันล่าสุด · บล็อกไหม)
 // node scripts/research-ideas.mjs stats                     จำนวนในคิวตามสถานะ/แหล่ง และ % ที่มีมุมเล่า
 // node scripts/research-ideas.mjs report                    รอบล่าสุดจาก runs.jsonl
 //
 // คอนฟิก: research/idea_sources.json · research/brand_facts.json (+ .local/research/brand_facts.local.json ทับ) · research/calendar.json
-// สถานะ/ล็อก/บันทึกรอบ: .local/research/ (ไม่เข้า git) · คีย์จาก .env.local (SUPABASE_SERVICE_ROLE_KEY · HERMES_AGENT_URL · ASSETX_TELEGRAM_*)
+// สถานะ/ล็อก/บันทึกรอบ: .local/research/ (ไม่เข้า git) · คีย์จาก .env.local (SUPABASE_SERVICE_ROLE_KEY · HERMES_AGENT_URL / OLLAMA_MODEL / GEMINI_API_KEY · ASSETX_TELEGRAM_*)
 import { config } from 'dotenv'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync, statSync } from 'node:fs'
 import path from 'node:path'
@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 import { createFetcher } from '../server/research/fetcher.js'
 import { collectIdeas, formatCollectReport, cadenceDue } from '../server/research/collector.js'
 import { createSupabaseStore, createDryRunStore, missingTable } from '../server/research/store.js'
-import { createAsk } from '../server/research/llm.js'
+import { createAsk, NO_PROVIDER_MESSAGE } from '../server/research/llm.js'
 import { generateAngles } from '../server/research/angles.js'
 import { calendarWatchItems, inMpcWindow } from '../server/research/calendar.js'
 import { sendTelegramReport, telegramConfigured } from '../server/research/notify.js'
@@ -122,7 +122,7 @@ async function doCollect({ cfg, brand, calendar, store, state }) {
 async function doAngles({ brand, store, limit }) {
   const ask = createAsk({ log })
   if (!ask.providers.length) {
-    out('[angles] ไม่มีผู้ให้บริการ AI (ตั้ง HERMES_AGENT_URL หรือ GEMINI_API_KEY) — ข้าม')
+    out(`[angles] ${NO_PROVIDER_MESSAGE} — ข้าม`)
     return { done: [], failed: [], skipped: true }
   }
   const ideas = await store.ideasNeedingAngles(limit)
