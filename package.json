@@ -25,6 +25,7 @@
     "test:research": "node --test server/research/*.test.mjs server/marketing-ideas.test.mjs",
     "diary": "node scripts/diary-sync.mjs",
     "research": "node scripts/research-ideas.mjs",
+    "research:social": "node scripts/research-social.mjs",
     "preview": "vite preview",
     "migrate": "node migrate.js"
   },

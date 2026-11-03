@@ -30,18 +30,25 @@
 
 ขั้น 2 ล้มเท่านั้นที่นับว่ารอบล้ม (exit 1 · ตั้ง Task Scheduler ซ้ำ 07:30/08:00 ได้ สคริปต์ข้ามเองถ้าสำเร็จแล้ว) · ขั้น 1/3/4 ล้มแค่เตือน ⚠️
 
+```
+11:30 ทุกวัน (+ สำรอง 14:30 · งานแยกคนละเวลากับ 07:00 และรอบ DVX ~07:03 · เครื่องเดียวกับ Chrome profile Research)
+  node scripts/research-social.mjs run      ตัวเฝ้าเพจ Facebook (ขั้น 7) — ใช้ browser + บัญชีสำรองร่วมกับ DivisionX Card
+    ตรวจแถวพักร่วม/โควตา → ถือกุญแจกลาง → อ่าน ≤ 4 เพจที่ถึงรอบ (≤ ~7 นาที) → ปล่อยกุญแจ → โพสต์แรงกว่าปกติของเพจ → คิว (source social) → เทเลแกรม
+```
+
 ## ไฟล์
 
 | ส่วน | ไฟล์ |
 |---|---|
-| คอนฟิก (แก้ได้ไม่ต้องแตะโค้ด) | `research/idea_sources.json` · `research/brand_facts.json` (+ `.local/research/brand_facts.local.json` ทับ) · `research/calendar.json` · `research/manual-checklist.md` |
+| คอนฟิก (แก้ได้ไม่ต้องแตะโค้ด) | `research/idea_sources.json` · `research/brand_facts.json` (+ `.local/research/brand_facts.local.json` ทับ) · `research/calendar.json` · `research/manual-checklist.md` · `research/social_watch.json` (รายชื่อเพจ Facebook · เพดาน · งบเวลา) |
 | เครื่องยนต์ (pure function มีเทสต์) | `server/research/parsers.js` อ่านฟีด/HTML/JSON · `classify.js` subtype คะแนน กุญแจ · `pii.js` ตัวลบข้อมูลบุคคล · `gate.js` ด่านการเงิน · `collector.js` รอบเก็บ · `calendar.js` · `internal.js` สัญญาณลีด · `angles.js` prompt มุมเล่า · `llm.js` Hermes→Ollama→Gemini · `fetcher.js` มารยาทการดึง · `store.js` Supabase/dry-run · `notify.js` เทเลแกรม |
-| ตัวรัน | `scripts/research-ideas.mjs` (`run` · `collect` · `angles` · `expire` · `probe` · `stats` · `report`) |
+| ตัวเฝ้าเพจ Facebook | `server/research/social-watch.js` รอบอ่านเพจ/โพสต์แรง/แถวไอเดีย · `shared-browser.mjs` กุญแจกลางร่วมกับ DVX (ก๊อปจากสกิล ห้ามแก้ฝั่งเดียว) · `facebook-page.dom.js` ตัวอ่าน DOM (FB_JS ก๊อปตรงจาก DVX) |
+| ตัวรัน | `scripts/research-ideas.mjs` (`run` · `collect` · `angles` · `expire` · `probe` · `stats` · `report`) · `scripts/research-social.mjs` (`run [--dry-run] [--limit N] [--target คำ]` · `status` · `report`) |
 | API หน้าเว็บ | `server/marketing-ideas.js` ← `/api/marketing-ideas` (rewrite ใน `vercel.json` → `api/marketing.js?feature=ideas`) |
 | หน้าเว็บ | `src/MarketingPage.jsx` — การ์ดจาก `researchIdeaToCard()` ปุ่ม "เริ่มทำคอนเทนต์" (pick) และ "ทิ้ง" (dismiss) |
 | ฐานข้อมูล | `supabase_marketing_ideas.sql` — `marketing_ideas` · `marketing_content` · `leads` (service_role เท่านั้น ไม่มี DELETE) |
-| สถานะ/บันทึก (ไม่เข้า git) | `.local/research/state.json` · `runs.jsonl` · `run.lock` · `dry-run.json` · `probe-<วัน>.json` |
-| เทสต์ | `npm run test:research` (server/research/*.test.mjs + server/marketing-ideas.test.mjs) |
+| สถานะ/บันทึก (ไม่เข้า git) | `.local/research/state.json` · `runs.jsonl` · `run.lock` · `dry-run.json` · `probe-<วัน>.json` · ตัวเฝ้าเพจ: `.local/research/social/state.json` (เพจไหนเยี่ยมเมื่อไหร่) · `social/facebook/<tid>.json` (คลังโพสต์ที่ผ่านตัวลบข้อมูลบุคคลแล้ว) · `social/runs.jsonl` · ของร่วมกับ DVX: `%USERPROFILE%\.research-browser\` (`lock.json` · `state.json` · `usage.jsonl`) |
+| เทสต์ | `npm run test:research` (server/research/*.test.mjs + server/marketing-ideas.test.mjs — 91 ข้อ รวมตัวเฝ้าเพจ 23 + กุญแจร่วม 6) |
 
 ## เลนข้อมูล (ทดสอบยิงจริง 2 พ.ย. 2569 ด้วย `probe` — 32/33 แหล่งตอบปกติ · SAM ตอบ 500 ฝั่งเขา)
 
@@ -56,9 +63,10 @@
 | video ⚠️ | YouTube channel RSS 11 ช่อง (คู่แข่ง · ทนาย · นายหน้า · ตลาด · ทางการ) ≤ 7 วัน ≤ 3/ช่อง | youtube / competitor หรือตัวจัดประเภท | ⚠️ เจ้าของอนุมัติ · ยังไม่ถอดคำบรรยาย |
 | internal | ตาราง `leads` (ลีดพุ่งตามกลุ่ม×พื้นที่ · คำถามยอดนิยม) รายสัปดาห์ | internal / internal | ของเราเอง · ไม่มีข้อมูลบุคคล |
 | calendar | `calendar.json` (กนง. · ราคาประเมิน 2570 · สิ้นสุดลดค่าโอน/LTV 30 มิ.ย. 2570) ล่วงหน้า 21 วัน | official / ตามเหตุการณ์ | ของเราเอง |
+| social ⚠️ | เพจ Facebook 18 เพจ (คู่แข่งขายฝาก-จำนอง 8 ทุก 4 วัน · สื่อ 6 · หน่วยงาน 3 · ครีเอเตอร์ 1 ทุก 7 วัน) อ่าน DOM ผ่าน OpenCLI + Chrome profile Research · ≤ 4 เพจ/วัน · วันละ 1 รอบ | social / social_fb | ⚠️ robots ของ Facebook ห้าม — เจ้าของอนุมัติ 2 พ.ย. · บัญชีสำรองใช้ร่วมกับ DVX (3 พ.ย.) · ดูหัวข้อ "ตัวเฝ้าเพจ Facebook" |
 | manual | เจ้าของวางหัวข้อ/ลิงก์ที่หน้า `/marketing` หรือ API | manual / market | — |
 
-แหล่งที่ **ห้ามอัตโนมัติ** (กรมธนารักษ์ · ราชกิจจาฯ · REIC · DDproperty · Meta Ad Library · TikTok · เว็บประกาศ · ธนาคาร NPA · เพจ Facebook) → `research/manual-checklist.md`
+แหล่งที่ **ห้ามอัตโนมัติ** (กรมธนารักษ์ · ราชกิจจาฯ · REIC · DDproperty · Meta Ad Library · TikTok · เว็บประกาศ · ธนาคาร NPA · เพจ Facebook อีก 29 เพจที่ไม่อยู่ในตัวเฝ้าเพจ) → `research/manual-checklist.md`
 
 ### คำตัดสินของเจ้าของ (`owner_decisions` ใน idea_sources.json)
 
@@ -76,7 +84,7 @@
 | 4 มุมเล่า AI | ✅ Hermes (HERMES_AGENT_URL) → Ollama ในเครื่อง (OLLAMA_MODEL) → Gemini · ใช้จริงครั้งแรก 3 พ.ย. 2569 ด้วย qwen2.5:14b · Hermes เครื่องเก่ายังไม่เคยตอบจากเครื่องนี้ |
 | 5 หน้าเลือกไอเดีย | ✅ การ์ดในหน้า /marketing + pick/dismiss/manual API · ยังไม่มี UI กรอกลีด (ใช้ API `action:"lead"`) |
 | 6 ถอดเนื้อหาจริง (yt-dlp) | ⬜ ยังไม่สร้าง — เครื่องนี้ไม่มี yt-dlp · คลิปทุกตัวติดป้าย ⚠️ |
-| 7 ตัวเฝ้าเพจ Facebook | ⬜ ยังไม่สร้าง — ต้องมีบัญชีสำรองวอร์ม ~1 สัปดาห์ + OpenCLI + Chrome profile บนเครื่องที่เปิดค้าง · ลิสต์ 47 เพจอยู่ใน vault |
+| 7 ตัวเฝ้าเพจ Facebook | ✅ สร้าง 3 พ.ย. 2569 — ใช้ Chrome profile Research + บัญชีสำรองชุดเดียวกับ DivisionX Card (บัญชีอ่าน FB มาตั้งแต่ 21 ต.ค. ไม่ต้องวอร์ม) ตามข้อตกลง `shared-browser-dvx-assetx.md` ทุกข้อ · 18 เพจจากลิสต์ 47 · ต้องตั้ง Task Scheduler 11:30/14:30 (ด้านล่าง) |
 | 8 บทเรียนรายสัปดาห์ | ⬜ ยังไม่สร้าง — ต้องมีลีดใน `leads` ก่อน (ทางหลักของอสังหาฯ คือลีด ไม่ใช่ไลก์) |
 | 9 ตารางเวลา | ◐ สคริปต์พร้อม (lock · ran-today · runs.jsonl · retry) · ต้องตั้ง Task Scheduler (ด้านล่าง) |
 
@@ -113,6 +121,48 @@ foreach ($t in '07:00','07:30','08:00') {
 - ลำดับยังเป็น Hermes ก่อน: ผู้ให้บริการที่ "ติดต่อไม่ได้" (fetch failed · ปฏิเสธการเชื่อมต่อ · หมดเวลา) ถูกข้ามตลอดรอบที่เหลือ ไม่เสีย timeout ซ้ำทุกไอเดีย · รอบถัดไปลองใหม่ทุกตัว · ตอบไม่ใช่ JSON หรือ HTTP 5xx ไม่นับว่าติดต่อไม่ได้ (ลองใหม่ไอเดียถัดไป)
 - รอบ 07:00 ที่มีไอเดียใหม่ 10–20 ชิ้นใช้ราว 10–15 นาทีบนเครื่องนี้ · การ์ดในหน้า `/marketing` ใช้ได้ตั้งแต่ก่อนมีมุม (ขึ้นว่า "รอ AI เขียนมุมเล่า")
 
+## ตัวเฝ้าเพจ Facebook (ขั้น 7) — ใช้ browser ร่วมกับ DivisionX Card
+
+เจ้าของตัดสิน 3 พ.ย. 2569: "เบื้องต้นใช้ร่วมกันไปก่อน" — Chrome profile `Profile 9` (alias OpenCLI `research`) + บัญชีสำรองชุดเดียวกับ DVX · **AssetX ใช้ได้เฉพาะ Facebook** · ข้อตกลงเต็มอยู่ในสกิล
+`~/.claude/skills/social-research/profiles/shared-browser-dvx-assetx.md` (ฝั่ง DVX ทำแล้วใน `deploy/agents/shared_browser.py` + `social_watch.py`) · แก้ข้อตกลงฝั่งเดียวไม่ได้ (ข้อ 10 — แก้ทั้ง `shared-browser.mjs` ในสกิล + สำเนาในรีโปนี้ + ฝั่ง Python)
+
+สิ่งที่ตัวเฝ้าเพจทำทุกรอบ (ลำดับตามข้อตกลง 4.6 · เทสต์ครอบทุกข้อใน `social-watch.test.mjs`):
+
+1. **ก่อนรอกุญแจ** — `state.json` ร่วมมีแถวพัก `facebook` ที่ยังไม่ครบ 3 วัน = ไม่เปิด (ไม่ว่าใครเจอ) · `usage.jsonl` มีแถว `assetx` วันนี้ = ข้าม (วันละ 1 รอบ · รอบสำรอง 14:30 ข้ามเอง) · ไม่มีเพจถึงรอบ หรือโควตาเหลือ 0 = ไม่รอ
+2. **ถือกุญแจ** `%USERPROFILE%\.research-browser\lock.json` (สร้างแบบ exclusive) รอได้ 20 นาที · ไม่ว่าง = ข้ามรอบและบอกว่าใครถือ · กุญแจที่เงียบเกิน 10 นาที = ยึดได้ (รายงานว่ายึดจากใคร)
+3. **ตรวจซ้ำหลังได้กุญแจ** (แถวพัก · โควตา) แล้วตัดเพจตามที่เหลือ: `min(12 − ที่ทุกโปรเจกต์เปิดวันนี้, 4 − ที่ AssetX เปิดวันนี้)`
+4. **bridge** `profile list` ต้องเห็น `research` connected · `daemonRunning:false` (daemon ของ OpenCLI ไม่ขึ้นเองหลังเปิดเครื่อง — DVX เจอ 31 ต.ค.–3 พ.ย.) → สั่ง `daemon restart` แล้วรอ 3×3 วิ · ยังไม่ต่อ → เปิด `chrome.exe --profile-directory="Profile 9" --no-startup-window` แล้วถามทุก 4 วิ ไม่เกิน 60 วิ · ยังไม่ต่อ = `bridge_down` จบรอบ (ห้ามปิด/ฆ่า Chrome หรือ daemon ที่รันอยู่)
+5. **ทีละเพจ** — จด `usage.jsonl` `{"project":"assetx","pages":{"facebook":1},"result":"open"}` **ก่อนเปิด** → `browser open` → รอ 5.5–7.5 วิ → วน `browser eval FB_JS` + `scroll down 900` ≤ 10 ครั้ง (หยุดที่ 12 โพสต์ / 3 รอบไม่มีใหม่) → เว้น 6–14 วิ · ทุกคำสั่งผ่านตัวห่อ `oc()` ที่แตะสัญญาณชีพ (`lock.require()`) ก่อน · ต่อท้าย `--session assetxwatch --window background --profile research` เสมอ
+6. **งบเวลา** — ไม่เปิดเพจใหม่หลัง 5 นาที · ไม่เปิดซ้ำหลัง 6 นาที (ได้ < 3 โพสต์เปิดซ้ำได้ 1 ครั้ง) → ถือกุญแจไม่เกิน ~7 นาที (DVX รอได้ 8) · เพจที่ไม่ได้อ่าน/อ่านได้น้อย = ไม่นับว่าเยี่ยม รอบหน้าได้คิวแรก
+7. **โดนบล็อก** (หน้า `/login` `/checkpoint` หรือมีช่องรหัสผ่านแต่ไม่มีโพสต์) → `setBlocked('facebook')` ลง `state.json` ร่วม (DVX พักด้วย 3 วัน) หยุดเลนทันที · อ่านสำเร็จ = `clearBlocked`
+8. **`finally`** — `browser close --session assetxwatch` (ไม่แตะสัญญาณชีพ) → แถวสรุป `{"pages":{},"opened":{"facebook":N},"result":"ok|blocked:facebook|bridge_down|budget|lost_lock"}` → ปล่อยกุญแจ (ลบเฉพาะเมื่อ token ตรงของเรา) · กุญแจหลุดมือกลางทาง = หยุดใช้ browser ทันที ของที่อ่านแล้วเก็บต่อ
+9. **หลังปล่อยกุญแจ** — รวมโพสต์เข้าคลังต่อเพจ (แคปชั่นผ่าน `pii.js` ก่อนเสมอ · ไม่เก็บชื่อ/ข้อความคนคอมเมนต์) → โพสต์แรง = `max(eng/median 60 วัน, views/median) ≥ 2` และ `eng ≥ 10` หรือ `views ≥ 3000` และแคปชั่นผ่าน topic gate อสังหาฯ (ฐานต้องมี ≥ 4 โพสต์ — เพจคู่แข่งเล็ก รอบแรก ๆ ยังไม่มีไอเดีย) → `source=social` `subtype=social_fb` คะแนน 4.6–6.2 (+0.3 คู่แข่ง) `external_key=sw:fb:<tid>:<post key>` → upsert ≤ 8/รอบ · คิวโซเชียลค้าง ≤ 20 · ลิงก์ที่มีแล้วไม่ใส่ซ้ำ → เทเลแกรม (เฉพาะรอบที่แตะ browser หรือมีเรื่องต้องบอก)
+
+`--dry-run` / `--limit` / `--target` และคำสั่งทดสอบทุกแบบ **ยังถือกุญแจ + จด usage.jsonl** เหมือนรอบจริง (ข้อ 4.7) — ข้ามได้เฉพาะคลัง/สถานะ/คิวของเราเอง ·
+**ห้ามเรียก `opencli` ตรงจาก shell** (browser นี้เป็นค่าเริ่มต้นของเครื่อง แม้ไม่ใส่ `--profile` ก็เข้าบัญชีร่วม) · เทสต์ที่ไม่เปิด browser ใช้โฟลเดอร์ชั่วคราวเสมอ (แถวพักปลอมในของจริง = DVX หยุดอ่าน 3 วัน)
+
+```bash
+node scripts/research-social.mjs status            # ใครถือกุญแจ · แถวพักร่วม · เพจที่เปิดวันนี้ (รวม/ของเรา) · เพจถึงรอบ — ไม่แตะ browser
+node scripts/research-social.mjs run --limit 1     # รอบลองจริง 1 เพจ (นับโควตาจริง 1 เพจ · วันนั้นถือว่าอ่านแล้ว)
+node scripts/research-social.mjs run               # รอบปกติ ≤ 4 เพจ
+node scripts/research-social.mjs report            # รอบล่าสุด (ทุกรอบรวมที่ข้าม)
+```
+
+ตั้งเวลา (รันใน PowerShell ครั้งเดียว · คนละเวลากับ 07:00–08:30 · รอบสำรองข้ามเองถ้าวันนั้นอ่านแล้ว):
+
+```powershell
+$repo = 'C:\Projects\AssetX Estate\AssetX-Estate-notification'
+foreach ($t in '11:30','14:30') {
+  schtasks /Create /F /TN "AssetX Social Watch $t" /SC DAILY /ST $t /TR "cmd /c cd /d `"$repo`" && node scripts\research-social.mjs run >> .local\research\social\task.log 2>&1"
+}
+```
+
+เมื่อมีปัญหา (ตารางเต็มในข้อตกลงข้อ 6): รายงานบอก `browser ไม่ว่าง (dvx …)` ทุกวัน = เวลาทับ DVX ย้ายเวลา · `Facebook พักอยู่` = เจ้าของเปิด Chrome profile Research ดูว่าโดนขอยืนยันตัวตนไหมแล้วทำด้วยมือ (ห้ามหาทางเลี่ยง · ระบบลองใหม่เองหลัง 3 วัน) ·
+`ต่อ Chrome profile Research ไม่ได้` = เปิด Chrome profile นั้นค้างไว้และเช็กว่าส่วนเสริม OpenCLI เปิดอยู่ (แก้ครั้งเดียวได้ทั้งสองโปรเจกต์) · โควตาเต็มทุกวัน = ลดเพจ/ยืด `every_days` ห้ามขยับเพดานฝั่งเดียว ·
+บัญชีโดนพักซ้ำ ≥ 2 ครั้งใน 30 วัน หรืออยากได้ > 4 เพจ/วัน → แยกบัญชีตามข้อ 9 ของข้อตกลง
+
+ความเป็นส่วนตัว/กติกา: อ่านอย่างเดียว (ไม่มีคำสั่ง `[write]` ในโค้ด · เทสต์ตรวจรายการคำสั่งที่อนุญาต) · เก็บแค่แคปชั่น + ตัวเลข + รหัสโพสต์ · คลังอยู่ใน `.local/` ไม่เข้า git · ไอเดีย `social` ห้ามอ้างชื่อเพจในโพสต์ (`SOURCE_NOTES.social` ใน `angles.js`) · ลิสต์เพจในคอนฟิกยังไม่ได้เปิดดูด้วยตาทุกเพจ — เจอเพจปลอม/ร้างให้ตั้ง `enabled:false`
+
 ## ประเภทย่อย คะแนน และคิว
 
 - `subtype` ต้องอยู่ใน `idea_sources.json → subtypes` (อายุ · กลุ่ม A–D · cap) ไม่งั้นตัวเก็บปฏิเสธพร้อมคำเตือน
@@ -146,3 +196,6 @@ foreach ($t in '07:00','07:30','08:00') {
 - `collect --dry-run` ไม่ดูและไม่แสตมป์รอบเวลาเลน (`state.lane_last_run`) — เจอจริง 3 พ.ย. 2569: dry-run เมื่อคืนทำให้รอบจริงแรกได้แค่ 13/34 เลน เพราะเลน daily ถือว่า "รันแล้ว" (เกณฑ์ ≥ 12 ชม.) · ถ้าต้องการให้รอบจริงยิงทุกเลนใหม่ ลบ `lane_last_run` ใน `.local/research/state.json` แล้ว `collect`
 - หัวข่าว "ผ่าทรัพย์สิน/บัญชีทรัพย์สิน" ของนักการเมืองเข้าประเภท valuation เพราะคำ "ที่ดิน…เพิ่มขึ้น" → เพิ่มใน `title_drop` แล้ว (รอบแรกหลุดมา 1 ชิ้น เจ้าของทิ้งจากหน้าเว็บได้)
 - ชื่อมุม (label) ถูกตัดที่ 22 ตัวอักษรตามกติกาใน prompt — โมเดลในเครื่องชอบเขียนยาวแล้วโดนตัดกลางคำ (เช่น "กฎหมายใหม่ ธปท. 57/256") · ถ้าจะแก้ ให้แก้ที่ prompt หรือ `parseAngles` ไม่ใช่ที่ UI
+- `FB_JS` ของ DVX เป็น Python raw string — ในรีโปนี้เก็บเป็นไฟล์ `facebook-page.dom.js` อ่านด้วย `readFileSync` **ห้ามวางใน template literal** (`\/` `\d` `\s` เพี้ยน → ตัวจับหน้า login ตายเงียบ = ไม่มีวันรู้ว่าโดนบล็อก) · เทสต์ตรวจว่า parse ผ่านและข้อความต้นฉบับยังอยู่ · DVX แก้ DOM เมื่อไหร่ รัน scratchpad `extract-fbjs.mjs` ก๊อปใหม่
+- URL เพจแบบ `/p/<ชื่อ>-<เลข>/` (เพจที่ไม่มี username) — ต้นแบบได้รหัสเพจ "p" ซ้ำกันทุกเพจ · ที่นี่ใช้เลขท้าย (`fb_61557696524403`) · `permalink.php?story_fbid=` ต้องคง story_fbid ไว้ก่อน hash ไม่งั้นทุกโพสต์ได้กุญแจเดียว
+- การใช้ Facebook วันนี้ของบัญชีร่วมดูได้จาก `status` (นับจาก `usage.jsonl` ทุกโปรเจกต์) — DVX มีแถว `result: diagnose` ที่ `pages` ว่าง (เช็ก bridge/ล็อกอิน ไม่เปิดเพจ) ไม่กินโควตา

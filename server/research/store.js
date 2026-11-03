@@ -68,6 +68,13 @@ export function createSupabaseStore({ url = process.env.SUPABASE_URL || process.
       const inserted = (data || []).length
       return { inserted, duplicates: rows.length - inserted }
     },
+    // ลิงก์ที่มีในตารางแล้ว (ทุก status) — ตัวเฝ้าเพจใช้กันเสนอโพสต์เดิมซ้ำแม้กุญแจต่างกัน
+    async knownUrls(urls) {
+      const list = [...new Set((urls || []).filter(Boolean))]
+      if (!list.length) return new Set()
+      const rows = await all(ideas().select('url').in('url', list))
+      return new Set(rows.map((r) => r.url))
+    },
     async expireOld({ subtypes, purgeDays, now = new Date() } = {}) {
       const rows = await all(ideas().select('id,status,subtype,created_at,event_date,content_id').eq('status', 'new'))
       let referenced = new Set()
@@ -157,6 +164,10 @@ export function createDryRunStore({ file, log = () => {} }) {
       }
       save()
       return { inserted, duplicates: rows.length - inserted }
+    },
+    async knownUrls(urls) {
+      const want = new Set((urls || []).filter(Boolean))
+      return new Set(data.ideas.map((r) => r.url).filter((u) => want.has(u)))
     },
     async expireOld({ subtypes, purgeDays, now = new Date() } = {}) {
       const ids = planExpiry(data.ideas, { subtypes, purgeDays, now })
