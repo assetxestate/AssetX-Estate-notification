@@ -112,9 +112,10 @@
     },
     {
       "id": "push-marketing-review-fixes",
-      "done": false,
+      "done": true,
       "owner": "you",
-      "text": "พิมพ์ \"push\" อีกครั้ง — ค้าง commit ปิดผลตรวจทาน d39fefa + commit ไดอารี่ (ตัวจำแนกสิทธิ์กันการ deploy รอบที่สองที่ Claude สั่งเอง)"
+      "text": "พิมพ์ \"push\" อีกครั้ง — ค้าง commit ปิดผลตรวจทาน d39fefa + commit ไดอารี่ (ตัวจำแนกสิทธิ์กันการ deploy รอบที่สองที่ Claude สั่งเอง)",
+      "done_at": "2026-11-04T07:42:46.359Z"
     },
     {
       "id": "marketing-page-try-new-tabs",
