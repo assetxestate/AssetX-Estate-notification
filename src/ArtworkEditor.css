@@ -29,4 +29,5 @@
 .ax-artwork-swatches button { height: 32px; width: 32px; padding: 0; border: 3px solid #fff; outline: 1px solid #c5d1d5; }
 .ax-artwork-swatches button[aria-pressed=true] { outline: 3px solid #24323c; }
 .ax-artwork-error { color: #a52a26; overflow-wrap: anywhere; }
+.ax-artwork footer .ax-artwork-error { flex: 1 1 220px; margin: 0; font-weight: 600; }
 @media (max-width: 680px) { .ax-artwork-body { grid-template-columns: minmax(0, 1fr); } .ax-artwork-preview { grid-row: 1; } .ax-artwork-sheet { max-width: 320px; margin: auto; } .ax-artwork header, .ax-artwork footer, .ax-artwork-fields, .ax-artwork-preview { padding: 16px; } .ax-artwork footer { flex-wrap: wrap; } }

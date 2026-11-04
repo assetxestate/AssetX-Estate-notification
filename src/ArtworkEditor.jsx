@@ -108,7 +108,7 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
     event.preventDefault()
     if (!busy) onClose()
   }}>
-    <header><div><h2 id="artwork-title">ออกแบบภาพโพสต์</h2><span>{brief.title || brief.headline}</span></div>
+    <header><div><h2 id="artwork-title">ออกแบบภาพโพสต์</h2><span>{brief.contentNo ? `#${brief.contentNo} · ` : ''}{brief.title || brief.headline}</span></div>
       <button type="button" onClick={onClose} disabled={busy}>ปิด</button></header>
     <div className="ax-artwork-body">
       <div className="ax-artwork-fields">
@@ -152,10 +152,12 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
           {preview ? <img src={preview.dataUrl} alt={design.headline} /> : <div className="ax-artwork-empty"><img src="/logo.jpg" alt="AssetX Estate" /><p>{busy ? 'กำลังสร้างภาพ...' : rendering ? 'กำลังจัดวาง...' : 'ยังไม่มีภาพ'}</p></div>}
         </div>
         {preview && <a href={preview.dataUrl} download="assetx-artwork.jpg">ดาวน์โหลด JPG</a>}
-        {(error || renderError) && <p className="ax-artwork-error" role="alert">{error || renderError}</p>}
+        {renderError && <p className="ax-artwork-error" role="alert">{renderError}</p>}
       </div>
     </div>
+    {/* ข้อผิดพลาดตอนสร้าง/บันทึกอยู่ข้างปุ่มบันทึกในแถบล่างที่ติดจอ (เดิมอยู่ใต้ภาพตัวอย่าง มองไม่เห็นบนจอ 768px และมือถือ) */}
     <footer><span>{preview?.width || ARTWORK_FORMATS[design.format].width} × {preview?.height || ARTWORK_FORMATS[design.format].height} px</span>
+      {error && <p className="ax-artwork-error" role="alert">{error}</p>}
       <button type="button" className="accent" disabled={busy || rendering || !preview || (!original && !design.headline.trim())} onClick={attach}>บันทึกและแนบกับโพสต์</button></footer>
   </dialog>
 }

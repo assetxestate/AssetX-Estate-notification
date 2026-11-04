@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { appendMarketingHashtags, assetxChannels, canPublishAssetxPost, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
@@ -10,6 +10,7 @@ import { assetxImageStyles, buildGalleryFireflyPrompt } from './lib/assetxImageS
 import { marketingChannelSetup, validateManualPublicationReference } from './lib/marketingChannels.js'
 import { organizeMarketingQueue } from './lib/marketingQueuePlan.js'
 import { SESSION_EXPIRED_MESSAGE, errorMessage, friendlyApiError } from './lib/marketingErrors.js'
+import { contentNoOf, contentReference, ensureContentNumbers, findContentByNo, formatContentNo, parseContentNo } from './lib/marketingContentNumbers.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -383,7 +384,8 @@ const defaultPosterCopy = {
 function loadWorkspace() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-    return {
+    // เลขคอนเทนต์: แจกให้ชิ้นที่ยังไม่มี โดยไม่เปลี่ยนเลขเดิม (ดู lib/marketingContentNumbers.js)
+    return ensureContentNumbers({
       studio: { ...defaultStudio, ...(stored.studio || {}) },
       generated: stored.generated || null,
       posts: Array.isArray(stored.posts) ? stored.posts : [],
@@ -398,7 +400,8 @@ function loadWorkspace() {
       metrics: Array.isArray(stored.metrics) ? stored.metrics : [],
       hiddenPostIds: Array.isArray(stored.hiddenPostIds) ? stored.hiddenPostIds : [],
       manualIdea: stored.manualIdea || '',
-    }
+      contentSeq: stored.contentSeq,
+    })
   } catch {
     return {
       studio: defaultStudio,
@@ -415,8 +418,32 @@ function loadWorkspace() {
       metrics: [],
       hiddenPostIds: [],
       manualIdea: '',
+      contentSeq: 0,
     }
   }
+}
+
+// ตัวนับเลขคอนเทนต์ที่เบราว์เซอร์นี้เคยแจกจริง — เก็บแยกเป็นคีย์เล็ก ๆ: เขียนได้แม้พื้นที่เต็มเพราะรูปใหญ่ และทุกแท็บในเบราว์เซอร์เดียวกันเห็นค่าเดียวกัน
+// ไม่นับเลขที่คำนวณจากข้อมูลเก่าในเครื่อง เพราะข้อมูลจากระบบจะโหลดทับ และต้องได้เลขชุดเดียวกับทุกเครื่อง
+const CONTENT_SEQ_KEY = 'assetx_marketing_content_seq'
+function readSeqFloor() {
+  try {
+    const value = Number(localStorage.getItem(CONTENT_SEQ_KEY))
+    return Number.isSafeInteger(value) && value > 0 ? value : 0
+  } catch {
+    return 0
+  }
+}
+function writeSeqFloor(value) {
+  try { localStorage.setItem(CONTENT_SEQ_KEY, String(value)) } catch { /* เขียนไม่ได้ ตัวนับในหน้านี้ยังกันซ้ำได้ */ }
+}
+function storedContentSeq() {
+  let saved = 0
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')?.contentSeq
+    if (Number.isSafeInteger(value) && value > 0) saved = value
+  } catch { /* ข้อมูลในเครื่องอ่านไม่ได้ = ไม่มีตัวนับ */ }
+  return Math.max(saved, readSeqFloor())
 }
 
 function normalizePrompt(prompt) {
@@ -425,7 +452,7 @@ function normalizePrompt(prompt) {
 }
 
 function normalizeWorkspace(workspace = {}) {
-  return {
+  return ensureContentNumbers({
     studio: { ...defaultStudio, ...(workspace.studio || {}) },
     generated: workspace.generated || null,
     posts: Array.isArray(workspace.posts) ? workspace.posts : [],
@@ -440,7 +467,8 @@ function normalizeWorkspace(workspace = {}) {
     metrics: Array.isArray(workspace.metrics) ? workspace.metrics : [],
     hiddenPostIds: Array.isArray(workspace.hiddenPostIds) ? workspace.hiddenPostIds : [],
     manualIdea: workspace.manualIdea || '',
-  }
+    contentSeq: workspace.contentSeq,
+  })
 }
 
 function hasWorkspaceContent(workspace) {
@@ -482,6 +510,29 @@ const queueStateLabels = {
 }
 
 const isSamplePost = (post) => String(post?.id || '').startsWith('sample-')
+// เลขคอนเทนต์ในข้อความ: "#12 · ข้อความ" · ไม่มีเลข (ร่างตัวอย่าง / ร่างที่ยังอยู่ใน Studio) คืนข้อความเดิม
+const withContentNo = (no, text) => (formatContentNo(no) ? `${formatContentNo(no)} · ${text}` : text)
+const titleWithNo = (post) => withContentNo(post?.contentNo, post?.title || '')
+const isFocused = (post, focusNo) => Boolean(focusNo?.no) && post?.contentNo === focusNo.no
+// ร่างทั้งหมดที่หน้าแสดง (ของเรา + ร่างตัวอย่างที่ยังไม่ซ่อน) จากเวิร์กสเปซที่ให้มา
+const draftsOf = (ws) => [...(ws?.posts || []), ...seedDrafts.filter((post) => !(ws?.hiddenPostIds || []).includes(post.id))]
+// ร่างใน Studio ยังเป็นร่างเดิมไหม (ระหว่างรอสร้าง/ย่อรูป อาจกดร่างใหม่ไปแล้ว — รูปต้องไม่ไปผูกกับร่างใหม่)
+const sameStudioDraft = (a, b) => Boolean(a && b) && a.headline === b.headline && a.imagePrompt === b.imagePrompt && a.caption === b.caption
+// แท็บที่คอนเทนต์อยู่ตามสถานะ (ช่องค้นด้วยเลข และตอนเปิดลิงก์ร่างจาก Telegram)
+const viewForStatus = (status) => (['pending', 'draft', 'needs_edit'].includes(status) ? 'approvals'
+  : ['approved', 'scheduled', 'posted'].includes(status) ? 'queue'
+    : 'library')
+const LOADING_MESSAGE = 'กำลังโหลดข้อมูลจากระบบ ลองอีกครั้งในอีกสักครู่'
+// แถบบนรายการร่าง/โพสต์/คลังผลงานระหว่างโหลด — บอกล่วงหน้าว่าปุ่มไหนต้องรอ (ไม่ต้องกดก่อนแล้วค่อยรู้)
+const LOADING_EDIT_NOTE = 'กำลังโหลดข้อมูลจากระบบ · แก้ข้อความ อนุมัติ ตั้งเวลา พักไว้ หรือลบได้เมื่อโหลดเสร็จ'
+// ตัวกรองของคลังผลงาน (ใช้ทั้งในรายการ และตอนค้นด้วยเลขว่าต้องเปลี่ยนตัวกรองไหม)
+function libraryFilterMatches(post, filter) {
+  if (filter === 'all') return true
+  if (filter === 'active') return post.status !== 'archived' && post.status !== 'posted'
+  if (filter === 'pending') return ['pending', 'draft', 'needs_edit'].includes(post.status)
+  if (filter === 'needs_edit') return post.reviewStatus === 'needs_edit'
+  return post.status === filter
+}
 const reviewLabel = (post) => (post?.reviewStatus === 'passed' ? 'ผ่านเกณฑ์' : 'ติดเกณฑ์')
 
 // ผลตรวจเกณฑ์ซ้ำกันทุกช่อง (หัวข้อ/แคปชั่น/สคริปต์) → แสดงครั้งเดียว โดยตัดป้ายช่องออกเมื่อข้อความเดียวกันซ้ำ
@@ -996,8 +1047,41 @@ async function compressImageFile(file, maxSize = 1500, quality = 0.84) {
 
 export default function MarketingPage({ onBack }) {
   const [workspace, setWorkspace] = useState(loadWorkspace)
+  // เวิร์กสเปซล่าสุดเสมอ — ตัวจัดการที่ต้องรอเครือข่ายหรือไฟล์ต่อยอดจากของล่าสุด ไม่ใช่สำเนาก่อนรอ (ไม่งั้นงานที่ทำระหว่างรอหาย)
+  const workspaceRef = useRef(workspace)
+  // เลขคอนเทนต์สูงสุดที่แจกไปแล้ว — ไม่ถอยหลังแม้มีการบันทึกสำเนาเก่าหรือโหลดจากระบบทับ จึงไม่แจกเลขเดิมให้คอนเทนต์ชิ้นอื่น
+  // อ่านจากเครื่องครั้งเดียวตอนเปิดหน้า (ข้อมูลในเครื่องมีรูปขนาดใหญ่ อย่าอ่านซ้ำทุกครั้งที่หน้าวาดใหม่)
+  const seqFloorRef = useRef(null)
+  if (seqFloorRef.current === null) seqFloorRef.current = storedContentSeq()
+  const commitWorkspace = (next) => {
+    workspaceRef.current = next
+    setWorkspace(next)
+  }
+  const numbered = (input) => {
+    // ตัวนับ = สูงสุดของ (ในหน้านี้ · แท็บอื่นในเบราว์เซอร์เดียวกัน) → เลขที่แจกไปแล้วไม่ถูกแจกซ้ำ
+    const floor = Math.max(seqFloorRef.current, readSeqFloor())
+    const next = ensureContentNumbers(input, { floor })
+    seqFloorRef.current = next.contentSeq
+    if (next.contentSeq > floor) writeSeqFloor(next.contentSeq)
+    return next
+  }
+  // ระหว่างรอข้อมูลจากระบบตอนเปิดหน้า: การสร้างของใหม่ (ร่างใหม่ ช่องไอเดีย พรอมต์ Studio) ทำกับสำเนาในเครื่องก่อน และจดไว้ทำซ้ำบนข้อมูลจากระบบเมื่อมาถึง
+  // (เดิมข้อมูลจากระบบทับทั้งก้อน งานที่ทำระหว่างรอหาย) · การกระทำกับคอนเทนต์ที่มีอยู่แล้วต้องรอให้โหลดเสร็จ (blockedWhileLoading)
+  // · ยังไม่แจกเลขใหม่จนกว่าจะรู้ตัวนับของระบบ
+  const loadSettledRef = useRef(false)
+  const pendingRef = useRef([])
+  const mountWorkspaceRef = useRef(workspace)
+  const toastTimerRef = useRef(null)
+  const toolsRef = useRef(null)
   const [view, setView] = useState('ideas')
   const [toolsOpen, setToolsOpen] = useState(false)
+  const [findText, setFindText] = useState('')
+  // คอนเทนต์ที่เพิ่งค้นด้วยเลข { no, at } → เลื่อนไปที่การ์ดและไฮไลต์ชั่วครู่ (สถานะหน้าจอ ไม่บันทึกลงเวิร์กสเปซ)
+  const [focusNo, setFocusNo] = useState(null)
+  // ข้อความใต้ช่องค้น { text, at } — ส่งข้อความเดิมซ้ำก็นับเวลาใหม่และอ่านออกเสียงใหม่
+  const [findMsg, setFindMsg] = useState(null)
+  // คลังผลงาน: ชิ้นที่เพิ่งค้นด้วยเลข → ช่องตัวอย่างช่องทางแสดงชิ้นนี้ (สถานะหน้าจอ ไม่บันทึก)
+  const [libraryPreviewId, setLibraryPreviewId] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
   const [libraryFilter, setLibraryFilter] = useState('active')
   const [librarySort, setLibrarySort] = useState('newest')
@@ -1053,14 +1137,26 @@ export default function MarketingPage({ onBack }) {
   }
   const selectedReference = (workspace.references || []).find((item) => item.id === selectedReferenceId) || (workspace.references || [])[0]
 
-  const save = (next) => {
-    setWorkspace(next)
+  // ทุกการบันทึก = "ฟังก์ชันที่ทำกับเวิร์กสเปซล่าสุด" ไม่ใช่สำเนาตอนหน้าวาดครั้งก่อน → การกดที่มาถึงพร้อมผลของงานที่รอเครือข่าย
+  // หรือพร้อมข้อมูลจากระบบตอนเปิดหน้า ไม่ทับกัน · ทุกการบันทึกผ่านตัวแจกเลขคอนเทนต์ (คอนเทนต์ใหม่ทุกทางได้เลขทันที)
+  // requireLocal: บันทึกลงเครื่องไม่ได้ = โยนข้อผิดพลาดและไม่เปลี่ยนอะไร (ใช้ตอนยังไม่ได้เชื่อมระบบ)
+  const save = (update, { requireLocal = false } = {}) => {
+    const apply = typeof update === 'function' ? update : () => update
+    const raw = apply(workspaceRef.current)
+    const next = loadSettledRef.current ? numbered(raw) : raw
+    let stored = true
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
     } catch {
-      // พื้นที่เก็บในเบราว์เซอร์เต็ม (รูปใหญ่หลายรูป) — ข้อมูลยังอยู่ในหน้าและจะบันทึกขึ้นระบบตามปกติ ไม่โยน DOMException ภาษาอังกฤษขึ้นจอ
-      notify('พื้นที่เก็บในเบราว์เซอร์เต็ม ข้อมูลยังอยู่ในหน้านี้และจะบันทึกขึ้นระบบต่อไป', 'error')
+      stored = false
     }
+    if (!stored && requireLocal) throw new Error('พื้นที่เก็บข้อมูลในเครื่องเต็ม กรุณาเชื่อมต่อระบบจัดเก็บก่อนบันทึกภาพ')
+    // จดไว้ทำซ้ำบนข้อมูลจากระบบ (เฉพาะแบบฟังก์ชัน — สำเนาทั้งก้อนห้ามทำซ้ำ ไม่งั้นจะทับข้อมูลจากระบบ)
+    if (!loadSettledRef.current && typeof update === 'function') pendingRef.current.push(update)
+    commitWorkspace(next)
+    // พื้นที่เก็บในเบราว์เซอร์เต็ม (รูปใหญ่หลายรูป) — ข้อมูลยังอยู่ในหน้าและจะบันทึกขึ้นระบบตามปกติ ไม่โยน DOMException ภาษาอังกฤษขึ้นจอ
+    if (!stored) notify('พื้นที่เก็บในเบราว์เซอร์เต็ม ข้อมูลยังอยู่ในหน้านี้และจะบันทึกขึ้นระบบต่อไป', 'error')
+    return next
   }
 
   // คิวไอเดียจากระบบรีเสิร์ช — บอกสถานะจริงเสมอ: โหลดอยู่ / โหลดได้ / เซสชันหมดอายุ / ฝั่งเซิร์ฟเวอร์ยังไม่พร้อม / โหลดไม่ได้
@@ -1098,42 +1194,95 @@ export default function MarketingPage({ onBack }) {
     let cancelled = false
     getMarketingWorkspace()
       .then(async (remote) => {
+        if (cancelled) return
         const incomingId = new URLSearchParams(window.location.search).get('hermesDraft')
+        // ฐาน = ข้อมูลจากระบบ (ชนะเสมอ ตามเดิม) หรือสำเนาในเครื่องตอนเปิดหน้าถ้าระบบยังไม่มีข้อมูล → แล้วทำซ้ำการแก้ระหว่างรอทับลงไป
+        // เลขของคอนเทนต์เก่าที่ยังไม่มีเลข คิดจากฐานล้วน ๆ (normalizeWorkspace) ทุกเครื่องจึงได้เลขเดียวกัน · ตัวนับของเครื่องนี้ยกขึ้นทีหลังใน numbered()
+        const hasCloud = Boolean(remote?.payload && hasWorkspaceContent(remote.payload))
+        let base = numbered(hasCloud ? normalizeWorkspace(remote.payload) : mountWorkspaceRef.current)
+        let savedAt = hasCloud ? (remote.updated_at || null) : null
+        // ผลของลิงก์ร่างจาก Telegram { postId?, text, type? } → แจ้งและเปิดแท็บหลังโหลดเสร็จ
+        let importNotice = null
         if (incomingId) {
           // ลิงก์ร่างจาก Telegram เสีย/หมดอายุ → แจ้งแล้วโหลดข้อมูลตามปกติต่อ (เดิมลิงก์เสียทำให้หยุดบันทึกขึ้นระบบทั้ง session)
+          const hermesId = `hermes-${incomingId}`
+          let keepLink = false
           try {
             if (!/^[a-f0-9]{32}$/.test(incomingId)) throw new Error('Invalid Hermes draft link')
-            const incoming = await getMarketingWorkspace(`hermes-draft-${incomingId}`)
+            let incoming
+            try {
+              incoming = await getMarketingWorkspace(`hermes-draft-${incomingId}`)
+            } catch (fetchError) {
+              // อ่านร่างไม่ได้เพราะเครือข่าย (ไม่ใช่ลิงก์เสีย) → คงลิงก์ไว้ลองใหม่ได้
+              keepLink = true
+              throw fetchError
+            }
             if (cancelled) return
             if (!incoming?.payload || incoming.payload.id !== incomingId) throw new Error('Hermes draft not found')
-            const base = remote?.payload && hasWorkspaceContent(remote.payload) ? normalizeWorkspace(remote.payload) : loadWorkspace()
-            const imported = importHermesDraft(base, incoming.payload)
-            if (imported !== base) await saveMarketingWorkspace(imported)
-            if (cancelled) return
-            remote = { payload: imported, updated_at: new Date().toISOString() }
-            setView('approvals')
-            setSelectedId(`hermes-${incomingId}`)
+            const raw = importHermesDraft(base, incoming.payload)
+            if (raw !== base) {
+              // แจกเลขก่อนบันทึก ข้อมูลในระบบจึงมีเลขของร่างนี้ตั้งแต่แรก · การแก้ระหว่างรอบันทึกจะทำซ้ำต่อท้ายและได้เลขถัดไป
+              const imported = numbered(raw)
+              try {
+                await saveMarketingWorkspace(imported)
+              } catch (saveError) {
+                // ลิงก์ใช้ได้ แต่บันทึกขึ้นระบบไม่สำเร็จ (เช่น เน็ตมือถือหลุด) → คงลิงก์ไว้ให้รีเฟรชลองใหม่ · เลขที่แจกไปแล้วข้ามไป ไม่ใช้ซ้ำ
+                keepLink = true
+                throw saveError
+              }
+              if (cancelled) return
+              base = imported
+              savedAt = new Date().toISOString()
+              importNotice = { postId: hermesId, text: 'นำเข้าร่างจากผู้ช่วย Telegram แล้ว · รอตรวจ' }
+            } else if ((base.hiddenPostIds || []).includes(hermesId)) {
+              // เคยนำเข้าแล้วถูกลบทิ้ง → ไม่นำเข้าซ้ำ และบอกเหตุผล (เดิมเปิดแท็บ ร่าง เฉย ๆ)
+              importNotice = { text: 'ร่างจาก Telegram นี้ถูกลบไปแล้ว จึงไม่นำเข้าซ้ำ', type: 'warn' }
+            } else {
+              importNotice = { postId: hermesId, text: 'ร่างนี้นำเข้าไว้แล้ว' }
+            }
           } catch (importError) {
             if (cancelled) return
             console.warn('hermes draft import failed:', importError?.message || importError)
-            notify('นำเข้าร่างจากผู้ช่วย Telegram ไม่สำเร็จ ลิงก์อาจหมดอายุหรือไม่ถูกต้อง', 'error')
+            importNotice = keepLink
+              // ไม่บอกให้รีเฟรชทันที: เน็ตยังหลุดอยู่ การรีเฟรชตอนนี้ทำให้งานที่ยังไม่ขึ้นระบบหาย (แถบด้านบนบอกสถานะการบันทึก)
+              ? { text: 'ยังนำเข้าร่างจาก Telegram ไม่ได้ · ลิงก์ยังอยู่ · เมื่อแถบด้านบนขึ้น "บันทึกแล้ว" ให้รีเฟรชเพื่อนำเข้าอีกครั้ง', type: 'error' }
+              : { text: 'นำเข้าร่างจากผู้ช่วย Telegram ไม่สำเร็จ ลิงก์อาจหมดอายุหรือไม่ถูกต้อง', type: 'error' }
+          }
+          // ลิงก์ใช้ครั้งเดียว: เอาออกจากแถบที่อยู่ รีเฟรชแล้วจะไม่นำเข้าซ้ำ (ยกเว้นบันทึกไม่สำเร็จ ต้องรีเฟรชลองใหม่ได้)
+          if (!keepLink) {
+            try {
+              const url = new URL(window.location.href)
+              url.searchParams.delete('hermesDraft')
+              window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+            } catch { /* ข้ามได้ */ }
           }
         }
         if (cancelled) return
-        if (remote?.payload && hasWorkspaceContent(remote.payload)) {
-          const next = normalizeWorkspace(remote.payload)
-          setWorkspace(next)
-          // พื้นที่ในเบราว์เซอร์เต็มต้องไม่ทำให้หยุดบันทึกขึ้นระบบ — ข้อมูลชุดนี้มาจากระบบอยู่แล้ว
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* ข้ามได้ */ }
-          setSyncState({ state: 'saved', at: remote.updated_at || null })
-        } else {
-          setSyncState({ state: 'saved', at: null })
+        let next = base
+        for (const apply of pendingRef.current) next = numbered(apply(next))
+        pendingRef.current = []
+        loadSettledRef.current = true
+        commitWorkspace(next)
+        // พื้นที่ในเบราว์เซอร์เต็มต้องไม่ทำให้หยุดบันทึกขึ้นระบบ — ข้อมูลชุดนี้มาจากระบบอยู่แล้ว
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* ข้ามได้ */ }
+        if (importNotice) {
+          const post = importNotice.postId ? draftsOf(next).find((item) => item.id === importNotice.postId) : null
+          // เปิดแท็บที่ร่างอยู่ตามสถานะ (ร่างที่นำเข้าไว้แล้วอาจถูกอนุมัติหรือพักไว้แล้ว) และไฮไลต์การ์ด
+          if (post) openContent(post)
+          notify(post ? withContentNo(post.contentNo, importNotice.text) : importNotice.text, importNotice.type)
         }
+        setSyncState({ state: 'saved', at: savedAt })
         setCloudReady(true)
       })
       .catch((error) => {
         if (cancelled) return
         console.warn('load marketing workspace failed:', error?.message || error)
+        // โหลดจากระบบไม่ได้ → ทำงานกับสำเนาในเครื่องต่อ (การแก้ระหว่างรออยู่ในนั้นแล้ว) และเริ่มแจกเลขจากสำเนานี้
+        pendingRef.current = []
+        loadSettledRef.current = true
+        const next = numbered(workspaceRef.current)
+        commitWorkspace(next)
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* ข้ามได้ */ }
         setSyncState({ state: 'local', at: null })
         setCloudReady(false)
       })
@@ -1150,6 +1299,59 @@ export default function MarketingPage({ onBack }) {
     }, 700)
     return () => window.clearTimeout(timer)
   }, [workspace, cloudReady])
+
+  // ค้นด้วยเลข → เลื่อนไปที่การ์ดหลังหน้าเปลี่ยนแล้ว และไฮไลต์ชั่วครู่
+  useEffect(() => {
+    if (!focusNo) return undefined
+    const scrollTimer = window.setTimeout(() => {
+      const card = document.querySelector(`[data-content-no="${focusNo.no}"]`)
+      if (!card) return
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+      // หัวหน้าติดบนจอ (จอกว้าง) และสูงไม่คงที่ (แถบสถานะ/แท็บขึ้นบรรทัดใหม่ได้) → วัดจริงทุกครั้ง การ์ดจึงไม่ไปอยู่ใต้หัว
+      const head = document.querySelector('.mx-head')
+      const sticky = head && getComputedStyle(head).position === 'sticky'
+      const offset = (sticky ? head.getBoundingClientRect().height : 0) + 12
+      window.scrollTo({ top: Math.max(0, card.getBoundingClientRect().top + window.scrollY - offset), behavior: reduceMotion ? 'auto' : 'smooth' })
+      // คนใช้แป้นพิมพ์/โปรแกรมอ่านหน้าจอรู้ตำแหน่ง: โฟกัสไปที่ป้ายเลขของการ์ด (แป้นพิมพ์มือถือปิดเอง)
+      card.querySelector('.mx-no')?.focus({ preventScroll: true })
+    }, 80)
+    const clearTimer = window.setTimeout(() => setFocusNo(null), 3200)
+    return () => {
+      window.clearTimeout(scrollTimer)
+      window.clearTimeout(clearTimer)
+    }
+  }, [focusNo])
+
+  // ข้อความใต้ช่องค้นหายเองหลังอ่านทัน (ส่งซ้ำ = ออบเจกต์ใหม่ จึงนับเวลาใหม่)
+  useEffect(() => {
+    if (!findMsg) return undefined
+    const timer = window.setTimeout(() => setFindMsg(null), 6000)
+    return () => window.clearTimeout(timer)
+  }, [findMsg])
+
+  // เปลี่ยนหน้า = ข้อความใต้ช่องค้นหมดความหมาย (เดิมค้างบังปุ่มของหน้าใหม่)
+  useEffect(() => { setFindMsg(null) }, [view])
+
+  // เมนูเครื่องมือปิดเมื่อคลิกนอกเมนู โฟกัสออกนอกเมนู (กด Tab ผ่านรายการสุดท้าย) หรือกด Esc (เดิมค้างเปิดบังข้อความใต้ช่องค้นและปุ่มอื่น)
+  // ใช้ click ไม่ใช่ pointerdown: เลื่อนจอด้วยนิ้วบนมือถือไม่ทำให้เมนูปิด
+  useEffect(() => {
+    if (!toolsOpen) return undefined
+    const closeIfOutside = (event) => { if (!toolsRef.current?.contains(event.target)) setToolsOpen(false) }
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      const inside = toolsRef.current?.contains(document.activeElement)
+      setToolsOpen(false)
+      if (inside) toolsRef.current.querySelector('summary')?.focus()
+    }
+    document.addEventListener('click', closeIfOutside)
+    document.addEventListener('focusin', closeIfOutside)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('click', closeIfOutside)
+      document.removeEventListener('focusin', closeIfOutside)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [toolsOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -1173,18 +1375,42 @@ export default function MarketingPage({ onBack }) {
   const retrySave = () => {
     if (!cloudReady) return
     setSyncState((prev) => ({ ...prev, state: 'saving' }))
-    saveMarketingWorkspace(workspace)
+    saveMarketingWorkspace(workspaceRef.current)
       .then(() => setSyncState({ state: 'saved', at: new Date().toISOString() }))
       .catch(() => setSyncState({ state: 'failed', at: null }))
   }
 
+  // ข้อความแจ้งผลชิ้นใหม่ได้เวลาเต็มเสมอ (เดิมตัวจับเวลาของข้อความก่อนหน้าลบข้อความใหม่ทิ้งในไม่ถึงวินาที)
+  // type: success · warn (สิ่งที่ขอไม่ได้เกิดขึ้น เพราะสถานะเปลี่ยน/ต้องรอ — สีเหลือง) · error · warn/error ค้างนานกว่าให้อ่านทัน
   const notify = (message, type = 'success') => {
+    window.clearTimeout(toastTimerRef.current)
     setToast({ message, type })
-    window.setTimeout(() => setToast(null), 2200)
+    toastTimerRef.current = window.setTimeout(() => setToast(null), type === 'success' ? 2200 : 4500)
+  }
+
+  // ระหว่างโหลดข้อมูลจากระบบ หน้าจอยังแสดงสำเนาในเครื่องที่อาจเก่ากว่าระบบ → การกระทำกับของที่มีอยู่แล้ว
+  // (แก้ข้อความ อนุมัติ ตั้งเวลา พักไว้ ลบ โพสต์) รอให้โหลดเสร็จก่อน ไม่งั้นจะไปลงกับฉบับในระบบที่คนยังไม่เห็น
+  const blockedWhileLoading = () => {
+    if (loadSettledRef.current) return false
+    notify(LOADING_MESSAGE, 'warn')
+    return true
   }
 
   const updatePost = (id, patch, message) => {
-    const current = allDrafts.find((post) => post.id === id)
+    if (blockedWhileLoading()) return
+    // ใช้เวิร์กสเปซล่าสุด: ถูกเรียกหลังรอเครือข่ายได้ (เช่น หลังส่ง Facebook) ต้องไม่ทับงานที่เกิดระหว่างรอ
+    const latest = workspaceRef.current
+    if (String(id).startsWith('sample-')) {
+      // ร่างตัวอย่างนี้ถูกแก้จนกลายเป็นร่างจริงไปแล้ว (เหตุการณ์ที่ยังถือ id เก่ามาถึงทีหลัง) → แก้ที่ร่างจริงชิ้นนั้น ไม่สร้างสำเนาซ้ำ
+      const clone = (latest.posts || []).find((post) => post.sampleOf === id)
+      if (clone) id = clone.id
+    }
+    const current = draftsOf(latest).find((post) => post.id === id)
+    if (!current) {
+      // คอนเทนต์นี้ถูกลบไประหว่างรอ (เช่น ระหว่างส่ง Facebook) — ไม่ตรวจ ไม่บันทึก แจ้งตามจริง
+      if (message) notify(`${message} · แต่คอนเทนต์นี้ถูกลบจากหน้านี้ไปแล้ว`, 'warn')
+      return
+    }
     if (Object.hasOwn(patch, 'caption') || Object.hasOwn(patch, 'channel')) {
       const review = reviewAssetxContent({ ...current, ...patch })
       patch = { ...patch, status: 'pending', reviewStatus: review.ok ? 'passed' : 'needs_edit', reviewNotes: [...review.notes, 'ข้อความเปลี่ยนแล้ว ต้องตรวจและอนุมัติใหม่'] }
@@ -1200,21 +1426,32 @@ export default function MarketingPage({ onBack }) {
       }
     }
     if (String(id).startsWith('sample-')) {
-      // ร่างตัวอย่างแก้ครั้งแรก = กลายเป็นร่างจริงของเรา และซ่อนตัวอย่างเดิม (ไม่งั้นได้สำเนาเพิ่มทุกครั้งที่พิมพ์)
-      const cloned = allDrafts.find((post) => post.id === id)
-      const post = { ...cloned, id: Date.now(), sampleOf: id, ...patch }
-      save({ ...workspace, posts: [post, ...workspace.posts], hiddenPostIds: [...new Set([...(workspace.hiddenPostIds || []), id])] })
+      // ร่างตัวอย่างแก้ครั้งแรก = กลายเป็นร่างจริงของเรา และซ่อนตัวอย่างเดิม (ไม่งั้นได้สำเนาเพิ่มทุกครั้งที่พิมพ์) · ได้เลขคอนเทนต์ตอนนี้
+      const post = { ...current, id: Date.now(), sampleOf: id, ...patch }
+      const next = save((ws) => ({ ...ws, posts: [post, ...(ws.posts || [])], hiddenPostIds: [...new Set([...(ws.hiddenPostIds || []), id])] }))
       setSelectedId(post.id)
-      if (message) notify(message)
+      // message === '' = ผู้เรียกตั้งใจไม่ให้มีข้อความ (เช่น อนุมัติไม่ผ่านเกณฑ์ ต้องเห็นเหตุผลที่เพิ่งแจ้ง) — ไม่ทับด้วยข้อความอื่น
+      const text = message === undefined ? 'สร้างร่างของเราจากตัวอย่างแล้ว' : message
+      if (text) notify(withContentNo(contentNoOf(next, post.id), text))
       return
     }
-    save({ ...workspace, posts: workspace.posts.map((post) => post.id === id ? { ...post, ...patch } : post) })
-    if (message) notify(message)
+    save((ws) => ({ ...ws, posts: (ws.posts || []).map((post) => post.id === id ? { ...post, ...patch } : post) }))
+    if (message) notify(withContentNo(current.contentNo, message))
   }
 
   const attachDesignedArtwork = async (image) => {
+    // ระหว่างโหลดข้อมูลจากระบบ ร่าง/โพสต์ที่เห็นอาจไม่ใช่ฉบับล่าสุด → หน้าต่างออกแบบภาพแจ้งและเก็บงานไว้ กดบันทึกใหม่ได้เมื่อโหลดเสร็จ
+    if (!loadSettledRef.current) throw new Error('กำลังโหลดข้อมูลจากระบบ ภาพที่ออกแบบยังอยู่ กดบันทึกอีกครั้งในอีกสักครู่')
     const brief = artworkBrief
     const isGenerated = brief.id === 'generated'
+    if (!isGenerated) {
+      // หน้าต่างนี้เปิดจากการ์ดร่าง → ตอนบันทึกต้องยังเป็นร่างอยู่ (ระหว่างเปิดค้างไว้ อาจถูกลบ อนุมัติ หรือโพสต์จากอีกเครื่อง)
+      // ไม่งั้นการแนบภาพจะดึงโพสต์ที่อนุมัติ/โพสต์แล้วกลับมาเป็นร่าง หรือสร้างร่างตัวอย่างที่ซ่อนไปแล้วขึ้นมาใหม่
+      const target = draftsOf(workspaceRef.current).find((item) => String(item.id) === String(brief.id))
+      if (!target || !['pending', 'draft', 'needs_edit'].includes(target.status)) {
+        throw new Error('คอนเทนต์นี้ถูกลบ อนุมัติ หรือโพสต์ไปแล้วระหว่างนี้ — ปิดหน้าต่างแล้วเปิดออกแบบภาพจากการ์ดร่างอีกครั้ง')
+      }
+    }
     const isSample = String(brief.id).startsWith('sample-')
     const postId = isSample ? Date.now() : brief.id
     const asset = {
@@ -1224,34 +1461,48 @@ export default function MarketingPage({ onBack }) {
       originalName: 'assetx-artwork.jpg', createdAt: new Date().toISOString(),
     }
     const patch = { mediaAssetId: asset.id, status: 'pending', reviewStatus: 'needs_edit' }
-    const next = {
-      ...workspace,
-      generated: isGenerated ? { ...workspace.generated, mediaAssetId: asset.id } : workspace.generated,
-      posts: isSample ? [{ ...brief, id: postId, ...patch }, ...workspace.posts]
-        : workspace.posts.map((post) => String(post.id) === String(postId) ? { ...post, ...patch } : post),
-      hiddenPostIds: isSample ? [...new Set([...workspace.hiddenPostIds, brief.id])] : workspace.hiddenPostIds,
-      mediaAssets: [asset, ...(workspace.mediaAssets || [])],
-    }
-    // Persist first: a failed storage write must not report a successful attachment.
-    if (cloudReady) {
+    // ใส่ภาพลงเวิร์กสเปซ (ฟังก์ชันเดียวใช้ทั้งกับของล่าสุด และตอนทำซ้ำหลังรอบันทึกขึ้นระบบ) · ร่างตัวอย่างใช้เลขเดิมที่แจกไปแล้วเมื่อทำซ้ำ
+    const withArtwork = (ws, cloneNo = null) => ({
+      ...ws,
+      // ร่างใน Studio ต้องยังเป็นร่างที่เปิดหน้าต่างออกแบบไว้ (ระหว่างรอบันทึกอาจกดร่างใหม่) ไม่งั้นเก็บภาพไว้ในคลังเฉย ๆ
+      generated: isGenerated && ws.generated && sameStudioDraft(ws.generated, brief) ? { ...ws.generated, mediaAssetId: asset.id } : ws.generated,
+      posts: isSample ? [{ ...brief, id: postId, ...patch, ...(cloneNo ? { contentNo: cloneNo } : {}) }, ...(ws.posts || [])]
+        : (ws.posts || []).map((post) => String(post.id) === String(postId) ? { ...post, ...patch } : post),
+      hiddenPostIds: isSample ? [...new Set([...(ws.hiddenPostIds || []), brief.id])] : ws.hiddenPostIds,
+      mediaAssets: [asset, ...(ws.mediaAssets || [])],
+    })
+    let final
+    if (!cloudReady) {
+      // ยังไม่ได้เชื่อมระบบ (กำลังโหลด หรือโหลดไม่ได้) → บันทึกลงเครื่องตามทางปกติ (ทำซ้ำบนข้อมูลจากระบบได้ถ้ากำลังโหลด)
+      // บันทึกลงเครื่องไม่ได้ = แจ้งในหน้าต่างออกแบบภาพ ไม่ปิดเงียบ ๆ ทั้งที่ภาพไม่ได้ถูกเก็บที่ไหน
+      final = save((ws) => withArtwork(ws), { requireLocal: true })
+    } else {
+      // Persist first: a failed storage write must not report a successful attachment.
+      const base = workspaceRef.current
+      const next = numbered(withArtwork(base))
       try { await saveMarketingWorkspace(next) } catch (error) {
         console.warn('save artwork failed:', error?.message || error)
         throw new Error('บันทึกภาพขึ้นระบบไม่สำเร็จ ลองใหม่อีกครั้ง')
       }
+      final = workspaceRef.current === base ? next : numbered(withArtwork(workspaceRef.current, isSample ? contentNoOf(next, postId) : null))
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(final)) } catch { /* ขึ้นระบบแล้ว พื้นที่ในเครื่องเต็มก็ไม่เป็นไร */ }
+      commitWorkspace(final)
     }
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) }
-    catch { if (!cloudReady) throw new Error('พื้นที่เก็บข้อมูลในเครื่องเต็ม กรุณาเชื่อมต่อระบบจัดเก็บก่อนบันทึกภาพ') }
-    setWorkspace(next)
     if (!isGenerated) setSelectedId(postId)
-    notify('แนบภาพแล้ว พร้อมตรวจอนุมัติ')
+    if (isGenerated && final.generated?.mediaAssetId !== asset.id) {
+      notify('เก็บภาพไว้ในคลังภาพแล้ว · ร่างใน Studio เปลี่ยนไประหว่างรอ จึงไม่ผูกภาพกับร่างใหม่', 'warn')
+      return
+    }
+    notify(isGenerated ? 'แนบภาพแล้ว พร้อมตรวจอนุมัติ' : withContentNo(contentNoOf(final, postId), 'แนบภาพแล้ว พร้อมตรวจอนุมัติ'))
   }
 
   const publishToFacebook = async (post) => {
+    if (blockedWhileLoading()) return
     if (!facebookConnection.connected) {
       notify('ยังไม่เชื่อม Facebook', 'error')
       return
     }
-    const media = findMediaForPost(workspace.mediaAssets || [], post)
+    const media = findMediaForPost(workspaceRef.current.mediaAssets || [], post)
     setFacebookPublishingId(post.id)
     try {
       const response = await fetch('/api/marketing-facebook', {
@@ -1279,6 +1530,12 @@ export default function MarketingPage({ onBack }) {
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok || !data.success) throw new Error(friendlyApiError(response.status, data, 'โพสต์ Facebook ไม่สำเร็จ ลองใหม่หรือตรวจการเชื่อมต่อในหน้าช่องทาง'))
+      const doneMessage = data.scheduled ? 'ตั้งเวลาโพสต์บน Facebook แล้ว' : 'โพสต์ไปยัง Facebook Page แล้ว'
+      if (!draftsOf(workspaceRef.current).some((item) => item.id === post.id)) {
+        // ถูกลบจากหน้านี้ระหว่างรอ Facebook — โพสต์บน Facebook เกิดขึ้นแล้ว บอกตามจริงพร้อมเลข (เป็นคำเตือน ไม่ใช่ข้อความสำเร็จ)
+        notify(withContentNo(post.contentNo, `${doneMessage} · แต่คอนเทนต์นี้ถูกลบจากหน้านี้ไปแล้ว`), 'warn')
+        return
+      }
       updatePost(post.id, {
         status: data.scheduled ? 'scheduled' : 'posted',
         postedAt: data.scheduled ? '' : new Date().toISOString(),
@@ -1286,17 +1543,18 @@ export default function MarketingPage({ onBack }) {
         facebookMediaType: data.mediaType,
         facebookScheduledAt: data.scheduledPublishTime || '',
         publishError: '',
-      }, data.scheduled ? 'ตั้งเวลาโพสต์บน Facebook แล้ว' : 'โพสต์ไปยัง Facebook Page แล้ว')
+      }, doneMessage)
     } catch (error) {
       const message = errorMessage(error, 'โพสต์ Facebook ไม่สำเร็จ')
       updatePost(post.id, { publishError: message }, '')
-      notify(message, 'error')
+      notify(withContentNo(post.contentNo, message), 'error')
     } finally {
       setFacebookPublishingId(null)
     }
   }
 
   const recordManualPublication = (post, rawReference) => {
+    if (blockedWhileLoading()) return false
     if (!['approved', 'scheduled'].includes(post.status) || post.reviewStatus !== 'passed' || !reviewAssetxContent(post).ok) {
       notify('โพสต์นี้ต้องผ่านการตรวจและอนุมัติก่อน', 'error')
       return false
@@ -1325,47 +1583,62 @@ export default function MarketingPage({ onBack }) {
   }
 
   const deletePost = (id) => {
+    if (blockedWhileLoading()) return
     const isSample = String(id).startsWith('sample-')
-    const next = isSample
-      ? { ...workspace, hiddenPostIds: [...new Set([...(workspace.hiddenPostIds || []), id])] }
-      : { ...workspace, posts: workspace.posts.filter((post) => post.id !== id) }
-    save(next)
+    const removedNo = (workspaceRef.current.posts || []).find((post) => post.id === id)?.contentNo
+    // ร่างจาก Telegram ที่ลบแล้วต้องไม่ถูกนำเข้าซ้ำเมื่อเปิดลิงก์เดิม → จำ id ไว้ในรายการที่ซ่อน (เหมือนร่างตัวอย่าง)
+    const remember = isSample || String(id).startsWith('hermes-')
+    save((ws) => ({
+      ...ws,
+      posts: isSample ? ws.posts : (ws.posts || []).filter((post) => post.id !== id),
+      hiddenPostIds: remember ? [...new Set([...(ws.hiddenPostIds || []), id])] : ws.hiddenPostIds,
+    }))
     if (selectedId === id) setSelectedId(null)
-    notify(isSample ? 'ซ่อนร่างตัวอย่างแล้ว' : 'ลบออกจากคลังแล้ว')
+    notify(isSample ? 'ซ่อนร่างตัวอย่างแล้ว' : withContentNo(removedNo, 'ลบออกจากคลังแล้ว · เลขนี้จะไม่ถูกใช้ซ้ำ'))
   }
 
   const deleteSavedIdea = (id) => {
-    save({ ...workspace, savedIdeas: workspace.savedIdeas.filter((idea) => idea.id !== id) })
+    if (blockedWhileLoading()) return
+    save((ws) => ({ ...ws, savedIdeas: (ws.savedIdeas || []).filter((idea) => idea.id !== id) }))
     notify('ลบไอเดียที่เก็บไว้แล้ว')
   }
 
   const generateContent = (prompt, sourceIdea) => {
-    const inferredIntent = inferStudioIntentFromIdea(sourceIdea, workspace.studio)
+    const ws = workspaceRef.current
+    const inferredIntent = inferStudioIntentFromIdea(sourceIdea, ws.studio)
+    // ไอเดียรีเสิร์ชต้นเรื่อง: มาจากการ์ด/คลัง (dbId) หรือกด ร่างโพสต์ ซ้ำใน Studio ด้วยหัวข้อเดิม (คงลิงก์เดิม)
+    // แก้หัวข้อใน Studio = เรื่องใหม่ ลิงก์หลุด (onPromptChange) · ไอเดียที่กรอกเอง/ตัวอย่างโฆษณาไม่มีลิงก์
+    const sourceIdeaId = sourceIdea ? (sourceIdea.dbId || null) : (ws.studio.sourceIdeaId || null)
     const input = {
-      ...workspace.studio,
+      ...ws.studio,
       ...inferredIntent,
       prompt: normalizePrompt(prompt),
-      audience: sourceIdea?.audience || workspace.studio.audience,
-      offer: sourceIdea?.angle || workspace.studio.offer,
-      channel: sourceIdea?.channel ? (/facebook/i.test(sourceIdea.channel) ? 'facebook' : /LINE/i.test(sourceIdea.channel) ? 'line-oa' : workspace.studio.channel) : workspace.studio.channel,
+      audience: sourceIdea?.audience || ws.studio.audience,
+      offer: sourceIdea?.angle || ws.studio.offer,
+      channel: sourceIdea?.channel ? (/facebook/i.test(sourceIdea.channel) ? 'facebook' : /LINE/i.test(sourceIdea.channel) ? 'line-oa' : ws.studio.channel) : ws.studio.channel,
+      sourceIdeaId,
     }
-    const generated = runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || ''))
-    save({ ...workspace, studio: input, generated })
+    // ติดเลขไอเดียไปกับร่างใน Studio → พอส่งเข้ารอตรวจ ร่างจะบอก "จากไอเดีย N" (ตัวร่างไม่ถูกแก้ แค่ติดป้ายผลลัพธ์)
+    const generated = { ...runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || '')), ...(sourceIdeaId ? { sourceIdeaId } : {}) }
+    save((current) => ({ ...current, studio: input, generated }))
     goTo('studio')
     notify('ร่างโพสต์แล้ว · ตรวจแล้วกด ส่งเข้ารอตรวจ')
   }
 
   const createApprovalContentFromIdea = (prompt, sourceIdea) => {
-    const inferredIntent = inferStudioIntentFromIdea(sourceIdea, workspace.studio)
+    const ws = workspaceRef.current
+    const inferredIntent = inferStudioIntentFromIdea(sourceIdea, ws.studio)
+    const sourceIdeaId = sourceIdea?.dbId || null
     const input = {
-      ...workspace.studio,
+      ...ws.studio,
       ...inferredIntent,
       prompt: normalizePrompt(prompt),
-      audience: sourceIdea?.audience || workspace.studio.audience,
-      offer: sourceIdea?.angle || workspace.studio.offer,
-      channel: sourceIdea?.channel ? (/facebook/i.test(sourceIdea.channel) ? 'facebook' : /LINE/i.test(sourceIdea.channel) ? 'line-oa' : workspace.studio.channel) : workspace.studio.channel,
+      audience: sourceIdea?.audience || ws.studio.audience,
+      offer: sourceIdea?.angle || ws.studio.offer,
+      channel: sourceIdea?.channel ? (/facebook/i.test(sourceIdea.channel) ? 'facebook' : /LINE/i.test(sourceIdea.channel) ? 'line-oa' : ws.studio.channel) : ws.studio.channel,
+      sourceIdeaId,
     }
-    const generated = runAssetxMarketingModel(input, allDrafts.slice(0, 8).map((post) => post.caption || ''))
+    const generated = { ...runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || '')), ...(sourceIdeaId ? { sourceIdeaId } : {}) }
     const publishCheck = reviewAssetxContent({ ...generated, topic: input.prompt })
     const post = {
       id: Date.now(),
@@ -1382,60 +1655,67 @@ export default function MarketingPage({ onBack }) {
         ? [...publishCheck.notes, 'ผ่านการตรวจเบื้องต้น ต้องตรวจข้อเท็จจริงก่อนอนุมัติ']
         : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
       source: sourceIdea?.source || 'ไอเดียวันนี้',
+      // ไอเดียรีเสิร์ชที่เป็นต้นเรื่อง (เลขเดียวกับ "ไอเดีย N" บนการ์ด) — ตามกลับไปหาแหล่งข้อเท็จจริงได้ตอนแก้
+      ...(sourceIdea?.dbId ? { ideaId: sourceIdea.dbId } : {}),
       createdAt: new Date().toISOString(),
     }
-    save({ ...workspace, studio: input, generated, posts: [post, ...workspace.posts] })
+    const next = save((current) => ({ ...current, studio: input, generated, posts: [post, ...(current.posts || [])] }))
     setSelectedId(post.id)
     goTo('approvals')
-    notify('ร่างโพสต์แล้ว อยู่ในแท็บ ร่าง รอตรวจ')
+    notify(withContentNo(contentNoOf(next, post.id), 'ร่างโพสต์แล้ว อยู่ในแท็บ ร่าง รอตรวจ'))
   }
 
   const addGeneratedToQueue = (status = 'pending') => {
-    if (!workspace.generated) return
-    const topic = workspace.generated.meta?.resolved?.topic || workspace.studio.prompt
-    const publishCheck = reviewAssetxContent({ ...workspace.generated, topic })
+    const ws = workspaceRef.current
+    if (!ws.generated) return
+    const topic = ws.generated.meta?.resolved?.topic || ws.studio.prompt
+    const publishCheck = reviewAssetxContent({ ...ws.generated, topic })
     if (status === 'approved' && !publishCheck.ok) {
       notify(publishCheck.notes.join('\n'), 'error')
       return
     }
     const post = {
       id: Date.now(),
-      title: workspace.generated.headline || workspace.studio.prompt,
+      title: ws.generated.headline || ws.studio.prompt,
       topic,
-      channel: workspace.studio.channel,
+      channel: ws.studio.channel,
       status,
-      caption: appendMarketingHashtags(workspace.generated.caption, workspace.generated.hashtags),
-      imagePrompt: workspace.generated.imagePrompt,
-      videoScript: workspace.generated.videoScript,
-      mediaAssetId: workspace.generated.mediaAssetId || null,
+      caption: appendMarketingHashtags(ws.generated.caption, ws.generated.hashtags),
+      imagePrompt: ws.generated.imagePrompt,
+      videoScript: ws.generated.videoScript,
+      mediaAssetId: ws.generated.mediaAssetId || null,
       reviewStatus: publishCheck.ok ? 'passed' : 'needs_edit',
       reviewNotes: publishCheck.ok
         ? ['ผ่านเงื่อนไขเบื้องต้น', 'ควรตรวจรายละเอียดจริงก่อนโพสต์']
         : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
       source: 'AssetX Studio',
+      ...(ws.generated.sourceIdeaId ? { ideaId: ws.generated.sourceIdeaId } : {}),
       createdAt: new Date().toISOString(),
     }
-    save({ ...workspace, posts: [post, ...workspace.posts] })
+    const next = save((current) => ({ ...current, posts: [post, ...(current.posts || [])] }))
     setSelectedId(post.id)
     goTo('approvals')
-    notify(status === 'approved' ? 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์' : 'ส่งเข้ารอตรวจแล้ว')
+    notify(withContentNo(contentNoOf(next, post.id), status === 'approved' ? 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์' : 'ส่งเข้ารอตรวจแล้ว'))
   }
 
   const addManualIdea = () => {
-    if (!workspace.manualIdea.trim()) return
-    generateContent(workspace.manualIdea, {
+    const manualIdea = workspaceRef.current.manualIdea || ''
+    if (!manualIdea.trim()) return
+    generateContent(manualIdea, {
       audience: 'กลุ่มเป้าหมายจากไอเดียที่กรอกเอง',
-      angle: workspace.manualIdea,
+      angle: manualIdea,
       channel: 'Facebook',
     })
   }
 
   const saveIdeaForLater = (idea) => {
-    const exists = workspace.savedIdeas.some((item) => item.id === idea.id)
-    const savedIdeas = exists
-      ? workspace.savedIdeas
-      : [{ ...idea, savedAt: new Date().toISOString() }, ...workspace.savedIdeas]
-    save({ ...workspace, savedIdeas })
+    const exists = (workspaceRef.current.savedIdeas || []).some((item) => item.id === idea.id)
+    const savedAt = new Date().toISOString()
+    if (!exists) {
+      save((ws) => ((ws.savedIdeas || []).some((item) => item.id === idea.id)
+        ? ws
+        : { ...ws, savedIdeas: [{ ...idea, savedAt }, ...(ws.savedIdeas || [])] }))
+    }
     notify(exists ? 'ไอเดียนี้อยู่ในคลังแล้ว' : 'เก็บไอเดียไว้ในคลังผลงานแล้ว')
   }
 
@@ -1473,11 +1753,11 @@ export default function MarketingPage({ onBack }) {
   }
 
   const updateReferenceForm = (patch) => {
-    save({ ...workspace, referenceForm: { ...workspace.referenceForm, ...patch } })
+    save((ws) => ({ ...ws, referenceForm: { ...ws.referenceForm, ...patch } }))
   }
 
   const addReference = () => {
-    const form = { ...defaultReferenceForm, ...(workspace.referenceForm || {}) }
+    const form = { ...defaultReferenceForm, ...(workspaceRef.current.referenceForm || {}) }
     const title = form.title.trim()
     if (!title) {
       notify('กรุณาใส่ชื่อตัวอย่างหรือหัวข้อที่เจอ', 'error')
@@ -1498,17 +1778,18 @@ export default function MarketingPage({ onBack }) {
       notes: form.notes.trim(),
       createdAt: new Date().toISOString(),
     }
-    save({
-      ...workspace,
-      references: [reference, ...(workspace.references || [])],
+    save((ws) => ({
+      ...ws,
+      references: [reference, ...(ws.references || [])],
       referenceForm: { ...defaultReferenceForm, sourceId: form.sourceId, audience: form.audience, channel: form.channel, tags: form.tags },
-    })
+    }))
     setSelectedReferenceId(reference.id)
     notify('บันทึกตัวอย่างแล้ว')
   }
 
   const deleteReference = (id) => {
-    save({ ...workspace, references: (workspace.references || []).filter((item) => item.id !== id) })
+    if (blockedWhileLoading()) return
+    save((ws) => ({ ...ws, references: (ws.references || []).filter((item) => item.id !== id) }))
     if (selectedReferenceId === id) setSelectedReferenceId(null)
     notify('ลบตัวอย่างแล้ว')
   }
@@ -1523,25 +1804,36 @@ export default function MarketingPage({ onBack }) {
   }
 
   const loadReferenceRadar = async () => {
+    // คำค้นตอนกดค้น — โน้ตความรู้ต้องบอกคำที่ค้นจริง ไม่ใช่คำที่พิมพ์ต่อระหว่างรอ
+    const query = workspaceRef.current.referenceQuery || referenceStarterQueries[0]
     setReferenceLoading(true)
     try {
       const res = await fetch('/api/marketing-references', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: workspace.referenceQuery || referenceStarterQueries[0] }),
+        body: JSON.stringify({ query }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.success) throw new Error(friendlyApiError(res.status, data, 'ค้นตัวอย่างอัตโนมัติไม่สำเร็จ ลองใหม่อีกครั้ง'))
       const incoming = Array.isArray(data.references) ? data.references : []
       if (!incoming.length) throw new Error('ยังไม่พบตัวอย่างที่นำมาใช้ได้')
-      const existingKeys = new Set((workspace.references || []).map((item) => item.url || item.title))
-      const fresh = incoming.filter((item) => !existingKeys.has(item.url || item.title))
-      const nextReferences = [...fresh, ...(workspace.references || [])]
-      const nextKnowledgeNotes = uniqueByKey([
-        ...fresh.map((item) => referenceToKnowledgeNote(item, { query: workspace.referenceQuery || referenceStarterQueries[0] })),
-        ...(workspace.knowledgeNotes || []),
-      ], (note) => note.sourceUrl || `${note.kind}:${note.title}`)
-      save({ ...workspace, references: nextReferences, knowledgeNotes: nextKnowledgeNotes })
+      // ต่อยอดจากเวิร์กสเปซล่าสุด (ระหว่างรอค้น อาจมีร่าง/การแก้ใหม่เข้ามา)
+      const freshFor = (ws) => {
+        const existingKeys = new Set((ws.references || []).map((item) => item.url || item.title))
+        return incoming.filter((item) => !existingKeys.has(item.url || item.title))
+      }
+      const fresh = freshFor(workspaceRef.current)
+      save((ws) => {
+        const add = freshFor(ws)
+        return {
+          ...ws,
+          references: [...add, ...(ws.references || [])],
+          knowledgeNotes: uniqueByKey([
+            ...add.map((item) => referenceToKnowledgeNote(item, { query })),
+            ...(ws.knowledgeNotes || []),
+          ], (note) => note.sourceUrl || `${note.kind}:${note.title}`),
+        }
+      })
       if (fresh[0]) setSelectedReferenceId(fresh[0].id)
       notify(fresh.length ? `ได้ตัวอย่างใหม่ ${fresh.length} รายการ และเก็บเป็นโน้ตความรู้แล้ว` : 'รายการที่พบอยู่ในคลังแล้ว')
     } catch (err) {
@@ -1563,11 +1855,15 @@ export default function MarketingPage({ onBack }) {
       if (!res.ok || !data.success) throw new Error(friendlyApiError(res.status, data, 'สำรวจตลาดอัตโนมัติไม่สำเร็จ ลองใหม่อีกครั้ง'))
       const nextIdeas = Array.isArray(data.ideas) ? data.ideas : []
       if (!nextIdeas.length) throw new Error('ยังไม่พบประเด็นใหม่ที่นำมาใช้ได้')
-      const nextKnowledgeNotes = uniqueByKey([
-        ...nextIdeas.map((item) => ideaToKnowledgeNote(item, { query: data.query || '' })),
-        ...(workspace.knowledgeNotes || []),
-      ], (note) => note.sourceUrl || `${note.kind}:${note.title}`)
-      save({ ...workspace, radarIdeas: nextIdeas, knowledgeNotes: nextKnowledgeNotes })
+      // ต่อยอดจากเวิร์กสเปซล่าสุด (กด ร่างโพสต์ ระหว่างรอสำรวจได้ ร่างนั้นต้องไม่หาย)
+      save((ws) => ({
+        ...ws,
+        radarIdeas: nextIdeas,
+        knowledgeNotes: uniqueByKey([
+          ...nextIdeas.map((item) => ideaToKnowledgeNote(item, { query: data.query || '' })),
+          ...(ws.knowledgeNotes || []),
+        ], (note) => note.sourceUrl || `${note.kind}:${note.title}`),
+      }))
       notify(`ได้หัวข้อใหม่จากการสำรวจตลาด ${nextIdeas.length} หัวข้อ และเก็บเป็นโน้ตความรู้แล้ว`)
     } catch (err) {
       notify(errorMessage(err, 'สำรวจตลาดอัตโนมัติไม่สำเร็จ'), 'error')
@@ -1591,28 +1887,28 @@ export default function MarketingPage({ onBack }) {
       appointments: Number(metricForm.appointments) || 0,
       createdAt: new Date().toISOString(),
     }
-    save({ ...workspace, metrics: [record, ...(workspace.metrics || [])] })
+    save((ws) => ({ ...ws, metrics: [record, ...(ws.metrics || [])] }))
     setMetricForm({ title: '', channel: 'Facebook', leads: 0, qualified: 0, appointments: 0, notes: '' })
     notify('บันทึกผลโพสต์แล้ว')
   }
 
   const deleteMetricRecord = (id) => {
-    save({ ...workspace, metrics: (workspace.metrics || []).filter((item) => item.id !== id) })
+    if (blockedWhileLoading()) return
+    save((ws) => ({ ...ws, metrics: (ws.metrics || []).filter((item) => item.id !== id) }))
     notify('ลบผลโพสต์แล้ว')
   }
 
   const updatePosterCopy = (patch) => {
-    save({ ...workspace, posterCopy: { ...defaultPosterCopy, ...(workspace.posterCopy || {}), ...patch } })
+    save((ws) => ({ ...ws, posterCopy: { ...defaultPosterCopy, ...(ws.posterCopy || {}), ...patch } }))
   }
 
   const resetPosterCopy = () => {
-    save({ ...workspace, posterCopy: defaultPosterCopy })
+    save((ws) => ({ ...ws, posterCopy: defaultPosterCopy }))
     notify('รีเซ็ตข้อความโปสเตอร์แล้ว')
   }
 
   const applyPosterCopyFromBrief = (brief) => {
-    const nextCopy = inferPosterCopyFromBrief(brief, workspace.posterCopy)
-    save({ ...workspace, posterCopy: nextCopy })
+    save((ws) => ({ ...ws, posterCopy: inferPosterCopyFromBrief(brief, ws.posterCopy) }))
     setSelectedBriefId(String(brief.id))
     notify('เติมข้อความจากคอนเทนต์ที่เลือกแล้ว')
   }
@@ -1624,6 +1920,8 @@ export default function MarketingPage({ onBack }) {
       return
     }
     setMediaLoading(`upload:${brief.id}`)
+    // ร่างใน Studio ตอนกด — ระหว่างย่อรูป ถ้ากดร่างใหม่ไปแล้ว รูปนี้ต้องไม่ไปผูกกับร่างใหม่
+    const targetDraft = brief.id === 'generated' ? workspaceRef.current.generated : null
     try {
       const image = await compressImageFile(file)
       const asset = {
@@ -1640,15 +1938,16 @@ export default function MarketingPage({ onBack }) {
         originalName: image.originalName,
         createdAt: new Date().toISOString(),
       }
-      const posts = (workspace.posts || []).map((post) => String(post.id) === String(brief.id) ? { ...post, mediaAssetId: asset.id } : post)
-      const generated = brief.id === 'generated' && workspace.generated
-        ? { ...workspace.generated, mediaAssetId: asset.id }
-        : workspace.generated
-      save({
-        ...workspace,
-        generated,
-        posts,
-        mediaAssets: [asset, ...(workspace.mediaAssets || [])],
+      // ต่อยอดจากเวิร์กสเปซล่าสุด (ย่อรูปใช้เวลา ระหว่างนั้นมีการแก้อื่นได้)
+      let linked = true
+      save((ws) => {
+        linked = brief.id !== 'generated' || sameStudioDraft(ws.generated, targetDraft)
+        return {
+          ...ws,
+          generated: brief.id === 'generated' && linked && ws.generated ? { ...ws.generated, mediaAssetId: asset.id } : ws.generated,
+          posts: (ws.posts || []).map((post) => String(post.id) === String(brief.id) ? { ...post, mediaAssetId: asset.id } : post),
+          mediaAssets: [asset, ...(ws.mediaAssets || [])],
+        }
       })
       setSelectedBriefId(String(brief.id))
       setMediaResult({
@@ -1659,7 +1958,7 @@ export default function MarketingPage({ onBack }) {
         mimeType: asset.mimeType,
         model: 'ภาพที่อัปโหลด',
       })
-      notify('แนบรูปเข้ากับบรีฟแล้ว')
+      notify(linked ? 'แนบรูปเข้ากับบรีฟแล้ว' : 'เก็บรูปไว้ในคลังภาพแล้ว · ร่างใน Studio เปลี่ยนไประหว่างรอ จึงไม่ผูกรูปกับร่างใหม่', linked ? 'success' : 'warn')
     } catch (err) {
       notify(err.message || 'อัปโหลดรูปไม่สำเร็จ', 'error')
     } finally {
@@ -1668,17 +1967,21 @@ export default function MarketingPage({ onBack }) {
   }
 
   const deleteMediaAsset = (id) => {
-    save({
-      ...workspace,
-      generated: workspace.generated?.mediaAssetId === id ? { ...workspace.generated, mediaAssetId: null } : workspace.generated,
-      posts: (workspace.posts || []).map((post) => post.mediaAssetId === id ? { ...post, mediaAssetId: null } : post),
-      mediaAssets: (workspace.mediaAssets || []).filter((asset) => asset.id !== id),
-    })
+    if (blockedWhileLoading()) return
+    save((ws) => ({
+      ...ws,
+      generated: ws.generated?.mediaAssetId === id ? { ...ws.generated, mediaAssetId: null } : ws.generated,
+      posts: (ws.posts || []).map((post) => post.mediaAssetId === id ? { ...post, mediaAssetId: null } : post),
+      mediaAssets: (ws.mediaAssets || []).filter((asset) => asset.id !== id),
+    }))
     notify('ลบรูปออกจากคลังแล้ว')
   }
 
   const generateMedia = async (type, brief) => {
     setMediaLoading(`${type}:${brief.id}`)
+    // ร่างใน Studio ตอนกด — สร้างภาพใช้เวลาหลายวินาที ถ้ากดร่างใหม่ไปแล้ว ภาพนี้ต้องไม่ไปผูกกับร่างใหม่
+    const targetDraft = brief.id === 'generated' ? workspaceRef.current.generated : null
+    let linked = true
     try {
       const selectedVisualStyle = assetxVisualStyles.find((style) => style.id === visualStyleId) || assetxVisualStyles[0]
       const visualStyle = type === 'video' && selectedVisualStyle.artistic ? assetxVisualStyles[1] : selectedVisualStyle
@@ -1746,18 +2049,18 @@ export default function MarketingPage({ onBack }) {
           originalName: 'generated-image.jpg',
           createdAt: new Date().toISOString(),
         }
-        const posts = (workspace.posts || []).map((post) => String(post.id) === String(brief.id) ? { ...post, mediaAssetId: asset.id } : post)
-        const generated = brief.id === 'generated' && workspace.generated
-          ? { ...workspace.generated, mediaAssetId: asset.id }
-          : workspace.generated
-        save({
-          ...workspace,
-          generated,
-          posts,
-          mediaAssets: [asset, ...(workspace.mediaAssets || [])],
+        // ต่อยอดจากเวิร์กสเปซล่าสุด (สร้างภาพใช้เวลาหลายวินาที ระหว่างนั้นมีการแก้อื่นได้)
+        save((ws) => {
+          linked = brief.id !== 'generated' || sameStudioDraft(ws.generated, targetDraft)
+          return {
+            ...ws,
+            generated: brief.id === 'generated' && linked && ws.generated ? { ...ws.generated, mediaAssetId: asset.id } : ws.generated,
+            posts: (ws.posts || []).map((post) => String(post.id) === String(brief.id) ? { ...post, mediaAssetId: asset.id } : post),
+            mediaAssets: [asset, ...(ws.mediaAssets || [])],
+          }
         })
       }
-      notify(type === 'video' ? 'สร้างวิดีโอแล้ว' : 'สร้างรูปแล้ว')
+      notify(type === 'video' ? 'สร้างวิดีโอแล้ว' : linked ? 'สร้างรูปแล้ว' : 'สร้างรูปแล้ว · ร่างใน Studio เปลี่ยนไประหว่างรอ จึงเก็บรูปไว้ในคลังภาพโดยไม่ผูกกับร่างใหม่', type !== 'video' && !linked ? 'warn' : 'success')
     } catch (err) {
       notify(errorMessage(err, 'สร้างสื่อไม่สำเร็จ'), 'error')
     } finally {
@@ -1765,7 +2068,9 @@ export default function MarketingPage({ onBack }) {
     }
   }
 
-  const copyText = (text) => navigator.clipboard?.writeText(text || '').then(() => notify('คัดลอกแล้ว')).catch(() => notify('คัดลอกไม่สำเร็จ', 'error'))
+  const copyText = (text, message = 'คัดลอกแล้ว') => (navigator.clipboard ? navigator.clipboard.writeText(text || '') : Promise.reject(new Error('clipboard unavailable')))
+    .then(() => notify(message))
+    .catch(() => notify('คัดลอกไม่สำเร็จ', 'error'))
 
   const exportKnowledgeBase = () => {
     const notes = workspace.knowledgeNotes || []
@@ -1818,7 +2123,52 @@ export default function MarketingPage({ onBack }) {
   const goTo = (next) => {
     setView(next)
     setToolsOpen(false)
+    // ช่องตัวอย่างของคลังผลงานกลับไปแสดงชิ้นแรกตามปกติ (ชิ้นที่ค้นด้วยเลขไม่ค้างตลอด session)
+    setLibraryPreviewId(null)
     window.scrollTo({ top: 0 })
+  }
+
+  // เปิดคอนเทนต์ในแท็บที่มันอยู่ตามสถานะ แล้วเลื่อนไปไฮไลต์การ์ด (ช่องค้นด้วยเลข และลิงก์ร่างจาก Telegram)
+  const openContent = (post) => {
+    const target = viewForStatus(post.status)
+    if (target === 'approvals') setSelectedId(post.id)
+    if (target === 'library') {
+      // เปลี่ยนตัวกรองเฉพาะเมื่อตัวกรองที่เลือกอยู่ซ่อนชิ้นนี้ · ช่องตัวอย่างแสดงชิ้นที่เปิด
+      if (!libraryFilterMatches(post, libraryFilter)) setLibraryFilter('all')
+      setLibraryPreviewId(post.id)
+    }
+    setView(target)
+    setToolsOpen(false)
+    if (post.contentNo) setFocusNo({ no: post.contentNo, at: Date.now() })
+  }
+
+  // ค้นด้วยเลขคอนเทนต์ → เปิดแท็บที่คอนเทนต์ชิ้นนั้นอยู่ตามสถานะ แล้วเลื่อนไปที่การ์ด (ไม่ดีดขึ้นบนสุดก่อน)
+  // ไม่พบ/พิมพ์ผิด = ข้อความใต้ช่องค้น (โปรแกรมอ่านหน้าจออ่านให้ · บนมือถือไม่โดนแป้นพิมพ์บัง) และโฟกัสยังอยู่ในช่อง
+  const jumpToContent = (raw) => {
+    const text = String(raw || '').trim()
+    // ปิดเมนูเครื่องมือทุกครั้ง (เมนูเคยบังข้อความ) · ล้างก่อนแล้วใส่ในเฟรมถัดไป ข้อความเดิมซ้ำจึงถูกอ่านออกเสียงใหม่
+    const fail = (message) => {
+      setToolsOpen(false)
+      setFindMsg(null)
+      window.requestAnimationFrame(() => setFindMsg({ text: message, at: Date.now() }))
+    }
+    if (!loadSettledRef.current) return fail(LOADING_MESSAGE)
+    if (!text) return fail('พิมพ์เลขคอนเทนต์ เช่น 12 หรือ #12')
+    if (/ไอเดีย/.test(text)) return fail('เลขไอเดียไม่ใช่เลขคอนเทนต์ — ใช้เลขที่มี # บนการ์ดในแท็บ ร่าง หรือ โพสต์')
+    const no = parseContentNo(text)
+    if (!no) return fail('พิมพ์เฉพาะเลขคอนเทนต์ เช่น 12 หรือ #12')
+    const ws = workspaceRef.current
+    const post = findContentByNo(ws.posts, no)
+    if (!post) {
+      const latest = Number(ws.contentSeq) || 0
+      if (!latest) return fail('ยังไม่มีคอนเทนต์ที่มีเลข')
+      return fail(no <= latest
+        ? `ไม่พบคอนเทนต์ ${formatContentNo(no)} — อาจถูกลบไปแล้ว`
+        : `ยังไม่มีคอนเทนต์ ${formatContentNo(no)} — เลขล่าสุดตอนนี้คือ ${formatContentNo(latest)}`)
+    }
+    openContent(post)
+    setFindText('')
+    setFindMsg(null)
   }
 
   return (
@@ -1839,7 +2189,12 @@ export default function MarketingPage({ onBack }) {
           <TabButton id="ideas" active={activeTab === 'ideas'} label="ไอเดีย" count={dashboardCounts.ideas} onClick={() => goTo('ideas')} />
           <TabButton id="drafts" active={activeTab === 'drafts'} label="ร่าง" count={dashboardCounts.approvals} onClick={() => goTo('approvals')} />
           <TabButton id="posts" active={activeTab === 'posts'} label="โพสต์" count={dashboardCounts.ready} onClick={() => goTo('queue')} />
-          <details className={`mx-tools ${activeTab === 'tools' ? 'active' : ''}`} open={toolsOpen} onToggle={(event) => setToolsOpen(event.currentTarget.open)}>
+          <form className="mx-find" role="search" onSubmit={(event) => { event.preventDefault(); jumpToContent(findText) }}>
+            <input type="search" value={findText} onChange={(event) => { setFindText(event.target.value); setFindMsg(null) }} onFocus={() => setToolsOpen(false)} inputMode="numeric" enterKeyHint="go" placeholder="ไปที่ #เลข" aria-label="ไปที่คอนเทนต์ตามเลข เช่น 12" aria-describedby="mx-find-msg" />
+            <button type="submit">ไป</button>
+            <span id="mx-find-msg" className="mx-find-msg" role="status" aria-live="polite" onClick={() => setFindMsg(null)}>{findMsg?.text || ''}</span>
+          </form>
+          <details ref={toolsRef} className={`mx-tools ${activeTab === 'tools' ? 'active' : ''}`} open={toolsOpen} onToggle={(event) => setToolsOpen(event.currentTarget.open)}>
             <summary data-view="tools">เครื่องมือ{activeTool ? <span className="mx-tools-current"> · {activeTool[1]}</span> : null}<span aria-hidden="true"> ▾</span></summary>
             <div className="mx-tools-menu">
               {toolViews.map(([id, label, count]) => (
@@ -1868,7 +2223,7 @@ export default function MarketingPage({ onBack }) {
             examples={exampleCards}
             radarLoading={radarLoading}
             manualIdea={workspace.manualIdea}
-            onManualChange={(manualIdea) => save({ ...workspace, manualIdea })}
+            onManualChange={(manualIdea) => save((ws) => ({ ...ws, manualIdea }))}
             onAddManual={addManualIdea}
             onCreate={pickResearchIdea}
             onSaveIdea={saveIdeaForLater}
@@ -1882,11 +2237,11 @@ export default function MarketingPage({ onBack }) {
             studio={workspace.studio}
             generated={workspace.generated}
             posterCopy={workspace.posterCopy || defaultPosterCopy}
-            onPromptChange={(prompt) => save({ ...workspace, studio: { ...workspace.studio, prompt } })}
-            onChannelChange={(channel) => save({ ...workspace, studio: { ...workspace.studio, channel } })}
+            onPromptChange={(prompt) => save((ws) => ({ ...ws, studio: { ...ws.studio, prompt, sourceIdeaId: null } }))}
+            onChannelChange={(channel) => save((ws) => ({ ...ws, studio: { ...ws.studio, channel } }))}
             artwork={(workspace.mediaAssets || []).find((asset) => asset.id === workspace.generated?.mediaAssetId)}
             onDesignImage={() => setArtworkBrief({ ...workspace.generated, id: 'generated', title: workspace.generated?.headline })}
-            onGenerate={() => generateContent(workspace.studio.prompt)}
+            onGenerate={() => generateContent(workspaceRef.current.studio.prompt)}
             onQueue={addGeneratedToQueue}
             onCopy={copyText}
             onBack={() => goTo('approvals')}
@@ -1902,12 +2257,15 @@ export default function MarketingPage({ onBack }) {
             onSelect={setSelectedId}
             onUpdate={updatePost}
             onCopy={copyText}
-            onGenerateImage={setArtworkBrief}
+            onGenerateImage={(post) => { if (!blockedWhileLoading()) setArtworkBrief(post) }}
             onUploadArtwork={uploadArtwork}
             onDeleteMediaAsset={deleteMediaAsset}
             onDelete={deletePost}
             onArchive={archivePost}
             onNewDraft={() => goTo('studio')}
+            focusNo={focusNo}
+            loading={syncState.state === 'loading'}
+            onWaitNotice={blockedWhileLoading}
           />
         )}
         {view === 'queue' && (
@@ -1921,6 +2279,8 @@ export default function MarketingPage({ onBack }) {
             onPublishFacebook={publishToFacebook}
             onRecordManual={recordManualPublication}
             onCopy={copyText}
+            focusNo={focusNo}
+            loading={syncState.state === 'loading'}
           />
         )}
         {view === 'channels' && (
@@ -1941,7 +2301,7 @@ export default function MarketingPage({ onBack }) {
             knowledgeCount={dashboardCounts.knowledge}
             selectedReference={selectedReference}
             loading={referenceLoading}
-            onQueryChange={(referenceQuery) => save({ ...workspace, referenceQuery })}
+            onQueryChange={(referenceQuery) => save((ws) => ({ ...ws, referenceQuery }))}
             onFormChange={updateReferenceForm}
             onLoadRadar={loadReferenceRadar}
             onAdd={addReference}
@@ -1987,14 +2347,18 @@ export default function MarketingPage({ onBack }) {
             filter={libraryFilter}
             sort={librarySort}
             previewChannel={previewChannel}
-            onFilterChange={setLibraryFilter}
-            onSortChange={setLibrarySort}
+            onFilterChange={(value) => { setLibraryPreviewId(null); setLibraryFilter(value) }}
+            onSortChange={(value) => { setLibraryPreviewId(null); setLibrarySort(value) }}
             onPreviewChannelChange={setPreviewChannel}
             onCreate={generateContent}
             onArchive={archivePost}
             onRestore={restorePost}
             onDelete={deletePost}
             onDeleteSavedIdea={deleteSavedIdea}
+            onCopy={copyText}
+            focusNo={focusNo}
+            previewId={libraryPreviewId}
+            loading={syncState.state === 'loading'}
           />
         )}
         {view === 'calendar' && <CalendarView posts={approvedDrafts} onQueue={() => setView('queue')} />}
@@ -2018,7 +2382,10 @@ export default function MarketingPage({ onBack }) {
           onSave={attachDesignedArtwork}
           onClose={() => setArtworkBrief(null)}
         />}
-        {toast && <div className={`mx-toast ${toast.type === 'error' ? 'error' : ''}`}>{toast.message}</div>}
+        {/* พื้นที่ประกาศถาวร: โปรแกรมอ่านหน้าจออ่านทุกข้อความแจ้งผล (เดิมข้อความโผล่แล้วหายไปเงียบ ๆ) */}
+        <div className="mx-toast-region" role="status" aria-live="polite">
+          {toast && <div className={`mx-toast ${toast.type === 'error' || toast.type === 'warn' ? toast.type : ''}`}>{toast.message}</div>}
+        </div>
       </main>
     </div>
   )
@@ -2249,7 +2616,7 @@ function IdeasView({
       <article className={`mx-idea-card ${isExample ? 'example' : ''}`} key={idea.id}>
         <div className="mx-idea-top">
           <span>{isExample ? 'ตัวอย่าง' : idea.kind === 'radar' ? 'สำรวจตลาด' : idea.type}</span>
-          <strong>{isResearch ? (idea.createdAt ? thaiDate(idea.createdAt) : 'ใหม่') : isExample ? 'จากแม่แบบ' : 'จากการสำรวจตลาด'}</strong>
+          <strong>{isResearch ? [idea.dbId ? `ไอเดีย ${idea.dbId}` : '', idea.createdAt ? thaiDate(idea.createdAt) : 'ใหม่'].filter(Boolean).join(' · ') : isExample ? 'จากแม่แบบ' : 'จากการสำรวจตลาด'}</strong>
         </div>
         <h2>
           {idea.url ? (
@@ -2396,6 +2763,9 @@ function ApprovalsView({
   onDelete,
   onArchive,
   onNewDraft,
+  focusNo,
+  loading = false,
+  onWaitNotice,
 }) {
   return (
     <section className="mx-content">
@@ -2403,10 +2773,11 @@ function ApprovalsView({
         <div>
           <div className="mx-kicker">ร่าง</div>
           <h1>ตรวจร่างก่อนโพสต์</h1>
-          <p>ผ่านเกณฑ์ {drafts.filter((post) => post.reviewStatus === 'passed').length} · ติดเกณฑ์ {drafts.filter((post) => post.reviewStatus !== 'passed').length} · ทุกร่างต้องกดอนุมัติก่อนไปตั้งเวลา</p>
+          <p>ผ่านเกณฑ์ {drafts.filter((post) => post.reviewStatus === 'passed').length} · ติดเกณฑ์ {drafts.filter((post) => post.reviewStatus !== 'passed').length} · ทุกร่างต้องกดอนุมัติก่อนไปตั้งเวลา · กดเลข # บนการ์ดเพื่อคัดลอกไปวางในแชตตอนสั่งแก้</p>
         </div>
         <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onNewDraft}>เขียนโพสต์ใหม่</button></div>
       </div>
+      {loading && <p className="mx-warn">{LOADING_EDIT_NOTE}</p>}
       {drafts.length === 0 ? (
         <div className="mx-empty">ยังไม่มีร่างรอตรวจ — เลือกไอเดียในแท็บ ไอเดีย แล้วกด ร่างโพสต์ หรือกด เขียนโพสต์ใหม่</div>
       ) : (
@@ -2418,7 +2789,7 @@ function ApprovalsView({
               imagePrompt: post.imagePrompt,
             }, posterCopy)
             return (
-              <article className={`mx-approval-card ${selected?.id === post.id ? 'active' : ''}`} key={post.sampleOf || post.id} onClick={() => onSelect(post.id)}>
+              <article className={`mx-approval-card ${selected?.id === post.id ? 'active' : ''} ${isFocused(post, focusNo) ? 'mx-focus' : ''}`} data-content-no={post.contentNo || undefined} key={post.sampleOf || post.id} onClick={() => onSelect(post.id)}>
                 <div className="mx-approval-media-column">
                   <div className="mx-approval-card-image">
                     {postMedia ? (
@@ -2454,19 +2825,22 @@ function ApprovalsView({
                 <div className="mx-approval-copy-column">
                   <div className="mx-review-head">
                     <div>
-                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
-                      <h2>{post.title}</h2>
+                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
+                      <h2><ContentNo post={post} onCopy={onCopy} />{post.title}</h2>
                     </div>
                     <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{reviewLabel(post)}</span>
                   </div>
                   <textarea
                     className="mx-approval-caption"
                     value={post.caption}
-                    onClick={(event) => event.stopPropagation()}
+                    readOnly={loading}
+                    // แตะหรือพิมพ์ระหว่างโหลด = บอกเหตุผลทันที (บนมือถือแถบบอกด้านบนอาจเลื่อนพ้นจอไปแล้ว)
+                    onClick={(event) => { event.stopPropagation(); if (loading) onWaitNotice?.() }}
+                    onKeyDown={loading ? () => onWaitNotice?.() : undefined}
                     onChange={(event) => onUpdate(post.id, { caption: event.target.value })}
                   />
                   <label className="mx-schedule-row" onClick={(event) => event.stopPropagation()}>ช่องทาง
-                    <select value={/facebook/i.test(post.channel) ? 'facebook' : post.channel} onChange={(event) => onUpdate(post.id, { channel: event.target.value, reviewStatus: 'needs_edit' })}>
+                    <select value={/facebook/i.test(post.channel) ? 'facebook' : post.channel} disabled={loading} onChange={(event) => onUpdate(post.id, { channel: event.target.value, reviewStatus: 'needs_edit' })}>
                       {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
                     </select>
                   </label>
@@ -2555,7 +2929,7 @@ function ChannelsView({ posts, facebookConnection, onCreate, onQueue }) {
   )
 }
 
-function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, onCreate, onUpdate, onPublishFacebook, onRecordManual, onCopy }) {
+function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, onCreate, onUpdate, onPublishFacebook, onRecordManual, onCopy, focusNo, loading = false }) {
   const [queueFilter, setQueueFilter] = useState('action')
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -2563,6 +2937,12 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
     return () => window.clearInterval(timer)
   }, [])
   const groups = organizeMarketingQueue(posts, now)
+  // ค้นด้วยเลขแล้วคอนเทนต์อยู่อีกกลุ่ม (รอโพสต์ / ตั้งเวลาแล้ว / โพสต์แล้ว) → สลับกลุ่มให้เห็นการ์ด
+  useEffect(() => {
+    if (!focusNo?.no) return
+    const group = ['action', 'platformScheduled', 'posted'].find((key) => groups[key].some(({ post }) => post.contentNo === focusNo.no))
+    if (group) setQueueFilter(group)
+  }, [focusNo])
   const visibleItems = groups[queueFilter]
   const dueCount = groups.action.filter(({ queueState }) => queueState === 'overdue' || queueState === 'today').length
   const verificationCount = groups.platformScheduled.filter(({ post }) => post.scheduledAt && new Date(post.scheduledAt) <= now).length
@@ -2585,6 +2965,7 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
           <button className="mx-secondary" onClick={onCreate}>ไปที่ไอเดีย</button>
         </div>
       </div>
+      {loading && <p className="mx-warn">{LOADING_EDIT_NOTE}</p>}
       {facebookConnection?.unauthorized && <p role="alert" className="mx-warn">{SESSION_EXPIRED_MESSAGE}</p>}
       {facebookConnection?.error && <p role="alert" className="mx-warn">{facebookConnection.error}</p>}
       {facebookConnection?.tokenHealth?.warning && facebookConnection.tokenHealth.state !== 'unknown' && <p role="status" className="mx-warn" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{facebookConnection.tokenHealth.warning}</p>}
@@ -2612,10 +2993,10 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
           const isDelivered = isPosted || isScheduledOnFacebook
           const postMedia = findMediaForPost(mediaAssets, post)
           return (
-            <article className="mx-row-card mx-publish-row" key={post.id}>
+            <article className={`mx-row-card mx-publish-row ${isFocused(post, focusNo) ? 'mx-focus' : ''}`} data-content-no={post.contentNo || undefined} key={post.id}>
               {postMedia && <ArtworkPreview className="mx-row-thumb" src={postMedia.dataUrl} alt={post.title} />}
               <div>
-                <strong>{post.title}</strong>
+                <strong><ContentNo post={post} onCopy={onCopy} />{post.title}</strong>
                 <span>{channelLabel(post.channel)} · {displaySource(post.source)}{isPosted ? (post.postedAt ? ` · โพสต์แล้ว ${thaiDateTime(post.postedAt)}` : '') : (post.scheduledAt ? ` · กำหนด ${thaiDateTime(post.scheduledAt)}` : '')}</span>
                 <span className={`mx-queue-state ${queueState}`}>{queueState === 'platformScheduled' && post.scheduledAt && new Date(post.scheduledAt) <= now ? 'ถึงเวลาแล้ว · ตรวจผลจริงบน Facebook' : queueStateLabels[queueState]}</span>
                 {post.publishError && <span className="mx-publish-error">{String(post.publishError).split(' — Facebook (')[0]}</span>}
@@ -2624,8 +3005,8 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                 <input
                   type="datetime-local"
                   value={scheduleInputValue(post.scheduledAt)}
-                  disabled={isDelivered || isPublishing}
-                  aria-label={`วันและเวลาโพสต์ ${post.title}`}
+                  disabled={isDelivered || isPublishing || loading}
+                  aria-label={`วันและเวลาโพสต์ ${titleWithNo(post)}`}
                   onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : 'approved' }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
                 />
                 {isFacebook && (
@@ -2723,6 +3104,7 @@ function GalleryView({
     }] : []),
     ...drafts.filter((post) => post.imagePrompt).map((post) => ({
       id: post.id,
+      contentNo: post.contentNo,
       title: post.title,
       imagePrompt: post.imagePrompt,
       videoScript: post.videoScript,
@@ -2747,7 +3129,7 @@ function GalleryView({
             คอนเทนต์
             <select value={selectedBrief ? String(selectedBrief.id) : ''} onChange={(event) => onSelectBrief(event.target.value)} disabled={!briefs.length}>
               {!briefs.length && <option value="">ยังไม่มีบรีฟรูป</option>}
-              {briefs.map((brief) => <option key={brief.id} value={String(brief.id)}>{brief.title}</option>)}
+              {briefs.map((brief) => <option key={brief.id} value={String(brief.id)}>{titleWithNo(brief)}</option>)}
             </select>
           </label>
           <label>
@@ -2779,7 +3161,7 @@ function GalleryView({
           <p>ภาพที่เลือกจะถูกบีบอัดและผูกกับคอนเทนต์ด้านบน</p>
         </div>
         <div className="mx-upload-actions">
-          <span>คอนเทนต์: <strong>{selectedBrief?.title || 'ยังไม่มีบรีฟ'}</strong></span>
+          <span>คอนเทนต์: <strong>{(selectedBrief && titleWithNo(selectedBrief)) || 'ยังไม่มีบรีฟ'}</strong></span>
           <label className={`mx-upload-button ${!selectedBrief ? 'disabled' : ''}`}>
             {mediaLoading === `upload:${selectedBrief?.id}` ? 'กำลังอัปโหลด...' : 'อัปโหลดภาพที่สร้างแล้ว'}
             <input
@@ -2994,22 +3376,21 @@ function LibraryView({
   onRestore,
   onDelete,
   onDeleteSavedIdea,
+  onCopy,
+  focusNo,
+  previewId = null,
+  loading = false,
 }) {
   const filteredPosts = posts
-    .filter((post) => {
-      if (filter === 'all') return true
-      if (filter === 'active') return post.status !== 'archived' && post.status !== 'posted'
-      if (filter === 'pending') return ['pending', 'draft', 'needs_edit'].includes(post.status)
-      if (filter === 'needs_edit') return post.reviewStatus === 'needs_edit'
-      return post.status === filter
-    })
+    .filter((post) => libraryFilterMatches(post, filter))
     .sort((a, b) => {
       if (sort === 'oldest') return getPostTime(a) - getPostTime(b)
       if (sort === 'channel') return String(a.channel || '').localeCompare(String(b.channel || ''), 'th')
       if (sort === 'status') return String(a.status || '').localeCompare(String(b.status || ''), 'th')
       return getPostTime(b) - getPostTime(a)
     })
-  const previewPost = filteredPosts[0] || posts[0]
+  // ตัวอย่างช่องทาง: ชิ้นที่เพิ่งค้นด้วยเลข (ถ้ายังอยู่ในตัวกรอง) ไม่งั้นชิ้นแรกของรายการ
+  const previewPost = (previewId != null && filteredPosts.find((post) => post.id === previewId)) || filteredPosts[0] || posts[0]
   const previewText = buildChannelPreview(previewPost, previewChannel)
   const previewMedia = findMediaForPost(mediaAssets, previewPost)
 
@@ -3022,6 +3403,7 @@ function LibraryView({
           <p>กรองตามสถานะ พักงาน ลบงาน และดูตัวอย่างการแสดงผลแต่ละช่องทาง</p>
         </div>
       </div>
+      {loading && <p className="mx-warn">{LOADING_EDIT_NOTE}</p>}
       <div className="mx-filter-bar">
         <label>
           สถานะ
@@ -3060,11 +3442,11 @@ function LibraryView({
           </div>
           {filteredPosts.length === 0 && <div className="mx-empty">ไม่พบโพสต์ในตัวกรองนี้ ลองเปลี่ยนสถานะด้านบน</div>}
           {filteredPosts.map((post) => (
-            <article className={`mx-row-card ${post.status === 'archived' ? 'muted' : ''}`} key={post.id}>
+            <article className={`mx-row-card ${post.status === 'archived' ? 'muted' : ''} ${isFocused(post, focusNo) ? 'mx-focus' : ''}`} data-content-no={post.contentNo || undefined} key={post.id}>
               {findMediaForPost(mediaAssets, post) && <ArtworkPreview className="mx-row-thumb" src={findMediaForPost(mediaAssets, post).dataUrl} alt={post.title} />}
               <div>
-                <strong>{post.title}</strong>
-                <span>{channelLabel(post.channel)} · {statusLabels[post.status] || post.status} · {displaySource(post.source)}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</span>
+                <strong><ContentNo post={post} onCopy={onCopy} />{post.title}</strong>
+                <span>{channelLabel(post.channel)} · {statusLabels[post.status] || post.status} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</span>
               </div>
               <div className="mx-post-actions">
                 <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{reviewLabel(post)}</span>
@@ -3108,7 +3490,7 @@ function LibraryView({
           {savedIdeas.length === 0 && <div className="mx-empty">ยังไม่มีไอเดียที่เก็บไว้ กด “เก็บไว้ก่อน” จากแท็บ ไอเดีย เพื่อสะสมหัวข้อ</div>}
           {savedIdeas.map((idea) => (
             <article className="mx-row-card" key={idea.id}>
-              <div><strong>{idea.title}</strong><span>{displaySource(idea.source)}{idea.savedAt ? ` · เก็บเมื่อ ${thaiDate(idea.savedAt)}` : ''}</span></div>
+              <div><strong>{idea.title}</strong><span>{idea.dbId ? `ไอเดีย ${idea.dbId} · ` : ''}{displaySource(idea.source)}{idea.savedAt ? ` · เก็บเมื่อ ${thaiDate(idea.savedAt)}` : ''}</span></div>
               <div className="mx-post-actions">
                 <button className="mx-primary" onClick={() => onCreate(idea.title, idea)}>ร่างโพสต์</button>
                 <button className="mx-mini-button danger" onClick={() => onDeleteSavedIdea(idea.id)}>ลบ</button>
@@ -3150,7 +3532,7 @@ function CalendarView({ posts = [], onQueue }) {
           <div className={`mx-day ${postsByDay[day]?.length ? 'has' : ''} ${monthOffset === 0 && day === today.getDate() ? 'today' : ''}`} key={day} aria-current={monthOffset === 0 && day === today.getDate() ? 'date' : undefined}>
             <strong>{day}{monthOffset === 0 && day === today.getDate() ? ' · วันนี้' : ''}</strong>
             {postsByDay[day]?.map((post) => (
-              <div className="mx-calendar-item" key={post.id}><strong>{post.title}</strong><span>{channelLabel(post.channel)} · {post.status === 'posted' ? statusLabels.posted : post.facebookPostId ? queueStateLabels.platformScheduled : queueStateLabels.upcoming}</span></div>
+              <div className="mx-calendar-item" key={post.id}><strong>{titleWithNo(post)}</strong><span>{channelLabel(post.channel)} · {post.status === 'posted' ? statusLabels.posted : post.facebookPostId ? queueStateLabels.platformScheduled : queueStateLabels.upcoming}</span></div>
             ))}
           </div>
         ))}
@@ -3331,10 +3713,29 @@ function InboxView({ onCopy, onCreate }) {
   )
 }
 
+// เลขคอนเทนต์บนการ์ด — กดแล้วคัดลอก "คอนเทนต์ #12 · หัวข้อ" ไปวางในแชตตอนสั่งแก้ · ร่างตัวอย่างไม่มีเลข
+function ContentNo({ post, onCopy }) {
+  const label = formatContentNo(post?.contentNo)
+  if (!label) return null
+  return (
+    <button
+      type="button"
+      className="mx-no"
+      title={`เลขคอนเทนต์ ${label} · กดเพื่อคัดลอกไว้อ้างถึงตอนสั่งแก้`}
+      onClick={(event) => {
+        event.stopPropagation()
+        onCopy?.(contentReference(post), `คัดลอก ${label} แล้ว · วางในแชตเพื่ออ้างถึงคอนเทนต์นี้`)
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
 function TabButton({ id, label, count, active, onClick }) {
   return (
     <button type="button" className={`mx-tab ${active ? 'active' : ''}`} data-view={id} aria-current={active ? 'page' : undefined} onClick={onClick}>
-      <span>{label}</span>{typeof count === 'number' && count > 0 && <strong>{count}</strong>}
+      <span>{label}</span>{typeof count === 'number' && count > 0 && <strong>{count > 99 ? '99+' : count}</strong>}
     </button>
   )
 }
@@ -3867,8 +4268,30 @@ const styles = `
   /* ── toast ── */
   .mx-toast { position: fixed; right: 22px; bottom: 22px; z-index: 60; background: rgba(12, 24, 48, .96); color: #fff; border: 1px solid var(--mx-line-2); border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 600; box-shadow: var(--mx-shadow), var(--mx-glow); max-width: min(640px, calc(100vw - 44px)); overflow-wrap: anywhere; white-space: pre-line; animation: mx-rise .25s ease both; }
   .mx-toast.error { border-color: rgba(251,113,133,.6); box-shadow: var(--mx-shadow), 0 0 24px rgba(251,113,133,.35); color: var(--mx-err-soft); }
+  .mx-toast.warn { border-color: rgba(251,191,36,.6); box-shadow: var(--mx-shadow), 0 0 24px rgba(251,191,36,.3); color: #fde68a; }
+
+  /* ── เลขคอนเทนต์ (#12) และช่องค้นด้วยเลข ── */
+  .mx-page .mx-no { display: inline-flex; align-items: center; margin: 0 8px 0 0; padding: 0 8px; border: 1px solid var(--mx-line-2); border-radius: 8px; background: rgba(66,199,216,.12); color: var(--mx-sky); font-family: inherit; font-size: 14px; font-weight: 700; line-height: 1.7; font-variant-numeric: tabular-nums; letter-spacing: .02em; vertical-align: 2px; cursor: copy; transition: background 160ms ease, color 160ms ease; }
+  .mx-page .mx-no:hover { background: rgba(66,199,216,.24); color: #fff; }
+  .mx-find { position: relative; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+  .mx-find + .mx-tools { margin-left: 0; }
+  .mx-find input { width: 140px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--mx-line); border-radius: 12px; background: rgba(5,11,24,.55); color: var(--mx-ink); font: inherit; font-size: 15px; }
+  .mx-find input::placeholder { color: var(--mx-muted); }
+  .mx-find button { min-height: 40px; padding: 8px 14px; border: 1px solid var(--mx-line-2); border-radius: 12px; background: rgba(66,199,216,.14); color: #fff; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .mx-find button:hover { background: rgba(66,199,216,.24); border-color: var(--mx-sky); }
+  .mx-find-msg { position: absolute; top: calc(100% + 6px); right: 0; z-index: 46; width: max-content; max-width: min(360px, calc(100vw - 32px)); padding: 8px 12px; border: 1px solid rgba(251,113,133,.6); border-radius: 10px; background: #0d1a33; color: var(--mx-err-soft); font-size: 14px; font-weight: 600; line-height: 1.5; white-space: normal; box-shadow: var(--mx-shadow); cursor: pointer; }
+  /* ว่าง = กล่องขนาดศูนย์ที่ไม่รับการคลิก แต่ยังอยู่ในโครงสร้างที่โปรแกรมอ่านหน้าจอเห็น (display:none ทำให้ข้อความแรกไม่ถูกอ่าน)
+     มีข้อความ = รับการคลิกเอง และคลิกแล้วปิด — ไม่ปล่อยให้คลิกทะลุไปโดนปุ่มที่ถูกบังอยู่ เช่น ปุ่มลบ */
+  .mx-find-msg:empty { padding: 0; border: 0; box-shadow: none; pointer-events: none; }
+  /* คง mx-rise ไว้ในรายการ (ชื่อเดิม ตำแหน่งเดิม) ไม่งั้นพอเอาไฮไลต์ออก การ์ดจะเล่นแอนิเมชันเข้าใหม่ = กะพริบ */
+  .mx-focus { outline: 2px solid var(--mx-cyan); outline-offset: 3px; animation: mx-rise .45s cubic-bezier(.2,.7,.2,1) both, mx-focus-pulse 1.1s ease 3; }
+  @keyframes mx-focus-pulse { 0%, 100% { box-shadow: var(--mx-shadow); } 50% { box-shadow: var(--mx-shadow), 0 0 0 6px rgba(66,199,216,.32), 0 0 28px rgba(66,199,216,.35); } }
 
   /* ── จอเล็ก ── */
+  @media (max-width: 900px) {
+    /* ชื่อเครื่องมือที่เปิดอยู่ต่อท้ายปุ่มทำให้ปุ่มตกไปแถวใหม่ (เมนูหลุดขอบซ้าย) เมื่อมีช่องค้นด้วยเลขในแถวเดียวกัน */
+    .mx-tools-current { display: none; }
+  }
   @media (max-width: 980px) {
     .mx-generated-grid, .mx-library-split, .mx-inbox-layout, .mx-metrics-layout, .mx-visual-system, .mx-reference-layout, .mx-poster-form { grid-template-columns: 1fr; }
     .mx-upload-panel { align-items: stretch; flex-direction: column; }
@@ -3887,6 +4310,13 @@ const styles = `
     .mx-tab strong { padding: 0 6px; }
     .mx-tools { margin-left: auto; }
     .mx-tools-menu { right: 0; left: auto; min-width: 230px; }
+    .mx-tabs { flex-wrap: wrap; row-gap: 6px; }
+    /* แถวแรก = แท็บ 3 อัน · แถวสอง = ช่องค้นด้วยเลข + เครื่องมือ → ลำดับบนจอตรงกับลำดับโฟกัส และตัวเลข 99+ ไม่ดันเครื่องมือตกบรรทัด */
+    .mx-find { flex: 1 1 calc(100% - 120px); min-width: 0; margin-left: 0; }
+    /* ช่องค้นไม่ได้ชิดขวาจอแล้ว (เครื่องมืออยู่ทางขวา) → ข้อความใต้ช่องยึดขอบซ้ายของช่อง ไม่หลุดขอบซ้ายจอ */
+    .mx-find-msg { left: 0; right: auto; }
+    .mx-find + .mx-tools { margin-left: auto; }
+    .mx-find input { flex: 1 1 auto; width: auto; min-width: 0; }
     .mx-content { padding: 0 16px; margin-top: 18px; }
     .mx-page-head, .mx-row-card, .mx-pipe-card, .mx-section-head { align-items: stretch; flex-direction: column; }
     .mx-page-actions { justify-content: flex-start; }
@@ -3899,6 +4329,12 @@ const styles = `
     .mx-calendar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .mx-weekday, .mx-day-empty { display: none; }
     .mx-page::before, .mx-page::after { opacity: .4; }
+  }
+  @media (max-width: 360px) {
+    /* จอ 320–360px: แท็บ 3 อันชิดกันขึ้น แถวแรกไม่ล้นแม้ตัวเลขยาว */
+    .mx-tabs { gap: 0; }
+    .mx-tab, .mx-tools > summary { padding: 8px 6px; gap: 4px; }
+    .mx-tab strong { padding: 0 5px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .mx-page *, .mx-page *::before, .mx-page *::after, .mx-page::before, .mx-page::after { animation: none !important; transition: none !important; }
