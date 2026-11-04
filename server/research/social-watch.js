@@ -421,6 +421,8 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
     lockFactory = (opts) => new Lock(PROJECT, opts),
     today = todayIso(),
   } = deps
+  // แถว usage.jsonl ลงวันตามเวลาที่จดจริง (เหมือนฝั่ง DVX และโค้ดอ้างอิงในข้อตกลงข้อ 4.6) · ระบุวันเองเฉพาะเมื่อเทสต์ฉีด today มา
+  const usageDay = deps?.today ? { day: today } : {}
   const sb = { ...DEFAULTS.shared_browser, ...(cfg.shared_browser || {}) }
   const CAP_DAY = Number(sb.daily_cap?.facebook ?? 12)
   const CAP_OWN = Number(sb.own_daily_cap?.facebook ?? 4)
@@ -521,7 +523,7 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
         const store = loadJson(file, { target: t.name, posts: {} })
         const page = { name: t.name, tid, posts: 0, new: 0, hits: 0, low: false, fail: null }
         out.pages.push(page)
-        lock.logUsage({ facebook: 1 }, 'open') // จดก่อนเปิด (ใต้กุญแจ) — โดนฆ่า/กุญแจหลุดกลางทางก็ยังนับ
+        lock.logUsage({ facebook: 1 }, 'open', usageDay) // จดก่อนเปิด (ใต้กุญแจ) — โดนฆ่า/กุญแจหลุดกลางทางก็ยังนับ
         out.opened.facebook += 1
         let posts
         try {
@@ -582,7 +584,7 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
     say(`⚠️ [social] ${e.message} — หยุดอ่านทันที · เพจที่อ่านแล้วยังเก็บ/เข้าคิวตามปกติ`)
   } finally {
     try {
-      if (out.touched && lock.held) lock.logUsage({}, [...new Set(out.result)].join(',') || 'ok', { opened: out.opened })
+      if (out.touched && lock.held) lock.logUsage({}, [...new Set(out.result)].join(',') || 'ok', { opened: out.opened, ...usageDay })
     } catch { /* กุญแจหลุดแล้ว — ข้ามแถวสรุป ห้ามโยนออกจาก finally */ }
     lock.release() // ปล่อยเสมอ
   }
