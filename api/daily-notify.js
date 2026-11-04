@@ -2,9 +2,38 @@
 // เรียกผ่าน Vercel Cron ทุกวัน (ดู vercel.json) — ป้องกันด้วย CRON_SECRET
 import { createClient } from '@supabase/supabase-js';
 import { getNotificationMode, resolveAutomaticRecipient } from './_notification-routing.js';
-import { boldAmount } from '../src/lib/combinedPayment.js';
+import { boldAmount, amountDue } from '../src/lib/combinedPayment.js';
+import { planPaymentReminders } from '../src/lib/paymentReminderPlan.js';
+import { additionFromRow } from '../src/lib/installmentBalance.js';
+import { fetchAllAdditionRows } from '../server/paymentAdditions.js';
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
+// รายการชำระเพิ่ม/ยกเว้น (payment_additions) อ่านได้เฉพาะ service role → ใช้ client แยกเฉพาะตารางนี้
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const admin = serviceKey
+  ? createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
+  : null;
+
+// trusted = รู้ครบว่ามีรายการชำระเพิ่มอะไรบ้าง → เตือนงวดที่จ่ายไม่ครบด้วยยอดที่ยังขาดได้
+// ไม่ trusted → ไม่ทวงงวดที่จ่ายไม่ครบ (ลูกค้าอาจจ่ายส่วนที่เหลือไปแล้ว) และรายงานในผลลัพธ์ · งวดอื่นเตือนตามปกติ
+// ตารางยังไม่ถูกสร้างก็ไม่ทวง: ระหว่างนั้นหน้าเว็บบันทึกเงินที่ลูกค้ามาจ่ายเพิ่มไม่ได้ ถ้าทวงอัตโนมัติจะทวงเงินที่รับแล้วซ้ำ
+async function loadPaymentAdditions() {
+  if (!admin) return { additions: [], trusted: false, warning: 'ไม่มี SUPABASE_SERVICE_ROLE_KEY — ข้ามการเตือนงวดที่จ่ายไม่ครบ' };
+  const { data, error } = await fetchAllAdditionRows(admin, { columns: 'id, customer_id, topup_id, installment, kind, paid_at, amount, created_at, voided_at' });
+  if (error) {
+    if (['42P01', 'PGRST205'].includes(error.code)) return { additions: [], trusted: false, warning: 'ยังไม่ได้รัน supabase_payment_additions.sql — ข้ามการเตือนงวดที่จ่ายไม่ครบ' };
+    return { additions: [], trusted: false, warning: `อ่านรายการชำระเพิ่มไม่ได้ (${error.message}) — ข้ามการเตือนงวดที่จ่ายไม่ครบ` };
+  }
+  return { additions: data.map(additionFromRow), trusted: true, warning: '' };
+}
+
+// งวดที่จ่ายไม่ครบ: ยอดในข้อความ = ส่วนที่ยังขาด และบอกว่าชำระมาแล้วเท่าไร (และยกเว้นให้เท่าไร) จากยอดเต็ม ตัวเลขจึงรวมกันลงตัว
+const partialTag = (balance) => (balance?.state === 'partial' ? ' (ส่วนที่ยังขาด)' : '');
+function partialLine(balance) {
+  if (balance?.state !== 'partial') return [];
+  const waived = Number(balance.waived) > 0 ? ` · ยกเว้น ${Number(balance.waived).toLocaleString('th-TH')} บาท` : '';
+  return [`✅ ชำระแล้ว ${Number(balance.paid).toLocaleString('th-TH')} บาท${waived} จากยอด ${Number(balance.due).toLocaleString('th-TH')} บาท`];
+}
 
 const CONTRACT_REMINDER_DAYS = {
   'ขายฝาก': [180, 150, 90, 60, 30, 7, 3, 0],
@@ -40,73 +69,79 @@ function formatThaiDate(dateStr) {
   return `${d.getDate()} ${MONTHS[d.getMonth() + 1]} ${d.getFullYear() + 543}`;
 }
 
-function buildDueMsg(name, installment, amount, freq, dateStr) {
+function buildDueMsg(name, installment, amount, freq, dateStr, balance) {
   return [
     `📅 ครบกำหนดชำระวันนี้`, ``,
     `เรียน คุณ${name}`,
-    `วันนี้เป็นวันครบกำหนดชำระดอกเบี้ย`,
+    `วันนี้เป็นวันครบกำหนดชำระดอกเบี้ย${partialTag(balance)}`,
     `งวดที่ ${installment} วันที่ ${formatThaiDate(dateStr)}`, ``,
     `💰 จำนวน: ${Number(amount).toLocaleString('th-TH')} บาท`,
+    ...partialLine(balance),
     `📌 ความถี่: ${freq}`, ``,
     ...PAYMENT_FOOTER,
   ].join('\n');
 }
 
-function buildEarlyMsg(name, installment, amount, freq, dateStr, days) {
+function buildEarlyMsg(name, installment, amount, freq, dateStr, days, balance) {
   return [
     `🔔 แจ้งเตือนล่วงหน้า ${days} วัน`, ``,
     `เรียน คุณ${name}`,
-    `อีก ${days} วัน จะถึงกำหนดชำระดอกเบี้ย`,
+    `อีก ${days} วัน จะถึงกำหนดชำระดอกเบี้ย${partialTag(balance)}`,
     `งวดที่ ${installment} วันที่ ${formatThaiDate(dateStr)}`, ``,
     `💰 จำนวน: ${Number(amount).toLocaleString('th-TH')} บาท`,
+    ...partialLine(balance),
     `📌 ความถี่: ${freq}`, ``,
     ...PAYMENT_FOOTER,
   ].join('\n');
 }
 
-function buildTopupDueMsg(name, installment, interestAmount, topupAmount, freq, dateStr) {
+function buildTopupDueMsg(name, installment, interestAmount, topupAmount, freq, dateStr, balance) {
   return [
     `📅 ครบกำหนดชำระวงเงินเพิ่มวันนี้`, ``,
     `เรียน คุณ${name}`,
-    `วันนี้เป็นวันครบกำหนดชำระดอกเบี้ยวงเงินเพิ่ม`,
+    `วันนี้เป็นวันครบกำหนดชำระดอกเบี้ยวงเงินเพิ่ม${partialTag(balance)}`,
     `งวดที่ ${installment} วันที่ ${formatThaiDate(dateStr)}`, ``,
     `💵 วงเงินเพิ่ม: ${Number(topupAmount).toLocaleString('th-TH')} บาท`,
     `💰 ยอดชำระ: ${Number(interestAmount).toLocaleString('th-TH')} บาท`,
+    ...partialLine(balance),
     `📌 ความถี่: ${freq}`, ``,
     ...PAYMENT_FOOTER,
   ].join('\n');
 }
 
-function buildTopupEarlyMsg(name, installment, interestAmount, topupAmount, freq, dateStr, days) {
+function buildTopupEarlyMsg(name, installment, interestAmount, topupAmount, freq, dateStr, days, balance) {
   return [
     `🔔 แจ้งเตือนวงเงินเพิ่มล่วงหน้า ${days} วัน`, ``,
     `เรียน คุณ${name}`,
-    `อีก ${days} วัน จะถึงกำหนดชำระดอกเบี้ยวงเงินเพิ่ม`,
+    `อีก ${days} วัน จะถึงกำหนดชำระดอกเบี้ยวงเงินเพิ่ม${partialTag(balance)}`,
     `งวดที่ ${installment} วันที่ ${formatThaiDate(dateStr)}`, ``,
     `💵 วงเงินเพิ่ม: ${Number(topupAmount).toLocaleString('th-TH')} บาท`,
     `💰 ยอดชำระ: ${Number(interestAmount).toLocaleString('th-TH')} บาท`,
+    ...partialLine(balance),
     `📌 ความถี่: ${freq}`, ``,
     ...PAYMENT_FOOTER,
   ].join('\n');
 }
 
-function buildCombinedPaymentMsg(customer, dateStr, diff, main, extras) {
+// mains = งวดสัญญาหลักของวันนั้น (ปกติ 0–1 งวด · มากกว่านั้นเมื่อเลื่อนส่วนที่ขาดมาวันเดียวกับงวดถัดไป)
+function buildCombinedPaymentMsg(customer, dateStr, diff, mains, extras) {
   const entries = [
-    main && `• สัญญาหลัก งวดที่ ${main.installment}: ${Number(customer.amount).toLocaleString('th-TH')} บาท`,
-    ...extras.map(({ topup, installment }) =>
-      `• วงเงินเพิ่ม ${Number(topup.topup_amount).toLocaleString('th-TH')} บาท งวดที่ ${installment}: ${Number(topup.interest_amount).toLocaleString('th-TH')} บาท`),
-  ].filter(Boolean);
-  const total = (main ? Number(customer.amount) || 0 : 0) + extras.reduce(
-    (sum, { topup }) => sum + (Number(topup.interest_amount) || 0), 0
-  );
+    ...mains.map(({ installment, balance }) =>
+      `• สัญญาหลัก งวดที่ ${installment}: ${amountDue(customer.amount, balance).toLocaleString('th-TH')} บาท${partialTag(balance)}`),
+    ...extras.map(({ topup, installment, balance }) =>
+      `• วงเงินเพิ่ม ${Number(topup.topup_amount).toLocaleString('th-TH')} บาท งวดที่ ${installment}: ${amountDue(topup.interest_amount, balance).toLocaleString('th-TH')} บาท${partialTag(balance)}`),
+  ];
+  const total = mains.reduce((sum, { balance }) => sum + amountDue(customer.amount, balance), 0)
+    + extras.reduce((sum, { topup, balance }) => sum + amountDue(topup.interest_amount, balance), 0);
+  const mainInstallments = mains.map(({ installment }) => installment).join(', ');
   return [
     diff === 0 ? '📅 ครบกำหนดชำระวันนี้' : '🔔 แจ้งเตือนล่วงหน้า 7 วัน', '',
     `เรียน คุณ${customer.name}`, '',
     'บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด ขอแจ้งให้ทราบว่า',
-    main
+    mains.length
       ? diff === 0
-        ? `วันนี้ครบกำหนดชำระ${customer.type === 'จำนอง' ? 'ดอกจำนอง' : 'ดอกเบี้ยขายฝาก'}งวดที่ ${main.installment}`
-        : `ครบกำหนดชำระ${customer.type === 'จำนอง' ? 'ดอกจำนอง' : 'ดอกเบี้ยขายฝาก'}งวดที่ ${main.installment} ในอีก ${diff} วันข้างหน้า`
+        ? `วันนี้ครบกำหนดชำระ${customer.type === 'จำนอง' ? 'ดอกจำนอง' : 'ดอกเบี้ยขายฝาก'}งวดที่ ${mainInstallments}`
+        : `ครบกำหนดชำระ${customer.type === 'จำนอง' ? 'ดอกจำนอง' : 'ดอกเบี้ยขายฝาก'}งวดที่ ${mainInstallments} ในอีก ${diff} วันข้างหน้า`
       : diff === 0
         ? 'วันนี้ครบกำหนดชำระดอกเบี้ยวงเงินเพิ่ม'
         : `ครบกำหนดชำระดอกเบี้ยวงเงินเพิ่มในอีก ${diff} วันข้างหน้า`, '',
@@ -195,10 +230,10 @@ export default async function handler(req, res) {
       await Promise.all([
         supabase.from('customers').select('*').eq('is_cancelled', false),
         supabase.from('payments').select('*'),
-        supabase.from('payment_records').select('customer_id, installment'),
+        supabase.from('payment_records').select('customer_id, installment, amount_paid, slip_id'),
         supabase.from('contract_statuses').select('customer_id'),
         supabase.from('contract_topups').select('id, customer_id, topup_amount, interest_amount, freq, payments'),
-        supabase.from('topup_payment_records').select('topup_id, installment'),
+        supabase.from('topup_payment_records').select('topup_id, installment, amount_paid, slip_id'),
       ]);
     if (custErr) throw custErr;
     if (payErr) throw payErr;
@@ -210,59 +245,29 @@ export default async function handler(req, res) {
     // ลูกค้าที่ปิดสัญญาแล้ว (ไม่ว่าจะปิดแล้ว/ยกเลิก — มีแถวในตารางนี้ = หยุดแจ้งเตือน)
     const closedIds = new Set(statuses.map((s) => s.customer_id));
 
-    // งวดที่จ่ายแล้ว
-    const paidKeys = new Set(paymentRecords.map((r) => `${r.customer_id}|${r.installment}`));
-    const paidTopupKeys = new Set(topupRecords.map((r) => `${r.topup_id}|${r.installment}`));
+    // งวดที่จ่ายครบแล้ว (บันทึกแรก + ชำระเพิ่ม/ยกเว้น) ข้าม · จ่ายไม่ครบยังเตือนด้วยยอดที่ยังขาด ตามวันนัด (ดู src/lib/paymentReminderPlan.js)
+    const { additions, trusted: additionsTrusted, warning: additionsWarning } = await loadPaymentAdditions();
+    const plan = planPaymentReminders({
+      customers, payments, paymentRecords, topups, topupRecords, additions, closedIds, today,
+      canNotify: (c) => Boolean(resolveAutomaticRecipient(c.line_user_id)),
+      remindPartial: additionsTrusted,
+    });
+    skipCount += plan.skipped;
 
-    const customerById = Object.fromEntries(customers.map((c) => [c.id, c]));
-    const paymentGroups = new Map();
-    const addPayment = (customer, dateStr, diff, main, extra) => {
-      const key = `${customer.id}|${dateStr}`;
-      if (!paymentGroups.has(key)) paymentGroups.set(key, { customer, dateStr, diff, main: null, extras: [] });
-      const group = paymentGroups.get(key);
-      if (main) group.main = main;
-      if (extra) group.extras.push(extra);
-    };
-
-    for (const p of payments) {
-      const c = customerById[p.customer_id];
-      if (!c) { skipCount++; continue; } // ลูกค้ายกเลิก/ไม่พบ
-      if (closedIds.has(c.id)) { skipCount++; continue; } // ปิดสัญญาแล้ว
-      if (paidKeys.has(`${p.customer_id}|${p.installment}`)) { skipCount++; continue; } // จ่ายแล้ว
-
-      const recipientId = resolveAutomaticRecipient(c.line_user_id);
-      if (!recipientId) { skipCount++; continue; }
-
-      const diff = diffDays(p.date_str, today);
-      if (diff === 0 || diff === 7) addPayment(c, p.date_str, diff, p, null);
-    }
-
-    // แจ้งเตือนงวดดอกเบี้ยของวงเงินเพิ่ม แยกจากตารางชำระสัญญาหลัก
-    for (const topup of topups) {
-      const c = customerById[topup.customer_id];
-      if (!c || closedIds.has(c.id)) { skipCount++; continue; }
-      const recipientId = resolveAutomaticRecipient(c.line_user_id);
-      if (!recipientId) { skipCount++; continue; }
-      const schedule = Array.isArray(topup.payments) ? topup.payments : [];
-      for (const payment of schedule) {
-        if (paidTopupKeys.has(`${topup.id}|${payment.installment}`)) { skipCount++; continue; }
-        const diff = diffDays(payment.dateStr, today);
-        if (diff === 0 || diff === 7) addPayment(c, payment.dateStr, diff, null, { topup, installment: payment.installment });
-      }
-    }
-
-    for (const group of paymentGroups.values()) {
-      const { customer, dateStr, diff, main, extras } = group;
+    for (const group of plan.groups) {
+      const { customer, dateStr, diff, mains, extras } = group;
       try {
-        const message = main && extras.length === 0
+        const [main] = mains;
+        const [extra] = extras;
+        const message = mains.length === 1 && extras.length === 0
           ? diff === 0
-            ? buildDueMsg(customer.name, main.installment, customer.amount, customer.freq, dateStr)
-            : buildEarlyMsg(customer.name, main.installment, customer.amount, customer.freq, dateStr, 7)
-          : !main && extras.length === 1
+            ? buildDueMsg(customer.name, main.installment, amountDue(customer.amount, main.balance), customer.freq, dateStr, main.balance)
+            : buildEarlyMsg(customer.name, main.installment, amountDue(customer.amount, main.balance), customer.freq, dateStr, 7, main.balance)
+          : mains.length === 0 && extras.length === 1
             ? diff === 0
-              ? buildTopupDueMsg(customer.name, extras[0].installment, extras[0].topup.interest_amount, extras[0].topup.topup_amount, extras[0].topup.freq, dateStr)
-              : buildTopupEarlyMsg(customer.name, extras[0].installment, extras[0].topup.interest_amount, extras[0].topup.topup_amount, extras[0].topup.freq, dateStr, 7)
-            : buildCombinedPaymentMsg(customer, dateStr, diff, main, extras);
+              ? buildTopupDueMsg(customer.name, extra.installment, amountDue(extra.topup.interest_amount, extra.balance), extra.topup.topup_amount, extra.topup.freq, dateStr, extra.balance)
+              : buildTopupEarlyMsg(customer.name, extra.installment, amountDue(extra.topup.interest_amount, extra.balance), extra.topup.topup_amount, extra.topup.freq, dateStr, 7, extra.balance)
+            : buildCombinedPaymentMsg(customer, dateStr, diff, mains, extras);
         await sendLine(resolveAutomaticRecipient(customer.line_user_id), message);
         sentCount++;
       } catch (e) {
@@ -288,7 +293,10 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ success: true, deliveryMode, sentCount, skipCount, errors });
+    return res.status(200).json({
+      success: true, deliveryMode, sentCount, skipCount, errors,
+      ...(additionsWarning ? { warnings: [additionsWarning] } : {}),
+    });
   } catch (e) {
     return res.status(500).json({ success: false, error: e.message });
   }

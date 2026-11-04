@@ -1,6 +1,7 @@
 import React from "react";
 import { BRAND } from "../lib/config.js";
 import { updateCustomer as apiUpdateCustomer } from "../lib/api.js";
+import { isAdvanceDeductionRecord } from "../lib/advanceDeduction.js";
 
 // ── แก้ไขข้อมูลหลักลูกค้าจาก Sheet DATA ────────────────────────
 export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSaved }) {
@@ -18,6 +19,14 @@ export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSav
   const [error, setError] = React.useState(null);
 
   const up = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // ระบบคิดว่างวดไหน "ครบ/ยังขาด" จากยอดต่องวดตัวนี้ทุกงวด (ไม่มียอดแยกรายงวด)
+  // เพิ่มยอด → งวดเก่าที่บันทึกชำระด้วยยอดเดิมจะกลายเป็น "ชำระไม่ครบ" ทันที จึงเตือนก่อนบันทึก
+  const newAmount = parseFloat(form.amount) || 0;
+  const shortAfterEdit = newAmount > (Number(customer.amount) || 0)
+    ? (customer.payments || []).filter((p) => p.record && !isAdvanceDeductionRecord(p.record)
+      && (Number(p.balance?.paid ?? p.record.amountPaid) || 0) + (Number(p.balance?.waived) || 0) < newAmount).length
+    : 0;
 
   const handleSave = async () => {
     if (!form.name.trim()) { setError('กรุณากรอกชื่อลูกค้า'); return; }
@@ -85,6 +94,11 @@ export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSav
               <input style={inputStyle} type="number" value={form.amount} onChange={e => up('amount', e.target.value)} />
             </div>
           </div>
+          {shortAfterEdit > 0 && (
+            <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.4)', color: '#FBBF24', fontSize: 12, lineHeight: 1.5 }}>
+              ⚠️ ถ้าเพิ่มดอกเบี้ย/งวดเป็น {newAmount.toLocaleString('th-TH')} บาท งวดที่บันทึกชำระไว้แล้ว {shortAfterEdit} งวดจะขึ้นว่า "ชำระไม่ครบ" เพราะระบบคิดยอดของทุกงวดจากตัวเลขนี้ — ถ้ายอดที่รับไว้ถูกต้องแล้ว อย่าแก้ตรงนี้
+            </div>
+          )}
           <div>
             <label style={labelStyle}>รอบชำระ</label>
             <select style={inputStyle} value={form.freq} onChange={e => up('freq', e.target.value)}>

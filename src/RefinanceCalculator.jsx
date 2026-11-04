@@ -42,7 +42,14 @@ export default function RefinanceCalculator({ customers = [], valuation = null }
   const activeCustomers = customers.filter(c => !c.isClosed && !c.isVoided && !c.isHiddenDraft)
   // ลูกค้าที่เลือกอยู่ในร่าง (form.sourceCustomerId) → กลับมาแท็บนี้แล้วยังรู้ว่าค่ามาจากสัญญาไหน และยังเห็นหมายเหตุ
   const sourceCustomer = activeCustomers.find(c => String(c.id) === String(form.sourceCustomerId || '')) || null
-  const prefillNotes = useMemo(() => sourceCustomer ? buildRefinanceFormFromCustomer(sourceCustomer).notes : [], [sourceCustomer])
+  const prefill = useMemo(() => sourceCustomer ? buildRefinanceFormFromCustomer(sourceCustomer) : null, [sourceCustomer])
+  const prefillNotes = prefill ? prefill.notes : []
+  // ร่างที่ดึงจากลูกค้าไว้ก่อน อาจคิดตอนยังโหลดรายการชำระเพิ่มไม่ได้ หรือการชำระเปลี่ยนไปแล้ว → เทียบยอดที่ขึ้นกับการชำระกับค่าล่าสุด
+  // ไม่ทับให้เอง (ผู้ใช้อาจแก้ตัวเลขเอง) แค่เตือนพร้อมปุ่มใช้ยอดล่าสุด · ค่าใช้จ่ายอื่นเทียบเฉพาะลูกค้าที่มีวงเงินเพิ่ม (ระบบเป็นคนเติมช่องนั้น)
+  const staleFields = prefill
+    ? ['otherPaid', 'otherCosts'].filter((key) => prefill.form[key] !== undefined && Number(form[key] || 0) !== Number(prefill.form[key] || 0))
+    : []
+  const useLatestPaid = () => setForm((previous) => ({ ...previous, ...Object.fromEntries(staleFields.map((key) => [key, prefill.form[key]])) }))
   const applyCustomer = (id) => {
     const customer = activeCustomers.find(c => String(c.id) === String(id))
     if (!customer) { setForm(previous => ({ ...previous, sourceCustomerId: '' })); return }
@@ -131,6 +138,12 @@ export default function RefinanceCalculator({ customers = [], valuation = null }
         <small>เติมเงินต้น อัตรา วันครบกำหนด หักล่วงหน้า ยอดรับชำระแล้ว จำนวนโฉนด และยอดปิดวงเงินเพิ่ม (ที่ "ค่าใช้จ่ายอื่น") จากข้อมูลจริง — แก้ทับได้ทุกช่อง</small>
       </label>
       {prefillNotes.length > 0 && <div className="tx-basis" role="status">{prefillNotes.map((note, index) => <p key={index}>{note}</p>)}</div>}
+      {staleFields.length > 0 && (
+        <div className="tx-basis" role="status">
+          <p>⚠️ ยอดในร่างนี้ไม่ตรงกับข้อมูลการชำระล่าสุดของลูกค้า: {staleFields.map((key) => `${key === 'otherPaid' ? 'รับชำระแล้ว' : 'ค่าใช้จ่ายอื่น'} ${Number(form[key] || 0).toLocaleString('th-TH')} (ล่าสุด ${Number(prefill.form[key] || 0).toLocaleString('th-TH')})`).join(' · ')} — ถ้าไม่ได้แก้ตัวเลขเอง กดใช้ยอดล่าสุด</p>
+          <button type="button" onClick={useLatestPaid}>ใช้ยอดล่าสุด</button>
+        </div>
+      )}
       <h3>ปิดทุนเดิม</h3>
       <div className="rf-mode" role="group" aria-label="วิธีกำหนดยอดปิดทุน">
         <button type="button" aria-pressed={payoffMode === 'calculated'} className={payoffMode === 'calculated' ? 'active' : ''} onClick={() => setPayoffMode('calculated')}>คำนวณจากเงินต้น</button>

@@ -815,6 +815,45 @@ export async function postponeTopupPayment(topupId, installment, newDate, note) 
   return { success: true, payments };
 }
 
+// ── ชำระเพิ่ม / ยกเว้นส่วนที่ขาดของงวด ─────────────────────────
+// ผ่านเซิร์ฟเวอร์เท่านั้น (/api/payment-additions ตรวจ session) — ตาราง payment_additions เพิ่มอย่างเดียว ยกเลิกด้วยการตั้งวันที่ยกเลิก
+// ข้อผิดพลาดมี status และ code ติดไปด้วย: 503 + table_missing = ยังไม่ได้รัน supabase_payment_additions.sql
+//   503 + not_configured = เซิร์ฟเวอร์ไม่มีกุญแจ · 409 + duplicate/conflict/settled = บันทึกไว้แล้ว/มีคนบันทึกพร้อมกัน/งวดครบแล้ว
+
+async function paymentAdditionsRequest(method, { query = "", body } = {}) {
+  let res;
+  try {
+    res = await fetch(`/api/payment-additions${query}`, {
+      method,
+      credentials: "same-origin",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // เน็ตหลุด/เซิร์ฟเวอร์ไม่ตอบ: ยังไม่รู้ว่าบันทึกถึงฐานข้อมูลหรือยัง — ส่งซ้ำด้วยหน้าต่างเดิมได้ (รหัสรายการเดิมกันบันทึกซ้ำ)
+    throw Object.assign(new Error("ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่"), { status: 0, code: "network" });
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || "ติดต่อระบบชำระเพิ่มไม่สำเร็จ กรุณาลองใหม่"), { status: res.status, code: data.code || "" });
+  return data;
+}
+
+// ไม่ระบุลูกค้า = ทุกรายการ (รวมที่ยกเลิกแล้ว) สำหรับคิดสถานะงวดบนหน้าหลัก
+export async function getPaymentAdditions(customerId = "") {
+  const data = await paymentAdditionsRequest("GET", { query: customerId ? `?customerId=${encodeURIComponent(customerId)}` : "" });
+  return Array.isArray(data.additions) ? data.additions : [];
+}
+
+export async function addPaymentAddition(input) {
+  const data = await paymentAdditionsRequest("POST", { body: input });
+  return data.addition;
+}
+
+export async function voidPaymentAddition(id, customerId, voidReason) {
+  const data = await paymentAdditionsRequest("PATCH", { body: { id, customerId, voidReason } });
+  return data.addition;
+}
+
 // ── Contract Renewal ─────────────────────────────────────────
 
 export async function renewContract(customerId, data) {

@@ -45,6 +45,11 @@ export function PostponeModal({ customer, payment, topup = null, onSave, onClose
           )}
           <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
             งวดที่ {payment.installment} · กำหนดเดิม: <span style={{ color: BRAND.gold }}>{formatThai(payment.dateStr)}</span>
+            {payment.balance?.state === "partial" && (
+              <div style={{ marginTop: 4, color: "#FDE68A" }}>
+                ชำระแล้ว {Number(payment.balance.paid).toLocaleString("th-TH")} บาท{payment.balance.waived > 0 ? ` · ยกเว้น ${Number(payment.balance.waived).toLocaleString("th-TH")} บาท` : ""} · นัดวันชำระส่วนที่ขาด {Number(payment.balance.outstanding).toLocaleString("th-TH")} บาท
+              </div>
+            )}
           </div>
           {payment.postponedFrom && (
             <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 2 }}>

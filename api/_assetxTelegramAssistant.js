@@ -5,6 +5,9 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { listShortInstallments } from '../src/lib/paymentReminderPlan.js';
+import { additionFromRow } from '../src/lib/installmentBalance.js';
+import { fetchAllAdditionRows } from '../server/paymentAdditions.js';
 
 const DEFAULT_MODELS = 'gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-pro-preview';
 const DEFAULT_HERMES_TIMEOUT_MS = 120000;
@@ -33,6 +36,67 @@ function makeSupabase() {
   return createClient(url, key);
 }
 
+// งวดที่รับเงินมาแล้วบางส่วน ยังขาดอีก (สัญญาหลัก + วงเงินเพิ่ม) คิดด้วยตัวคิดยอดเดียวกับหน้าเว็บและงานเตือน LINE
+// + ยอดรับจริงของงวดที่มีเงินจ่ายเพิ่ม/ยกเว้น (คิดไว้ให้แล้ว ระบุสัญญาหลัก/วงเงินเพิ่ม บอทไม่ต้องบวกเองจนปนกัน)
+// ส่งแค่ตัวเลขกับวันที่ ไม่ส่งหมายเหตุ/เหตุผลยกเลิก (อาจมีข้อมูลส่วนตัว)
+// อ่านแต่ละส่วนแยกกัน ส่วนไหนพังยังคิดส่วนที่เหลือได้ · topupsLoaded / additionsLoaded บอกบอทว่าส่วนไหนเชื่อไม่ได้
+async function loadShortInstallments(supabase, { customers, payments, paymentRecords, statuses }) {
+  const notes = [];
+  try {
+    const [{ data: topups, error: topupsError }, { data: topupRecords, error: topupRecordsError }] = await Promise.all([
+      supabase.from('contract_topups').select('id,customer_id,topup_amount,interest_amount,payments'),
+      supabase.from('topup_payment_records').select('topup_id,installment,amount_paid,slip_id'),
+    ]);
+    const topupsLoaded = !topupsError && !topupRecordsError;
+    if (!topupsLoaded) notes.push('อ่านข้อมูลวงเงินเพิ่มไม่ได้ ไม่มีข้อมูลงวดของวงเงินเพิ่มในรอบนี้');
+    let additions = [];
+    let additionsLoaded = true;
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (url && key) {
+      const admin = createClient(url, key, { auth: { persistSession: false } });
+      const { data, error } = await fetchAllAdditionRows(admin, { columns: 'id,customer_id,topup_id,installment,kind,paid_at,amount,created_at,voided_at' });
+      if (!error) additions = data.map(additionFromRow);
+      else if (!['42P01', 'PGRST205'].includes(error.code)) additionsLoaded = false; // ยังไม่มีตาราง = ยังไม่มีรายการ ถือว่าครบ
+    } else {
+      additionsLoaded = false;
+    }
+    if (!additionsLoaded) notes.push('อ่านรายการชำระเพิ่มไม่ได้ ยอดที่ขาดอาจยังไม่หักเงินที่ลูกค้ามาจ่ายเพิ่ม');
+    const nameById = new Map((customers || []).map((c) => [c.id, c.name]));
+    const usableTopups = topupsLoaded ? topups || [] : [];
+    const usableTopupRecords = topupsLoaded ? topupRecords || [] : [];
+    const list = listShortInstallments({
+      customers: customers || [], payments: payments || [], paymentRecords: paymentRecords || [],
+      topups: usableTopups, topupRecords: usableTopupRecords, additions,
+      closedIds: new Set((statuses || []).map((s) => s.customer_id)),
+    }).map((item) => ({ ...item, customerName: nameById.get(item.customerId) || '', contract: item.topupId ? 'วงเงินเพิ่ม' : 'สัญญาหลัก' }));
+
+    // ยอดรับจริงต่องวด เฉพาะงวดที่มีเงินจ่ายเพิ่มหรือยกเว้นที่ยังใช้อยู่
+    const firstMain = new Map((paymentRecords || []).map((r) => [`${r.customer_id}|${r.installment}`, Number(r.amount_paid) || 0]));
+    const firstTopup = new Map(usableTopupRecords.map((r) => [`${r.topup_id}|${r.installment}`, Number(r.amount_paid) || 0]));
+    const byInstallment = new Map();
+    for (const a of additions) {
+      if (a.voidedAt) continue;
+      if (a.topupId && !topupsLoaded) continue; // ไม่มีบันทึกแรกของวงเงินเพิ่มรอบนี้ → ยอดรับจะขาด ไม่ส่งดีกว่าส่งผิด
+      const k = `${a.customerId}|${a.topupId || ''}|${a.installment}`;
+      if (!byInstallment.has(k)) {
+        const firstRecordPaid = a.topupId ? firstTopup.get(`${a.topupId}|${a.installment}`) || 0 : firstMain.get(`${a.customerId}|${a.installment}`) || 0;
+        byInstallment.set(k, {
+          customerId: a.customerId, customerName: nameById.get(a.customerId) || '', contract: a.topupId ? 'วงเงินเพิ่ม' : 'สัญญาหลัก',
+          topupId: a.topupId, installment: a.installment, firstRecordPaid, additionalPaid: 0, waived: 0,
+        });
+      }
+      const row = byInstallment.get(k);
+      if (a.kind === 'waiver') row.waived += a.amount;
+      else row.additionalPaid += a.amount;
+    }
+    const installmentPayments = [...byInstallment.values()].map((row) => ({ ...row, totalReceived: row.firstRecordPaid + row.additionalPaid }));
+    return { list, installmentPayments, topupsLoaded, additionsLoaded, note: notes.join(' · ') };
+  } catch (error) {
+    return { list: [], installmentPayments: [], topupsLoaded: false, additionsLoaded: false, note: `คิดงวดที่ชำระไม่ครบไม่ได้: ${error.message}` };
+  }
+}
+
 async function loadAssetxContext() {
   const supabase = makeSupabase();
   if (!supabase) return { customerData: [], note: 'Supabase is not configured.' };
@@ -48,7 +112,7 @@ async function loadAssetxContext() {
       .select('id,name,type,principal,amount,freq,contract_end_date,is_cancelled,created_at,disbursement')
       .eq('is_cancelled', false),
     supabase.from('payments').select('customer_id,installment,date_str,postponed_from,postpone_note'),
-    supabase.from('payment_records').select('customer_id,installment,paid_at,amount_paid,note'),
+    supabase.from('payment_records').select('customer_id,installment,paid_at,amount_paid,note,slip_id'),
     supabase.from('contract_statuses').select('customer_id,status,updated_at'),
   ]);
 
@@ -56,6 +120,7 @@ async function loadAssetxContext() {
   if (firstError) {
     return { customerData: [], note: `Supabase read failed: ${firstError.message}` };
   }
+  const short = await loadShortInstallments(supabase, { customers, payments, paymentRecords, statuses });
 
   return {
     customerData: {
@@ -69,10 +134,15 @@ async function loadAssetxContext() {
         } : null,
       })),
       payments: payments || [],
-      paymentRecords: paymentRecords || [],
+      // slip_id ใช้แค่คิดงวดหักดอกล่วงหน้าใน shortInstallments ไม่ต้องส่งเข้า AI
+      paymentRecords: (paymentRecords || []).map(({ slip_id, ...record }) => record),
       contractStatuses: statuses || [],
+      shortInstallments: short.list,
+      installmentPayments: short.installmentPayments,
+      topupsLoaded: short.topupsLoaded,
+      additionsLoaded: short.additionsLoaded,
     },
-    note: '',
+    note: short.note,
   };
 }
 
@@ -89,6 +159,10 @@ ${contextNote ? `หมายเหตุระบบ: ${contextNote}\n` : ''}
 - สรุปภาพรวมพอร์ตโฟลิโอ จำนวนสัญญา เงินต้น ดอกเบี้ย และสถานะที่ต้องติดตาม
 - แจ้งงวดชำระที่ใกล้ครบกำหนดหรือเลยกำหนดจากข้อมูลที่มี
 - คำนวณดอกเบี้ยสะสม ยอดค้างชำระ และแยกจำนอง/ขายฝากเมื่อข้อมูลพอ
+- shortInstallments คืองวดที่รับเงินมาแล้วบางส่วน ยังขาดอีก (สัญญาหลักและวงเงินเพิ่ม) คิดจากบันทึกครั้งแรกรวมเงินที่มาจ่ายเพิ่มและการยกเว้นแล้ว ใช้ outstanding เป็นยอดที่ยังขาดของงวดนั้น และ dateStr เป็นวันนัดชำระส่วนที่ขาด
+- paymentRecords เก็บแค่บันทึกครั้งแรกของงวดสัญญาหลักเท่านั้น · installmentPayments คืองวด (ดู contract ว่าสัญญาหลักหรือวงเงินเพิ่ม) ที่มีเงินมาจ่ายเพิ่มหรือยกเว้น: totalReceived = เงินที่รับจริงทั้งงวด (บันทึกแรก + จ่ายเพิ่ม) ใช้แทน amount_paid ของงวดนั้น · waived = ยกเว้นให้ ไม่ใช่เงินรับ · ห้ามเอาตัวเลขของวงเงินเพิ่มไปรวมกับงวดสัญญาหลักเลขเดียวกัน
+- งวดที่มีบันทึกแต่ไม่อยู่ใน shortInstallments ถือว่าชำระครบแล้ว ห้ามคิดยอดขาดจาก amount_paid เอง
+- ถ้า additionsLoaded เป็น false: งวดใน shortInstallments อาจจ่ายเพิ่มครบไปแล้ว ให้บอกว่ายอดที่ขาดยังต้องตรวจในหน้าเว็บ · ถ้า topupsLoaded เป็น false: ไม่มีข้อมูลวงเงินเพิ่มในรอบนี้ ห้ามสรุปเรื่องงวดของวงเงินเพิ่ม
 - ถ้า advanceDeduction.treatment เป็น before_schedule จำนวนเดือนและยอดที่หักวันทำสัญญาไม่รวมในตาราง payments ห้ามหักซ้ำจากงวดที่ยังไม่จ่าย และอย่าสร้าง payment record สมมติ
 - ถ้า treatment เป็น unverified ให้แจ้งว่าต้องเทียบสัญญาและใบหักเงินก่อนสรุปยอดสินไถ่
 - ค้นหาลูกค้าจากชื่อ ประเภทสัญญา งวดชำระ และข้อมูลโฉนดถ้ามีในบริบท

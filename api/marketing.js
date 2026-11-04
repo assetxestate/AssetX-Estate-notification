@@ -7,11 +7,14 @@ import facebookHandler from '../server/marketing-facebook.js'
 import ideasHandler from '../server/marketing-ideas.js'
 import noticesHandler from '../server/notices.js'
 import diaryHandler from '../server/diary.js'
+import paymentAdditionsHandler from '../server/paymentAdditions.js'
 
 const handlers = {
   notices: noticesHandler,
   // ไดอารี่งานอยู่ในฟังก์ชันนี้ด้วยเหตุผลเดียวกับ notices: จำกัดจำนวน serverless function บน Vercel
   diary: diaryHandler,
+  // ชำระเพิ่ม/ยกเว้นส่วนที่ขาดของงวดดอกเบี้ย (ตาราง payment_additions) — อยู่ที่นี่ด้วยเหตุผลเดียวกัน
+  'payment-additions': paymentAdditionsHandler,
   image: imageHandler,
   video: videoHandler,
   references: referencesHandler,
@@ -30,6 +33,7 @@ function inferFeature(req) {
   const path = url.pathname.replace(/\/+$/, '')
   if (path.endsWith('/notices')) return 'notices'
   if (path.endsWith('/diary')) return 'diary'
+  if (path.endsWith('/payment-additions')) return 'payment-additions'
   if (path.endsWith('/marketing-image')) return 'image'
   if (path.endsWith('/marketing-video')) return 'video'
   if (path.endsWith('/marketing-references')) return 'references'
@@ -42,7 +46,8 @@ function inferFeature(req) {
 
 export default async function handler(req, res) {
   const feature = inferFeature(req)
-  const routeHandler = handlers[feature]
+  // เฉพาะชื่อที่ประกาศไว้จริง (?feature=constructor / toString จะไปเจอเมธอดของ Object แล้วค้างไม่ตอบ)
+  const routeHandler = Object.hasOwn(handlers, feature || '') ? handlers[feature] : null
   if (!routeHandler) {
     return res.status(404).json({ error: 'Unknown marketing endpoint' })
   }

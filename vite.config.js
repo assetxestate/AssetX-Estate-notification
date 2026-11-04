@@ -10,6 +10,7 @@ import { promisify } from 'node:util'
 import { fetchMarketComps } from './api/_marketComps.js'
 import { devAuthMiddleware } from './server/dev-auth.js'
 import noticesHandler from './server/notices.js'
+import paymentAdditionsHandler from './server/paymentAdditions.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -159,6 +160,23 @@ export default defineConfig(({ mode }) => {
               }
               req.body = body ? JSON.parse(body) : {}
               await noticesHandler(req, res)
+            } catch {
+              if (!res.writableEnded) res.status(400).json({ error: 'Invalid request' })
+            }
+          })
+
+          // ชำระเพิ่ม/ยกเว้นส่วนที่ขาด (บน Vercel วิ่งผ่าน api/marketing.js?feature=payment-additions)
+          server.middlewares.use('/api/payment-additions', async (req, res) => {
+            res.status = code => { res.statusCode = code; return res }
+            res.json = data => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)) }
+            try {
+              let body = ''
+              for await (const chunk of req) {
+                body += chunk
+                if (body.length > 100000) return res.status(413).json({ error: 'ข้อมูลใหญ่เกินไป' })
+              }
+              req.body = body ? JSON.parse(body) : {}
+              await paymentAdditionsHandler(req, res)
             } catch {
               if (!res.writableEnded) res.status(400).json({ error: 'Invalid request' })
             }

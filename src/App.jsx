@@ -20,6 +20,9 @@ import {
   saveTopupPaymentRecord as apiSaveTopupPaymentRecord,
   deleteTopupPaymentRecord as apiDeleteTopupPaymentRecord,
   renewContract as apiRenewContract,
+  getPaymentAdditions as apiGetPaymentAdditions,
+  addPaymentAddition as apiAddPaymentAddition,
+  voidPaymentAddition as apiVoidPaymentAddition,
 } from "./lib/api.js";
 import {
   parseDate, formatThai, formatThaiLong, formatMoney, pad, fmtCal,
@@ -28,11 +31,12 @@ import {
 } from "./lib/utils.js";
 import {
   IMGBB_KEY, IMGBB_ALBUMS, gcalPayment, gcalTopupPayment,
-  msgPayment, msgTopupPayment, msgCombinedPayment, msgContract,
+  msgPayment, msgPaymentGroup, msgContract,
 } from "./lib/messages.js";
 import { printNotice } from "./lib/notice.js";
 import { getUpfrontDeductionEntries } from "./lib/advanceDeduction.js";
-import { unpaidTopupsOnDate } from "./lib/combinedPayment.js";
+import { amountDue, sameDayGroup, groupTotal, messageTypeFor } from "./lib/combinedPayment.js";
+import { indexAdditions, additionsFor, installmentBalance, bangkokToday, installmentKey } from "./lib/installmentBalance.js";
 import { postponeTopupInstallment, nearestDue } from "./lib/topupSchedule.js";
 import { customerAssessment } from "./lib/deedAssessment.js";
 import { sumTopupPrincipal, sumTopupMonthlyInterest, groupTopupsByCustomer } from "./lib/topupTotals.js";
@@ -41,6 +45,7 @@ import { MOCK_DATA } from "./lib/mockData.js";
 import { useLineNotification } from "./hooks/useLineNotification.js";
 import { Logo, Skeleton, LineButton, TypeBadge } from "./components/SharedComponents.jsx";
 import { SlipModal } from "./components/SlipModal.jsx";
+import { InstallmentBalance } from "./components/InstallmentBalance.jsx";
 import { CustomerExtraInfoSection } from "./components/CustomerExtraInfoSection.jsx";
 import { CustomerSheetEditModal } from "./components/CustomerSheetEditModal.jsx";
 import { CustomerLineIdSection } from "./components/CustomerLineIdSection.jsx";
@@ -73,6 +78,39 @@ const TaxPage = lazyPage(() => import("./TaxPage.jsx"));
 const LegalPage = lazyPage(() => import("./LegalPage.jsx"));
 const ReservationPage = lazyPage(() => import("./ReservationPage.jsx"));
 const SystemStatusPage = lazyPage(() => import("./components/SystemStatusPage.jsx").then((m) => ({ default: m.SystemStatusPage })));
+// งวดของวงเงินเพิ่มพร้อมยอด/สถานะ — "ครบ" ดูจากยอดที่จ่ายจริง (บันทึกแรก + ชำระเพิ่ม) ไม่ใช่แค่มีบันทึก
+// additionsKnown = false (ยังโหลดรายการชำระเพิ่มไม่ได้) → งวดที่ดูเหมือนขาดถือว่าจบไว้ก่อน ไม่ทวง (ดู installmentBalance)
+function topupPaymentsWithStatus(topup, customerId, today, additionIndex, additionsKnown = true) {
+  return (topup.payments || []).map((tp) => {
+    const diff = getDiff(tp.dateStr, today);
+    const record = topup.records?.[tp.installment] || null;
+    const additions = additionsFor(additionIndex, customerId, topup.id, tp.installment);
+    const balance = installmentBalance({ due: topup.interestAmount, record, additions, additionsKnown });
+    const status = balance.state === "paid" ? "paid" : payStatus(diff);
+    return { ...tp, diff, record, additions, balance, status };
+  });
+}
+
+// คำเตือนในหน้าต่างแก้บันทึกครั้งแรก เมื่องวดนั้นจ่ายไม่ครบหรือมีรายการชำระเพิ่มแล้ว
+// กันการแก้ยอดครั้งแรกแทนการกด "ชำระเพิ่ม" (บันทึกนี้มีงวดละรายการเดียว แก้แล้วยอดเดิมหาย)
+function firstRecordNotice(balance) {
+  if (!balance || balance.state === "unpaid") return "";
+  if (balance.unverified) return "ยังตรวจรายการชำระเพิ่มของงวดนี้ไม่ได้ (โหลดไม่สำเร็จ) — อย่าแก้ยอดครั้งแรกจนกว่าจะโหลดสำเร็จ";
+  if (balance.state === "partial") return `งวดนี้ยังขาด ${formatMoney(balance.outstanding)} บาท — เงินที่ลูกค้ามาจ่ายเพิ่ม ให้ปิดหน้าต่างนี้แล้วกด "＋ ชำระเพิ่ม" ใต้งวด อย่าแก้ยอดตรงนี้ (ยอดครั้งแรกจะถูกเขียนทับ)`;
+  if (balance.paymentCount > 1 || balance.waived > 0) return "งวดนี้มีรายการชำระเพิ่มหรือยกเว้นแล้ว — หน้าต่างนี้แก้เฉพาะบันทึกครั้งแรก";
+  return "";
+}
+
+// รหัสรายการชำระเพิ่ม สร้างตอนเปิดหน้าต่าง: กดบันทึกซ้ำหรือส่งซ้ำหลังเน็ตหลุดจะชนรหัสเดิม เซิร์ฟเวอร์จึงไม่บันทึกซ้ำ
+function newRequestId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const b = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 // Main App Component
 export default function App({ initialView = "main", onLogout }) {
   const [customers, setCustomers] = useState([]);
@@ -149,8 +187,14 @@ export default function App({ initialView = "main", onLogout }) {
       .catch(() => { loadedTopupIdsRef.current.delete(expandedId); });
   }, [expandedId]);
 
-  const closeContract = React.useCallback(async (customer) => {
-    if (!window.confirm(`ยืนยันปิดสัญญาของ คุณ${customer.name}?\n\nระบบจะหยุดแจ้งเตือนสัญญานี้ทั้งหมด`)) return;
+  // shortItems = งวดที่ยังชำระไม่ครบของลูกค้ารายนี้ (จาก partialAlerts) — เตือนก่อนปิด ไม่ให้ยอดค้างหายไปเงียบ ๆ
+  // verified = false: ยังโหลดรายการชำระเพิ่มไม่ได้ รายการงวดที่ขาดอาจไม่ครบ
+  const closeContract = React.useCallback(async (customer, shortItems = [], verified = true) => {
+    const shortTotal = shortItems.reduce((sum, item) => sum + (item.p.balance?.outstanding || 0), 0);
+    const shortNote = (shortItems.length
+      ? `\n\n⚠️ ยังมีงวดที่ชำระไม่ครบ ${shortItems.length} งวด ขาดรวม ${formatMoney(shortTotal)} บาท\nถ้าตกลงไม่เก็บส่วนนี้แล้ว ให้กด "ยกเว้นส่วนที่ขาด" ที่งวดนั้นก่อน ประวัติจะได้ครบ`
+      : "") + (verified ? "" : "\n\n⚠️ ยังตรวจรายการชำระเพิ่มไม่ได้ (โหลดไม่สำเร็จ) — งวดที่ขาดอาจยังไม่ขึ้นในรายการ ตรวจในแท็บการชำระก่อนปิด");
+    if (!window.confirm(`ยืนยันปิดสัญญาของ คุณ${customer.name}?\n\nระบบจะหยุดแจ้งเตือนสัญญานี้ทั้งหมด${shortNote}`)) return;
     setContractStatuses(prev => ({ ...prev, [customer.id]: { status: 'ปิดแล้ว', customerName: customer.name } }));
     await apiCloseContract(customer.id, customer.name).catch(() => {});
   }, []);
@@ -179,16 +223,126 @@ export default function App({ initialView = "main", onLogout }) {
       .catch(() => {});
   }, []);
 
-  const savePaymentRecord = React.useCallback((customerId, installment, record) => {
+  // บันทึกครั้งแรกของงวด: รอฐานข้อมูลตอบก่อนค่อยขึ้นว่าชำระแล้ว (เดิมขึ้นก่อนแล้วกลืนข้อผิดพลาด → จอบอกชำระแล้วทั้งที่ไม่ได้บันทึก)
+  // คืน true/false ให้หน้าต่างบันทึกรู้ว่าปิดได้ไหม (ไม่สำเร็จ = หน้าต่างยังเปิด ข้อมูลที่กรอกไม่หาย)
+  const savePaymentRecord = React.useCallback(async (customerId, installment, record) => {
+    try {
+      await apiSavePaymentRecord(customerId, installment, record);
+    } catch (e) {
+      showToast("บันทึกการชำระไม่สำเร็จ กรุณาลองใหม่: " + e.message);
+      return false;
+    }
     setPaymentRecords(prev => {
       const updated = { ...prev, [customerId]: { ...prev[customerId], [installment]: record } };
       localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
       return updated;
     });
-    apiSavePaymentRecord(customerId, installment, record).catch(() => {});
+    return true;
   }, []);
 
-  const deletePaymentRecord = React.useCallback((customerId, installment) => {
+  // ── ชำระเพิ่ม / ยกเว้นส่วนที่ขาด (ตาราง payment_additions ผ่าน /api/payment-additions) ──
+  // additionsState: loading | ready | missing (ยังไม่ได้รัน supabase_payment_additions.sql = ยังไม่มีรายการแน่นอน)
+  //   | unauthorized (เซสชันหมดอายุ) | error (อ่านไม่ได้ — อาจมีรายการอยู่)
+  const [paymentAdditions, setPaymentAdditions] = React.useState([]);
+  const [additionsState, setAdditionsState] = React.useState("loading");
+  const [additionModal, setAdditionModal] = React.useState(null); // { customer, payment, topup?, requestId }
+  // คำขอที่ยังไม่รู้ผล (เน็ตหลุด/เซิร์ฟเวอร์ล่ม) ต่องวดและประเภท: เปิดหน้าต่างใหม่ของงวดเดิมใช้รหัสเดิม เซิร์ฟเวอร์จึงไม่บันทึกซ้ำ
+  // โหลดรายการแล้วเจอรหัสนั้น = ครั้งนั้นบันทึกถึงฐานข้อมูลแล้ว → เลิกจำ ไม่เอาไปใช้กับการชำระครั้งถัดไปของงวดเดิม
+  const pendingAdditionIds = React.useRef(new Map());
+  const loadAdditions = React.useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) setAdditionsState("loading");
+    try {
+      const list = await apiGetPaymentAdditions();
+      const savedIds = new Set(list.map((a) => a.id));
+      for (const [key, id] of pendingAdditionIds.current) if (savedIds.has(id)) pendingAdditionIds.current.delete(key);
+      setPaymentAdditions(list);
+      setAdditionsState("ready");
+    } catch (e) {
+      setAdditionsState(e.status === 503 && e.code === "table_missing" ? "missing" : e.status === 401 ? "unauthorized" : "error");
+    }
+  }, []);
+  React.useEffect(() => { loadAdditions(); }, [loadAdditions]);
+  // รู้ครบว่ามีรายการชำระเพิ่มอะไรบ้าง → คิดยอดงวดได้ · ยังไม่รู้ = งวดที่ดูเหมือนขาดยังสรุปไม่ได้ (ถือว่าจบไว้ก่อน ไม่ทวง ไม่ให้ลบบันทึกแรก)
+  const additionsKnown = additionsState === "ready" || additionsState === "missing";
+  const additionIndex = React.useMemo(() => indexAdditions(paymentAdditions), [paymentAdditions]);
+  // ข้อความทวงรวมส่วนที่ขาดได้เมื่อระบบชำระเพิ่มพร้อมเท่านั้น: ก่อนรัน SQL ลูกค้ามาจ่ายส่วนที่เหลือก็บันทึกไม่ได้ → ไม่ทวง (แบบเดียวกับงานเตือนตอนเช้า)
+  const chaseShortfalls = additionsState === "ready";
+  const pendingKey = (customerId, topupId, installment, kind) => `${installmentKey(customerId, topupId, installment)}|${kind}`;
+  const openAdditionModal = React.useCallback((target) => {
+    const key = pendingKey(target.customer.id, target.topup?.id, target.payment.installment, "payment");
+    setAdditionModal({ ...target, requestId: pendingAdditionIds.current.get(key) || newRequestId() });
+  }, []);
+
+  // คืน true เมื่อรายการอยู่ในฐานข้อมูลแล้ว (รวมการส่งซ้ำที่เซิร์ฟเวอร์ตอบรายการเดิม) · false = ยังไม่ได้บันทึก หน้าต่างยังเปิด
+  // ไม่รู้ผล (เน็ตหลุด/5xx) → จำรหัสไว้ใช้ซ้ำ และโหลดรายการใหม่ ให้เห็นถ้าครั้งนั้นบันทึกไปแล้ว · 409 = ข้อมูลในหน้าเก่ากว่าฐานข้อมูล → โหลดใหม่
+  const recordAddition = React.useCallback(async (input) => {
+    const key = pendingKey(input.customerId, input.topupId, input.installment, input.kind);
+    try {
+      const saved = await apiAddPaymentAddition(input);
+      pendingAdditionIds.current.delete(key);
+      setPaymentAdditions((prev) => [...prev.filter((a) => a.id !== saved.id), saved]);
+      showToast(input.kind === "waiver" ? "บันทึกการยกเว้นส่วนที่ขาดแล้ว" : "บันทึกชำระเพิ่มแล้ว");
+      return true;
+    } catch (e) {
+      const unknownOutcome = !e.status || (e.status >= 500 && e.status !== 503);
+      if (unknownOutcome) pendingAdditionIds.current.set(key, input.id);
+      else pendingAdditionIds.current.delete(key);
+      if (unknownOutcome || e.status === 409) loadAdditions();
+      if (e.code === "duplicate" || e.code === "id_conflict") { showToast(e.message); return true; }
+      showToast("บันทึกไม่สำเร็จ: " + e.message);
+      return false;
+    }
+  }, [loadAdditions]);
+
+  const waiveRemainder = React.useCallback((customer, payment, topup = null) => {
+    const outstanding = payment.balance?.outstanding || 0;
+    if (!(outstanding > 0)) return;
+    const reason = window.prompt(`ยกเว้นส่วนที่ขาด ${formatMoney(outstanding)} บาท ของงวดที่ ${payment.installment}${topup ? " (วงเงินเพิ่ม)" : ""}\nระบุเหตุผล เช่น ส่วนลดตามที่ตกลงกับลูกค้า`);
+    if (reason === null) return;
+    if (reason.trim().length < 3) { showToast("กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร"); return; }
+    const id = pendingAdditionIds.current.get(pendingKey(customer.id, topup?.id, payment.installment, "waiver")) || newRequestId();
+    recordAddition({ id, customerId: customer.id, topupId: topup?.id || null, installment: payment.installment, kind: "waiver", amount: outstanding, paidAt: bangkokToday(), note: reason.trim() });
+  }, [recordAddition]);
+
+  const voidAddition = React.useCallback(async (addition) => {
+    const reason = window.prompt(`ยกเลิกรายการ${addition.kind === "waiver" ? "ยกเว้น" : "ชำระเพิ่ม"} ${formatMoney(addition.amount)} บาท\nระบุเหตุผล (รายการยังอยู่ในประวัติ ไม่ถูกลบ)`);
+    if (reason === null) return;
+    if (reason.trim().length < 3) { showToast("กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร"); return; }
+    try {
+      const saved = await apiVoidPaymentAddition(addition.id, addition.customerId, reason.trim());
+      for (const [key, id] of pendingAdditionIds.current) if (id === saved.id) pendingAdditionIds.current.delete(key);
+      setPaymentAdditions((prev) => prev.map((a) => (a.id === saved.id ? saved : a)));
+      showToast("ยกเลิกรายการแล้ว (ยังเก็บไว้ในประวัติ)");
+    } catch (e) {
+      if (e.status === 409) loadAdditions();
+      showToast("ยกเลิกไม่สำเร็จ: " + e.message);
+    }
+  }, [loadAdditions]);
+
+  // ก่อนลบบันทึกครั้งแรก ถามเซิร์ฟเวอร์ใหม่ว่างวดนี้มีรายการชำระเพิ่ม/ยกเว้นที่ยังใช้อยู่ไหม
+  // (รายการในหน้าอาจยังโหลดไม่เสร็จ โหลดไม่สำเร็จ หรือเก่ากว่าอีกเครื่อง) · ตรวจไม่ได้ = ไม่ลบ · ยังไม่มีตาราง = ไม่มีรายการแน่นอน
+  const canDeleteFirstRecord = React.useCallback(async (customerId, topupId, installment) => {
+    try {
+      const list = await apiGetPaymentAdditions(customerId);
+      const active = list.some((a) => (a.topupId || null) === (topupId || null) && Number(a.installment) === Number(installment) && !a.voidedAt);
+      if (!active) return true;
+      showToast("ลบไม่ได้: งวดนี้มีรายการชำระเพิ่ม/ยกเว้น — ยกเลิกรายการเหล่านั้นก่อน");
+      return false;
+    } catch (e) {
+      if (e.status === 503 && e.code === "table_missing") return true;
+      showToast("ยังลบไม่ได้: ตรวจรายการชำระเพิ่มของงวดนี้ไม่สำเร็จ (" + e.message + ")");
+      return false;
+    }
+  }, []);
+
+  // ลบบันทึกครั้งแรก (ทางเดิมของระบบ) — รอฐานข้อมูลตอบก่อนเอาออกจากหน้าจอ · คืน true/false ให้หน้าต่างรู้ว่าปิดได้ไหม
+  const deletePaymentRecord = React.useCallback(async (customerId, installment) => {
+    try {
+      await apiDeletePaymentRecord(customerId, installment);
+    } catch (e) {
+      showToast("ลบไม่สำเร็จ: " + e.message);
+      return false;
+    }
     setPaymentRecords(prev => {
       const cust = { ...prev[customerId] };
       delete cust[installment];
@@ -196,7 +350,7 @@ export default function App({ initialView = "main", onLogout }) {
       localStorage.setItem("assetx_payment_records", JSON.stringify(updated));
       return updated;
     });
-    apiDeletePaymentRecord(customerId, installment).catch(() => {});
+    return true;
   }, []);
 
   const reloadTopups = React.useCallback(async (customerId) => {
@@ -258,7 +412,15 @@ export default function App({ initialView = "main", onLogout }) {
 
   const handleDeleteTopup = React.useCallback(async (topupId, customerId) => {
     if (!window.confirm("ลบรายการเพิ่มวงเงินนี้?")) return;
-    await apiDeleteTopup(topupId);
+    try {
+      await apiDeleteTopup(topupId);
+    } catch (e) {
+      // วงเงินเพิ่มที่มีประวัติชำระเพิ่มลบไม่ได้ (foreign key / trigger ของ payment_additions กันไว้ เพื่อไม่ให้ประวัติการชำระหาย)
+      showToast(e?.code === "23503" || /บันทึกการชำระครั้งแรก|ประวัติชำระเพิ่ม/.test(String(e?.message || ""))
+        ? "ลบไม่ได้: วงเงินนี้มีประวัติชำระเพิ่ม/ยกเว้นอยู่ (ประวัติการชำระห้ามลบ)"
+        : "ลบรายการเพิ่มวงเงินไม่สำเร็จ: " + e.message);
+      return;
+    }
     setCustomerTopups(prev => ({
       ...prev,
       [customerId]: (prev[customerId] || []).filter(t => t.id !== topupId),
@@ -465,19 +627,38 @@ export default function App({ initialView = "main", onLogout }) {
         isHiddenDraft: c.isCancelled && !contractStatuses[c.id]?.status,
         topupPrincipal: sumTopupPrincipal(customerTopups[c.id]),
         topupMonthlyInterest: sumTopupMonthlyInterest(customerTopups[c.id]),
-        topups: customerTopups[c.id] || [], // รายการวงเงินเพิ่ม ใช้ในรายงานสรุปสัญญา
+        additionsVerified: additionsKnown, // false = ยังโหลดรายการชำระเพิ่มไม่ได้ ยอดรับชำระอาจขาดเงินที่มาจ่ายเพิ่ม
+        // รายการวงเงินเพิ่ม ใช้ในรายงานสรุปสัญญา · แนบรายการชำระเพิ่มของแต่ละวงเงิน ให้ตัวคิดยอดปิดรีไฟแนนซ์นับเงินที่รับจริงครบ
+        topups: (customerTopups[c.id] || []).map((t) => ({ ...t, additions: paymentAdditions.filter((a) => a.topupId === t.id) })),
         payments: (c.payments || []).map((p) => {
           const diff = getDiff(p.dateStr, today);
-          const record = paymentRecords[c.id]?.[p.installment];
-          const status = record ? "paid" : payStatus(diff);
-          return { ...p, diff, status, record: record || null };
+          const record = paymentRecords[c.id]?.[p.installment] || null;
+          const additions = additionsFor(additionIndex, c.id, null, p.installment);
+          // ครบ = ยอดที่จ่ายจริง (บันทึกแรก + ชำระเพิ่ม/ยกเว้น) ถึงยอดของงวด · จ่ายไม่ครบยังเป็นงวดค้างตามวันนัด
+          const balance = installmentBalance({ due: c.amount, record, additions, additionsKnown });
+          const status = balance.state === "paid" ? "paid" : payStatus(diff);
+          return { ...p, diff, status, record, additions, balance };
         }),
         contractDiff: c.contractEndDate
           ? getDiff(c.contractEndDate, today)
           : null,
       })),
-    [customers, today, paymentRecords, contractStatuses, customerTopups]
+    [customers, today, paymentRecords, contractStatuses, customerTopups, additionIndex, paymentAdditions, additionsKnown]
   );
+  const enrichedById = useMemo(() => new Map(enriched.map((c) => [c.id, c])), [enriched]);
+  // ยอดของงวดวงเงินเพิ่ม (บันทึกแรก + ชำระเพิ่ม) สำหรับรวมรายการที่ครบวันเดียวกัน
+  const topupBalanceOf = React.useCallback(
+    (customerId) => (t, pay) => installmentBalance({ due: t.interestAmount, record: t.records?.[pay.installment], additions: additionsFor(additionIndex, customerId, t.id, pay.installment), additionsKnown }),
+    [additionIndex, additionsKnown]
+  );
+  // ทุกรายการที่ยังไม่จบของลูกค้าที่ครบวันเดียวกัน → ข้อความ LINE ฉบับเดียว ตรงกับงานเตือนตอนเช้า
+  // ใช้แถวงวดของทั้งสัญญาเสมอ (การ์ดที่กรอง "วันนี้/≤7 วัน" มีแค่บางงวด)
+  // ก่อนระบบชำระเพิ่มพร้อม (chaseShortfalls = false) ไม่ใส่งวดที่จ่ายไม่ครบในข้อความทวง
+  const paymentGroupOf = React.useCallback((c, dateStr, diff) => {
+    const group = sameDayGroup((enrichedById.get(c.id) || c).payments, dateStr, diff, customerTopups[c.id], topupBalanceOf(c.id));
+    if (chaseShortfalls) return group;
+    return { ...group, mains: group.mains.filter((p) => p.balance?.state !== "partial"), extras: group.extras.filter((e) => e.balance?.state !== "partial") };
+  }, [enrichedById, customerTopups, topupBalanceOf, chaseShortfalls]);
   const activeCustomers = useMemo(
     () => enriched.filter((c) => !c.isClosed && !c.isVoided && !c.isHiddenDraft),
     [enriched]
@@ -504,6 +685,24 @@ export default function App({ initialView = "main", onLogout }) {
     });
     return r.sort((a, b) => a.p.diff - b.p.diff); // เรียงเกินนานที่สุดก่อน
   }, [enriched]);
+
+  // งวดที่รับเงินมาแล้วบางส่วน ยังขาดอีก (สัญญาหลัก + วงเงินเพิ่ม) ของสัญญาที่ยังเปิดอยู่ — แสดงทุกงวดไม่ว่าวันนัดจะถึงหรือยัง
+  // งวดวงเงินเพิ่มไม่อยู่ในรายการแจ้งเตือน/ค้างชำระด้านบน ถ้าไม่มีการ์ดนี้ ยอดที่ขาดจะเห็นแค่ในแท็บวงเงินเพิ่มของลูกค้า
+  const partialAlerts = useMemo(() => {
+    const r = [];
+    enriched.forEach((c) => {
+      if (c.isClosed || c.isVoided || c.isHiddenDraft) return;
+      c.payments.forEach((p) => {
+        if (p.balance?.state === "partial") r.push({ c, p, topup: null });
+      });
+      (customerTopups[c.id] || []).forEach((topup) => {
+        topupPaymentsWithStatus(topup, c.id, today, additionIndex, additionsKnown).forEach((tp) => {
+          if (tp.balance.state === "partial") r.push({ c, p: tp, topup });
+        });
+      });
+    });
+    return r.sort((a, b) => a.p.diff - b.p.diff);
+  }, [enriched, customerTopups, today, additionIndex, additionsKnown]);
 
   const contractAlerts = useMemo(
     () =>
@@ -822,7 +1021,7 @@ export default function App({ initialView = "main", onLogout }) {
 
           {/* Dashboard Tab */}
           {mainTab === "dashboard" && (
-            <DashboardPage customers={enriched} paymentRecords={paymentRecords} />
+            <DashboardPage customers={enriched} paymentRecords={paymentRecords} paymentAdditions={paymentAdditions} additionsState={additionsState} />
           )}
 
           {/* System Status Tab */}
@@ -864,6 +1063,24 @@ export default function App({ initialView = "main", onLogout }) {
           {/* Payment Tab */}
           {mainTab === "payment" && (
             <>
+              {(additionsState === "error" || additionsState === "unauthorized") && (
+                <div className="card" style={{ marginBottom: 16, borderColor: "rgba(239,68,68,.45)", background: "rgba(239,68,68,.06)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ color: "#FCA5A5", fontSize: 13, fontWeight: 600, flex: 1, minWidth: 220 }}>
+                    {additionsState === "unauthorized"
+                      ? "⚠️ เซสชันหมดอายุ — ออกจากระบบแล้วเข้าใหม่ ระบบจึงจะตรวจยอดชำระเพิ่มได้"
+                      : "⚠️ โหลดรายการชำระเพิ่มไม่สำเร็จ — งวดที่ลูกค้าจ่ายไม่ครบจะยังไม่แสดง และยังไม่ส่งข้อความทวงส่วนที่ขาด"}
+                  </span>
+                  {additionsState === "error" && (
+                    <button
+                      onClick={() => loadAdditions({ showLoading: true })}
+                      className="btn"
+                      style={{ padding: "6px 14px", borderRadius: 8, fontSize: 12, border: "1px solid rgba(239,68,68,.5)", background: "rgba(239,68,68,.1)", color: "#FCA5A5", cursor: "pointer" }}
+                    >
+                      ลองใหม่
+                    </button>
+                  )}
+                </div>
+              )}
               {/* Stats */}
               <div
                 style={{
@@ -979,10 +1196,13 @@ export default function App({ initialView = "main", onLogout }) {
                   >
                     {payAlerts.slice(0, 5).map(({ c, p }, i) => {
                       const st = P_STATUS[p.status];
-                      const sameDayTopups = unpaidTopupsOnDate(customerTopups[c.id], p.dateStr);
-                      const msg = sameDayTopups.length
-                        ? msgCombinedPayment(c, p, sameDayTopups, p.diff <= 0 ? "due" : "early")
-                        : msgPayment(c, p, p.diff <= 0 ? "due" : "early");
+                      // ข้อความเดียวต่อ "ลูกค้า + วัน": งวดแรกของวันนั้นถือปุ่มส่ง งวดอื่นวันเดียวกันรวมอยู่ในข้อความเดียวกัน
+                      const group = paymentGroupOf(c, p.dateStr, p.diff);
+                      const inGroup = group.mains.some((m) => m.installment === p.installment); // ไม่อยู่ = ส่วนที่ขาดที่ยังทวงไม่ได้
+                      const leader = group.mains[0];
+                      const isLeader = inGroup && leader.installment === p.installment;
+                      const bundled = group.mains.length + group.extras.length > 1;
+                      const msg = isLeader ? msgPaymentGroup(c, group, p.diff <= 0 ? "due" : "early") : "";
                       return (
                         <div
                           key={i}
@@ -1054,16 +1274,22 @@ export default function App({ initialView = "main", onLogout }) {
                                 fontSize: 13,
                               }}
                             >
-                              {formatMoney((Number(c.amount) || 0) + sameDayTopups.reduce((sum, { topup }) => sum + (Number(topup.interestAmount) || 0), 0))} ฿
+                              {formatMoney(isLeader ? groupTotal(c.amount, group) : amountDue(c.amount, p.balance))} ฿
                             </span>
-                            <LineButton
-                              message={msg}
-                              type="payment"
-                              label={sameDayTopups.length ? "ส่งยอดรวม LINE" : "ส่ง LINE"}
-                              compact
-                              onSend={(ok) => handleLineSend(ok, c.name)}
-                              destinationId={c.lineUserId || customerLineIds[c.id] || ''}
-                            />
+                            {isLeader ? (
+                              <LineButton
+                                message={msg}
+                                type="payment"
+                                label={bundled ? "ส่งยอดรวม LINE" : "ส่ง LINE"}
+                                compact
+                                onSend={(ok) => handleLineSend(ok, c.name)}
+                                destinationId={c.lineUserId || customerLineIds[c.id] || ''}
+                              />
+                            ) : inGroup ? (
+                              <span style={{ fontSize: 11, color: BRAND.teal }}>รวมส่งกับงวด {leader.installment}</span>
+                            ) : (
+                              <span style={{ fontSize: 11, color: "#FCA5A5" }}>ยังทวงส่วนที่ขาดไม่ได้ (รอรันไฟล์ SQL)</span>
+                            )}
                             <button
                               onClick={() => setPostponeModal({ customer: c, payment: p })}
                               className="btn"
@@ -1111,7 +1337,9 @@ export default function App({ initialView = "main", onLogout }) {
                             เลย {Math.abs(p.diff)} วัน
                           </span>
                           <span style={{ fontWeight: 700, color: BRAND.gold, fontSize: 13 }}>
-                            {formatMoney(c.amount)} ฿
+                            {p.balance?.state === "partial"
+                              ? `ขาด ${formatMoney(p.balance.outstanding)} ฿`
+                              : `${formatMoney(c.amount)} ฿`}
                           </span>
                           <button
                             onClick={() => setPostponeModal({ customer: c, payment: p })}
@@ -1120,12 +1348,89 @@ export default function App({ initialView = "main", onLogout }) {
                           >
                             {p.postponedFrom ? "🔄 เลื่อนแล้ว" : "📅 เลื่อนนัด"}
                           </button>
+                          {p.balance?.state === "partial" ? (
+                            // จ่ายมาแล้วบางส่วน: เงินที่มาเพิ่มเป็นรายการใหม่ ไม่เปิดหน้าต่างที่เขียนทับบันทึกครั้งแรก
+                            <button
+                              onClick={() => openAdditionModal({ customer: c, payment: p })}
+                              disabled={additionsState !== "ready"}
+                              title={additionsState === "missing" ? "ต้องรันไฟล์ supabase_payment_additions.sql ใน Supabase ก่อน" : additionsState !== "ready" ? "ระบบชำระเพิ่มยังไม่พร้อม" : undefined}
+                              className="btn"
+                              style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(245,158,11,.5)", background: "rgba(245,158,11,.12)", color: "#FBBF24", cursor: additionsState === "ready" ? "pointer" : "not-allowed", opacity: additionsState === "ready" ? 1 : 0.5 }}
+                            >
+                              ＋ ชำระเพิ่ม
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setSlipModal({ customer: c, payment: p })}
+                              className="btn"
+                              style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(45,212,191,.3)", background: "rgba(45,212,191,.08)", color: BRAND.teal, cursor: "pointer" }}
+                            >
+                              💳 บันทึกชำระ
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── ชำระไม่ครบ (รับเงินมาแล้วบางส่วน ยังขาดอีก) ── */}
+              {partialAlerts.length > 0 && (
+                <div className="card" style={{ borderColor: "rgba(245,158,11,.45)", background: "rgba(245,158,11,.05)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
+                    <div style={{ fontWeight: 700, color: "#FBBF24", fontSize: 14 }}>
+                      ⚠️ ชำระไม่ครบ ({partialAlerts.length} งวด)
+                    </div>
+                    <span style={{ fontSize: 11, color: BRAND.textSec }}>
+                      {additionsState === "missing"
+                        ? "ยังบันทึกชำระเพิ่มไม่ได้ — ต้องรันไฟล์ supabase_payment_additions.sql ใน Supabase ก่อน"
+                        : "รับเงินมาแล้วบางส่วน ยังขาดอีก · นัดวันชำระส่วนที่ขาดได้ที่ปุ่มนัดวัน"}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {partialAlerts.map(({ c, p, topup }) => (
+                      <div
+                        key={`${c.id}|${topup?.id || ""}|${p.installment}`}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,0,0,.3)", borderRadius: 10, border: "1px solid rgba(245,158,11,.3)", flexWrap: "wrap", gap: 8 }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 180 }}>
+                          <span style={{ fontSize: 18 }}>{c.icon || "🏠"}</span>
+                          <div>
+                            <div style={{ fontWeight: 600, color: BRAND.textPri, fontSize: 13 }}>{c.name}</div>
+                            <div style={{ fontSize: 11, color: BRAND.textSec }}>
+                              {topup ? `วงเงินเพิ่ม +${formatMoney(topup.topupAmount)} ฿ · ` : ""}งวด {p.installment} • {formatThai(p.dateStr)}
+                              {p.postponedFrom && (
+                                <span style={{ color: "#FB923C", marginLeft: 6 }}>(เลื่อนจาก {formatThai(p.postponedFrom)})</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11, color: BRAND.textSec }}>
+                              ชำระแล้ว {formatMoney(p.balance.paid)}{p.balance.waived > 0 ? ` · ยกเว้น ${formatMoney(p.balance.waived)}` : ""} / {formatMoney(p.balance.due)} ฿
+                              {p.postponeNote ? ` · ${String(p.postponeNote).slice(0, 60)}` : ""}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ padding: "3px 10px", borderRadius: 20, background: p.diff < 0 ? "rgba(251,146,60,.15)" : "rgba(245,158,11,.12)", border: `1px solid ${p.diff < 0 ? "rgba(251,146,60,.5)" : "rgba(245,158,11,.45)"}`, color: p.diff < 0 ? "#FB923C" : "#FBBF24", fontSize: 11, fontWeight: 600 }}>
+                            {p.diff < 0 ? `เลย ${Math.abs(p.diff)} วัน` : p.diff === 0 ? "ครบวันนี้" : `อีก ${p.diff} วัน`}
+                          </span>
+                          <span style={{ fontWeight: 700, color: "#FBBF24", fontSize: 13 }}>
+                            ขาด {formatMoney(p.balance.outstanding)} ฿
+                          </span>
                           <button
-                            onClick={() => setSlipModal({ customer: c, payment: p })}
+                            onClick={() => setPostponeModal(topup ? { customer: c, payment: p, topup } : { customer: c, payment: p })}
                             className="btn"
-                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(45,212,191,.3)", background: "rgba(45,212,191,.08)", color: BRAND.teal, cursor: "pointer" }}
+                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(251,146,60,.4)", background: "rgba(251,146,60,.08)", color: "#FB923C", cursor: "pointer" }}
                           >
-                            💳 บันทึกชำระ
+                            📅 นัดวันชำระ
+                          </button>
+                          <button
+                            onClick={() => openAdditionModal(topup ? { customer: c, payment: p, topup } : { customer: c, payment: p })}
+                            disabled={additionsState !== "ready"}
+                            className="btn"
+                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(245,158,11,.5)", background: "rgba(245,158,11,.12)", color: "#FBBF24", cursor: additionsState === "ready" ? "pointer" : "not-allowed", opacity: additionsState === "ready" ? 1 : 0.5 }}
+                          >
+                            ＋ ชำระเพิ่ม
                           </button>
                         </div>
                       </div>
@@ -1491,15 +1796,12 @@ export default function App({ initialView = "main", onLogout }) {
                                     </div>
                                     {/* นับถอยหลังของแต่ละยอดเพิ่มวง แยกจากยอดเดิม กันสับสน/ลืม */}
                                     {tops.map(topup => {
-                                      const tPays = (topup.payments || []).map(tp => {
-                                        const diff = getDiff(tp.dateStr, today);
-                                        const record = topup.records?.[tp.installment];
-                                        const status = record ? "paid" : payStatus(diff);
-                                        return { ...tp, diff, record, status };
-                                      });
+                                      const tPays = topupPaymentsWithStatus(topup, c.id, today, additionIndex, additionsKnown);
                                       // เลือกตามวันที่ใกล้ที่สุด ไม่ใช่ตามลำดับงวด (หลังเลื่อนนัดลำดับวันที่อาจสลับกัน)
+                                      // งวดที่เลยกำหนดแล้วยังค้าง (รวมที่จ่ายไม่ครบ) ขึ้นก่อน ไม่งั้นป้ายจะข้ามไปงวดถัดไปและซ่อนยอดค้าง
                                       const nextTopupPay =
-                                        nearestDue(tPays.filter((tp) => tp.diff >= 0 && tp.status !== "paid"))
+                                        nearestDue(tPays.filter((tp) => tp.diff < 0 && tp.status !== "paid"))
+                                        || nearestDue(tPays.filter((tp) => tp.diff >= 0 && tp.status !== "paid"))
                                         || nearestDue(tPays.filter((tp) => tp.diff >= 0))
                                         || tPays[0];
                                       if (!nextTopupPay) return null;
@@ -1520,6 +1822,7 @@ export default function App({ initialView = "main", onLogout }) {
                                           }}
                                         >
                                           💵 งวดเพิ่มวง {nextTopupPay.installment} •{" "}
+                                          {nextTopupPay.balance?.state === "partial" ? `ขาด ${formatMoney(nextTopupPay.balance.outstanding)} ฿ • ` : ""}
                                           {nextTopupPay.status === "paid"
                                             ? "ชำระแล้ว"
                                             : nextTopupPay.diff === 0
@@ -1890,14 +2193,19 @@ export default function App({ initialView = "main", onLogout }) {
                                 {c.payments.map((p, pIdx) => {
                                   const isLastPayment = pIdx === c.payments.length - 1;
                                   const pSt = P_STATUS[p.status];
-                                  const sameDayTopups = p.status === "paid" ? [] : unpaidTopupsOnDate(customerTopups[c.id], p.dateStr);
+                                  // ข้อความเดียวต่อ "ลูกค้า + วัน" (งวดหลักทุกงวด + วงเงินเพิ่มที่ครบวันนั้น) · งวดแรกของวันถือปุ่มส่ง LINE
+                                  const group = p.status === "paid" ? null : paymentGroupOf(c, p.dateStr, p.diff);
+                                  const inGroup = !group || group.mains.some((m) => m.installment === p.installment); // ไม่อยู่ = ส่วนที่ขาดที่ยังทวงไม่ได้
+                                  const groupLeader = group?.mains[0];
+                                  const isGroupLeader = Boolean(group) && inGroup && groupLeader.installment === p.installment;
+                                  const bundled = Boolean(group) && group.mains.length + group.extras.length > 1;
                                   // บรรทัดนับถอยหลัง/วันที่ชำระ แบบเดียวกับตารางวงเงินเพิ่ม (ป้ายสถานะบอกแค่ "รอชำระ" ไม่บอกว่าอีกกี่วัน)
                                   const countdown = p.status === "paid"
                                     ? (p.record?.paidDate ? `ชำระเมื่อ ${formatThai(p.record.paidDate)}` : "")
                                     : p.diff === 0 ? "วันนี้!" : p.diff > 0 ? `อีก ${p.diff} วัน` : `เกิน ${Math.abs(p.diff)} วัน`;
-                                  const msg = sameDayTopups.length
-                                    ? msgCombinedPayment(c, p, sameDayTopups, p.status === "today" ? "due" : "early")
-                                    : msgPayment(c, p, p.status === "today" ? "due" : "early");
+                                  const msg = !group
+                                    ? msgPayment(c, p, p.status === "today" ? "due" : "early")
+                                    : inGroup ? msgPaymentGroup(c, group, messageTypeFor(p.diff)) : "";
                                   return (
                                     <div
                                       key={p.installment}
@@ -1987,16 +2295,16 @@ export default function App({ initialView = "main", onLogout }) {
                                           className="btn"
                                           style={{
                                             padding: "3px 8px", borderRadius: 7, fontSize: 10,
-                                            border: p.status === "paid"
+                                            border: p.record
                                               ? "1px solid rgba(34,197,94,.4)"
                                               : "1px solid rgba(45,212,191,.3)",
-                                            background: p.status === "paid"
+                                            background: p.record
                                               ? "rgba(34,197,94,.12)"
                                               : "rgba(45,212,191,.08)",
-                                            color: p.status === "paid" ? "#86EFAC" : BRAND.teal,
+                                            color: p.record ? "#86EFAC" : BRAND.teal,
                                           }}
                                         >
-                                          {p.status === "paid" ? "🧾 ดูสลิป" : "💳 บันทึก"}
+                                          {p.record ? "🧾 ดูสลิป" : "💳 บันทึก"}
                                         </button>
                                         {/* ปุ่มเลื่อนนัดชำระ (เฉพาะยังไม่ชำระ) */}
                                         {p.status !== "paid" && (
@@ -2021,19 +2329,23 @@ export default function App({ initialView = "main", onLogout }) {
                                           </button>
                                         )}
                                         {(p.status === "today" ||
-                                          p.status === "soon") && (
+                                          p.status === "soon") && (isGroupLeader ? (
                                           <LineButton
                                             message={msg}
                                             type="payment"
-                                            label={sameDayTopups.length ? "ส่งยอดรวม LINE" : "ส่ง LINE"}
+                                            label={bundled ? "ส่งยอดรวม LINE" : "ส่ง LINE"}
                                             compact
                                             onSend={(ok) =>
                                               handleLineSend(ok, c.name)
                                             }
                                             destinationId={c.lineUserId || customerLineIds[c.id] || ''}
                                           />
-                                        )}
-                                        <button
+                                        ) : inGroup ? (
+                                          <span style={{ fontSize: 10, color: BRAND.teal }}>รวมส่งกับงวด {groupLeader.installment}</span>
+                                        ) : (
+                                          <span style={{ fontSize: 10, color: "#FCA5A5" }}>ยังทวงส่วนที่ขาดไม่ได้</span>
+                                        ))}
+                                        {msg && <button
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             copy(msg);
@@ -2049,7 +2361,7 @@ export default function App({ initialView = "main", onLogout }) {
                                           }}
                                         >
                                           📋
-                                        </button>
+                                        </button>}
                                         <a
                                           href={gcalPayment(c, p, false)}
                                           target="_blank"
@@ -2078,7 +2390,7 @@ export default function App({ initialView = "main", onLogout }) {
                                           borderRadius: 7, fontSize: 11,
                                           display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
                                         }}>
-                                          <span style={{ color: "#86EFAC" }}>✓ ชำระ {(p.record.amountPaid||0).toLocaleString("th-TH")} บาท</span>
+                                          <span style={{ color: p.balance?.state === "partial" ? "#FDE68A" : "#86EFAC" }}>{p.balance?.state === "partial" ? "ชำระครั้งแรก" : "✓ ชำระ"} {(p.record.amountPaid||0).toLocaleString("th-TH")} บาท</span>
                                           <span style={{ color: BRAND.textSec }}>วันที่ {formatThai(p.record.paidDate)}</span>
                                           {p.record.note && <span style={{ color: BRAND.textSec }}>| {p.record.note}</span>}
                                           {(p.record.slipUrl || p.record.slipImage) && (
@@ -2098,6 +2410,15 @@ export default function App({ initialView = "main", onLogout }) {
                                           )}
                                         </div>
                                       )}
+                                      {/* จ่ายไม่ครบ: ยอดที่ยังขาด + ชำระเพิ่ม/ยกเว้น · ประวัติชำระเพิ่มของงวด */}
+                                      <InstallmentBalance
+                                        balance={p.balance}
+                                        additions={p.additions}
+                                        availability={additionsState}
+                                        onAddPayment={() => openAdditionModal({ customer: c, payment: p })}
+                                        onWaive={() => waiveRemainder(c, p)}
+                                        onVoid={voidAddition}
+                                      />
 
                                       {/* ปุ่มปิดสัญญา — แสดงใต้งวดสุดท้าย */}
                                       {isLastPayment && (
@@ -2116,7 +2437,7 @@ export default function App({ initialView = "main", onLogout }) {
                                             </button>
                                           ) : (
                                             <button
-                                              onClick={(e) => { e.stopPropagation(); closeContract(c); }}
+                                              onClick={(e) => { e.stopPropagation(); closeContract(c, partialAlerts.filter((a) => a.c.id === c.id), additionsKnown); }}
                                               className="btn"
                                               style={{
                                                 padding: '3px 8px', borderRadius: 7, fontSize: 10,
@@ -2144,15 +2465,11 @@ export default function App({ initialView = "main", onLogout }) {
                                       <div style={{ fontSize: 11, marginTop: 4 }}>กดปุ่ม ➕ เพิ่มวงเงิน เพื่อบันทึกสัญญาเพิ่มวงเงิน</div>
                                     </div>
                                   ) : (customerTopups[c.id] || []).map(topup => {
-                                    const tPays = (topup.payments || []).map(tp => {
-                                      const diff = getDiff(tp.dateStr, today);
-                                      const record = topup.records[tp.installment];
-                                      const status = record ? 'paid' : payStatus(diff);
-                                      return { ...tp, diff, record, status };
-                                    });
-                                    const paidCount = tPays.filter(tp => tp.record).length;
+                                    const tPays = topupPaymentsWithStatus(topup, c.id, today, additionIndex, additionsKnown);
+                                    const paidCount = tPays.filter(tp => tp.status === 'paid').length;
                                     // งวดค้างที่ใกล้ถึงกำหนดที่สุด (ไม่ใช่งวดแรกตามลำดับ) เพราะการเลื่อนนัดอาจทำให้วันที่ไม่เรียงตามเลขงวด
-                                    const unpaidTopupPays = tPays.filter(tp => !tp.record);
+                                    // งวดที่จ่ายไม่ครบยังนับเป็นค้าง (ยอดในข้อความ = ส่วนที่ยังขาด)
+                                    const unpaidTopupPays = tPays.filter(tp => tp.status !== 'paid');
                                     const nextOutstanding = nearestDue(unpaidTopupPays);
                                     // งวดค้างอื่นที่ครบวันเดียวกัน (เช่น เลื่อนงวดก่อนหน้ามาชนงวดถัดไป) → แสดงยอดรวมให้ตรงกับที่ cron LINE ส่ง
                                     const sameDayUnpaid = nextOutstanding ? unpaidTopupPays.filter(tp => tp.dateStr === nextOutstanding.dateStr) : [];
@@ -2163,15 +2480,17 @@ export default function App({ initialView = "main", onLogout }) {
                                         : nextOutstanding.diff === 0
                                           ? "due"
                                           : "early";
-                                    const matchingMain = nextOutstanding && c.payments.find(p =>
-                                      p.dateStr === nextOutstanding.dateStr && p.status !== 'paid' &&
-                                      (p.status === 'today' || p.status === 'soon')
-                                    );
-                                    const alertMessage = alertType
-                                      ? matchingMain
-                                        ? msgCombinedPayment(c, matchingMain, unpaidTopupsOnDate(customerTopups[c.id], matchingMain.dateStr), alertType === 'due' ? 'due' : 'early')
-                                        : msgTopupPayment(c, topup, nextOutstanding, alertType)
-                                      : "";
+                                    // ข้อความเดียวต่อ "ลูกค้า + วัน" (งวดหลัก + วงเงินเพิ่มทุกวงเงินที่ครบวันนั้น): ส่งจากแถวงวดหลักถ้าแถวนั้นมีปุ่มส่ง (ครบวันนี้/ใกล้ครบ)
+                                    // ไม่มีก็ส่งจากวงเงินเพิ่มรายการแรกที่มีงวดค้างวันนั้น · รายการอื่นบอกว่ารวมส่งกับรายการไหน
+                                    const dayGroup = alertType ? paymentGroupOf(c, nextOutstanding.dateStr, nextOutstanding.diff) : null;
+                                    const ownInGroup = Boolean(dayGroup) && dayGroup.extras.some(e => e.topup.id === topup.id && e.payment.installment === nextOutstanding.installment); // ไม่อยู่ = ส่วนที่ขาดที่ยังทวงไม่ได้
+                                    const matchingMain = dayGroup?.mains.find(p => p.status === 'today' || p.status === 'soon') || null;
+                                    // ผู้ส่งในกลุ่มวงเงินเพิ่ม = วงเงินเพิ่มรายการแรกที่การ์ดของมันแสดงวันเดียวกันนี้ (การ์ดอื่นอาจแสดงงวดที่ใกล้กว่าซึ่งเป็นคนละวัน)
+                                    const showsThisDate = (t) => t.id === topup.id || nearestDue(topupPaymentsWithStatus(t, c.id, today, additionIndex, additionsKnown).filter(tp => tp.status !== 'paid'))?.dateStr === nextOutstanding.dateStr;
+                                    const leadTopup = dayGroup && !matchingMain ? dayGroup.extras.map(e => e.topup).find(showsThisDate) || null : null;
+                                    const sendsHere = Boolean(dayGroup) && !matchingMain && leadTopup?.id === topup.id;
+                                    const dayHasOthers = Boolean(dayGroup) && (dayGroup.mains.length > 0 || dayGroup.extras.some(e => e.topup.id !== topup.id));
+                                    const alertMessage = dayGroup && (dayGroup.mains.length || dayGroup.extras.length) ? msgPaymentGroup(c, dayGroup, alertType) : "";
                                     const alertTone = alertType === "overdue" || alertType === "due"
                                       ? { color: "#FCA5A5", background: "rgba(239,68,68,.08)", border: "rgba(239,68,68,.4)" }
                                       : { color: "#FDE68A", background: "rgba(245,158,11,.08)", border: "rgba(245,158,11,.4)" };
@@ -2216,25 +2535,29 @@ export default function App({ initialView = "main", onLogout }) {
                                               <div style={{ color: BRAND.textSec, fontSize: 11, marginTop: 2 }}>
                                                 กำหนด {formatThai(nextOutstanding.dateStr)}
                                                 {nextOutstanding.postponedFrom && <span style={{ color: "#FB923C", marginLeft: 6 }}>(เลื่อนจาก {formatThai(nextOutstanding.postponedFrom)})</span>}
-                                                {" · "}ยอดชำระ {formatMoney((Number(topup.interestAmount) || 0) * sameDayUnpaid.length)} บาท
+                                                {" · "}ยอดชำระ {formatMoney(sameDayUnpaid.reduce((sum, tp) => sum + amountDue(topup.interestAmount, tp.balance), 0))} บาท
+                                                {sameDayUnpaid.some(tp => tp.balance?.state === "partial") && <span style={{ color: "#FDE68A", marginLeft: 6 }}>(ส่วนที่ยังขาด)</span>}
                                                 {sameDayUnpaid.length > 1 && <span style={{ color: BRAND.gold, marginLeft: 6 }}>(งวดที่ {sameDayUnpaid.map(tp => tp.installment).join(", ")} ครบวันเดียวกัน)</span>}
+                                                {dayHasOthers && <span style={{ color: BRAND.textSec, marginLeft: 6 }}>· รวมทั้งวัน {formatMoney(groupTotal(c.amount, dayGroup))} บาท</span>}
                                               </div>
                                             </div>
                                             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                                              {!matchingMain && <LineButton
+                                              {sendsHere && <LineButton
                                                 message={alertMessage}
                                                 type="payment"
                                                 compact
                                                 onSend={(ok) => handleLineSend(ok, c.name)}
                                                 destinationId={c.lineUserId || customerLineIds[c.id] || ''}
                                               />}
-                                              {matchingMain && <span style={{ fontSize: 11, color: BRAND.teal }}>รวมส่งกับงวดหลัก</span>}
-                                              <button
+                                              {!ownInGroup && <span style={{ fontSize: 11, color: "#FCA5A5" }}>ยังทวงส่วนที่ขาดไม่ได้ (รอรันไฟล์ SQL)</span>}
+                                              {ownInGroup && matchingMain && <span style={{ fontSize: 11, color: BRAND.teal }}>รวมส่งกับงวดหลัก {matchingMain.installment}</span>}
+                                              {ownInGroup && !matchingMain && !sendsHere && leadTopup && <span style={{ fontSize: 11, color: BRAND.teal }}>รวมส่งกับวงเงินเพิ่ม +{formatMoney(leadTopup.topupAmount)} ฿</span>}
+                                              {alertMessage && <button
                                                 type="button"
                                                 title="คัดลอกข้อความแจ้งเตือน"
                                                 onClick={(event) => { event.stopPropagation(); copy(alertMessage); }}
                                                 style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid rgba(245,158,11,.35)", background: "rgba(245,158,11,.08)", color: BRAND.gold, cursor: "pointer" }}
-                                              >📋</button>
+                                              >📋</button>}
                                               <a
                                                 href={gcalTopupPayment(c, topup, nextOutstanding, false)}
                                                 target="_blank"
@@ -2267,19 +2590,19 @@ export default function App({ initialView = "main", onLogout }) {
                                                       <div style={{ fontSize: 10, color: "#FB923C", marginTop: 1 }}>เลื่อนจาก {formatThai(tp.postponedFrom)}</div>
                                                     )}
                                                     <div style={{ fontSize: 10, color: pSt.text, marginTop: 1 }}>
-                                                      {tp.record
+                                                      {tp.status === "paid"
                                                         ? "ชำระแล้ว ✓"
-                                                        : tp.diff === 0
-                                                        ? "วันนี้!"
-                                                        : tp.diff > 0
-                                                        ? `อีก ${tp.diff} วัน`
-                                                        : `เกิน ${Math.abs(tp.diff)} วัน`}
+                                                        : `${tp.balance?.state === "partial" ? "ชำระไม่ครบ · " : ""}${tp.diff === 0
+                                                          ? "วันนี้!"
+                                                          : tp.diff > 0
+                                                          ? `อีก ${tp.diff} วัน`
+                                                          : `เกิน ${Math.abs(tp.diff)} วัน`}`}
                                                     </div>
                                                   </div>
                                                 </div>
                                                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                                  {/* ปุ่มเลื่อนนัดชำระ (เฉพาะยังไม่ชำระ) — ทำงานเหมือนตารางชำระหลัก */}
-                                                  {!tp.record && (
+                                                  {/* ปุ่มเลื่อนนัดชำระ (เฉพาะยังไม่ครบ รวมงวดที่จ่ายไม่ครบ = นัดวันชำระส่วนที่ขาด) — ทำงานเหมือนตารางชำระหลัก */}
+                                                  {tp.status !== "paid" && (
                                                     <button
                                                       onClick={e => { e.stopPropagation(); setPostponeModal({ customer: c, payment: tp, topup }); }}
                                                       style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", border: tp.postponedFrom ? "1px solid rgba(251,146,60,.6)" : "1px solid rgba(251,146,60,.3)", background: tp.postponedFrom ? "rgba(251,146,60,.18)" : "rgba(251,146,60,.07)", color: "#FB923C" }}
@@ -2294,7 +2617,7 @@ export default function App({ initialView = "main", onLogout }) {
                                                 {/* แสดงข้อมูลสลิปถ้าชำระแล้ว — แบบเดียวกับตารางชำระหลัก */}
                                                 {tp.record && (
                                                   <div style={{ padding: "6px 10px", background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 7, fontSize: 11, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                                                    <span style={{ color: "#86EFAC" }}>✓ ชำระ {(tp.record.amountPaid || 0).toLocaleString("th-TH")} บาท</span>
+                                                    <span style={{ color: tp.balance?.state === "partial" ? "#FDE68A" : "#86EFAC" }}>{tp.balance?.state === "partial" ? "ชำระครั้งแรก" : "✓ ชำระ"} {(tp.record.amountPaid || 0).toLocaleString("th-TH")} บาท</span>
                                                     <span style={{ color: BRAND.textSec }}>วันที่ {formatThai(tp.record.paidDate)}</span>
                                                     {tp.record.note && <span style={{ color: BRAND.textSec }}>| {tp.record.note}</span>}
                                                     {tp.record.slipUrl
@@ -2302,6 +2625,14 @@ export default function App({ initialView = "main", onLogout }) {
                                                       : <span style={{ color: BRAND.textMut }}>ยังไม่แนบสลิป — กด 🧾 ดูสลิป เพื่อแนบรูป</span>}
                                                   </div>
                                                 )}
+                                                <InstallmentBalance
+                                                  balance={tp.balance}
+                                                  additions={tp.additions}
+                                                  availability={additionsState}
+                                                  onAddPayment={() => openAdditionModal({ customer: c, payment: tp, topup })}
+                                                  onWaive={() => waiveRemainder(c, tp, topup)}
+                                                  onVoid={voidAddition}
+                                                />
                                               </div>
                                             );
                                           })}
@@ -2351,7 +2682,7 @@ export default function App({ initialView = "main", onLogout }) {
       {/* Edit Customer Modal */}
       {editCustomerModal && (
         <CustomerSheetEditModal
-          customer={editCustomerModal}
+          customer={enrichedById.get(editCustomerModal.id) || editCustomerModal}
           appsScriptUrl={APPS_SCRIPT_URL}
           onClose={() => setEditCustomerModal(null)}
           onSaved={(updated) => {
@@ -2380,9 +2711,39 @@ export default function App({ initialView = "main", onLogout }) {
           customer={slipModal.customer}
           payment={slipModal.payment}
           existing={paymentRecords[slipModal.customer.id]?.[slipModal.payment.installment]}
+          notice={firstRecordNotice(slipModal.payment.balance)}
           onSave={(record) => savePaymentRecord(slipModal.customer.id, slipModal.payment.installment, record)}
-          onDelete={() => deletePaymentRecord(slipModal.customer.id, slipModal.payment.installment)}
+          onDelete={async () => {
+            if (!(await canDeleteFirstRecord(slipModal.customer.id, null, slipModal.payment.installment))) return false;
+            return deletePaymentRecord(slipModal.customer.id, slipModal.payment.installment);
+          }}
           onClose={() => setSlipModal(null)}
+        />
+      )}
+
+      {/* ชำระเพิ่มของงวดที่จ่ายไม่ครบ (สัญญาหลักหรือวงเงินเพิ่ม) — ยอดตั้งต้น = ส่วนที่ยังขาด */}
+      {additionModal && (
+        <SlipModal
+          customer={additionModal.customer}
+          payment={additionModal.payment}
+          existing={null}
+          title="บันทึกชำระเพิ่ม (ส่วนที่ขาด)"
+          expectedLabel="ยอดที่ยังขาด"
+          expectedAmount={additionModal.payment.balance?.outstanding ?? null}
+          subtitle={additionModal.topup ? `วงเงินเพิ่ม +${formatMoney(additionModal.topup.topupAmount)} ฿` : ""}
+          onSave={(record) => recordAddition({
+            id: additionModal.requestId,
+            customerId: additionModal.customer.id,
+            topupId: additionModal.topup?.id || null,
+            installment: additionModal.payment.installment,
+            kind: "payment",
+            amount: record.amountPaid,
+            paidAt: record.paidDate,
+            note: record.note || "",
+            slipUrl: record.slipUrl || "",
+            slipId: record.slipId || "",
+          })}
+          onClose={() => setAdditionModal(null)}
         />
       )}
 
@@ -2423,15 +2784,27 @@ export default function App({ initialView = "main", onLogout }) {
           customer={topupSlipModal.customer}
           payment={topupSlipModal.payment}
           existing={topupSlipModal.topup.records[topupSlipModal.payment.installment]}
+          notice={firstRecordNotice(topupSlipModal.payment.balance)}
           expectedAmount={topupSlipModal.topup.interestAmount}
           subtitle={`วงเงินเพิ่ม +${formatMoney(topupSlipModal.topup.topupAmount)} ฿`}
-          onSave={(record) => {
-            saveTopupPayment(topupSlipModal.topup.id, topupSlipModal.customer.id, topupSlipModal.payment.installment, record);
-            setTopupSlipModal(null);
+          onSave={async (record) => {
+            try {
+              await saveTopupPayment(topupSlipModal.topup.id, topupSlipModal.customer.id, topupSlipModal.payment.installment, record);
+              return true;
+            } catch (e) {
+              showToast("บันทึกการชำระวงเงินเพิ่มไม่สำเร็จ กรุณาลองใหม่: " + e.message);
+              return false;
+            }
           }}
-          onDelete={() => {
-            deleteTopupPayment(topupSlipModal.topup.id, topupSlipModal.customer.id, topupSlipModal.payment.installment);
-            setTopupSlipModal(null);
+          onDelete={async () => {
+            if (!(await canDeleteFirstRecord(topupSlipModal.customer.id, topupSlipModal.topup.id, topupSlipModal.payment.installment))) return false;
+            try {
+              await deleteTopupPayment(topupSlipModal.topup.id, topupSlipModal.customer.id, topupSlipModal.payment.installment);
+              return true;
+            } catch (e) {
+              showToast("ลบไม่สำเร็จ: " + e.message);
+              return false;
+            }
           }}
           onClose={() => setTopupSlipModal(null)}
         />

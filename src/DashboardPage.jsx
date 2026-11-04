@@ -4,6 +4,7 @@ import { getDiff, formatThai } from './lib/utils.js'
 import { getRecordedUpfrontDeductions, getAdvanceDeductionRecordCases, isAdvanceDeductionRecord } from './lib/advanceDeduction.js'
 import { principalWithTopups, toMonthlyAmount } from './lib/topupTotals.js'
 import { openContractSummaryForPrint } from './lib/contractSummaryReport.js'
+import { amountDue } from './lib/combinedPayment.js'
 import { showToast } from './lib/toast.js'
 import NoticeTracking from './components/NoticeTracking.jsx'
 
@@ -134,7 +135,8 @@ function SectionToggle({ open, onClick }) {
 }
 
 // ── Main Dashboard ───────────────────────────────────────
-export default function DashboardPage({ customers = [], paymentRecords = {} }) {
+// additionsState มาจากหน้าหลัก: โหลดรายการชำระเพิ่มไม่สำเร็จ = ยอดรับชำระ/ค้างชำระในหน้านี้อาจไม่รวมเงินที่ลูกค้ามาจ่ายเพิ่ม
+export default function DashboardPage({ customers = [], paymentRecords = {}, paymentAdditions = [], additionsState = 'ready' }) {
   const today = new Date()
   const active = customers.filter(c => !c.isClosed && !c.isVoided && !c.isHiddenDraft)
   const [expandedSections, setExpandedSections] = useState({
@@ -180,6 +182,9 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
       }
     })
   })
+  // เงินที่ลูกค้ามาจ่ายเพิ่มของงวดสัญญาหลักที่เคยจ่ายไม่ครบ (ไม่นับการยกเว้นและรายการที่ยกเลิก · วงเงินเพิ่มไม่นับเหมือนบันทึกแรกของวงเงินเพิ่ม)
+  const mainAdditionPayments = paymentAdditions.filter(a => !a.topupId && !a.voidedAt && a.kind !== 'waiver' && a.amount > 0)
+  mainAdditionPayments.forEach(a => { collectedThisMonth += a.amount })
 
   // ค้างชำระ — เทียบกับ "วันครบกำหนดเดิม" (ก่อนถูกเลื่อน) ไม่ใช่วันที่เลื่อนใหม่
   // เพราะยอดยังคงค้างอยู่จริงจนกว่าจะมีการชำระ ต่อให้เลื่อนกำหนดใหม่ไปแล้วก็ตาม
@@ -188,7 +193,9 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
   const overduePayments = []
   active.forEach(c => {
     c.payments?.forEach(p => {
-      if (paymentRecords[c.id]?.[p.installment]) return
+      // ครบ = ยอดที่จ่ายจริงถึงยอดงวด (งวดที่จ่ายไม่ครบยังค้าง) · ไม่มีผลคิดยอดมาด้วย = ใช้กติกาเดิม (มีบันทึก = ครบ)
+      const settled = p.balance ? p.balance.state === 'paid' : Boolean(paymentRecords[c.id]?.[p.installment])
+      if (settled) return
       const originalDueStr = p.postponedFrom || p.dateStr
       const originalDiff = originalDueStr ? getDiff(originalDueStr, today) : null
       if (originalDiff === null) return
@@ -198,7 +205,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
       }
     })
   })
-  const overdueAmount = overduePayments.reduce((s, { c }) => s + (c.amount || 0), 0)
+  const overdueAmount = overduePayments.reduce((s, { c, p }) => s + amountDue(c.amount, p.balance), 0)
 
   // Yield
   const yieldRate = totalPrincipal > 0 ? ((monthlyIncome * 12) / totalPrincipal * 100).toFixed(1) : 0
@@ -237,10 +244,14 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
           }
         })
       })
+      paymentAdditions.forEach(a => {
+        if (a.topupId || a.voidedAt || a.kind === 'waiver') return
+        if (String(a.paidAt || '').startsWith(key)) total += Number(a.amount) || 0
+      })
       months.push({ label: thMonth[d.getMonth()], value: total })
     }
     return months
-  }, [paymentRecords, customers])
+  }, [paymentRecords, customers, paymentAdditions])
 
   // ── จำนอง vs ขายฝาก ─────────────────────────────────────
   const mortgage = active.filter(c => c.type === 'จำนอง')
@@ -268,7 +279,9 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
 
     const payments = c.payments || []
     const overdue = payments.filter(p => {
-      if (getCustomerPaymentRecord(paymentRecords, c.id, p.installment)) return false
+      // จบแล้ว = ยอดที่จ่ายจริงถึงยอดงวด (งวดที่จ่ายไม่ครบยังนับว่าค้าง) — กติกาเดียวกับรายการค้างชำระด้านบน
+      const settled = p.balance ? p.balance.state === 'paid' : Boolean(getCustomerPaymentRecord(paymentRecords, c.id, p.installment))
+      if (settled) return false
       const dueStr = p.postponedFrom || p.dateStr
       const diff = dueStr ? getDiff(dueStr, today) : null
       if (diff === null) return false
@@ -339,6 +352,14 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '4px 0 32px' }}>
+
+      {(additionsState === 'error' || additionsState === 'unauthorized') && (
+        <div style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(239,68,68,.45)', background: 'rgba(239,68,68,.06)', color: '#FCA5A5', fontSize: 13, fontWeight: 600 }}>
+          {additionsState === 'unauthorized'
+            ? '⚠️ เซสชันหมดอายุ — ยอดรับชำระและค้างชำระด้านล่างยังไม่รวมเงินที่ลูกค้ามาจ่ายเพิ่ม (ออกจากระบบแล้วเข้าใหม่)'
+            : '⚠️ โหลดรายการชำระเพิ่มไม่สำเร็จ — ยอดรับชำระและค้างชำระด้านล่างอาจยังไม่รวมเงินที่ลูกค้ามาจ่ายเพิ่ม (ลองใหม่ได้ที่แท็บการชำระ)'}
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
@@ -664,7 +685,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {} }) {
                     <div style={{ fontSize: 11, color: BRAND.gold, marginTop: 3 }}>💬 {p.postponeNote}</div>
                   )}
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.danger }}>฿{fmtFull(c.amount)}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.danger }}>฿{fmtFull(amountDue(c.amount, p.balance))}{p.balance?.state === 'partial' ? ' (ส่วนที่ขาด)' : ''}</div>
                 <div style={{ fontSize: 11, color: BRAND.danger }}>{originalDiff === 0 ? 'ครบกำหนดวันนี้' : `เกิน ${Math.abs(originalDiff)} วัน`}</div>
               </div>
             ))}

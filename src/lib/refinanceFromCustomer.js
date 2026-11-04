@@ -5,6 +5,24 @@ import { isAdvanceDeductionRecord } from './advanceDeduction.js'
 import { calculateOldPayoffEstimate } from './refinanceCalculator.js'
 import { customerAssessment } from './deedAssessment.js'
 import { formatThai } from './utils.js'
+import { sumReceivedAdditions, installmentBalance } from './installmentBalance.js'
+
+// ยอดยกเว้นของงวดที่ยังต้องใช้ปิดยอด: ถ้าเงินที่รับจริงครบยอดงวดแล้ว (เช่น ลูกค้าจ่ายมาเองทีหลังแล้วแก้บันทึกแรก) ไม่หักซ้ำ
+function neededWaiver(due, record, additions) {
+  const b = installmentBalance({ due, record, additions })
+  return Math.max(0, Math.min(b.waived, b.due - b.paid))
+}
+
+// รวมยอดยกเว้นที่ยังต้องใช้ของทุกงวดในวงเงินเพิ่ม (รายการชำระเพิ่มของวงเงินหนึ่งปนกันหลายงวด → แยกตามงวดก่อน)
+function topupNeededWaivers(t) {
+  const additions = Array.isArray(t?.additions) ? t.additions : []
+  const installments = new Set([...Object.keys(t?.records || {}).map(Number), ...additions.map((a) => Number(a.installment))])
+  let sum = 0
+  for (const installment of installments) {
+    sum += neededWaiver(t?.interestAmount, t?.records?.[installment] || null, additions.filter((a) => Number(a.installment) === installment))
+  }
+  return sum
+}
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 const money = (n) => round2(n).toLocaleString('en-US')
@@ -57,12 +75,15 @@ export function estimateTopupPayoffs(topups, transferDate) {
     const annualRate = principal > 0 ? round2(monthly * 12 / principal * 100) : 0
     const startDate = day10(t?.topupDate || t?.topupStartDate)
     const advanceMonths = parseAdvanceMonthsFromNote(t?.note)
-    const paid = round2(Object.values(t?.records || {}).reduce((s, r) => s + (Number(r?.amountPaid) || 0), 0))
+    // บันทึกแรกของแต่ละงวด + เงินที่มาจ่ายเพิ่มทีหลัง (งวดที่เคยจ่ายไม่ครบ)
+    const paid = round2(Object.values(t?.records || {}).reduce((s, r) => s + (Number(r?.amountPaid) || 0), 0) + sumReceivedAdditions(t?.additions))
+    // ส่วนที่ยกเว้นให้ลูกค้าแล้ว ไม่ใช่เงินรับ แต่ไม่ต้องเก็บอีก → หักออกจากยอดปิดเหมือนดอกเบี้ยที่ชำระแล้ว (เฉพาะส่วนที่ยังต้องใช้)
+    const waived = round2(topupNeededWaivers(t))
     const endDate = day10(t?.topupEndDate) >= transferDate ? day10(t.topupEndDate) : transferDate
     const estimate = startDate && startDate < transferDate
-      ? calculateOldPayoffEstimate({ principal, annualRate, startDate, transferDate, endDate, advanceMonths, advancePaidAmount: '', paymentMode: 'amount', otherPaid: paid })
+      ? calculateOldPayoffEstimate({ principal, annualRate, startDate, transferDate, endDate, advanceMonths, advancePaidAmount: '', paymentMode: 'amount', otherPaid: round2(paid + waived) })
       : { ready: false }
-    return { principal, monthly, annualRate, startDate, advanceMonths, paid, estimate, payoff: estimate.ready ? round2(estimate.payoff) : principal }
+    return { principal, monthly, annualRate, startDate, advanceMonths, paid, waived, estimate, payoff: estimate.ready ? round2(estimate.payoff) : principal }
   })
 }
 
@@ -78,6 +99,10 @@ export function buildRefinanceFormFromCustomer(customer, { today = new Date() } 
   const d = c.disbursement || {}
   const transferDate = isoDate(today)
   const notes = []
+  // หน้าหลักยังโหลดรายการชำระเพิ่มไม่ได้: เงินที่ลูกค้ามาจ่ายเพิ่มจะยังไม่อยู่ในยอดรับชำระแล้ว → ยอดปิดอาจสูงเกินจริง
+  if (c.additionsVerified === false || payments.some((p) => p?.balance?.unverified)) {
+    notes.push('⚠️ ยังโหลดรายการชำระเพิ่มไม่ได้ — ยอดรับชำระแล้วด้านล่างอาจยังไม่รวมเงินที่ลูกค้ามาจ่ายเพิ่ม ตรวจในแท็บการชำระก่อนใช้ตัวเลขนี้')
+  }
 
   // หักล่วงหน้าวันทำสัญญา: จากงวดที่ติดธงในตารางชำระ (รายเดือน/2 สัปดาห์) หรือจากข้อมูลเบิกจ่าย (รายปี — เก็บเป็นเดือนอยู่แล้ว)
   let advanceMonths = 0
@@ -109,8 +134,11 @@ export function buildRefinanceFormFromCustomer(customer, { today = new Date() } 
   }
 
   // รับชำระแล้วเฉพาะสัญญาหลัก (วงเงินเพิ่มคิดแยกด้านล่าง)
-  const otherPaid = round2(realMain.reduce((s, p) => s + (Number(p.record.amountPaid) || 0), 0))
+  const otherPaid = round2(realMain.reduce((s, p) => s + (Number(p.record.amountPaid) || 0) + sumReceivedAdditions(p.additions), 0))
   if (otherPaid > 0) notes.push(`รับชำระดอกเบี้ยสัญญาหลักแล้ว ${money(otherPaid)} บาท (${realMain.length} งวด) ไม่รวมหักล่วงหน้า`)
+  // ส่วนที่ขาดซึ่งยกเว้นให้ลูกค้าแล้ว: ไม่ใช่เงินรับ แต่ไม่ต้องเก็บอีก → รวมในช่องรับชำระแล้ว ยอดปิดจะไม่คิดซ้ำ
+  const waivedMain = round2(realMain.reduce((s, p) => s + neededWaiver(c.amount, p.record, p.additions), 0))
+  if (waivedMain > 0) notes.push(`รวมส่วนที่ยกเว้นให้ลูกค้าแล้ว ${money(waivedMain)} บาท ในช่องรับชำระแล้ว (ไม่ใช่เงินที่รับจริง)`)
 
   const form = {
     principal: String(principal),
@@ -121,7 +149,7 @@ export function buildRefinanceFormFromCustomer(customer, { today = new Date() } 
     advanceMonths: String(advanceMonths),
     advancePaidAmount: advancePaidAmount > 0 ? String(advancePaidAmount) : '',
     paymentMode: 'amount',
-    otherPaid: String(otherPaid),
+    otherPaid: String(round2(otherPaid + waivedMain)),
     deedCount: String(Array.isArray(c.deeds) && c.deeds.length ? c.deeds.length : 1),
     oldRegisteredValue: String(principal),
   }
@@ -144,7 +172,7 @@ export function buildRefinanceFormFromCustomer(customer, { today = new Date() } 
     form.otherCosts = String(round2(topupPayoffs.reduce((s, t) => s + t.payoff, 0)))
     for (const t of topupPayoffs) {
       const basis = t.estimate.ready
-        ? `ดอกเบี้ยค้างถึงวันย้ายทุน ${money(t.estimate.accrued)} − หักล่วงหน้า ${t.advanceMonths} เดือน ${money(t.estimate.advanceCredit)} − รับแล้ว ${money(t.paid)}`
+        ? `ดอกเบี้ยค้างถึงวันย้ายทุน ${money(t.estimate.accrued)} − หักล่วงหน้า ${t.advanceMonths} เดือน ${money(t.estimate.advanceCredit)} − รับแล้ว ${money(t.paid)}${t.waived > 0 ? ` − ยกเว้นให้แล้ว ${money(t.waived)}` : ''}`
         : 'ประมาณดอกเบี้ยไม่ได้ (ไม่มีวันทำวงเงินเพิ่ม) ใส่เฉพาะเงินต้น'
       notes.push(`วงเงินเพิ่ม ${money(t.principal)} บาท @ ${money(t.monthly)}/เดือน (${t.annualRate}% ต่อปี) ${t.startDate ? `ตั้งแต่ ${formatThai(t.startDate)} ` : ''}→ ยอดปิดประมาณ ${money(t.payoff)} บาท (${basis}) ใส่ไว้ที่ "ค่าใช้จ่ายอื่นที่ต้องใช้ทุนนี้จ่าย"${t.advanceMonths ? ' · หักล่วงหน้าอ่านจากหมายเหตุวงเงินเพิ่ม' : ''}`)
     }
