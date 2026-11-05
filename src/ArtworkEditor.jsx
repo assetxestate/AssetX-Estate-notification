@@ -1,10 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ARTWORK_FORMATS, ARTWORK_THEMES, defaultArtwork, readArtworkImage, renderArtwork } from './lib/marketingArtwork.js'
 import { errorMessage, friendlyApiError } from './lib/marketingErrors.js'
+import { POSTER_SIZES, defaultPosterSizeFor } from './lib/posterSizes.js'
+import { chatJobMessage, isActiveJob, postKeyFor } from './lib/chatgptImageJob.js'
 import './ArtworkEditor.css'
 
+const JSON_HEADERS = { 'Content-Type': 'application/json' }
+const POLL_MS = 4000
+
 export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
-  const [design, setDesign] = useState(() => ({ ...defaultArtwork(brief), ...(asset ? { sourceKind: 'upload' } : {}), ...asset?.design }))
+  // posterSize = ขนาดครอปของโปสเตอร์สำเร็จรูป · '' = ตามภาพต้นฉบับ (ค่าเดิมของภาพอัปโหลดและภาพที่แนบไว้ก่อนมีเมนูนี้)
+  const [design, setDesign] = useState(() => ({ ...defaultArtwork(brief), posterSize: '', ...(asset ? { sourceKind: 'upload' } : {}), ...asset?.design }))
   const [source, setSource] = useState(asset?.sourceDataUrl || asset?.dataUrl || '')
   const [preview, setPreview] = useState(null)
   const [error, setError] = useState('')
@@ -16,6 +22,114 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
   const upload = useRef(null)
   const original = design.layout === 'original'
   const patch = (value) => setDesign((current) => ({ ...current, ...value }))
+
+  // ---- โปสเตอร์จาก ChatGPT: ส่งงานเข้าคิว → คอมสำนักงาน (scripts/image-worker.mjs) สร้างภาพ → ถามสถานะทุก 4 วินาทีจนได้ภาพ
+  const postKey = postKeyFor(brief)
+  const [chat, setChat] = useState({ job: null, worker: null })
+  const [chatSending, setChatSending] = useState(false)
+  const [chatError, setChatError] = useState('')
+  const [appliedJobId, setAppliedJobId] = useState(null)
+  const [, setTick] = useState(0)
+  // ขนาดที่จะสั่ง ChatGPT (เลือกก่อนกดสร้าง) แยกจาก posterSize ของภาพที่แสดงอยู่ ไม่ให้ภาพอัปโหลดถูกครอปตามไปด้วย
+  const [chatSize, setChatSize] = useState(() => (POSTER_SIZES[asset?.design?.posterSize] ? asset.design.posterSize : defaultPosterSizeFor(brief.channel)))
+  const chatActive = isActiveJob(chat.job)
+  const activeJobId = chatActive ? chat.job.id : null
+  const chatDoneUnused = chat.job?.status === 'done' && appliedJobId !== chat.job.id
+  const chatMessage = chatDoneUnused
+    ? 'มีโปสเตอร์ที่สร้างเสร็จแล้วของโพสต์นี้ กด "ใช้ภาพที่สร้างเสร็จ" เพื่อเปิดดู'
+    : chatJobMessage(chat.job, chat.worker)
+
+  const jobsApi = async (query = '', options = undefined) => {
+    const response = await fetch(`/api/marketing-image-jobs${query}`, options)
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(friendlyApiError(response.status, data, 'ติดต่อคิวสร้างภาพไม่สำเร็จ กรุณาลองใหม่'))
+    return data
+  }
+
+  const applyChatImage = async (job, image) => {
+    await useSource(image, 'ai')
+    patch({ layout: 'original', posterSize: POSTER_SIZES[job.size] ? job.size : '' })
+    setAppliedJobId(job.id)
+  }
+
+  // เปิดหน้าต่าง = ดูงานล่าสุดของโพสต์นี้ (ปิดหน้าต่างระหว่างรอได้ งานบนคอมยังเดินต่อ เปิดใหม่แล้วตามต่อ)
+  useEffect(() => {
+    if (!postKey) return undefined
+    let cancelled = false
+    const lookup = async () => {
+      try {
+        const data = await jobsApi(`?post_key=${encodeURIComponent(postKey)}`)
+        if (!cancelled) setChat({ job: data.job || null, worker: data.worker || null })
+      } catch { /* ยังไม่ติดตั้งคิว/ออฟไลน์ = ไม่โชว์สถานะ ปุ่มยังกดได้และจะบอกเหตุผลตอนกด */ }
+    }
+    lookup()
+    return () => { cancelled = true }
+  }, [postKey])
+
+  useEffect(() => {
+    if (!activeJobId) return undefined
+    let stopped = false
+    let timer = null
+    const ticker = setInterval(() => setTick((value) => value + 1), 1000)
+    const poll = async () => {
+      try {
+        const data = await jobsApi(`?id=${activeJobId}&image=1`)
+        if (stopped) return
+        setChatError('')
+        setChat({ job: data.job, worker: data.worker })
+        if (data.job?.status === 'done' && data.image) await applyChatImage(data.job, data.image)
+      } catch (err) {
+        if (!stopped) setChatError(errorMessage(err, 'ถามสถานะงานสร้างภาพไม่สำเร็จ จะลองใหม่อัตโนมัติ'))
+      }
+      if (!stopped) timer = setTimeout(poll, POLL_MS)
+    }
+    timer = setTimeout(poll, POLL_MS)
+    return () => { stopped = true; clearTimeout(timer); clearInterval(ticker) }
+  }, [activeJobId])
+
+  const startChatJob = async () => {
+    if (!postKey || chatActive || chatSending) return
+    setChatSending(true)
+    setChatError('')
+    try {
+      const data = await jobsApi('', {
+        method: 'POST', headers: JSON_HEADERS,
+        body: JSON.stringify({
+          action: 'create',
+          post_key: postKey,
+          content_no: brief.contentNo,
+          title: brief.title || brief.headline || design.headline,
+          caption: brief.caption || design.prompt,
+          size: chatSize,
+        }),
+      })
+      setChat({ job: data.job, worker: data.worker })
+    } catch (err) {
+      setChatError(errorMessage(err, 'ส่งงานสร้างภาพไม่สำเร็จ กรุณาลองใหม่'))
+    } finally { setChatSending(false) }
+  }
+
+  const cancelChatJob = async () => {
+    if (chat.job?.status !== 'queued') return
+    setChatError('')
+    try {
+      const data = await jobsApi('', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ action: 'cancel', id: chat.job.id }) })
+      setChat((current) => ({ ...current, job: data.job }))
+    } catch (err) { setChatError(errorMessage(err, 'ยกเลิกงานไม่สำเร็จ กรุณาลองใหม่')) }
+  }
+
+  const loadFinishedChatImage = async () => {
+    if (chat.job?.status !== 'done') return
+    setChatSending(true)
+    setChatError('')
+    try {
+      const data = await jobsApi(`?id=${chat.job.id}&image=1`)
+      if (!data.image) throw new Error('ไม่พบไฟล์ภาพของงานนี้ กดสร้างโปสเตอร์ใหม่ได้')
+      await applyChatImage(data.job, data.image)
+    } catch (err) {
+      setChatError(errorMessage(err, 'โหลดภาพไม่สำเร็จ กรุณาลองใหม่'))
+    } finally { setChatSending(false) }
+  }
 
   useEffect(() => {
     dialog.current.showModal()
@@ -69,7 +183,9 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
 
   const useSource = async (url, kind) => {
     const image = await readArtworkImage(url)
-    const ratio = Math.min(1, 1400 / Math.max(image.width, image.height))
+    // ภาพจาก AI เก็บเต็ม 1536 px (ภาพจาก ChatGPT สูง 1536) ไม่ให้ต้องขยายกลับตอนครอปเป็นขนาดแพลตฟอร์ม · ภาพอัปโหลดคง 1400 px เท่าเดิม
+    const limit = kind === 'ai' ? 1536 : 1400
+    const ratio = Math.min(1, limit / Math.max(image.width, image.height))
     const canvas = document.createElement('canvas')
     canvas.width = Math.round(image.width * ratio)
     canvas.height = Math.round(image.height * ratio)
@@ -78,7 +194,8 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
     context.fillRect(0, 0, canvas.width, canvas.height)
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
     setSource(canvas.toDataURL('image/jpeg', 0.86))
-    patch({ sourceKind: kind, cropX: 50, cropY: 50, zoom: 1 })
+    // ภาพใหม่เริ่มที่ "ตามภาพต้นฉบับ" เสมอ — ภาพจาก ChatGPT ตั้งขนาดครอปตามงานเองหลังบรรทัดนี้ (applyChatImage)
+    patch({ sourceKind: kind, cropX: 50, cropY: 50, zoom: 1, posterSize: '', posterFit: 'contain' })
   }
 
   const uploadSource = async (file) => {
@@ -113,13 +230,30 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
     <div className="ax-artwork-body">
       <div className="ax-artwork-fields">
         <fieldset disabled={busy}>
+          <legend>โปสเตอร์จาก ChatGPT</legend>
+          <p className="ax-artwork-note">อ่านหัวข้อและเนื้อหาโพสต์ แล้วสร้างโปสเตอร์พร้อมข้อความไทยบนคอมสำนักงาน (ChatGPT Plus)</p>
+          <label>ขนาดภาพตามแพลตฟอร์ม<select value={chatSize} disabled={chatActive} onChange={(e) => setChatSize(e.target.value)}>
+            {Object.entries(POSTER_SIZES).map(([id, item]) => <option key={id} value={id}>{item.label} · {item.width} × {item.height}</option>)}
+          </select></label>
+          <div className="ax-artwork-actions">
+            <button type="button" className="accent" disabled={!postKey || chatActive || chatSending} onClick={startChatJob}>
+              {chatActive ? 'กำลังสร้างโปสเตอร์...' : chatSending ? 'กำลังส่งงาน...' : appliedJobId ? 'สร้างโปสเตอร์ใหม่' : 'สร้างโปสเตอร์ด้วย ChatGPT'}
+            </button>
+            {chat.job?.status === 'queued' && <button type="button" onClick={cancelChatJob}>ยกเลิกงาน</button>}
+            {chatDoneUnused && <button type="button" disabled={chatSending} onClick={loadFinishedChatImage}>ใช้ภาพที่สร้างเสร็จ</button>}
+          </div>
+          {/* ไม่ใส่ role=status: ข้อความมีเวลาเดินทุกวินาที โปรแกรมอ่านหน้าจอจะอ่านซ้ำไม่หยุด */}
+          {chatMessage && <p className="ax-artwork-note">{chatMessage}</p>}
+          {chatError && <p className="ax-artwork-error" role="alert">{chatError}</p>}
+        </fieldset>
+        <fieldset disabled={busy}>
           <legend>ภาพประกอบ</legend>
           <label>รายละเอียดภาพ<textarea value={design.prompt} maxLength={1600} onChange={(e) => patch({ prompt: e.target.value })} /></label>
           <label>สไตล์<select value={design.style} onChange={(e) => patch({ style: e.target.value })}>
             <option value="photo">ภาพถ่ายธรรมชาติ</option><option value="miniature">โมเดลสถาปัตยกรรม</option>
           </select></label>
           <div className="ax-artwork-actions">
-            <button type="button" className="accent" disabled={!design.prompt.trim()} onClick={generate}>{busy ? 'กำลังเตรียมภาพ...' : source ? 'สร้างภาพ AI ใหม่' : 'สร้างภาพ AI'}</button>
+            <button type="button" disabled={!design.prompt.trim()} onClick={generate}>{busy ? 'กำลังเตรียมภาพ...' : source ? 'ภาพพื้นหลัง AI ใหม่ (API)' : 'ภาพพื้นหลัง AI (API)'}</button>
             <button type="button" onClick={() => upload.current.click()}>อัปโหลดภาพ</button>
             <input ref={upload} type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={(e) => { uploadSource(e.target.files?.[0]); e.target.value = '' }} />
           </div>
@@ -128,6 +262,21 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
           <option value="original">โปสเตอร์สำเร็จรูป · เต็มภาพ</option>
           <option value="editorial">หัวข้อด้านบน</option><option value="photo">ภาพด้านบน</option>
         </select></label>
+        {original && <fieldset disabled={busy}>
+          <legend>ขนาดโปสเตอร์</legend>
+          <label>ครอปเป็นขนาด<select value={POSTER_SIZES[design.posterSize] ? design.posterSize : ''} onChange={(e) => patch({ posterSize: e.target.value })}>
+            <option value="">ตามภาพต้นฉบับ (ไม่ครอป)</option>
+            {Object.entries(POSTER_SIZES).map(([id, item]) => <option key={id} value={id}>{item.label} · {item.width} × {item.height}</option>)}
+          </select></label>
+          {POSTER_SIZES[design.posterSize] && <label>วิธีปรับขนาด<select value={design.posterFit === 'cover' ? 'cover' : 'contain'} onChange={(e) => patch({ posterFit: e.target.value })}>
+            <option value="contain">ย่อให้เห็นครบ · เติมขอบเบลอ</option>
+            <option value="cover">ครอปเต็มกรอบ · ขอบภาพหาย</option>
+          </select></label>}
+          {POSTER_SIZES[design.posterSize] && design.posterFit === 'cover' && <>
+            <label>ตำแหน่งแนวนอน<input type="range" min="0" max="100" value={design.cropX} onChange={(e) => patch({ cropX: Number(e.target.value) })} /></label>
+            <label>ตำแหน่งแนวตั้ง<input type="range" min="0" max="100" value={design.cropY} onChange={(e) => patch({ cropY: Number(e.target.value) })} /></label>
+          </>}
+        </fieldset>}
         {!original && <fieldset disabled={busy}>
           <legend>ข้อความบนภาพ</legend>
           <label>หัวข้อ<textarea value={design.headline} maxLength={120} onChange={(e) => patch({ headline: e.target.value })} /></label>

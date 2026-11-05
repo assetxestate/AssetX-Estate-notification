@@ -1,3 +1,5 @@
+import { POSTER_SIZES } from './posterSizes.js'
+
 export const ARTWORK_FORMATS = {
   portrait: { label: 'ฟีด 4:5', width: 1080, height: 1350 },
   square: { label: 'จัตุรัส 1:1', width: 1080, height: 1080 },
@@ -65,16 +67,67 @@ function drawText(ctx, text, { x, y, width, height, size, min = 24, color, bold 
   lines.forEach((line, i) => ctx.fillText(line, x, y + i * size * 1.5))
 }
 
+// ป้ายกำกับบนโปสเตอร์สำเร็จรูปจาก AI: มุมขวาบน ขนาดตามความกว้างภาพ · วาดเองด้วย Tahoma (ไม่ให้ AI สะกดข้อความนี้)
+function drawAiBadge(ctx, width) {
+  const scale = width / 1080
+  const size = Math.max(14, Math.round(22 * scale))
+  const label = 'ภาพประกอบ AI'
+  ctx.font = `400 ${size}px Tahoma, sans-serif`
+  const padX = Math.round(14 * scale)
+  const boxW = Math.ceil(ctx.measureText(label).width) + padX * 2
+  const boxH = Math.round(size * 1.8)
+  const x = width - boxW - Math.round(20 * scale)
+  const y = Math.round(20 * scale)
+  ctx.fillStyle = 'rgba(8, 33, 63, 0.72)'
+  ctx.beginPath()
+  if (ctx.roundRect) ctx.roundRect(x, y, boxW, boxH, boxH / 2)
+  else ctx.rect(x, y, boxW, boxH)
+  ctx.fill()
+  ctx.fillStyle = '#ffffff'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(label, x + padX, y + boxH / 2)
+}
+
 export async function renderArtwork(sourceUrl, design) {
   if (design.layout === 'original') {
     const source = await readArtworkImage(sourceUrl)
+    // เลือกขนาดตามแพลตฟอร์ม → ครอปแบบเต็มกรอบ (ขยับตำแหน่งด้วย cropX/cropY) แล้วย่อขยายให้ได้พิกเซลตรง · ไม่เลือก = ตามภาพต้นฉบับ
+    const target = POSTER_SIZES[design.posterSize]
     const canvas = document.createElement('canvas')
-    canvas.width = source.width
-    canvas.height = source.height
+    canvas.width = target ? target.width : source.width
+    canvas.height = target ? target.height : source.height
     const ctx = canvas.getContext('2d')
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(source, 0, 0)
+    if (target && design.posterFit === 'cover') {
+      const scale = Math.max(canvas.width / source.width, canvas.height / source.height)
+      const cropW = canvas.width / scale
+      const cropH = canvas.height / scale
+      const cropX = (source.width - cropW) * Number(design.cropX ?? 50) / 100
+      const cropY = (source.height - cropH) * Number(design.cropY ?? 50) / 100
+      ctx.drawImage(source, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height)
+    } else if (target) {
+      // ค่าเริ่มต้น "ย่อให้เห็นครบ": ข้อความ/โลโก้ไม่หาย · ขอบที่เหลือเติมด้วยภาพเดียวกันขยายเต็มกรอบ + เบลอ + ทับสีกรมท่าบาง ๆ
+      const coverScale = Math.max(canvas.width / source.width, canvas.height / source.height) * 1.08
+      const bgW = source.width * coverScale
+      const bgH = source.height * coverScale
+      ctx.save()
+      if ('filter' in ctx) ctx.filter = `blur(${Math.round(canvas.width / 36)}px)`
+      ctx.drawImage(source, (canvas.width - bgW) / 2, (canvas.height - bgH) / 2, bgW, bgH)
+      ctx.restore()
+      ctx.fillStyle = 'rgba(8, 33, 63, 0.38)'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      const fitScale = Math.min(canvas.width / source.width, canvas.height / source.height)
+      const fitW = source.width * fitScale
+      const fitH = source.height * fitScale
+      ctx.drawImage(source, (canvas.width - fitW) / 2, (canvas.height - fitH) / 2, fitW, fitH)
+    } else {
+      ctx.drawImage(source, 0, 0)
+    }
+    if (design.sourceKind === 'ai') {
+      await document.fonts.ready
+      drawAiBadge(ctx, canvas.width)
+    }
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
     return { dataUrl, mimeType: 'image/jpeg', width: canvas.width, height: canvas.height, size: Math.ceil(dataUrl.length * 0.75) }
   }

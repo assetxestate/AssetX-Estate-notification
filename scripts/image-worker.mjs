@@ -1,0 +1,329 @@
+#!/usr/bin/env node
+// scripts/image-worker.mjs — ตัวรับงานสร้างภาพบนคอมสำนักงาน
+// หยิบงานจากตาราง marketing_image_jobs (หน้า /marketing สั่ง) → สร้างภาพผ่านปลั๊กอิน gpt-image (Codex CLI ที่ล็อกอิน ChatGPT Plus)
+// → แปลงเป็น JPG → อัปโหลดขึ้น bucket marketing-images → ตั้งงานเป็น done ให้หน้าเว็บดึงภาพไปใช้
+//
+// npm run image-worker              รับงานไปเรื่อย ๆ (ปิดด้วย Ctrl+C) · ส่งสัญญาณ "เปิดอยู่" ทุก 30 วินาที
+// npm run image-worker -- --once    ทำงานในคิวงานเดียวแล้วจบ (ไว้ทดสอบ)
+// npm run image-worker -- --check   เช็กการตั้งค่า + ส่งสัญญาณครั้งเดียว ไม่หยิบงาน
+// scripts/image-worker-hidden.vbs   เปิดแบบซ่อนหน้าต่าง + --log (วางทางลัดไว้ใน shell:startup ให้เปิดเองตอนล็อกอิน Windows)
+//
+// ต้องมี: SUPABASE_SERVICE_ROLE_KEY + VITE_SUPABASE_URL ใน .env.local · ปลั๊กอิน gpt-image (GPT_IMAGE_SERVER ชี้ไฟล์ server/index.mjs)
+// ภาพดิบเก็บใน .local/image-jobs/ (อยู่ใน .gitignore) · log ไม่พิมพ์เนื้อหาโพสต์
+import { config } from 'dotenv'
+import { createClient } from '@supabase/supabase-js'
+import { spawn } from 'node:child_process'
+import fs from 'node:fs/promises'
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { IMAGE_BUCKET, WORKER_ID } from '../server/marketing-image-jobs.js'
+import { scrub } from '../server/research/pii.js'
+
+const VERSION = '1'
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+config({ path: path.join(repo, '.env.local'), quiet: true })
+config({ path: path.join(repo, '.env'), quiet: true })
+
+const ONCE = process.argv.includes('--once')
+const CHECK = process.argv.includes('--check')
+const POLL_MS = 5 * 1000
+const HEARTBEAT_MS = 30 * 1000
+const GENERATE_TIMEOUT_MS = 9 * 60 * 1000
+const LOCAL_DIR = path.join(repo, '.local')
+const OUTPUT_DIR = path.join(LOCAL_DIR, 'image-jobs')
+const LOCK_FILE = path.join(LOCAL_DIR, 'image_worker.lock')
+const LOGO = path.join(repo, 'public', 'logo.jpg')
+const PLUGIN_SERVER = process.env.GPT_IMAGE_SERVER || path.join('C:', 'tools', 'gpt-image-marketplace', 'gpt-image', 'server', 'index.mjs')
+
+// --log = เขียนลง .local/image-worker.log ด้วย (ตอนเปิดแบบซ่อนหน้าต่างผ่าน scripts/image-worker-hidden.vbs ไม่มีหน้าจอให้ดู)
+const LOG_FILE = process.argv.includes('--log') ? path.join(LOCAL_DIR, 'image-worker.log') : null
+const log = (...args) => {
+  const line = [new Date().toLocaleString('th-TH', { hour12: false }), '·', ...args].join(' ')
+  console.log(line)
+  if (LOG_FILE) {
+    try { mkdirSync(LOCAL_DIR, { recursive: true }); appendFileSync(LOG_FILE, `${line}\n`) } catch { /* เขียน log ไม่ได้ไม่ทำให้งานหยุด */ }
+  }
+}
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const shortError = (err) => scrub(String(err?.message || err || 'ไม่ทราบสาเหตุ')).replace(/\s+/g, ' ').trim().slice(0, 300)
+
+// ---------------------------------------------------------------- กันเปิดซ้อน
+
+function isAlive(pid) {
+  try { process.kill(Number(pid), 0); return true } catch { return false }
+}
+
+async function acquireLock() {
+  await fs.mkdir(LOCAL_DIR, { recursive: true })
+  try {
+    const previous = JSON.parse(await fs.readFile(LOCK_FILE, 'utf8'))
+    if (previous?.pid && previous.pid !== process.pid && isAlive(previous.pid)) {
+      throw new Error(`ตัวรับงานเปิดอยู่แล้ว (pid ${previous.pid}) — ไม่เปิดซ้อน`)
+    }
+  } catch (err) {
+    if (err.code !== 'ENOENT' && !(err instanceof SyntaxError)) throw err
+  }
+  await fs.writeFile(LOCK_FILE, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }))
+}
+
+async function releaseLock() {
+  try {
+    const current = JSON.parse(await fs.readFile(LOCK_FILE, 'utf8'))
+    if (current?.pid === process.pid) await fs.unlink(LOCK_FILE)
+  } catch { /* ไม่มีไฟล์ล็อกแล้ว */ }
+}
+
+// ---------------------------------------------------------------- คุยกับปลั๊กอิน gpt-image (MCP ผ่าน stdio)
+
+class PluginClient {
+  constructor(serverPath) {
+    this.serverPath = serverPath
+    this.child = null
+    this.nextId = 1
+    this.pending = new Map()
+    this.buffer = ''
+  }
+
+  async start() {
+    if (this.child) return
+    const child = spawn(process.execPath, [this.serverPath], { cwd: OUTPUT_DIR, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+    this.child = child
+    this.buffer = ''
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => { if (this.child === child) this.onData(chunk) })
+    child.stderr.on('data', () => { /* log ของปลั๊กอินไม่ต้องพิมพ์ (อาจมีข้อความ prompt) */ })
+    child.stdin.on('error', () => { /* ปลั๊กอินปิดไปก่อนเขียนเสร็จ — exit จะจัดการต่อ */ })
+    child.on('exit', (code) => {
+      // ตัวเก่าที่ถูกสั่งปิดไปแล้วอาจออกช้ากว่าตัวใหม่ที่เปิดแทน → ไม่แตะงานของตัวใหม่
+      if (this.child !== child) return
+      this.child = null
+      this.rejectAll(new Error(`ปลั๊กอินสร้างภาพปิดตัว (code ${code})`))
+    })
+    await this.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'assetx-image-worker', version: VERSION } }, 30 * 1000)
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`)
+  }
+
+  rejectAll(error) {
+    for (const { reject, timer } of this.pending.values()) { clearTimeout(timer); reject(error) }
+    this.pending.clear()
+  }
+
+  onData(chunk) {
+    this.buffer += chunk
+    let newline
+    while ((newline = this.buffer.indexOf('\n')) >= 0) {
+      const line = this.buffer.slice(0, newline).trim()
+      this.buffer = this.buffer.slice(newline + 1)
+      if (!line) continue
+      let message
+      try { message = JSON.parse(line) } catch { continue }
+      const waiting = this.pending.get(message.id)
+      if (!waiting) continue
+      this.pending.delete(message.id)
+      clearTimeout(waiting.timer)
+      if (message.error) waiting.reject(new Error(message.error.message || 'ปลั๊กอินตอบ error'))
+      else waiting.resolve(message.result)
+    }
+  }
+
+  request(method, params, timeoutMs) {
+    const id = this.nextId++
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new Error(`ปลั๊กอินไม่ตอบภายใน ${Math.round(timeoutMs / 1000)} วินาที`))
+        this.stop()
+      }, timeoutMs)
+      this.pending.set(id, { resolve, reject, timer })
+      this.child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`)
+    })
+  }
+
+  async callTool(name, args, timeoutMs) {
+    await this.start()
+    const result = await this.request('tools/call', { name, arguments: args }, timeoutMs)
+    const text = (result?.content || []).filter((item) => item.type === 'text').map((item) => item.text).join('\n')
+    if (result?.isError) throw new Error(text || 'สร้างภาพไม่สำเร็จ')
+    return text
+  }
+
+  stop() {
+    // ปิด stdin = ปลั๊กอินฆ่า codex ที่ค้างทั้งต้นแล้วจบเอง
+    const child = this.child
+    this.child = null
+    this.rejectAll(new Error('ปิดปลั๊กอินสร้างภาพแล้ว'))
+    try { child?.stdin.end() } catch { /* ปิดไปแล้ว */ }
+  }
+}
+
+// ---------------------------------------------------------------- แปลงภาพเป็น JPG (Windows: System.Drawing ส่ง path ผ่าน env ไม่ต่อสตริงคำสั่ง)
+
+const TO_JPEG_PS = [
+  'Add-Type -AssemblyName System.Drawing',
+  '$img = [System.Drawing.Image]::FromFile($env:AX_SRC)',
+  'try {',
+  '  $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }',
+  '  $params = New-Object System.Drawing.Imaging.EncoderParameters 1',
+  '  $params.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality), 90L',
+  '  $bmp = New-Object System.Drawing.Bitmap $img.Width, $img.Height',
+  '  $g = [System.Drawing.Graphics]::FromImage($bmp)',
+  '  $g.Clear([System.Drawing.Color]::White)',
+  '  $g.DrawImage($img, 0, 0, $img.Width, $img.Height)',
+  '  $g.Dispose()',
+  '  $bmp.Save($env:AX_DST, $codec, $params)',
+  '  $bmp.Dispose()',
+  '} finally { $img.Dispose() }',
+].join('\n')
+
+function toJpeg(src, dst) {
+  if (process.platform !== 'win32') return Promise.resolve(src)
+  return new Promise((resolve) => {
+    const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', TO_JPEG_PS], {
+      env: { ...process.env, AX_SRC: src, AX_DST: dst }, windowsHide: true, stdio: 'ignore',
+    })
+    child.on('exit', (code) => resolve(code === 0 && existsSync(dst) ? dst : src))
+    child.on('error', () => resolve(src))
+  })
+}
+
+// ---------------------------------------------------------------- งานในคิว
+
+function database() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new Error('ไม่พบ VITE_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY ใน .env.local')
+  return createClient(url, key, { auth: { persistSession: false } })
+}
+
+async function heartbeat(db, busyJob = null) {
+  const { error } = await db.from('marketing_image_worker').upsert({
+    id: WORKER_ID,
+    last_seen_at: new Date().toISOString(),
+    info: { version: VERSION, host: os.hostname(), busy_job: busyJob },
+  }, { onConflict: 'id' })
+  if (error) throw error
+}
+
+// งานที่ค้าง running จากรอบก่อน (คอมดับ/ปิดหน้าต่างกลางคัน) → failed ให้หน้าเว็บสั่งใหม่ได้
+async function releaseStaleJobs(db) {
+  const { data, error } = await db.from('marketing_image_jobs')
+    .update({ status: 'failed', error: 'ตัวรับงานบนคอมหยุดกลางคัน กดสร้างใหม่ได้', finished_at: new Date().toISOString() })
+    .eq('status', 'running').eq('worker', WORKER_ID).select('id')
+  if (error) throw error
+  if (data?.length) log(`ปิดงานที่ค้างจากรอบก่อน ${data.length} งาน`)
+}
+
+async function claimNextJob(db) {
+  const { data, error } = await db.from('marketing_image_jobs').select('id').eq('status', 'queued').order('created_at', { ascending: true }).limit(1)
+  if (error) throw error
+  const next = data?.[0]
+  if (!next) return null
+  const claimed = await db.from('marketing_image_jobs')
+    .update({ status: 'running', claimed_at: new Date().toISOString(), worker: WORKER_ID })
+    .eq('id', next.id).eq('status', 'queued')
+    .select('id,content_no,prompt,aspect').maybeSingle()
+  if (claimed.error) throw claimed.error
+  return claimed.data // null = หน้าเว็บยกเลิกไปก่อนหยิบทัน
+}
+
+async function processJob(db, plugin, job) {
+  const label = `งาน ${job.id}${job.content_no ? ` (#${job.content_no})` : ''}`
+  const started = Date.now()
+  log(`${label}: เริ่มสร้างภาพ`)
+  try {
+    const text = await plugin.callTool('generate_image', {
+      prompt: job.prompt,
+      aspect: job.aspect || 'portrait',
+      images: existsSync(LOGO) ? [LOGO] : [],
+      output_dir: OUTPUT_DIR,
+    }, GENERATE_TIMEOUT_MS)
+    const saved = text.match(/Image saved:\s*(.+)/)?.[1]?.trim()
+    if (!saved || !existsSync(saved)) throw new Error('ปลั๊กอินไม่ได้บอกตำแหน่งไฟล์ภาพ')
+    const jpg = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`))
+    const isJpeg = /\.jpe?g$/i.test(jpg)
+    const objectPath = `jobs/${job.id}.${isJpeg ? 'jpg' : 'png'}`
+    const bytes = await fs.readFile(jpg)
+    const upload = await db.storage.from(IMAGE_BUCKET).upload(objectPath, bytes, { contentType: isJpeg ? 'image/jpeg' : 'image/png', upsert: true })
+    if (upload.error) throw upload.error
+    const done = await db.from('marketing_image_jobs')
+      .update({ status: 'done', image_path: objectPath, error: null, finished_at: new Date().toISOString() })
+      .eq('id', job.id).select('id').maybeSingle()
+    if (done.error) throw done.error
+    log(`${label}: เสร็จใน ${Math.round((Date.now() - started) / 1000)} วินาที (${Math.round(bytes.length / 1024)} KB)`)
+  } catch (err) {
+    const message = shortError(err)
+    log(`${label}: ไม่สำเร็จ — ${message}`)
+    await db.from('marketing_image_jobs')
+      .update({ status: 'failed', error: message, finished_at: new Date().toISOString() })
+      .eq('id', job.id)
+  }
+}
+
+// ---------------------------------------------------------------- main
+
+async function main() {
+  if (!existsSync(PLUGIN_SERVER)) throw new Error(`ไม่พบปลั๊กอิน gpt-image ที่ ${PLUGIN_SERVER} (ตั้ง GPT_IMAGE_SERVER ใน .env.local ถ้าย้ายที่)`)
+  await fs.mkdir(OUTPUT_DIR, { recursive: true })
+  const db = database()
+
+  if (CHECK) {
+    await heartbeat(db)
+    const { count, error } = await db.from('marketing_image_jobs').select('id', { count: 'exact', head: true }).eq('status', 'queued')
+    if (error) throw error
+    log(`ตั้งค่าพร้อม · ปลั๊กอิน ${PLUGIN_SERVER} · งานรอคิว ${count ?? 0} งาน`)
+    return
+  }
+
+  await acquireLock()
+  const plugin = new PluginClient(PLUGIN_SERVER)
+  let busyJob = null
+  let stopping = false
+  const beat = () => heartbeat(db, busyJob).catch((err) => log('ส่งสัญญาณไม่สำเร็จ:', shortError(err)))
+  const timer = setInterval(beat, HEARTBEAT_MS)
+  const shutdown = async () => {
+    if (stopping) return
+    stopping = true
+    clearInterval(timer)
+    plugin.stop()
+    if (busyJob) {
+      await db.from('marketing_image_jobs').update({ status: 'failed', error: 'ปิดตัวรับงานระหว่างสร้างภาพ กดสร้างใหม่ได้', finished_at: new Date().toISOString() }).eq('id', busyJob)
+    }
+    await releaseLock()
+    process.exit(0)
+  }
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
+
+  try {
+    await releaseStaleJobs(db)
+    await beat()
+    log(`ตัวรับงานสร้างภาพเปิดแล้ว${ONCE ? ' (ทำงานเดียวแล้วจบ)' : ''} · ปิดด้วย Ctrl+C`)
+    while (!stopping) {
+      let job = null
+      try { job = await claimNextJob(db) } catch (err) { log('อ่านคิวไม่สำเร็จ:', shortError(err)) }
+      if (job) {
+        busyJob = job.id
+        await beat()
+        await processJob(db, plugin, job)
+        busyJob = null
+        await beat()
+        if (ONCE) break
+        continue
+      }
+      if (ONCE) { log('ไม่มีงานในคิว'); break }
+      await sleep(POLL_MS)
+    }
+  } finally {
+    clearInterval(timer)
+    plugin.stop()
+    await releaseLock()
+  }
+}
+
+main().catch(async (err) => {
+  log('ตัวรับงานสร้างภาพหยุด:', shortError(err))
+  await releaseLock()
+  process.exit(1)
+})
