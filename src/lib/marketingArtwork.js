@@ -67,27 +67,7 @@ function drawText(ctx, text, { x, y, width, height, size, min = 24, color, bold 
   lines.forEach((line, i) => ctx.fillText(line, x, y + i * size * 1.5))
 }
 
-// ป้ายกำกับบนโปสเตอร์สำเร็จรูปจาก AI: มุมขวาบน ขนาดตามความกว้างภาพ · วาดเองด้วย Tahoma (ไม่ให้ AI สะกดข้อความนี้)
-function drawAiBadge(ctx, width) {
-  const scale = width / 1080
-  const size = Math.max(14, Math.round(22 * scale))
-  const label = 'ภาพประกอบ AI'
-  ctx.font = `400 ${size}px Tahoma, sans-serif`
-  const padX = Math.round(14 * scale)
-  const boxW = Math.ceil(ctx.measureText(label).width) + padX * 2
-  const boxH = Math.round(size * 1.8)
-  const x = width - boxW - Math.round(20 * scale)
-  const y = Math.round(20 * scale)
-  ctx.fillStyle = 'rgba(8, 33, 63, 0.72)'
-  ctx.beginPath()
-  if (ctx.roundRect) ctx.roundRect(x, y, boxW, boxH, boxH / 2)
-  else ctx.rect(x, y, boxW, boxH)
-  ctx.fill()
-  ctx.fillStyle = '#ffffff'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(label, x + padX, y + boxH / 2)
-}
-
+// ไม่มีป้าย "ภาพประกอบ AI" บนภาพ — เจ้าของสั่งเอาออกทั้งหมด 6 พ.ย. 2569 (sourceKind ยังเก็บไว้ว่าภาพมาจาก AI หรืออัปโหลด)
 export async function renderArtwork(sourceUrl, design) {
   if (design.layout === 'original') {
     const source = await readArtworkImage(sourceUrl)
@@ -124,10 +104,6 @@ export async function renderArtwork(sourceUrl, design) {
     } else {
       ctx.drawImage(source, 0, 0)
     }
-    if (design.sourceKind === 'ai') {
-      await document.fonts.ready
-      drawAiBadge(ctx, canvas.width)
-    }
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
     return { dataUrl, mimeType: 'image/jpeg', width: canvas.width, height: canvas.height, size: Math.ceil(dataUrl.length * 0.75) }
   }
@@ -163,9 +139,6 @@ export async function renderArtwork(sourceUrl, design) {
   ctx.fillStyle = theme.accent
   ctx.fillRect(0, h - 82, w, 82)
   drawText(ctx, design.cta, { x: 64, y: h - 63, width: 700, height: 54, size: 30, min: 22, color: '#ffffff', bold: true })
-  if (design.sourceKind === 'ai') {
-    drawText(ctx, 'ภาพประกอบ AI', { x: 814, y: h - 58, width: 216, height: 45, size: 23, min: 19, color: '#ffffff' })
-  }
   const dataUrl = canvas.toDataURL('image/jpeg', 0.88)
   return { dataUrl, mimeType: 'image/jpeg', width: w, height: h, size: Math.ceil(dataUrl.length * 0.75) }
 }
