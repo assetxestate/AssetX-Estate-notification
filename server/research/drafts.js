@@ -442,6 +442,8 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
   caption = caption.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*\*/g, '').replace(/^#{1,6}\s+/gm, '')
   // เครื่องหมายคำพูดเกินที่โมเดลทิ้งไว้หัว/ท้ายบรรทัด (เจอจริง: `**ข้อที่ 4 คือ…"`)
   caption = caption.split('\n').map((l) => l.replace(/^["“”]\s*/, '').replace(/\s*["“”]$/, '')).join('\n')
+  // เครื่องหมายคำพูดหลังป้าย ถาม:/ตอบ: (เจอจริง #33 6 พ.ย. 2569: `ถาม:"ขายฝากคืออะไร?`)
+  caption = caption.replace(/^((?:ถาม|ตอบ|Q|A)\s*[:：])\s*["“”]+\s*/gmi, '$1 ')
   caption = caption.replace(/https?:\/\/\S+/gi, '').replace(/(^|\s)#[\p{L}\p{M}\p{N}_]+/gu, '$1')
   caption = splitInlineList(caption)
   caption = thaiDates(caption)

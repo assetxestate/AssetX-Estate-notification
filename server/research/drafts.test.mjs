@@ -57,6 +57,16 @@ test('buildDraftPrompt: ข้อเท็จจริง+ที่มาเม�
   assert.match(system, /"needs_check"/)
 })
 
+test('parseDraft: เครื่องหมายคำพูดหลังป้าย ถาม:/ตอบ: ถูกลบ', () => {
+  const caption = ['ถาม:"ขายฝากคืออะไร?', 'ตอบ:"ขายฝากคือการขายที่จดทะเบียนโอนกรรมสิทธิ์ทันที โดยผู้ขายฝากมีสิทธิไถ่คืนภายในกำหนดเวลาในสัญญา', '', 'ถาม: “ต้องเตรียมเอกสารอะไรบ้าง?', 'ตอบ: โฉนด บัตรประชาชน ทะเบียนบ้าน และตรวจภาระติดพันที่สำนักงานที่ดินก่อนทุกครั้ง', '', 'ข้อมูลนี้เป็นความรู้ทั่วไป ต้องดูเอกสารและข้อเท็จจริงของแต่ละกรณี', '', 'ทักแชต AssetX Estate ส่งข้อมูลทรัพย์มาให้ประเมินเบื้องต้นได้ ปิดข้อมูลส่วนบุคคลได้'].join('\n')
+  const r = parseDraft({ headline: 'ขายฝาก ถามตอบ', caption, cta: 'ทักแชต AssetX Estate ส่งข้อมูลทรัพย์มาให้ประเมินเบื้องต้นได้ ปิดข้อมูลส่วนบุคคลได้', hashtags: [], needs_check: [] }, { policy: 'no_cite', brand, subtype: 'social_fb', facts: '' })
+  assert.equal(r.ok, true, r.error)
+  assert.match(r.draft.caption, /^ถาม: ขายฝากคืออะไร\?$/m)
+  assert.match(r.draft.caption, /^ตอบ: ขายฝากคือการขาย/m)
+  assert.match(r.draft.caption, /^ถาม: ต้องเตรียมเอกสารอะไรบ้าง\?$/m)
+  assert.doesNotMatch(r.draft.caption, /[:：]\s*["“”]/)
+})
+
 test('parseDraft: นิยามขายฝากผิด (ครอบครองชั่วคราว/ยังเป็นเจ้าของ/ไม่โอนกรรมสิทธิ์) ถูกปัด · ประโยคที่ปฏิเสธนิยามผิดผ่าน', () => {
   const base = { headline: 'ขายฝาก คืออะไร', cta: 'ส่งรูปเอกสารสิทธิ์มาทางแชต ทีม AssetX Estate ช่วยประเมินเบื้องต้นให้', hashtags: [], needs_check: [] }
   const opts = { policy: 'no_cite', brand, subtype: 'social_fb', facts: '' }
