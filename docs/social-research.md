@@ -181,7 +181,23 @@ foreach ($t in '21:00','23:00') {
 
 เมื่อมีปัญหา (ตารางเต็มในข้อตกลงข้อ 6): รายงานบอก `browser ไม่ว่าง (dvx …)` ทุกวัน = เวลาทับ DVX ย้ายเวลา · `Facebook พักอยู่` = เจ้าของเปิด Chrome profile Research ดูว่าโดนขอยืนยันตัวตนไหมแล้วทำด้วยมือ (ห้ามหาทางเลี่ยง · ระบบลองใหม่เองหลัง 3 วัน) ·
 `ต่อ Chrome profile Research ไม่ได้` = เปิด Chrome profile นั้นค้างไว้และเช็กว่าส่วนเสริม OpenCLI เปิดอยู่ (แก้ครั้งเดียวได้ทั้งสองโปรเจกต์) · โควตาเต็มทุกวัน = ลดเพจ/ยืด `every_days` ห้ามขยับเพดานฝั่งเดียว ·
-`หน้าต่าง browser ถูกซ่อน` = ปิด Chrome ทุกหน้าต่างแล้วเปิดใหม่จากไอคอนบนเดสก์ท็อป (ไอคอนใส่ค่า `--disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion` ไว้แล้วตั้งแต่ 3 พ.ย. โดยฝั่ง DVX · ค่าติดเฉพาะ process แรก เปิด Chrome จากที่อื่นตอน Chrome ปิดอยู่ = ไม่มีค่า) · ถ้ารายงานบอกว่ามีค่าแล้วแต่ยังซ่อน = หน้าต่างถูกย่อเล็กสุด/จอดับ ·
+`หน้าต่าง browser ถูกซ่อน` = **ออกจาก Chrome ให้หมดจริง** (คลิกขวาไอคอน Chrome ในถาดระบบ → Exit — แค่ปิดหน้าต่างไม่พอ ถ้าตั้ง "ให้แอปทำงานเบื้องหลังต่อ" โปรเซสเดิมยังอยู่และไอคอนใหม่ก็ใช้โปรเซสเดิม · เจอจริง 6 พ.ย. 19:05: chrome.exe ตัวเดิมตั้งแต่ 30 ต.ค.) แล้วเปิดใหม่จากไอคอนที่มีค่า `--disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion` — ณ 6 พ.ย. มีเฉพาะไอคอนแยกโปรไฟล์บนเดสก์ท็อป ("HR (Research) - Chrome" · DivisionX · Mazino · DVX ใส่ไว้ 3 พ.ย.) ส่วนไอคอน Google Chrome ตัวหลัก (Public Desktop + Start Menu) ต้องใส่ด้วยสิทธิ์ผู้ดูแลระบบ (สคริปต์ด้านล่าง) · ค่าติดเฉพาะ process แรก · ถ้ารายงานบอกว่ามีค่าแล้วแต่ยังซ่อน = หน้าต่างถูกย่อเล็กสุด/จอดับ ·
+
+ใส่ค่ากันหยุดวาดในไอคอน Google Chrome ตัวหลัก (รันใน PowerShell แบบ **Run as Administrator** ครั้งเดียว · สำรองไอคอนเดิมไว้ที่ `~/.research-browser/chrome-shortcut-backup` · เจ้าของเลือกทางนี้ 6 พ.ย. 2569 · ระวัง: ตัวอัปเดตของ Chrome อาจเขียนไอคอนทับ ถ้าตัวเฝ้าเพจรายงานว่า "ไม่มีค่า" อีกให้รันซ้ำ):
+
+```powershell
+$flags = '--disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion'
+$backup = "$env:USERPROFILE\.research-browser\chrome-shortcut-backup"; New-Item -ItemType Directory -Force $backup | Out-Null
+$sh = New-Object -ComObject WScript.Shell
+foreach ($p in "$env:PUBLIC\Desktop\Google Chrome.lnk", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Google Chrome.lnk") {
+  if (-not (Test-Path $p)) { "ไม่มีไฟล์: $p"; continue }
+  $s = $sh.CreateShortcut($p)
+  if ($s.Arguments -match 'disable-backgrounding-occluded-windows') { "มีค่าอยู่แล้ว: $p"; continue }
+  Copy-Item $p (Join-Path $backup ("backup-" + (Split-Path (Split-Path $p) -Leaf) + "-Google Chrome.lnk")) -ErrorAction SilentlyContinue
+  $s.Arguments = ($s.Arguments + ' ' + $flags).Trim(); $s.Save(); "ใส่แล้ว: $p"
+}
+```
+
 บัญชีโดนพักซ้ำ ≥ 2 ครั้งใน 30 วัน หรืออยากได้ > 4 เพจ/วัน → แยกบัญชีตามข้อ 9 ของข้อตกลง
 
 ความเป็นส่วนตัว/กติกา: อ่านอย่างเดียว (ไม่มีคำสั่ง `[write]` ในโค้ด · เทสต์ตรวจรายการคำสั่งที่อนุญาต) · เก็บแค่แคปชั่น + ตัวเลข + รหัสโพสต์ · คลังอยู่ใน `.local/` ไม่เข้า git · ไอเดีย `social` ห้ามอ้างชื่อเพจในโพสต์ (`SOURCE_NOTES.social` ใน `angles.js`) · ลิสต์เพจในคอนฟิกยังไม่ได้เปิดดูด้วยตาทุกเพจ — เจอเพจปลอม/ร้างให้ตั้ง `enabled:false`
