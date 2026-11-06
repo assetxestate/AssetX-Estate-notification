@@ -83,9 +83,10 @@ test('รอบเก็บเต็ม: เลนพังไม่ล้มท
   assert.ok(pcc, Object.keys(byKey).join(','))
   assert.match(pcc.title, /\[ลบ\]/)
   assert.equal(pcc.source_label, 'ประชาชาติธุรกิจ')
-  // Pantip: กระทู้ที่มีอยู่แล้วถูกกันซ้ำ และคิว community เต็ม cap → ไม่มี community เข้าเลย
+  // Pantip: เจ้าของตัดเลนออก 6 พ.ย. 2569 (enabled:false ทั้ง 3 เลน) → ไม่ยิงฟีด ไม่มีเลนในรายงาน ไม่มี community เข้าเลย
   assert.equal(rows.some((r) => r.source === 'community'), false)
-  assert.ok(report.skipped.duplicate >= 1)
+  assert.equal(report.lanes.some((l) => /pantip/i.test(l.key)), false, 'เลน Pantip ต้องไม่ถูกรันเลย')
+  assert.equal(fetcher.calls.some((u) => /pantip\.com/.test(u)), false, 'ห้ามยิง pantip.com')
   assert.ok(report.skipped.cap >= 0)
   // ธปท.
   const bot = rows.find((r) => r.external_key.startsWith('bot:mpc:'))

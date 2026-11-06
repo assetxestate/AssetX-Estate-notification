@@ -62,10 +62,17 @@ export function isYoutubeUrl(url = '') {
   return /youtube\.com|youtu\.be/i.test(String(url || ''))
 }
 
+export function isFacebookUrl(url = '') {
+  return /(^|[./])(facebook\.com|fb\.com|fb\.watch)(\/|$)/i.test(String(url || '').replace(/^https?:\/\//i, ''))
+}
+
 // ไอเดียที่ควรลองถอด: มีลิงก์ที่ไม่ใช่คลิป และ summary ยังไม่ใช่ข้อเท็จจริงที่ถอดแล้ว (📌) · ⚠️ จาก enrich รอบก่อนลองซ้ำได้เมื่อ retry = true
 export function needsFacts(idea = {}, { retry = false } = {}) {
   const url = String(idea.url || '').trim()
   if (!url || isYoutubeUrl(url)) return false
+  // ไอเดียจากตัวเฝ้าเพจ Facebook (source social): บอทดึงหน้า facebook.com ไม่ได้ (หน้าล็อกอิน · robots ห้าม) และข้อความโพสต์อยู่ใน summary แล้ว
+  // (drafts.js อ่านเป็นข้อเท็จจริง) — ถ้าปล่อยให้ enrich ลอง จะเขียนทับ summary ด้วย ⚠️ แล้วไอเดียเสียข้อเท็จจริงไปเลย
+  if (idea.source === 'social' || isFacebookUrl(url)) return false
   const s = String(idea.summary || '').trim()
   if (/^📌/.test(s)) return false
   if (/^⚠️ ดึง/.test(s) && !retry) return false

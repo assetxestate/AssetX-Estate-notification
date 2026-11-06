@@ -78,9 +78,23 @@ export function defaultCta(brand = {}, audience = []) {
 
 // summary ของตัวเก็บ/ปฏิทินปน "คำสั่งถึงผู้เขียน" ไว้กับข้อเท็จจริง (เช่น "ห้ามทำนายทิศทางดอกเบี้ย" "ตรวจตัวประกาศก่อนโพสต์") → แยกออก ไม่ให้โมเดลเอาคำสั่งไปเล่าเป็นข้อเท็จจริง
 const WRITER_NOTE_RE = /^(ห้าม|ต้องยืนยัน|ตรวจ[^\n]*ก่อนโพสต์|เล่าแบบ|ใช้เล่า|อ่าน[^\n]*ก่อนเขียน|แหล่ง:\s*ปฏิทิน|\(สรุปจากคำโปรย|ตัวเลขห้าม|ใช้วิเคราะห์)/
-export function splitFactsNotes(summary = '') {
+export function splitFactsNotes(summary = '', { source = '' } = {}) {
+  if (source === 'social') {
+    // ตัวเฝ้าเพจ Facebook เขียน summary เป็น: บรรทัดตัวเลขยอด+วันที่เห็น · “ข้อความโพสต์” · คำใบ้กลุ่มเพจ · บรรทัดกำกับ (social-watch.js ideaRow)
+    // ข้อเท็จจริง = ข้อความโพสต์เท่านั้น · ตัวเลขยอดของเพจอื่นห้ามลงโพสต์เรา (SOURCE_NOTES.social) จึงไม่ส่งให้ AI เลย แม้เป็นหมายเหตุ
+    const caption = socialCaption(summary)
+    const lines = String(summary || '').split('\n').map((s) => s.trim()).filter(Boolean)
+    return { facts: caption ? [caption] : [], notes: lines.slice(1).filter((l) => !/^“/.test(l)) }
+  }
   const parts = String(summary || '').replace(/^📌\s*/, '').split(/\s*·\s*|\n+/).map((s) => s.trim()).filter(Boolean)
   return { facts: parts.filter((p) => !WRITER_NOTE_RE.test(p)), notes: parts.filter((p) => WRITER_NOTE_RE.test(p)) }
+}
+
+// ข้อความโพสต์ของเพจที่ตัวเฝ้าเพจเก็บไว้ใน summary (ในเครื่องหมายคำพูด “…” · ตัดที่ 300 ตัวอักษร · ผ่านตัวลบข้อมูลบุคคลแล้ว) · summary ถูกตัดที่ 2000 ตัวอักษร เครื่องหมายปิดอาจหาย
+export const SOCIAL_CAPTION_MIN_CHARS = 40
+export function socialCaption(summary = '') {
+  const m = String(summary || '').match(/“([^”\n]+)”?/)
+  return m ? m[1].replace(/\s+/g, ' ').trim() : ''
 }
 
 // ชื่อบริษัท/โครงการ/แบรนด์อื่นที่โผล่ในข้อเท็จจริงของแหล่งที่ห้ามอ้าง (กระทู้/คลิป/เพจ) — ถ้าหลุดลงโพสต์ = เล่าเคสของเขา/พาดพิงบริษัทอื่น
@@ -182,6 +196,8 @@ export function hasResearchFacts(idea = {}) {
   const s = String(idea.summary || '').trim()
   if (!s || /^⚠️/.test(s)) return false
   if (/^📌/.test(s)) return true
+  // ไอเดียจากตัวเฝ้าเพจ Facebook: ข้อความโพสต์จริงของเพจ (ยาวพอ) นับเป็นข้อเท็จจริง — ตัวเลขยอดอย่างเดียวไม่นับ
+  if (idea.source === 'social') return socialCaption(s).length >= SOCIAL_CAPTION_MIN_CHARS
   return idea.source === 'manual'
 }
 
@@ -197,6 +213,8 @@ function escapeRegExp(s) {
 export function cleanTitleForPrompt(idea = {}, policy = 'no_cite') {
   let title = scrub(idea.title || '').replace(/(^|\s)#[\p{L}\p{M}\p{N}_]+/gu, '$1').replace(/\s+/g, ' ').trim()
   if (policy === 'no_cite' && idea.source_label) title = title.replace(new RegExp(escapeRegExp(idea.source_label), 'gi'), '').replace(/\s+/g, ' ').trim()
+  // ชื่อไอเดียของตัวเฝ้าเพจ = "<รูปแบบ>แรงกว่าปกติของเพจ N เท่า — <บรรทัดแรกของโพสต์>" · ส่วนหน้าเป็นภาษาภายใน (เทียบยอดของเพจอื่น) ห้ามไปถึง AI
+  if (idea.source === 'social') title = title.replace(/^[^—]*แรงกว่าปกติ[^—]*—\s*/, '').trim()
   return title
 }
 
@@ -238,7 +256,8 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     ctx.sourceLine = 'ที่มา: อ้างหน่วยงานที่ออกประกาศตามที่ระบุในข้อเท็จจริง (เช่น ธปท. กรมที่ดิน กรมธนารักษ์) พร้อมวันที่ — ห้ามเขียนคำว่า "ปฏิทินเหตุการณ์" หรือ "ปฏิทินในระบบ" ในโพสต์'
   }
   const facts = hasResearchFacts(idea)
-  const format = pickDraftFormat(angle, { hasFacts: facts, usedFormats })
+  // โครง "อัปเดตพร้อมที่มา" ต้องปิดด้วย "ที่มา: …" — ใช้ได้เฉพาะแหล่งที่อ้างได้ (cite) · แหล่งที่ห้ามอ้าง (เพจ/คลิป/กระทู้) แม้มีข้อเท็จจริงก็ถอยเป็นให้ความรู้
+  const format = pickDraftFormat(angle, { hasFacts: facts && ctx.policy === 'cite', usedFormats })
   const spec = DRAFT_FORMATS[format]
   const brandName = brand.brand || 'AssetX Estate'
   const forbidden = (brand.forbidden_phrases || []).join(' · ')
@@ -290,12 +309,15 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
   ].join('\n')
 
   const avoid = avoidOpenings.map((s) => scrub(String(s || '')).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 6)
-  const split = splitFactsNotes(ctx.summary)
+  const split = splitFactsNotes(ctx.summary, { source: idea.source })
   const factLines = split.facts.length ? split.facts.map((f) => `- ${thaiDates(f)}`).join('\n') : thaiDates(ctx.summary)
+  const socialNote = idea.source === 'social'
+    ? ' · นี่คือข้อความโพสต์ของเพจอื่นที่คนตอบรับแรง ใช้เพื่อรู้ว่าหัวข้อ/มุมไหนคนสนใจ แล้วเขียนโพสต์ของเราในหัวข้อเดียวกันด้วยบริการ ขั้นตอน และข้อเท็จจริงของเราเอง ห้ามลอกประโยค ห้ามเอ่ยชื่อเพจ ห้ามใช้ตัวเลขยอด ราคา ดอกเบี้ย หรือข้อเสนอของเขา (ข้ออ้างในโพสต์เขาเป็นโฆษณาของเขา ไม่ใช่ข้อเท็จจริงของเรา)'
+    : ''
   const prompt = [
     `ไอเดีย: ${cleanTitleForPrompt(idea, ctx.policy)}`,
     facts
-      ? `ข้อเท็จจริงที่มี (ใช้ได้เฉพาะเท่านี้${idea.source === 'community' ? ' · นี่คือสถานการณ์ของผู้ตั้งกระทู้คนหนึ่ง ใช้เพื่อเข้าใจคำถามเท่านั้น ห้ามใส่ชื่อโครงการ ตัวเลขงบ ทำเลเฉพาะ หรือรายละเอียดเฉพาะของเขาลงโพสต์ ให้ตอบเป็นหลักทั่วไปสำหรับคนที่เจอคำถามแบบเดียวกัน' : ''}${ctx.policy === 'no_cite' ? ' · ชื่อบริษัท โครงการ หรือแบรนด์อื่นในข้อเท็จจริง ห้ามใส่ลงโพสต์ (เรียกว่า "ผู้พัฒนารายหนึ่ง" "โครงการหนึ่ง") และห้ามแต่งรายการว่าบริษัทนั้นเสนออะไรบ้างถ้าข้อเท็จจริงไม่ได้บอก' : ''}):\n${factLines}`
+      ? `ข้อเท็จจริงที่มี (ใช้ได้เฉพาะเท่านี้${idea.source === 'community' ? ' · นี่คือสถานการณ์ของผู้ตั้งกระทู้คนหนึ่ง ใช้เพื่อเข้าใจคำถามเท่านั้น ห้ามใส่ชื่อโครงการ ตัวเลขงบ ทำเลเฉพาะ หรือรายละเอียดเฉพาะของเขาลงโพสต์ ให้ตอบเป็นหลักทั่วไปสำหรับคนที่เจอคำถามแบบเดียวกัน' : ''}${socialNote}${ctx.policy === 'no_cite' ? ' · ชื่อบริษัท โครงการ หรือแบรนด์อื่นในข้อเท็จจริง ห้ามใส่ลงโพสต์ (เรียกว่า "ผู้พัฒนารายหนึ่ง" "โครงการหนึ่ง") และห้ามแต่งรายการว่าบริษัทนั้นเสนออะไรบ้างถ้าข้อเท็จจริงไม่ได้บอก' : ''}):\n${factLines}`
       : 'ข้อเท็จจริงที่มี: (มีแค่หัวข้อ — เขียนเป็นความรู้ทั่วไปของเรื่องนี้จากหลักการที่คนในวงการรู้กันทั่วไป ห้ามอ้างคลิป ข่าว หรือแหล่งใด ห้ามตัวเลข วันที่ สถิติ)',
     facts && split.notes.length ? `หมายเหตุถึงผู้เขียน (ไม่ใช่ข้อเท็จจริง ห้ามใส่ลงโพสต์ ห้ามเล่าว่าเป็นเนื้อหาของประกาศ/รายงาน): ${split.notes.join(' · ')}` : '',
     `ประเภท: ${idea.subtype || 'market'} · แหล่ง: ${idea.source || 'ไม่ระบุ'}`,
@@ -419,13 +441,21 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
   // ตัวอักษรละตินโดด ๆ หน้าขีดรายการ ("g- สินเชื่อ…" เจอจริงรอบสุดท้าย 6 พ.ย. 2569) = นิ้วพลาดของโมเดล
   caption = caption.replace(/^[A-Za-z](?=[-•]\s)/gm, '')
   caption = caption.split('\n').map((l) => l.replace(/[ \t]+$/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim()
-  let headline = trimHeadline(thaiDates(scrubDraftText(String(obj.headline ?? ''))))
+  // ตัดความยาวพาดหัว (trimHeadline) หลังลบชื่อแหล่งแล้วเท่านั้น — ตัดก่อนแล้วชื่อเพจที่เหลือครึ่งเดียวจะหลุดรอดตัวลบ
+  let headline = thaiDates(scrubDraftText(String(obj.headline ?? '')))
   const label = String(sourceLabel || '').trim()
   if (label) {
     const re = new RegExp(escapeRegExp(label), 'gi')
     if (policy === 'no_cite') {
-      caption = caption.replace(re, 'เพจหนึ่ง')
-      headline = trimHeadline(headline.replace(re, ''))
+      // ป้ายของตัวเฝ้าเพจเป็น "Facebook · <ชื่อเพจ>" — ลบทั้งป้ายเต็ม ชื่อเพจแต่ละส่วน (ชื่อเพจไทยไม่ติดด่าน foreignNamesIn) และคำละตินของชื่อเพจ (Cashpital · homebk4cash)
+      // ที่อาจหลุดมาเดี่ยว ๆ · คำว่า Facebook ส่วนสั้นกว่า 3 ตัวอักษร และคำละตินทั่วไป (GENERIC_LATIN) ไม่นับ
+      const parts = [label, ...label.split(/\s*·\s*/).map((p) => p.trim()).filter((p) => p.length >= 3 && p !== label && !/^facebook$/i.test(p))]
+      const latin = [...new Set(parts.flatMap((p) => p.match(/[A-Za-z][A-Za-z0-9.&'-]{3,}/g) || []))].filter((t) => !GENERIC_LATIN.has(t.toLowerCase()))
+      for (const part of [...parts, ...latin]) {
+        const partRe = new RegExp(escapeRegExp(part), 'gi')
+        caption = caption.replace(partRe, 'เพจหนึ่ง').replace(/เพจหนึ่ง(\s+เพจหนึ่ง)+/g, 'เพจหนึ่ง')
+        headline = headline.replace(partRe, '')
+      }
     } else if (isInternalSourceLabel(label)) {
       // ป้ายภายใน (ปฏิทินเหตุการณ์) หลุดมาเป็น "ที่มา" ไม่ได้ — ตัดบรรทัดนั้นทิ้ง แล้วอ้างหน่วยงานที่ออกประกาศจากข้อเท็จจริง/ชื่อเรื่องแทน (ผู้ตรวจรอบสอง: โพสต์ ธปท. ไม่มีที่มา)
       caption = caption.split('\n').filter((line) => !(/ที่มา\s*[:：]/.test(line) && re.test(line))).join('\n').replace(/\n{3,}/g, '\n\n').trim()
@@ -435,6 +465,7 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
       caption = `${caption}\n\nที่มา: ${label}`
     }
   }
+  headline = trimHeadline(headline)
   if (/ปฏิทินเหตุการณ์|ปฏิทินในระบบ/.test(caption)) return { ok: false, error: 'ข้อความกำกับภายใน (ปฏิทินเหตุการณ์/ปฏิทินในระบบ) หลุดลงโพสต์' }
   // รหัสกลุ่มเป้าหมาย A–D เป็นภาษาภายใน — หลุดลงโพสต์แล้วคนอ่านไม่เข้าใจ (เจอจริงร่างแรก 6 พ.ย. 2569: "กระทบกลุ่ม B นักลงทุน…")
   if (/กลุ่ม\s*[A-D](?![A-Za-z])/.test(`${headline}\n${caption}`)) return { ok: false, error: 'มีรหัสกลุ่มเป้าหมาย (กลุ่ม A/B/C/D) หลุดลงข้อความ — ให้เรียกคนอ่านตามที่เขาเป็น' }

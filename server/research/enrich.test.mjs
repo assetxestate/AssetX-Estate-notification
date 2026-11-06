@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractArticle, needsFacts, parseFacts, factsSummary, failedSummary, enrichIdeas, buildFactsPrompt, decodeEntities } from './enrich.js'
+import { extractArticle, needsFacts, isFacebookUrl, parseFacts, factsSummary, failedSummary, enrichIdeas, buildFactsPrompt, decodeEntities } from './enrich.js'
 
 const para = (t) => `<p>${t}</p>`
 const thai = 'คณะกรรมการนโยบายการเงินมีมติเป็นเอกฉันท์ให้คงอัตราดอกเบี้ยนโยบายไว้ที่ร้อยละหนึ่งต่อปี โดยประเมินว่าเศรษฐกิจไทยขยายตัวใกล้เคียงกับที่คาดไว้'
@@ -40,6 +40,14 @@ test('needsFacts: มีลิงก์ที่ไม่ใช่คลิป �
   assert.equal(needsFacts({ url: '', summary: '' }), false)
   assert.equal(needsFacts({ url: 'https://x.th', summary: failedSummary('HTTP 403') }), false)
   assert.equal(needsFacts({ url: 'https://x.th', summary: failedSummary('HTTP 403') }, { retry: true }), true)
+  // ไอเดียจากตัวเฝ้าเพจ Facebook: ไม่ดึง (หน้าล็อกอิน) และห้ามเขียนทับข้อความโพสต์ใน summary
+  assert.equal(needsFacts({ source: 'social', url: 'https://www.facebook.com/x/posts/1', summary: '❤️ 50\n“ข้อความโพสต์”' }), false)
+  assert.equal(needsFacts({ source: 'social', url: 'https://l.example/redirect', summary: '' }), false)
+  assert.equal(needsFacts({ source: 'news', url: 'https://m.facebook.com/story.php?id=1', summary: '' }), false)
+  assert.equal(needsFacts({ source: 'news', url: 'https://fb.watch/abc/', summary: '' }), false)
+  assert.equal(needsFacts({ source: 'news', url: 'https://notfacebook.com/x', summary: '' }), true)
+  assert.equal(isFacebookUrl('https://www.facebook.com/Cashpital'), true)
+  assert.equal(isFacebookUrl('https://facebook.com.evil.example/x'), false)
 })
 
 test('parseFacts / factsSummary: ล้าง PII · ตัดเลขนำ · ซ้ำไม่นับ · ≤ 7 · ต้อง ≥ 2 · summary ขึ้นต้น 📌 และบอกเมื่อมาจากคำโปรย', () => {

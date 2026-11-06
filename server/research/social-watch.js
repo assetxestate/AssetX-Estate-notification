@@ -27,6 +27,10 @@ export const CHROME_PATHS = [
   path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
   path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
 ]
+// Chrome ต้องเปิดด้วยค่านี้ ไม่งั้นหน้าต่างโหมด background ที่ถูกบัง/จอล็อก = visibilityState hidden → Chrome หยุดวาด FB ไม่โหลดโพสต์ต่อ
+// (ต้นเหตุ "เพจละ 1 โพสต์" ที่ DVX หาเจอ 3 พ.ย. 2569 · commit 2e6fcdd ฝั่ง DVX · ยกมาใส่ 6 พ.ย.) · ค่าติดตอน process แรกเท่านั้น —
+// ไอคอน Chrome ของเจ้าของใส่ค่านี้ไว้แล้ว (DVX ทำ นอกรีโป) · ตัวเฝ้าเพจใส่เองเมื่อเป็นฝ่ายเปิด Chrome
+export const CHROME_FLAGS = ['--disable-backgrounding-occluded-windows', '--disable-features=CalculateNativeWinOcclusion']
 
 // FB_JS ก๊อปตรงจาก DVX เป็นไฟล์แยก (ห้ามใส่ใน template literal — \/ \d \s จะเพี้ยนและตัวจับหน้า login ตายเงียบ) · ตัดคอมเมนต์หัวไฟล์ออกให้เหลือ IIFE ล้วน
 export const FB_JS = fs.readFileSync(path.join(HERE, 'facebook-page.dom.js'), 'utf8').replace(/^(?:\/\/[^\n]*\n|\s*\n)+/, '')
@@ -56,6 +60,11 @@ export class WatchError extends Error {
 // แพลตฟอร์มขอล็อกอิน/ยืนยันตัวตน — หยุดเลนทันที อย่ารัวต่อ (บัญชีเดียวกับ DVX)
 export class Blocked extends WatchError {
   constructor(message) { super(message); this.name = 'Blocked' }
+}
+// หน้าต่าง browser ถูกซ่อน (จอล็อก/ถูกหน้าต่างอื่นบัง) — Chrome หยุดวาดหน้า FB จึงไม่โหลดโพสต์ถัดไป · หยุดเลนรอบนี้ (เปิดเพจต่อก็ได้เพจละ 1 โพสต์ เปลืองโควตาบัญชีร่วม)
+// ไม่ใช่บัญชีโดนบล็อก → ไม่พัก 3 วัน และต้องไม่เป็น subclass ของ Blocked
+export class Hidden extends WatchError {
+  constructor(message) { super(message); this.name = 'Hidden' }
 }
 
 const FMT_TH = { video: 'คลิป', photo: 'รูป', album: 'อัลบั้มรูป', link: 'แชร์ลิงก์', text: 'ข้อความ', reel: 'Reels' }
@@ -326,12 +335,32 @@ export function createOc({ lock = null, mainJs = OPENCLI_MAIN, execFileImpl = ex
   }
 }
 
+export function chromeArgs(profileDir) {
+  return [`--profile-directory=${profileDir}`, ...CHROME_FLAGS, '--no-startup-window']
+}
+
 function defaultSpawnChrome(profileDir) {
   const chrome = CHROME_PATHS.find((p) => p && fs.existsSync(p))
   if (!chrome) return false
-  const child = spawn(chrome, [`--profile-directory=${profileDir}`, '--no-startup-window'], { detached: true, stdio: 'ignore', windowsHide: true })
+  const child = spawn(chrome, chromeArgs(profileDir), { detached: true, stdio: 'ignore', windowsHide: true })
   child.unref()
   return true
+}
+
+// Chrome ที่รันอยู่เปิดด้วย CHROME_FLAGS ไหม → true / false / null (ไม่มี Chrome หรือเช็กไม่ได้) · ใช้บอกเจ้าของในรายงานเมื่อเจอ Hidden
+// ค่าพวกนี้ติดตอนเปิด process แรกเท่านั้น — เปิด Chrome จากเมนู Start/ลิงก์ของแอปอื่นตอน Chrome ปิดอยู่ = ไม่มีค่า (ต้องปิดทุกหน้าต่างแล้วเปิดใหม่จากไอคอนที่ใส่ค่าไว้)
+// ไม่แตะ browser (อ่านรายการ process อย่างเดียว) · เสร็จในไม่กี่วิ จึงเรียกใต้กุญแจได้โดยไม่เงียบเกิน 10 นาที
+export async function chromeFlagsActive({ execFileImpl = execFile } = {}) {
+  const ps = "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'chrome.exe' -and $_.CommandLine -notmatch '--type=' } | Select-Object -ExpandProperty CommandLine"
+  const stdout = await new Promise((resolve) => {
+    try {
+      execFileImpl('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 30e3, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }, (err, out) => resolve(err ? null : String(out || '')))
+    } catch { resolve(null) }
+  })
+  if (stdout === null) return null
+  const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (!lines.length) return null
+  return lines.every((l) => l.includes(CHROME_FLAGS[0]))
 }
 
 // bridge ไม่ต่อ → (1) daemon ของ OpenCLI ไม่ได้รัน = สั่ง `daemon restart` แล้วรอ 3×3 วิ (DVX เจอ 31 ต.ค.–3 พ.ย. 2569: daemon ไม่ขึ้นเองหลังเปิดเครื่อง
@@ -393,6 +422,12 @@ export async function readFacebookPage({ target, cfg = {}, oc, sleep, random = M
       if (!k) continue
       if (!got.has(k) || richness(p) > richness(got.get(k))) got.set(k, p)
     }
+    // ⚠️ 3 พ.ย. 2569 ต้นเหตุ "เพจละ 1 โพสต์" (DVX เจอ 7 จาก 11 รอบ · เรา 2/2): หน้าต่างโหมด background ถูกบัง/จอล็อก → visibilityState hidden ·
+    //    requestAnimationFrame ไม่ทำงาน → FB ไม่โหลดโพสต์ถัดไปแม้เลื่อนสุด (หน้าต่างที่มองเห็นโหลดปกติ 1 → 7) · ได้น้อย = โยน Hidden (ไม่เลื่อนต่อ ไม่เปิดซ้ำ) · ได้พอแล้ว = เก็บเท่าที่มี
+    if (res.vis === 'hidden') {
+      if (got.size < Number(cfg.fb_low_posts ?? DEFAULTS.fb_low_posts)) throw new Hidden(`หน้าต่าง browser ถูกซ่อน (จอล็อก/ถูกหน้าต่างอื่นบัง) — Chrome หยุดวาดหน้า Facebook ไม่โหลดโพสต์ต่อ (เห็น ${got.size} โพสต์)`)
+      break
+    }
     if (got.size >= maxPosts) break
     stale = got.size === before ? stale + 1 : 0
     if (stale >= 3) break
@@ -409,7 +444,7 @@ export const pageStorePath = (storeDir, tid) => path.join(storeDir, 'facebook', 
 
 // ── รอบของ AssetX (ลำดับตามข้อตกลงข้อ 4.6 ทุกบรรทัด) ─────────────────────────
 // คืน { status, result[], opened, pages[], rows[], visited[], warnings[], lines[] } · ไม่เขียนฐานข้อมูล (ตัวรันเอา rows ไปใส่คิวหลังปล่อยกุญแจ)
-// status: ok · blocked_shared · already_today · no_due · quota_full · browser_busy · bridge_down · blocked · lost_lock
+// status: ok · blocked_shared · already_today · no_due · quota_full · browser_busy · bridge_down · blocked · hidden · lost_lock
 export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAULT_SCORING, storeDir, base = defaultDir(), dryRun = false, limit = null, targetFilter = null, audience = null, deps = {} }) {
   const {
     oc: ocImpl = null,
@@ -418,6 +453,7 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
     random = Math.random,
     log = () => {},
     spawnChrome = defaultSpawnChrome,
+    chromeFlagsActive: flagsActive = chromeFlagsActive,
     lockFactory = (opts) => new Lock(PROJECT, opts),
     today = todayIso(),
   } = deps
@@ -436,7 +472,7 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
 
   const state = loadJson(path.join(storeDir, 'state.json'), { visits: {} })
   if (!state.visits || typeof state.visits !== 'object') state.visits = {}
-  const out = { day: today, dry_run: dryRun, status: 'ok', result: [], opened: { facebook: 0 }, pages: [], rows: [], visited: [], warnings: [], lines: [], holder: null, stolen_from: null, waited_ms: 0, touched: false, picked: 0 }
+  const out = { day: today, dry_run: dryRun, status: 'ok', result: [], opened: { facebook: 0 }, pages: [], rows: [], visited: [], warnings: [], lines: [], holder: null, stolen_from: null, waited_ms: 0, touched: false, picked: 0, chrome_flags_active: null }
   const say = (s) => { out.lines.push(s); log(s) }
   const quota = () => quotaLeft({ rows: usageRows(base), today, capDay: CAP_DAY, capOwn: CAP_OWN })
 
@@ -547,6 +583,20 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
             out.status = 'blocked'
             page.fail = 'blocked'
             say(`⚠️ [social] ${e.message} — หยุดเลน Facebook ทันที (แจ้ง DVX ให้พักด้วยแล้ว 3 วัน)`)
+            break
+          }
+          if (e.name === 'Hidden') {
+            // หน้าต่างถูกซ่อน = เปิดเพจต่อก็ได้เพจละ 1 โพสต์ → หยุดเลนรอบนี้ ไม่เปิดซ้ำ ไม่นับว่าเยี่ยม · ไม่ใช่บล็อก ไม่เขียนแถวพักร่วม
+            out.result.push('hidden:facebook')
+            out.status = 'hidden'
+            page.fail = 'hidden'
+            let flags = null
+            try { flags = await flagsActive() } catch { flags = null }
+            out.chrome_flags_active = flags
+            const hint = flags === false
+              ? ' · Chrome ที่รันอยู่เปิดโดยไม่มีค่ากันหยุดวาด — ปิด Chrome ทุกหน้าต่างแล้วเปิดใหม่จากไอคอนบนเดสก์ท็อป (ไอคอนใส่ค่าไว้แล้ว)'
+              : flags ? ' · Chrome มีค่ากันหยุดวาดแล้วแต่ยังถูกซ่อน (หน้าต่างถูกย่อเล็กสุด/จอดับ?)' : ''
+            say(`⚠️ [social] ${e.message} — หยุดเลน Facebook รอบนี้ · เพจที่ถึงรอบยังไม่นับว่าอ่าน (รอบหน้าอ่านก่อน) · ไม่ใช่บัญชีโดนบล็อก ไม่พัก 3 วัน${hint}`)
             break
           }
           if (e.name === 'LostLock') throw e

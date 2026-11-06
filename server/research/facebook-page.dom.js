@@ -5,6 +5,9 @@
 // Loaded with fs.readFileSync and passed to OpenCLI as-is. Never paste this into a JS template literal:
 // `\/`, `\d`, `\s` would be mangled and the login/checkpoint detector would silently stop working.
 // Returns only captions + counts + media ids. No commenter names or comment text.
+// Synced with DVX commit 2e6fcdd (2026-11-03): also returns vis = document.visibilityState. A background window that Windows counts as
+// occluded is "hidden" → Chrome stops painting → Facebook never loads the next posts (root cause of "1 post per page" on 2026-11-03).
+// The reader (social-watch.js) stops the lane when vis is hidden and fewer than fb_low_posts were read.
 // Source of truth for DOM fixes is the DVX file; after re-running scratchpad extract-fbjs.mjs, re-apply the AssetX addition.
 
 (() => {
@@ -71,5 +74,5 @@
     posts.push({ pos: Number(a.getAttribute('aria-posinset')) || null, vid, fbids: fbids.slice(0, 4), perma, ext,
       format, caption: caption.slice(0, 700), m });
   }
-  return { blocked: null, posts };
+  return { blocked: null, posts, vis: document.visibilityState };
 })()

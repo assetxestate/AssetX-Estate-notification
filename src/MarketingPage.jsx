@@ -35,8 +35,9 @@ function researchIdeaToCard(row) {
     score: Math.round(Math.min(99, 40 + Number(row.score || 0) * 7)),
     radarScore: Number(row.score || 0),
     title: row.title,
-    // มีข้อเท็จจริงที่ถอดจากต้นทางแล้ว (📌) หรือเจ้าของวางเอง — ไอเดียที่ไม่มี AI จะไม่ร่างให้ (ป้ายบนการ์ดบอก)
-    hasFacts: /^📌/.test(String(row.summary || '').trim()) || row.source === 'manual',
+    // มีข้อเท็จจริงที่ถอดจากต้นทางแล้ว (📌) · เจ้าของวางเอง · หรือไอเดียจากตัวเฝ้าเพจ Facebook ที่มีข้อความโพสต์ในเครื่องหมายคำพูด (≥ 40 ตัวอักษร)
+    // — ต้องตรงกับ hasResearchFacts ใน server/research/drafts.js · ไอเดียที่ไม่มี AI จะไม่ร่างให้ (ป้ายบนการ์ดบอก)
+    hasFacts: /^📌/.test(String(row.summary || '').trim()) || row.source === 'manual' || (row.source === 'social' && /“[^”\n]{40,}/.test(String(row.summary || ''))),
     angle: row.angles?.[0]?.brief || row.summary || 'รอ AI เขียนมุมเล่า — เลือกได้เลยถ้าหัวข้อตรงใจ',
     audience,
     channel: 'Facebook',

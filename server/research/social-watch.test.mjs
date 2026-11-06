@@ -8,7 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Lock, LostLock, usageRows, readState } from './shared-browser.mjs'
 import {
-  FB_JS, SESSION, DEFAULTS, WatchError, Blocked,
+  FB_JS, SESSION, DEFAULTS, WatchError, Blocked, Hidden, CHROME_FLAGS, chromeArgs, chromeFlagsActive,
   targetId, fbKey, fbLink, richness, cleanCaption, tagsOf, mergePosts, prunePosts, eng, median, outliers, ideaRow, dueTargets, quotaLeft,
   createOc, unwrap, readFacebookPage, runFacebookWatch, pageStorePath,
 } from './social-watch.js'
@@ -29,7 +29,7 @@ function domPost(i, reactions, caption = `โพสต์ ${i} เรื่อ�
 const fixturePosts = () => [domPost(1, 12), domPost(2, 9), domPost(3, 11), domPost(4, 60, 'ขายฝากที่ดินโทร 081-234-5678 ไลน์ @landdeal')]
 
 // OpenCLI ปลอม: เรียก lock.require() ก่อนทุกคำสั่งเหมือนตัวจริง (ยกเว้น beat:false) · บันทึกทุกคำสั่งไว้ตรวจ
-function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = null, posts = fixturePosts, onOpen = null } = {}) {
+function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = null, posts = fixturePosts, onOpen = null, vis = null } = {}) {
   const calls = []
   const oc = async (args, opts = {}) => {
     if (opts.beat !== false && lockRef.lock) lockRef.lock.require()
@@ -41,7 +41,10 @@ function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = nul
     }
     if (a === 'daemon' && b === 'restart') return { ok: true, data: { restarted: true } }
     if (a === 'browser' && b === 'open') { oc.lastUrl = args[2]; if (onOpen) await onOpen(args[2], calls); return { ok: true, data: {} } }
-    if (a === 'browser' && b === 'eval') return { ok: true, data: { result: blocked ? { blocked, posts: [] } : { blocked: null, posts: posts(oc.lastUrl) } } }
+    if (a === 'browser' && b === 'eval') {
+      const v = typeof vis === 'function' ? vis(calls) : vis
+      return { ok: true, data: { result: blocked ? { blocked, posts: [] } : { blocked: null, posts: posts(oc.lastUrl), ...(v ? { vis: v } : {}) } } }
+    }
     if (a === 'browser' && b === 'scroll') return { ok: true, data: {} }
     if (a === 'browser' && b === 'close') return { ok: true, data: {} }
     throw new Error(`คำสั่งที่ไม่คาดคิด: ${args.slice(0, 2).join(' ')}`)
@@ -78,7 +81,7 @@ const closeCalls = (oc) => oc.calls.filter((c) => c.args[0] === 'browser' && c.a
 test('FB_JS เป็น IIFE ล้วนที่ parse ผ่าน และยังมีตัวจับหน้า login/checkpoint (ไม่โดน template literal กิน \\/)', () => {
   assert.ok(FB_JS.startsWith('(() => {'), 'ต้องตัดคอมเมนต์หัวไฟล์ออกจนเหลือ IIFE')
   assert.doesNotThrow(() => new Function(`return ${FB_JS}`))
-  for (const must of ['/^\\/(login|checkpoint)/.test(path)', "input[name=\"pass\"]", 'div[aria-posinset]', 'data-ad-comet-preview="message"', 'return { blocked: null, posts };']) {
+  for (const must of ['/^\\/(login|checkpoint)/.test(path)', "input[name=\"pass\"]", 'div[aria-posinset]', 'data-ad-comet-preview="message"', 'return { blocked: null, posts, vis: document.visibilityState };']) {
     assert.ok(FB_JS.includes(must), `ขาดข้อความต้นฉบับ: ${must}`)
   }
   assert.ok(!FB_JS.includes('`'), 'ต้นฉบับไม่มี backtick')
@@ -459,6 +462,68 @@ test('ได้น้อยผิดปกติ (< 3 โพสต์): เป�
   assert.equal(openCalls(h2.oc).length, 1)
   assert.deepEqual(out2.result, ['budget'])
   assert.equal(out2.pages[0].low, true)
+})
+
+// ── หน้าต่างถูกซ่อน (3 พ.ย. 2569 ต้นเหตุ "เพจละ 1 โพสต์" — ยกจาก DVX commit 2e6fcdd มาใส่ 6 พ.ย.) ──
+test('readFacebookPage: หน้าต่างถูกซ่อน + ได้ < 3 โพสต์ = โยน Hidden (อ่านครั้งเดียว ไม่เลื่อน) · ซ่อนแต่ได้พอ = เก็บที่ได้ ไม่โยน · มองเห็น = เลื่อนต่อปกติ', async () => {
+  const lockRef = {}
+  const hidden1 = fakeOc({ lockRef, vis: 'hidden', posts: () => [domPost(1, 5, 'ที่ดิน')] })
+  await assert.rejects(readFacebookPage({ target: TARGETS[0], cfg: CFG, oc: hidden1, sleep: noSleep, random: () => 0 }), (e) => e instanceof Hidden && e.name === 'Hidden' && /ถูกซ่อน/.test(e.message) && /เห็น 1 โพสต์/.test(e.message))
+  assert.equal(hidden1.calls.filter((c) => c.args[1] === 'eval').length, 1, 'อ่านครั้งเดียวแล้วหยุด')
+  assert.equal(hidden1.calls.filter((c) => c.args[1] === 'scroll').length, 0, 'ไม่เลื่อนต่อ')
+  assert.ok(!(new Hidden('x') instanceof Blocked), 'Hidden ไม่ใช่ Blocked (ไม่พักบัญชี 3 วัน)')
+  assert.ok(new Hidden('x') instanceof WatchError)
+  const hidden4 = fakeOc({ lockRef, vis: 'hidden', posts: () => fixturePosts() })
+  const got = await readFacebookPage({ target: TARGETS[0], cfg: { ...CFG, fb_scroll_steps: 10 }, oc: hidden4, sleep: noSleep, random: () => 0 })
+  assert.equal(got.length, 4, 'ซ่อนแต่ได้ ≥ 3 แล้ว = เก็บที่ได้')
+  assert.equal(hidden4.calls.filter((c) => c.args[1] === 'scroll').length, 0, 'ซ่อนอยู่ = ไม่เลื่อนต่อ')
+  const visible = fakeOc({ lockRef, vis: 'visible', posts: () => fixturePosts() })
+  const all = await readFacebookPage({ target: TARGETS[0], cfg: { ...CFG, fb_scroll_steps: 10 }, oc: visible, sleep: noSleep, random: () => 0 })
+  assert.equal(all.length, 4)
+  assert.ok(visible.calls.filter((c) => c.args[1] === 'scroll').length >= 1, 'มองเห็น = เลื่อนโหลดต่อ')
+})
+
+test('รอบที่หน้าต่างถูกซ่อน: หยุดเลนทันที · ไม่เปิดซ้ำ · ไม่นับว่าเยี่ยม · ไม่เขียนแถวพักร่วม · แถวสรุป hidden:facebook · บอกว่า Chrome มีค่ากันหยุดวาดไหม', async () => {
+  const h = harness({ vis: 'hidden', posts: () => [domPost(1, 5, 'ที่ดิน')] }, { deps: { chromeFlagsActive: async () => false } })
+  const out = await h.run()
+  assert.equal(out.status, 'hidden')
+  assert.deepEqual(out.result, ['hidden:facebook'])
+  assert.equal(openCalls(h.oc).length, 1, 'เปิดเพจแรกเพจเดียว ไม่เปิดซ้ำ ไม่ไปเพจถัดไป')
+  assert.equal(closeCalls(h.oc).length, 1)
+  assert.equal(out.pages.length, 1)
+  assert.equal(out.pages[0].fail, 'hidden')
+  assert.deepEqual(out.visited, [])
+  assert.deepEqual(readState(h.base).blocked, {}, 'ไม่ใช่บล็อก — ไม่พักร่วม')
+  const rows = usageRows(h.base)
+  assert.equal(rows.length, 2, 'จดก่อนเปิด 1 แถว + แถวสรุป')
+  assert.equal(rows[1].result, 'hidden:facebook')
+  assert.deepEqual(rows[1].opened, { facebook: 1 })
+  assert.equal(out.chrome_flags_active, false)
+  assert.ok(out.lines.some((l) => /ถูกซ่อน/.test(l) && /ไอคอนบนเดสก์ท็อป/.test(l)), 'บอกวิธีแก้เมื่อ Chrome ไม่มีค่า')
+  assert.ok(!fs.existsSync(path.join(h.base, 'lock.json')))
+  const state = JSON.parse(fs.readFileSync(path.join(h.storeDir, 'state.json'), 'utf8'))
+  assert.deepEqual(state.visits, {})
+  assert.equal(state.last_round.status, 'hidden')
+  // Chrome มีค่าแล้วแต่ยังซ่อน → ข้อความอีกแบบ · เช็กไม่ได้/พัง → ไม่มีคำแนะนำเพิ่ม และรอบไม่ล้ม
+  const h2 = harness({ vis: 'hidden', posts: () => [domPost(1, 5, 'ที่ดิน')] }, { deps: { chromeFlagsActive: async () => true } })
+  const out2 = await h2.run()
+  assert.ok(out2.lines.some((l) => /ย่อเล็กสุด/.test(l)))
+  const h3 = harness({ vis: 'hidden', posts: () => [domPost(1, 5, 'ที่ดิน')] }, { deps: { chromeFlagsActive: async () => { throw new Error('ps พัง') } } })
+  const out3 = await h3.run()
+  assert.equal(out3.status, 'hidden')
+  assert.equal(out3.chrome_flags_active, null)
+  assert.ok(!fs.existsSync(path.join(h3.base, 'lock.json')))
+})
+
+test('เปิด Chrome เองต้องใส่ค่ากันหยุดวาด (CHROME_FLAGS ตรงกับ DVX) · chromeFlagsActive อ่านบรรทัดคำสั่งของ chrome.exe ผ่าน PowerShell', async () => {
+  assert.deepEqual(CHROME_FLAGS, ['--disable-backgrounding-occluded-windows', '--disable-features=CalculateNativeWinOcclusion'])
+  assert.deepEqual(chromeArgs('Profile 9'), ['--profile-directory=Profile 9', ...CHROME_FLAGS, '--no-startup-window'])
+  const fakePs = (lines) => (file, args, opts, cb) => { assert.equal(file, 'powershell'); assert.ok(args.includes('-NoProfile') && args.includes('-NonInteractive')); assert.equal(opts.windowsHide, true); cb(null, lines.join('\n')) }
+  assert.equal(await chromeFlagsActive({ execFileImpl: fakePs(['"C:\\chrome.exe" --disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion --profile-directory="Profile 9"']) }), true)
+  assert.equal(await chromeFlagsActive({ execFileImpl: fakePs(['"C:\\chrome.exe" --profile-directory="Default"']) }), false)
+  assert.equal(await chromeFlagsActive({ execFileImpl: fakePs(['"C:\\chrome.exe" --disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion', '"C:\\chrome.exe" --profile-directory="Default"']) }), false, 'มี process ที่ไม่มีค่าปนอยู่ = ยังไม่ปลอดภัย')
+  assert.equal(await chromeFlagsActive({ execFileImpl: fakePs([]) }), null, 'ไม่มี Chrome = เช็กไม่ได้')
+  assert.equal(await chromeFlagsActive({ execFileImpl: (f, a, o, cb) => cb(new Error('no powershell')) }), null)
 })
 
 test('bridge ไม่ต่อ: เปิด Chrome ให้เอง (ไม่มีหน้าต่าง) แล้วรอ · ยังไม่ต่อ = bridge_down ไม่เปิดเพจ · แถวสรุปจดไว้ · ไม่ฆ่า Chrome', async () => {

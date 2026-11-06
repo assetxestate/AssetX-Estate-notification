@@ -57,6 +57,45 @@ test('buildDraftPrompt: ข้อเท็จจริง+ที่มาเม�
   assert.match(system, /"needs_check"/)
 })
 
+test('ไอเดียจากตัวเฝ้าเพจ Facebook (source social): ข้อความโพสต์ในเครื่องหมายคำพูดคือข้อเท็จจริง · ตัวเลขยอดไม่ส่งให้ AI · คำใบ้กลุ่มเพจเป็นหมายเหตุ · ไม่ใช้โครงอัปเดตพร้อมที่มา · ชื่อเรื่องตัดส่วน "แรงกว่าปกติ"', () => {
+  const summary = '❤️ 50 · 💬 4 · ↗️ 2 · โพสต์ปกติของเพจ ≈ 25 เอ็นเกจ · เห็นครั้งแรก 3 พ.ย. 2026\n“ขายฝากที่ดินต้องเตรียมเอกสารอะไรบ้าง โฉนด บัตรประชาชน ทะเบียนบ้าน และใบปลอดภาระ มาดูกันว่าแต่ละอย่างใช้ทำอะไร”\nกลุ่มเพจ: คู่แข่งขายฝาก/จำนอง — ถอดว่าเขาเล่นมุม/ข้อเสนออะไรแล้วคนตอบรับ แล้วทำมุมของเราที่ต่างออกไปด้วยบริการจริงของเรา · เรต/ผลตอบแทนของเขาเป็นโฆษณา ไม่ใช่ข้อเท็จจริง · ห้ามเอ่ยชื่อ ห้ามลอกข้อความ/ภาพ\n(ตัวเฝ้าเพจ Facebook · บัญชีสำรอง อ่านอย่างเดียว · เทียบเอ็นเกจกับโพสต์อื่นของเพจ · ตัวเลขของเขาห้ามลงโพสต์เรา)'
+  const idea = { source: 'social', source_label: 'Facebook · Cashpital รับจำนอง รับขายฝาก', subtype: 'social_fb', title: 'รูปแรงกว่าปกติของเพจ 2.0 เท่า — ขายฝากที่ดินต้องเตรียมเอกสารอะไรบ้าง', summary, audience: ['A'] }
+  assert.equal(hasResearchFacts(idea), true)
+  assert.equal(hasResearchFacts({ ...idea, summary: '❤️ 50 · เห็นครั้งแรก 3 พ.ย. 2026\nกลุ่มเพจ: สื่อ' }), false, 'ไม่มีข้อความโพสต์ = ไม่มีข้อเท็จจริง')
+  assert.equal(hasResearchFacts({ ...idea, summary: '❤️ 50\n“สั้นไป”\nกลุ่มเพจ: สื่อ' }), false, 'ข้อความสั้นกว่า 40 ตัวอักษรไม่นับ')
+  assert.equal(hasResearchFacts({ ...idea, summary: `❤️ 50\n“${'ยาวพอแต่เครื่องหมายปิดหายเพราะ summary ถูกตัดที่ 2000 ตัวอักษร '.repeat(2)}` }), true, 'เครื่องหมายปิดหาย (summary ถูกตัด) ยังอ่านได้')
+  const split = splitFactsNotes(summary, { source: 'social' })
+  assert.deepEqual(split.facts, ['ขายฝากที่ดินต้องเตรียมเอกสารอะไรบ้าง โฉนด บัตรประชาชน ทะเบียนบ้าน และใบปลอดภาระ มาดูกันว่าแต่ละอย่างใช้ทำอะไร'])
+  assert.ok(split.notes.some((n) => /กลุ่มเพจ: คู่แข่ง/.test(n)), 'คำใบ้กลุ่มเพจเป็นหมายเหตุ')
+  assert.ok(split.notes.every((n) => !/❤️|💬|≈ \d|เห็นครั้งแรก/.test(n)), 'บรรทัดตัวเลขยอดของเพจไม่ไปถึง AI')
+  assert.equal(cleanTitleForPrompt(idea, 'no_cite'), 'ขายฝากที่ดินต้องเตรียมเอกสารอะไรบ้าง')
+  const { prompt, policy, format } = buildDraftPrompt({ idea, angle: { label: 'อัปเดตข้อมูลใหม่', brief: 'เล่าประกาศ' }, brand })
+  assert.equal(policy, 'no_cite')
+  assert.notEqual(format, 'news', 'แหล่งที่ห้ามอ้างไม่ใช้โครงอัปเดตพร้อมที่มา แม้มุมจะชื่ออัปเดต')
+  assert.match(prompt, /ข้อเท็จจริงที่มี[^\n]*ข้อความโพสต์ของเพจอื่น/)
+  assert.match(prompt, /- ขายฝากที่ดินต้องเตรียมเอกสารอะไรบ้าง/)
+  assert.match(prompt, /หมายเหตุถึงผู้เขียน[^\n]*กลุ่มเพจ: คู่แข่ง/)
+  assert.doesNotMatch(prompt, /❤️ 50|≈ 25 เอ็นเกจ/)
+  assert.doesNotMatch(prompt, /Cashpital/)
+  assert.doesNotMatch(prompt, /แรงกว่าปกติ/)
+  // แหล่งที่อ้างได้ยังใช้โครงอัปเดตพร้อมที่มาได้เหมือนเดิม
+  assert.equal(buildDraftPrompt({ idea: { source: 'official', source_label: 'ธนาคารแห่งประเทศไทย', subtype: 'rate', title: 'มติ กนง.', summary: '📌 มีมติคงอัตราดอกเบี้ยนโยบาย' }, angle: { label: 'อัปเดตข้อมูลใหม่', brief: 'เล่าประกาศ' }, brand }).format, 'news')
+})
+
+test('parseDraft: ชื่อเพจจากป้าย "Facebook · <ชื่อเพจ>" หลุดลงร่าง → แทนด้วย "เพจหนึ่ง" และตัดออกจากพาดหัว', () => {
+  const caption = longBody('เพจ Cashpital รับจำนอง รับขายฝาก โพสต์เรื่องเอกสารที่ต้องเตรียมก่อนทำสัญญา ซึ่งต้องดูเอกสารจริงของแต่ละกรณี')
+  const r = parseDraft({ headline: 'เอกสาร Cashpital รับจำนอง รับขายฝาก ก่อนเซ็น', caption, cta: 'ทักแชต AssetX Estate ส่งข้อมูลทรัพย์มาให้ประเมินเบื้องต้นได้ ปิดข้อมูลส่วนบุคคลได้', hashtags: [], needs_check: [] }, { policy: 'no_cite', sourceLabel: 'Facebook · Cashpital รับจำนอง รับขายฝาก', brand, subtype: 'social_fb', facts: '' })
+  assert.equal(r.ok, true, r.error)
+  assert.doesNotMatch(r.draft.caption, /Cashpital/)
+  assert.match(r.draft.caption, /เพจ เพจหนึ่ง โพสต์เรื่อง/)
+  assert.doesNotMatch(r.draft.headline, /Cashpital/)
+  // คำละตินของชื่อเพจหลุดมาเดี่ยว ๆ (ไม่มีส่วนไทย) ก็ต้องถูกลบ · คำละตินทั่วไปอย่าง Facebook/AssetX ไม่โดน
+  const r2 = parseDraft({ headline: 'Cashpital บอกอะไร', caption: longBody('โพสต์ของ Cashpital พูดถึงเอกสารก่อนทำสัญญา ซึ่งต้องดูเอกสารจริงของแต่ละกรณี'), cta: 'ทักแชต AssetX Estate ส่งข้อมูลทรัพย์มาให้ประเมินเบื้องต้นได้ ปิดข้อมูลส่วนบุคคลได้', hashtags: [], needs_check: [] }, { policy: 'no_cite', sourceLabel: 'Facebook · Cashpital รับจำนอง รับขายฝาก', brand, subtype: 'social_fb', facts: '' })
+  assert.equal(r2.ok, true, r2.error)
+  assert.doesNotMatch(`${r2.draft.headline}\n${r2.draft.caption}`, /Cashpital/)
+  assert.match(r2.draft.caption, /AssetX Estate/)
+})
+
 test('buildDraftPrompt: ไอเดียที่มีแค่หัวข้อ (⚠️) → โหมดความรู้ทั่วไป ไม่มีชื่อช่อง ไม่มีแฮชแท็กจากชื่อคลิป', () => {
   const idea = { source: 'youtube', source_label: 'Antonio Attorney', subtype: 'market', title: 'เอาคอนโดไปจำนองกู้เงิน ทำไมได้วงเงินน้อยกว่าที่คิด? #จำนองคอนโด', summary: '⚠️ ยังไม่รู้เนื้อหาจริงของคลิป · ช่องประเภท expert · ยอดดูตอนเก็บ 811', audience: ['B', 'C', 'D'] }
   const { prompt, policy, format } = buildDraftPrompt({ idea, angle: { label: 'ข่าววงเงินจำนองคอนโด', brief: 'อธิบายปัจจัยที่ส่งผลต่อวงเงิน' }, brand })
