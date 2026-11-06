@@ -70,13 +70,14 @@
     },
     {
       "id": "chrome-relaunch-with-flags",
-      "done": false,
+      "done": true,
       "text": "ปิด Chrome ทุกหน้าต่าง แล้วเปิดใหม่จากไอคอน \"HR (Research) - Chrome\" บนเดสก์ท็อป (หรือ DivisionX / Mazino ที่มีค่าเหมือนกัน) ก่อนเปิดหน้าต่าง Chrome อื่น — ตรวจ 6 พ.ย. 17:15: Chrome ที่เปิดอยู่ไม่มีค่ากันหยุดวาด ตัวเฝ้าเพจจึงอ่านได้เพจละ 1 โพสต์ · ไอคอน Google Chrome ตัวหลักยังไม่มีค่า · หลังเปิดใหม่ รอบ 21:00 (หรือ node scripts/research-social.mjs run) จะอ่านได้ครบ",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-06T11:55:17.061Z"
     },
     {
       "id": "chrome-shortcut-flags",
-      "done": false,
+      "done": true,
       "text": "จะให้ Claude ใส่ค่ากันหยุดวาดในไอคอน Google Chrome ตัวหลัก (Public Desktop + Start Menu) ด้วยไหม? ตอนนี้มีเฉพาะไอคอนแยกโปรไฟล์ 3 อันที่ DVX ใส่ไว้ 3 พ.ย. — ค่าติดเฉพาะ Chrome process แรกที่เปิด เปิดจากไอคอนตัวหลักหรือจากแอปอื่น = ไม่มีค่า",
       "owner": "decide",
       "options": [
@@ -96,7 +97,11 @@
           "label": "ตั้ง task เปิด Chrome พร้อมค่าตอนล็อกอิน"
         }
       ],
-      "recommended": "a"
+      "recommended": "a",
+      "done_at": "2026-11-06T11:56:04.237Z",
+      "choice": "a",
+      "choice_note": null,
+      "choice_at": "2026-11-06T11:56:00.727Z"
     },
     {
       "id": "ad-library-method",
