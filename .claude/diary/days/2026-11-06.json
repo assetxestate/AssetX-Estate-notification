@@ -80,6 +80,8 @@
       "done": true,
       "text": "จะให้ Claude ใส่ค่ากันหยุดวาดในไอคอน Google Chrome ตัวหลัก (Public Desktop + Start Menu) ด้วยไหม? ตอนนี้มีเฉพาะไอคอนแยกโปรไฟล์ 3 อันที่ DVX ใส่ไว้ 3 พ.ย. — ค่าติดเฉพาะ Chrome process แรกที่เปิด เปิดจากไอคอนตัวหลักหรือจากแอปอื่น = ไม่มีค่า",
       "owner": "decide",
+      "choice": "a",
+      "done_at": "2026-11-06T11:56:04.237Z",
       "options": [
         {
           "id": "a",
@@ -97,11 +99,9 @@
           "label": "ตั้ง task เปิด Chrome พร้อมค่าตอนล็อกอิน"
         }
       ],
-      "recommended": "a",
-      "done_at": "2026-11-06T11:56:04.237Z",
-      "choice": "a",
+      "choice_at": "2026-11-06T11:56:00.727Z",
       "choice_note": null,
-      "choice_at": "2026-11-06T11:56:00.727Z"
+      "recommended": "a"
     },
     {
       "id": "ad-library-method",
@@ -196,9 +196,10 @@
     },
     {
       "id": "chrome-exit-fully",
-      "done": false,
+      "done": true,
       "text": "ติ๊ก \"เปิด Chrome ใหม่\" แล้ว แต่ตรวจ 19:05: chrome.exe ตัวหลักยังเป็นตัวเดิมที่เปิดตั้งแต่ 30 ต.ค. และไม่มีค่ากันหยุดวาด — น่าจะเพราะ Chrome ตั้ง \"ให้แอปทำงานเบื้องหลังต่อเมื่อปิด Chrome\" ปิดหน้าต่างหมดแล้วโปรเซสยังอยู่ เปิดจากไอคอนใหม่ก็ใช้โปรเซสเดิม → ต้องออกจาก Chrome ให้หมดจริง: คลิกขวาไอคอน Chrome ในถาดระบบ (มุมขวาล่าง) → Exit (หรือ Task Manager จบ Google Chrome ทุกตัว) แล้วค่อยเปิดจากไอคอน \"HR (Research) - Chrome\" · เช็กได้ด้วย node scripts/research-social.mjs status (ยังไม่มีบรรทัดเช็กค่า — ให้ Claude ตรวจให้ก็ได้)",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-06T12:38:46.086Z"
     },
     {
       "id": "chrome-shortcut-flags-admin",
