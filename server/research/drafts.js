@@ -1,0 +1,607 @@
+// ร่างโพสต์เต็ม (headline · caption · cta · hashtags) จาก "ข้อเท็จจริงที่สำรวจมา + มุมเล่าที่ AI เสนอ" — ทำล่วงหน้าในรอบรีเสิร์ช
+// เก็บไว้ที่ angles[i].draft ของแถว marketing_ideas (คอลัมน์ jsonb เดิม ไม่ต้องแก้ตาราง) → ปุ่ม "ร่างโพสต์" บนหน้า /marketing ใช้ร่างนี้ทันที
+//
+// ทำไมต้องมี (6 พ.ย. 2569): ก่อนหน้านี้แคปชั่นมาจากเทมเพลตตายตัว 6 ชุด (src/lib/marketing-model/topics.js) เลือกจากคำในชื่อไอเดีย
+// ไอเดียขายฝาก 3 เรื่องที่ต่างกันคนละขั้วได้โพสต์เหมือนกัน ~90% และข้อเท็จจริงที่สำรวจมา (summary) ไม่เคยไปถึงแคปชั่นเลย
+//
+// กติกาเดิมทั้งหมดยังใช้: ล้างข้อมูลบุคคลก่อนเข้า prompt (pii.js) · นโยบายเครดิต cite/no_cite (angles.js) · กติกาต่อ subtype (SUBTYPE_NOTES)
+// · ด่านคำต้องห้ามของ marketing-model (rules.js) ตรวจซ้ำ "หลัง" AI เสมอ — ติด block = ทิ้งร่างแล้วลองใหม่ 1 ครั้ง
+// AI ได้แค่เล่า: ไม่มีตัวเลข/วันที่/สถิติที่ไม่อยู่ในข้อเท็จจริง · ไอเดียที่มีแค่หัวข้อ (summary ⚠️) เขียนเป็นความรู้ทั่วไป ห้ามอ้างคลิป/ข่าว
+import { scrub, PII_RULES } from './pii.js'
+import { ideaContextForPrompt, noteFor, audienceLines } from './angles.js'
+import { COMPLIANCE_BLOCK } from '../../src/lib/marketing-model/prompts.js'
+import { checkText } from '../../src/lib/marketing-model/rules.js'
+import { splitHeadline } from '../../src/lib/marketing-model/index.js'
+import { similarity } from '../../src/lib/marketing-model/scoring.js'
+
+// ร่างสองมุมของเรื่องเดียวกันคล้ายกันเกินนี้ = เขียนซ้ำ (เจอจริง 6 พ.ย. 2569: 3 มุมของไอเดียคอนโดได้ "1. ทำเล 2. ราคา 3. สภาพตลาด" เหมือนกันหมด)
+export const DUPLICATE_SIMILARITY = 0.55
+// ลำดับโครงสำรองเมื่อโครงที่เข้ากับมุมถูกใช้ไปแล้วในเรื่องเดียวกัน — บังคับให้ 3 มุมมีโครงต่างกันจริง
+const FORMAT_ROTATION = ['explain', 'checklist', 'qa', 'case']
+
+export const DRAFT_MIN_CHARS = 320
+export const DRAFT_MAX_CHARS = 2400
+export const HEADLINE_MAX = 30
+
+// ชุดกฎลบข้อมูลบุคคลสำหรับ "ข้อความโพสต์" — ชุดเต็มจับ "คุณ" + คำถัดไปเป็นชื่อคน (ออกแบบไว้ล้างสรุปข่าว)
+// แต่โพสต์การตลาดพูดกับ "คุณ" ตลอด: "สิทธิไถ่ถอนของคุณ ข้อมูลนี้…" เคยถูกลบเป็น [ลบ] กลางประโยค (6 พ.ย. 2569) → คงเฉพาะคำนำหน้าชื่อจริง
+export const DRAFT_PII_RULES = PII_RULES.map((rule) => (rule.kind === 'titled_name'
+  ? { kind: 'titled_name', re: /(?:นาย|นาง|นางสาว)\s+[ก-๙]{2,}(?:\s+[ก-๙]{2,})?/g }
+  : rule))
+export const scrubDraftText = (text) => scrub(text, DRAFT_PII_RULES)
+
+// ข้อเท็จจริงบอกแค่ "มีการประชุม/แถลง" แต่โมเดลสรุปทิศทางดอกเบี้ยเอง (เจอจริง: "การปรับอัตราดอกเบี้ยครั้งนี้" ทั้งที่ไม่มีมติในข้อเท็จจริง)
+const RATE_CLAIM_RE = /ได้ปรับ(ขึ้น|ลด)?(อัตรา)?ดอกเบี้ย|มีมติ|ประกาศ(ปรับ|ลด|ขึ้น|คง)(อัตรา)?ดอกเบี้ย|ปรับ(อัตรา)?ดอกเบี้ยครั้งนี้|(ลด|ขึ้น|คง)(อัตรา)?ดอกเบี้ย(นโยบาย)?(ลง|ขึ้น)?(เป็น|ที่|มาอยู่|เหลือ)|ดอกเบี้ย(ขึ้น|ลง)แล้ว/
+const FACTS_RATE_RE = /(ขึ้น|ลด|คง)(อัตรา)?ดอกเบี้ย|ดอกเบี้ย(ขึ้น|ลง)|มติ(ให้|คง|ลด|ขึ้น)/
+// สิ่งที่ผู้ตรวจอิสระ (6 พ.ย. 2569) จับได้แต่ regex คำต้องห้ามไม่จับ: แบรนด์เป็นพระเอก "ทีมงานของเราทำให้…ปิดหนี้ได้" = รับประกันผลโดยอ้อม
+const HERO_RE = /(ทีมงาน|ทีมของเรา|ทางเรา|เรา)[^\n]{0,40}(ทำให้|ช่วยให้)[^\n]{0,40}(ปิดหนี้|ได้เงิน|ขายได้|เหลือเงิน|สำเร็จ|อนุมัติ|ผ่าน)/
+// ผลลัพธ์ทางการเงินที่ต้องมีเงื่อนไขกำกับ (พาดหัวห้ามมีเลย) · เงื่อนไข = คำที่บอกว่า "ขึ้นกับ"
+export const OUTCOME_RE = /ปิดหนี้(หมด|ได้|เหลือ)|เหลือเงิน|มีเงินเหลือ|ได้เงินก้อน|ได้เงินแน่|ขายได้ราคา(ดี|สูง)|รวย|กำไรแน่|ผลตอบแทนที่ดี/
+const CONDITION_RE = /ถ้า|หาก|เมื่อ|ขึ้นกับ|ขึ้นอยู่กับ|อาจ|มีโอกาส|ไม่รับประกัน|ต่อเมื่อ|กรณี/
+// คำสัญญา/คำปลอบที่ผิดจริงในธุรกิจนี้ (เจอจริงรอบ 4: "ขายฝาก…ไม่ต้องกังวลเรื่องการยึดทรัพย์" ทั้งที่กรรมสิทธิ์โอนทันที · "ให้คุณได้รับผลตอบแทนที่ดีที่สุด")
+const FALSE_COMFORT_RE = /ไม่ต้องกังวล(เรื่อง)?(การ)?(ยึด|เสีย|สูญ)ทรัพย์|ไม่มีความเสี่ยง|ผลตอบแทน(ที่)?(ดีที่สุด|สูงสุด|แน่นอน)|ไม่มีทางเสีย/
+// คำทั่วไปที่เป็นตัวอักษรละตินแต่ไม่ใช่ชื่อบริษัท/โครงการ (ไม่นับเป็นการเอ่ยชื่อจากต้นทาง)
+const GENERIC_LATIN = new Set(['mrt', 'bts', 'arl', 'npa', 'ai', 'sme', 'smes', 'line', 'facebook', 'youtube', 'pantip', 'google', 'ltv', 'gdp', 'bot', 'q&a', 'faq', 'assetx', 'estate', 'assetxestate'])
+
+// ผู้ตรวจรอบสอง (6 พ.ย. 2569): เหตุการณ์ปฏิทินที่ยังไม่เกิดถูกเขียนเป็นเกิดแล้ว · พาดหัว "ดอกเบี้ยคงที่ 1%" บนเพจรับจำนองอ่านเป็นข้อเสนอของแบรนด์ · วันที่ ค.ศ. หลุดในโพสต์ไทย · CTA เป็นเนื้อหา/นอกบริการ
+const PAST_EVENT_RE = /มีผลแล้ว|เริ่มบังคับใช้|บังคับใช้แล้ว|ประกาศแล้ว|เผยแล้ว|เผยแพร่แล้ว|ออกมาแล้ว|มีผลบังคับใช้แล้ว/
+const AGENCY_RE = /ธนาคารแห่งประเทศไทย|ธปท\.?|กรมที่ดิน|กรมธนารักษ์|กรมบังคับคดี|กระทรวงการคลัง|สำนักงานเศรษฐกิจการคลัง|ธอส\.?|ครม\.?/
+const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+const CTA_ACTION_RE = /ทัก|ส่ง|คอมเมนต์|ปรึกษา|สอบถาม|ติดตาม|แชต|บอก|ถาม|ลอง|เช็ก|ตรวจ/
+const CTA_SERVICE_RE = /ทรัพย์|เอกสารสิทธิ์|ขายฝาก|จำนอง|ฝากขาย|ซื้อ|ขาย|ประเมิน|ราคา|ภาระ|คอมเมนต์|โฉนด|ห้องชุด|คอนโด|บ้าน|ที่ดิน|สถานการณ์/
+
+// วันที่ ค.ศ./ISO ในโพสต์ไทย → "28 ต.ค. 2569" (ข้อเท็จจริงจากตัวเก็บ/ปฏิทินมาเป็น 2026-11-11 (ค.ศ.) แล้วโมเดลลอกต่อ)
+export function thaiDates(text) {
+  const fmt = (d, m, y) => {
+    const mi = Number(m) - 1
+    if (mi < 0 || mi > 11 || Number(d) < 1 || Number(d) > 31) return null
+    return `${Number(d)} ${TH_MONTHS[mi]} ${Number(y) + 543}`
+  }
+  return String(text || '')
+    .replace(/\b(20\d{2})-(\d{2})-(\d{2})\b/g, (all, y, m, d) => fmt(d, m, y) || all)
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/g, (all, d, m, y) => fmt(d, m, y) || all)
+    .replace(/\s*\(ค\.ศ\.\)/g, '')
+}
+
+// CTA ต้องเป็นประโยคชวนทำที่เกี่ยวกับบริการ — โมเดลเคยส่งข้อ 4 ของเช็กลิสต์มาเป็น CTA และชวน "ปรึกษาผลกระทบต่อธุรกิจของคุณ" ซึ่งไม่ใช่บริการเรา
+export function validCta(cta) {
+  const s = String(cta || '').replace(/\s+/g, ' ').trim()
+  // ต้องชวนมาหาเรา (แชต/คอมเมนต์/ทีม/ชื่อแบรนด์) — "ปรึกษาสำนักงานที่ดิน/ทนาย" ส่งคนอ่านไปที่อื่นโดยไม่มีแบรนด์ · และต้องไม่ใช่บริการที่เราไม่มี ("วางแผนการเงิน" "วิเคราะห์ความเสี่ยงตลาด") (ผู้ตรวจรอบสอง)
+  if (/วางแผนการเงิน|ธุรกิจของคุณ|วิเคราะห์ความเสี่ยง|ที่ปรึกษาการเงิน|พอร์ต/.test(s)) return false
+  return s.length >= 12 && s.length <= 160 && !/^\d+[.)]/.test(s) && !/[:：]\s*\S/.test(s.slice(0, 40)) && CTA_ACTION_RE.test(s) && CTA_SERVICE_RE.test(s) && /assetx|แชต|คอมเมนต์|ทีม/i.test(s)
+}
+export function defaultCta(brand = {}, audience = []) {
+  const examples = brand.cta_examples && typeof brand.cta_examples === 'object' ? brand.cta_examples : {}
+  const code = (Array.isArray(audience) ? audience : []).find((c) => typeof examples[c] === 'string')
+  return (code && examples[code]) || examples.A || `ส่งรูปเอกสารสิทธิ์มาทางแชต (ปิดชื่อและเลขบัตรก่อนได้) ทีม ${brand.brand || 'AssetX Estate'} ช่วยประเมินเบื้องต้นให้`
+}
+
+// summary ของตัวเก็บ/ปฏิทินปน "คำสั่งถึงผู้เขียน" ไว้กับข้อเท็จจริง (เช่น "ห้ามทำนายทิศทางดอกเบี้ย" "ตรวจตัวประกาศก่อนโพสต์") → แยกออก ไม่ให้โมเดลเอาคำสั่งไปเล่าเป็นข้อเท็จจริง
+const WRITER_NOTE_RE = /^(ห้าม|ต้องยืนยัน|ตรวจ[^\n]*ก่อนโพสต์|เล่าแบบ|ใช้เล่า|อ่าน[^\n]*ก่อนเขียน|แหล่ง:\s*ปฏิทิน|\(สรุปจากคำโปรย|ตัวเลขห้าม|ใช้วิเคราะห์)/
+export function splitFactsNotes(summary = '') {
+  const parts = String(summary || '').replace(/^📌\s*/, '').split(/\s*·\s*|\n+/).map((s) => s.trim()).filter(Boolean)
+  return { facts: parts.filter((p) => !WRITER_NOTE_RE.test(p)), notes: parts.filter((p) => WRITER_NOTE_RE.test(p)) }
+}
+
+// ชื่อบริษัท/โครงการ/แบรนด์อื่นที่โผล่ในข้อเท็จจริงของแหล่งที่ห้ามอ้าง (กระทู้/คลิป/เพจ) — ถ้าหลุดลงโพสต์ = เล่าเคสของเขา/พาดพิงบริษัทอื่น
+export function foreignNamesIn(facts = '') {
+  const names = new Set()
+  for (const m of String(facts || '').matchAll(/[A-Za-z][A-Za-z.&'-]{2,}(?:\s+[A-Za-z][A-Za-z.&'-]{1,})*/g)) {
+    const name = m[0].trim()
+    if (name.length < 3 || GENERIC_LATIN.has(name.toLowerCase())) continue
+    names.add(name)
+  }
+  return [...names]
+}
+const PRONOUN_RE = /คุณผู้ใช้บริการ|ท่านลูกค้า|ลูกค้าของเรา/
+const FILLER_OPENER_RE = /^(วันนี้|ในวันนี้|หลายท่าน|หลายคน)/
+
+// บรรทัดที่ขึ้นต้นเหมือนกัน ≥ 3 ครั้ง = ประโยคแม่แบบถมช่อง (เจอจริง: "ถ้าข้ามข้อนี้ อาจทำให้ขายไม่ได้" ซ้ำ 4 ใน 5 ข้อ) · ไม่นับเลขข้อและป้าย ถาม:/ตอบ:
+export function repeatedLinePrefix(caption, { minLines = 3, prefixLen = 12 } = {}) {
+  const counts = new Map()
+  for (const raw of String(caption || '').split('\n')) {
+    const line = raw.trim().replace(/^\d+[.)]\s*/, '').replace(/^(ถาม|ตอบ|Q|A)\s*[:：]\s*/i, '')
+    if (line.length < 15) continue
+    const key = line.slice(0, prefixLen)
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+  for (const [prefix, count] of counts) if (count >= minLines) return { prefix, count }
+  return null
+}
+
+// รูปแบบโพสต์ — เลือกจากชื่อ/คำอธิบายมุมเล่า ความต่างของโครงนี่แหละที่ทำให้ 3 มุมของไอเดียเดียวไม่ออกมาหน้าตาเดียวกัน
+export const DRAFT_FORMATS = {
+  checklist: {
+    label: 'เช็กลิสต์',
+    test: /เช็กลิสต์|เช็คลิสต์|รายการตรวจ|checklist/i,
+    guide: 'เปิดด้วยประโยคเดียวที่บอกสถานการณ์ของคนอ่านและว่ามีกี่ข้อต้องเช็ก (N = 4–6 · เขียนประโยคเปิดด้วยคำของตัวเอง ไม่ต้องเป็นแม่แบบ "ก่อน… มี N ข้อต้องเช็ก" ทุกครั้ง) แล้วไล่เป็น "1. ชื่อข้อ: คำอธิบาย" แต่ละข้อบอกว่าเช็กอะไร เช็กที่ไหน/จากเอกสารใด และผลถ้าไม่เช็ก (เขียนเป็นประโยคของตัวเอง ต่างกันทุกข้อ ห้ามใช้ประโยคแม่แบบเดิมซ้ำ เช่น "ถ้าข้ามข้อนี้ อาจทำให้ขายไม่ได้") ทุกข้อต้องเป็นสิ่งที่คนอ่านตรวจได้จริง ไม่ใช่ข้อเท็จจริงมหภาคยกมาเป็นหัวข้อ อย่างน้อย 2 ข้อต้องใช้ได้เฉพาะหัวเรื่องนี้ บรรทัดสรุปท้าย (ถ้ามี) ชี้ข้อเดียวพร้อมเหตุผลที่จับต้องได้ ห้ามอ้างว่า "คนมักข้าม" ถ้าไม่มีข้อเท็จจริง',
+  },
+  qa: {
+    label: 'ถามตอบ',
+    test: /ถามตอบ|ถาม-ตอบ|คำถาม|q&a|faq/i,
+    guide: 'เขียนเป็นคู่ "ถาม:" / "ตอบ:" 3–4 คู่ คำถามต้องเป็นประโยคที่คนกลุ่มนี้พิมพ์ถามจริงในแชต ตอบสั้น ตรง ไม่อ้อม ถ้าคำตอบขึ้นกับเคสให้บอกว่าขึ้นกับอะไร',
+  },
+  case: {
+    label: 'เคสสมมุติ',
+    test: /เคสสมม|เคสตัวอย่าง|สมมุติ|สมมติ/i,
+    guide: 'เล่าเคสสมมุติ 1 เคสเป็นร้อยแก้วต่อเนื่อง 3–4 ย่อหน้า บรรทัดแรกต้องมีคำว่า "เคสสมมุติ" ชัด ๆ ตัวละครเรียกตามบทบาท เช่น "เจ้าของห้อง" "เขา" (ห้ามเรียก "คุณผู้ใช้บริการ" "ท่านลูกค้า" "ลูกค้าของเรา") ไม่มีชื่อ ไม่มีทำเลเจาะจง ไม่มีตัวเลขเงิน แสดง "กลไก" ว่าอะไรทำให้ผลออกมาแบบนั้น และเล่าทั้งกรณีที่ได้และกรณีที่ไม่ได้ (เช่น ถ้าราคาขายต่ำกว่ายอดหนี้ก็ต้องหาเงินส่วนต่าง) ลำดับเรื่อง: สถานการณ์ตั้งต้น → จุดที่เกือบพลาด → สิ่งที่ตัวละครตรวจหรือทำเองแล้วรอด → บทเรียน 1 บรรทัด (ลำดับนี้คือโครงในใจ ห้ามเขียนคำว่า "สถานการณ์:" "จุดที่เกือบพลาด:" เป็นหัวข้อในโพสต์) ห้ามเล่าว่า "ทีมงานของเรา/เรา ทำให้หรือช่วยให้…ได้" ห้ามเล่าเป็นเคสสำเร็จของแบรนด์ ปิดท้ายด้วยประโยค "เคสสมมุติเพื่ออธิบายหลักการ ไม่ใช่ลูกค้าจริง ผลลัพธ์ต่างกันทุกกรณี"',
+  },
+  warning: {
+    label: 'เตือนภัย/วิธีป้องกัน',
+    // เฉพาะเรื่องโกง/หลอก — คำกว้างอย่าง "ความเสี่ยง" "ระวัง" เคยพามุม "ประเมินความเสี่ยงวงเงิน" มาเข้าโครงเตือนมิจฉาชีพผิดเรื่อง (6 พ.ย. 2569)
+    test: /เตือนภัย|มิจฉาชีพ|หลอก|โกง|ปลอม|สัญญาณเตือน|แก๊ง/i,
+    guide: 'เปิดด้วยสัญญาณเตือน 1 อย่างที่เห็นได้จริงในเรื่องนี้ → ทำไมอันตราย (สั้น) → วิธีป้องกัน 3–4 ขั้นที่ทำได้เองและเกี่ยวกับเรื่องนี้โดยตรง (เขียนเป็นประโยคของตัวเอง ไม่คัดลอกรายการจากที่ใด) → สิ่งที่ควรทำทันทีถ้าเจอ ห้ามเอ่ยชื่อผู้ต้องหา ผู้เสียหาย หรือเพจใด',
+  },
+  news: {
+    label: 'อัปเดตพร้อมที่มา',
+    test: /อัปเดต|ข่าว|มาตรการ|ประกาศ|มีผล|ปรับ(ใหม่|ขึ้น|ลด)|เปลี่ยนแปลง|ข้อมูลใหม่/i,
+    needsFacts: true,
+    guide: 'เปิดด้วย "อะไรเปลี่ยน" + วันที่มีผลตามข้อเท็จจริง → ใครกระทบและกระทบอย่างไร (แยกเป็นกลุ่ม) → สิ่งที่ควรเตรียม → ปิดด้วยบรรทัด "ที่มา: …" ตามที่กำหนด ห้ามเติมตัวเลขหรือเงื่อนไขที่ไม่อยู่ในข้อเท็จจริง',
+  },
+  explain: {
+    label: 'ให้ความรู้',
+    test: /./,
+    guide: '3 ประเด็นที่เจาะจงกับเรื่องนี้โดยเฉพาะ (ไม่ใช่ประเด็นทั่วไปที่ใช้กับทุกเรื่องได้) และต้องสอดคล้องกับคำอธิบายมุมเล่า (มุม "วางแผนการเงิน" ประเด็นต้องเป็นเรื่องเงิน) แต่ละประเด็นเขียนเป็น "1. ชื่อประเด็น: คำอธิบาย" บอกว่าคืออะไร · สำคัญกับคนอ่านอย่างไร · ตรวจหรือเตรียมอะไรได้จริง ห้ามสลับบทบาทผู้ซื้อ/ผู้ขายกลางโพสต์ ห้ามบรรทัดย่อยที่ทวนชื่อประเด็นซ้ำ',
+  },
+}
+
+export function draftFormatFor(angle = {}, { hasFacts = true } = {}) {
+  const text = `${angle.label || ''} ${angle.brief || ''}`
+  for (const [key, spec] of Object.entries(DRAFT_FORMATS)) {
+    if (key === 'explain') continue
+    if (spec.test.test(text)) return spec.needsFacts && !hasFacts ? 'explain' : key
+  }
+  return 'explain'
+}
+
+// โครงที่จะใช้จริง: โครงตามมุม แต่ถ้ามุมอื่นของเรื่องเดียวกันใช้โครงนั้นไปแล้ว หยิบโครงถัดไปที่ยังว่าง (news/warning ไม่อยู่ในรอบสำรอง)
+export function pickDraftFormat(angle = {}, { hasFacts = true, usedFormats = [] } = {}) {
+  const natural = draftFormatFor(angle, { hasFacts })
+  const used = new Set(usedFormats)
+  if (!used.has(natural)) return natural
+  return FORMAT_ROTATION.find((key) => !used.has(key)) || natural
+}
+
+// ประเด็น (หัวข้อย่อยที่มีเลขนำ) ของร่างที่มีแล้ว — ส่งเข้า prompt เป็น "ห้ามใช้ซ้ำ" ให้มุมถัดไปหาประเด็นอื่นของเรื่องเดียวกัน
+export function usedPoints(captions = []) {
+  const out = []
+  for (const caption of captions) {
+    for (const line of String(caption || '').split('\n')) {
+      const m = line.match(/^\s*\d+[.)]\s*(\S.*)$/)
+      if (!m) continue
+      const point = m[1].split(/[:：]| - | — /)[0].replace(/\*\*/g, '').trim()
+      if (point.length >= 2 && point.length <= 30 && !out.includes(point)) out.push(point)
+    }
+  }
+  return out
+}
+
+// "มีข้อเท็จจริง" = summary ที่ถอดจากต้นทางแล้ว (ขึ้นต้น 📌 — จากตัวเก็บ/ปฏิทิน/ขั้น enrich) หรือเจ้าของวางเอง (manual)
+// ⚠️ = ยังไม่รู้เนื้อหาจริง · ข้อความกำกับภายในอย่าง "อ่านมติจากลิงก์ก่อนเขียน" ไม่นับ — ผู้ตรวจอิสระ 6 พ.ย. 2569 พบว่าร่างจากไอเดียแบบนี้เดาเอกสาร/ขั้นตอนผิดบริบทไทย
+export function hasResearchFacts(idea = {}) {
+  const s = String(idea.summary || '').trim()
+  if (!s || /^⚠️/.test(s)) return false
+  if (/^📌/.test(s)) return true
+  return idea.source === 'manual'
+}
+
+export function needsDraft(idea = {}) {
+  return Array.isArray(idea.angles) && idea.angles.length > 0 && idea.angles.some((a) => a && !a.draft?.caption)
+}
+
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// ชื่อไอเดียจาก YouTube มีแฮชแท็กติดมา · ไอเดียที่ห้ามอ้างแหล่ง ชื่อไอเดียก็ต้องไม่มีชื่อช่อง/เพจ
+export function cleanTitleForPrompt(idea = {}, policy = 'no_cite') {
+  let title = scrub(idea.title || '').replace(/(^|\s)#[\p{L}\p{M}\p{N}_]+/gu, '$1').replace(/\s+/g, ' ').trim()
+  if (policy === 'no_cite' && idea.source_label) title = title.replace(new RegExp(escapeRegExp(idea.source_label), 'gi'), '').replace(/\s+/g, ' ').trim()
+  return title
+}
+
+// เลน "ปฏิทิน" ใช้ source_label = ปฏิทินเหตุการณ์ (ของเราเอง) — อ้างเป็นที่มาในโพสต์ไม่ได้ ต้องอ้างหน่วยงานที่ออกประกาศแทน
+export function isInternalSourceLabel(label = '') {
+  return /ปฏิทิน/.test(String(label || ''))
+}
+
+// ชื่อแหล่งที่ใส่ท้ายโพสต์ได้ (นโยบาย cite เท่านั้น และไม่ใช่ป้ายภายใน)
+export function citeLabelFor(idea = {}, policy = 'no_cite') {
+  const label = String(idea.source_label || '').trim()
+  return policy === 'cite' && label && !isInternalSourceLabel(label) ? label : ''
+}
+
+// ขั้นตอนแยกตามบริการ (brand.steps_by_service) — ขั้นตอนขายฝาก/จำนองเคยถูกยกไปใส่โพสต์เรื่องขายคอนโดและสลับลำดับ (ผู้ตรวจ 6 พ.ย. 2569)
+function stepsLines(brand = {}) {
+  const byService = brand.steps_by_service && typeof brand.steps_by_service === 'object' ? brand.steps_by_service : null
+  if (byService && Object.keys(byService).length) {
+    return [
+      '- ขั้นตอนตามบริการ (ใช้เป็นข้อเท็จจริงอ้างอิง ไม่ใช่โครงโพสต์ · ห้ามสลับลำดับ · ใช้ชุดที่ตรงกับบริการที่โพสต์พูดถึง: โพสต์เรื่องขายหรือซื้อทรัพย์ห้ามเอาขั้นตอนขายฝาก/จำนอง เช่น "วงเงิน" "สินไถ่" มาใส่):',
+      ...Object.entries(byService).map(([service, steps]) => `  · ${service}: ${(Array.isArray(steps) ? steps : []).join(' → ')}`),
+    ]
+  }
+  return [`- ขั้นตอนจริง (ขายฝาก/จำนอง · ใช้เป็นข้อเท็จจริงอ้างอิง ห้ามสลับลำดับ): ${(brand.steps || []).join(' → ') || 'ไม่ระบุ'}`]
+}
+
+// ตัวอย่างชวนทำต่อแยกตามกลุ่ม (brand.cta_examples) — เดิมทุกร่างลงท้ายประโยคเดียวกันคำต่อคำ และคำว่า "ปิดข้อมูลส่วนบุคคล" คนอ่านไม่เข้าใจ
+function ctaGuide(brand = {}, brandName = 'AssetX Estate') {
+  const examples = brand.cta_examples && typeof brand.cta_examples === 'object'
+    ? Object.entries(brand.cta_examples).filter(([k]) => !k.startsWith('_'))
+    : []
+  if (!examples.length) return `เช่น "ส่งรูปเอกสารสิทธิ์มาทางแชต (ปิดชื่อและเลขบัตรก่อนได้) ทีม ${brandName} ช่วยประเมินเบื้องต้นให้" หรือชวนคอมเมนต์ถ้าเป็นโพสต์ชวนคุย`
+  return `ตัวอย่างต่อกลุ่มผู้อ่าน (เลือกอันเดียวที่ตรงกลุ่มของโพสต์นี้ แล้วเขียนใหม่ให้เข้ากับเรื่อง): ${examples.map(([k, v]) => `${k}: "${v}"`).join(' · ')}`
+}
+
+export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings = [], avoidPoints = [], avoidHeadlines = [], usedFormats = [], hint = '' }) {
+  const ctx = ideaContextForPrompt(idea, brand)
+  if (ctx.policy === 'cite' && isInternalSourceLabel(idea.source_label)) {
+    ctx.sourceLine = 'ที่มา: อ้างหน่วยงานที่ออกประกาศตามที่ระบุในข้อเท็จจริง (เช่น ธปท. กรมที่ดิน กรมธนารักษ์) พร้อมวันที่ — ห้ามเขียนคำว่า "ปฏิทินเหตุการณ์" หรือ "ปฏิทินในระบบ" ในโพสต์'
+  }
+  const facts = hasResearchFacts(idea)
+  const format = pickDraftFormat(angle, { hasFacts: facts, usedFormats })
+  const spec = DRAFT_FORMATS[format]
+  const brandName = brand.brand || 'AssetX Estate'
+  const forbidden = (brand.forbidden_phrases || []).join(' · ')
+  const audienceCodes = Array.isArray(idea.audience) && idea.audience.length ? idea.audience : []
+
+  const system = [
+    `คุณคือคนเขียนโพสต์ Facebook ของ "${brandName}"${brand.tagline ? ` (${brand.tagline})` : ''} ธุรกิจขายฝาก/จำนอง/นายหน้าอสังหาริมทรัพย์ในไทย`,
+    'หน้าที่: เขียนโพสต์ 1 ชิ้นจาก "ข้อเท็จจริงที่มี" และ "มุมเล่า" ที่กำหนดให้เท่านั้น เนื้อหาต้องผูกกับเรื่องนี้โดยเฉพาะ — ถ้าเปลี่ยนชื่อเรื่องแล้วโพสต์ยังใช้ได้ แปลว่ายังกว้างเกินไป',
+    '',
+    'ความจริงของแบรนด์ (ใช้เป็นความรู้พื้นหลัง เลือกหยิบเฉพาะที่เกี่ยวกับเรื่องนี้ ห้ามแต่งเพิ่ม และห้ามคัดลอกรายการด้านล่างมาวางทั้งบรรทัด เช่น ขั้นตอนที่มีลูกศร → หรือคำที่คั่นด้วย ·):',
+    `- บริการ: ${(brand.services || []).join(', ') || 'ขายฝาก, จำนอง'}`,
+    `- พื้นที่ให้บริการ: ${(brand.service_area || []).join(', ') || 'ไม่ระบุ'}`,
+    `- ประเภททรัพย์ที่รับ: ${(brand.property_types || []).join(', ') || 'ไม่ระบุ'}`,
+    ...stepsLines(brand),
+    `- ต้องพูดเสมอเมื่อเกี่ยวข้อง (ต้องอยู่ในประโยคเต็มที่บอกคนอ่านว่าต้องรู้หรือทำอะไร ห้ามแปะเป็นหัวข้อย่อยลอย ๆ): ${(brand.must_say || []).join(' · ') || '-'}`,
+    ...(Array.isArray(brand.domain_notes) && brand.domain_notes.length
+      ? ['', 'ความรู้โดเมนที่ยึดได้ (เอกสารและกลไกตามแบบไทย — ใช้แทนการเดา):', ...brand.domain_notes.map((n) => `- ${n}`)]
+      : []),
+    '',
+    'กติกาเด็ดขาดของแบรนด์:',
+    `- ห้ามใช้คำเหล่านี้หรือความหมายเดียวกัน: ${forbidden}`,
+    '- ดอกเบี้ย/สินไถ่/ผลตอบแทนตามกฎหมายห้ามเกิน 15% ต่อปี และห้ามระบุตัวเลขดอกเบี้ย วงเงิน หรือค่าธรรมเนียมของเรา',
+    '- ห้ามแต่งตัวเลข สถิติ วันที่ ชื่อกฎหมาย หรือข้อเท็จจริงที่ไม่อยู่ใน "ข้อเท็จจริงที่มี" · ไม่แน่ใจให้เขียนว่า "ต้องยืนยันกับหน่วยงาน/สำนักงานที่ดิน"',
+    '- ห้ามอ้างว่าได้รับอนุญาตหรือกำกับโดย ธปท. · ห้ามใช้ข้อมูลส่วนบุคคล เบอร์โทร LINE ลิงก์ เลขโฉนด หรือชื่อบุคคล',
+    '- ห้ามใส่แฮชแท็กในแคปชั่น (ส่งแยกในคีย์ hashtags) · ห้ามใช้เครื่องหมาย ! · อีโมจิไม่เกิน 1 ตัว · ห้ามเปิดประโยคแรกด้วยชื่อแบรนด์',
+    '- เขียนเป็นข้อความธรรมดาสำหรับ Facebook: ห้ามใช้ markdown (** หรือ # นำหน้าหัวข้อ) · หัวข้อย่อยให้เป็นบรรทัดสั้น ๆ หรือตัวเลข 1. 2. 3.',
+    '- รหัสกลุ่มเป้าหมาย (A B C D หรือคำว่า "กลุ่ม B") และคำอธิบายกลุ่มเป้าหมายในวงเล็บ เป็นภาษาภายในของเรา ห้ามคัดลอกลงโพสต์ ให้เรียกคนอ่านตามที่เขาเป็นด้วยคำของตัวเอง เช่น "นักลงทุนที่รับซื้อฝาก" "เจ้าของบ้านที่ต้องการเงินก้อน"',
+    '- ถ้าข้อเท็จจริงบอกแค่ว่า "มีการประชุม/แถลง/ประกาศ" โดยไม่บอกผล ตัวเลข หรือทิศทาง ห้ามสรุปผลเอง (ห้ามเขียนว่าดอกเบี้ยขึ้น ลง หรือคง ห้ามเขียนว่ากฎหมายเปลี่ยน) ให้เขียนว่าติดตามผลจากหน่วยงานได้ที่ไหน และผู้อ่านควรเตรียมอะไรไม่ว่าผลจะเป็นอย่างไร',
+    '- คำว่า "ปฏิทินเหตุการณ์" "ปฏิทินในระบบ" หรือข้อความกำกับภายในอื่น ๆ ในข้อเท็จจริง ห้ามหลุดลงโพสต์ — ที่มาต้องเป็นหน่วยงานหรือสำนักข่าวจริงเท่านั้น',
+    '- ผลลัพธ์ทางการเงิน (ปิดหนี้หมด มีเงินเหลือ ได้เงินก้อน ขายได้ราคาดี) ห้ามอยู่ในพาดหัว และในเนื้อหาต้องมีเงื่อนไขกำกับเสมอ (ถ้า/เมื่อ/ขึ้นกับ) · ห้ามเล่าว่า "ทีมงานของเรา/เรา ทำให้หรือช่วยให้…ได้/สำเร็จ" ซึ่งเป็นการรับประกันผลโดยอ้อม',
+    '- ห้ามประโยคเปิดแบบใบปลิว: "วันนี้จะมาแนะนำ" "หลายท่านอาจ" "หลายคนอาจ" "ดูรายละเอียดด้านล่าง" และห้ามจบประโยคเปิดด้วย "ดังนี้:" · ห้ามสรรพนาม "คุณผู้ใช้บริการ" "ท่านลูกค้า" "ลูกค้าของเรา"',
+    '- ห้ามอ้างพฤติกรรมหรือสถิติ ("คนมัก…" "ส่วนใหญ่" "บ่อยที่สุด") และห้ามคำบ่งเวลา ("ตอนนี้" "ช่วงนี้") ถ้าไม่มีในข้อเท็จจริง',
+    '- รายการในประโยคคั่นด้วยเว้นวรรค (ไม่ใช้จุลภาคแบบอังกฤษ) · แฮชแท็กต้องเป็นคำที่ปรากฏในโพสต์จริง ห้ามใส่ จำนอง/ขายฝาก ถ้าโพสต์ไม่ได้พูดถึงบริการนั้น',
+    '- ข้อเท็จจริงเชิงมหภาค (มติ กนง. เงินเฟ้อ เทคโนโลยี สินเชื่อ) ห้ามต่อยอดเองเป็นผลต่อราคาทรัพย์ ทำเล หรือโอกาสลงทุน เว้นแต่ข้อเท็จจริงพูดถึงอสังหาริมทรัพย์โดยตรง — ให้เล่าตามต้นทาง แล้วเชื่อมกับสิ่งที่คนอ่านทำได้กับบริการ/ขั้นตอน/ค่าใช้จ่ายรวมของเราแทน',
+    '- เหตุการณ์ที่ "วันที่ของเหตุการณ์" ยังไม่ถึง ให้เขียนเป็นอนาคต ("จะ…ในวันที่ …") ห้ามเขียนว่า มีผลแล้ว/ประกาศแล้ว/เผยแล้ว · วันที่ในโพสต์เขียนแบบไทย เช่น "28 ต.ค. 2569" ไม่ใช่ 28/10/2026 หรือ 2026-10-28',
+    `- พื้นที่ให้บริการจริงคือ ${(brand.service_area || []).join(', ') || 'ไม่ระบุ'} — โพสต์เรื่องทรัพย์นอกพื้นที่นี้ให้เป็นความรู้ทั่วไป CTA ห้ามสัญญาว่าทีมจะไปดู/ประเมินทรัพย์ที่นั่น`,
+    '',
+    COMPLIANCE_BLOCK,
+    '',
+    'วิธีเขียน:',
+    '- บรรทัดแรกต้องอ่านเดี่ยว ๆ แล้วรู้ว่าเรื่องนี้เกี่ยวกับอะไรและทำไมควรอ่านต่อ ไม่เกิน 125 ตัวอักษร ห้ามเป็นประโยคเปิดแบบ "หลายคนสงสัยว่า…" หรือ "วันนี้มาคุยเรื่อง…"',
+    '- ความยาวรวม 700–1,400 ตัวอักษร ย่อหน้าสั้น เว้นบรรทัดระหว่างย่อหน้า หนึ่งโพสต์หนึ่งความคิด เขียนถึงคนคนเดียว',
+    '- รูปธรรมชนะนามธรรม: บอกสิ่งที่ผู้อ่านเห็น ตรวจ หรือทำได้จริง แทนคำขยาย',
+    '- ถ้าเนื้อหาเป็นความรู้หรือแตะกฎหมาย ต้องมีบรรทัดกำกับว่า "ข้อมูลนี้เป็นความรู้ทั่วไป ต้องดูเอกสารและข้อเท็จจริงของแต่ละกรณี"',
+    `- ปิดท้ายด้วยการชวนทำต่อ 1 อย่างเท่านั้น (ย่อหน้าสุดท้ายของแคปชั่น) เลือกให้ตรงคนอ่านแล้วเขียนใหม่ด้วยคำของตัวเอง เป็นภาษาที่ลูกค้าเข้าใจ ห้ามลงท้าย "ได้ … ได้" ซ้อนกัน · ${ctaGuide(brand, brandName)}`,
+    '',
+    'ตอบเป็น JSON object เท่านั้น ไม่มีข้อความอื่น:',
+    '{"headline":"พาดหัวสั้น 3–6 คำ (ไม่เกิน 26 ตัวอักษร) เป็นวลีที่จบในตัว — เขียนขึ้นใหม่ ไม่ใช่ตัดบรรทัดแรกของแคปชั่นมาครึ่งประโยค","caption":"แคปชั่นเต็ม ย่อหน้าคั่นด้วยการขึ้นบรรทัดใหม่ตามปกติของ JSON ห้ามมีแฮชแท็กและลิงก์","cta":"ประโยคชวนทำต่อประโยคเดียว (ประโยคเดียวกับย่อหน้าสุดท้าย)","hashtags":["ไม่มี # นำหน้า ไม่เกิน 5"],"needs_check":["เฉพาะสิ่งที่อยู่ในโพสต์นี้จริง ๆ ที่คนตรวจต้องยืนยันก่อนโพสต์ (ตัวเลข วันที่ ชื่อประกาศ ข้ออ้างทางกฎหมาย) ไม่มีก็ให้เป็น [] ห้ามใส่ข้อทั่วไปที่ไม่ปรากฏในโพสต์"]}',
+  ].join('\n')
+
+  const avoid = avoidOpenings.map((s) => scrub(String(s || '')).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 6)
+  const split = splitFactsNotes(ctx.summary)
+  const factLines = split.facts.length ? split.facts.map((f) => `- ${thaiDates(f)}`).join('\n') : thaiDates(ctx.summary)
+  const prompt = [
+    `ไอเดีย: ${cleanTitleForPrompt(idea, ctx.policy)}`,
+    facts
+      ? `ข้อเท็จจริงที่มี (ใช้ได้เฉพาะเท่านี้${idea.source === 'community' ? ' · นี่คือสถานการณ์ของผู้ตั้งกระทู้คนหนึ่ง ใช้เพื่อเข้าใจคำถามเท่านั้น ห้ามใส่ชื่อโครงการ ตัวเลขงบ ทำเลเฉพาะ หรือรายละเอียดเฉพาะของเขาลงโพสต์ ให้ตอบเป็นหลักทั่วไปสำหรับคนที่เจอคำถามแบบเดียวกัน' : ''}${ctx.policy === 'no_cite' ? ' · ชื่อบริษัท โครงการ หรือแบรนด์อื่นในข้อเท็จจริง ห้ามใส่ลงโพสต์ (เรียกว่า "ผู้พัฒนารายหนึ่ง" "โครงการหนึ่ง") และห้ามแต่งรายการว่าบริษัทนั้นเสนออะไรบ้างถ้าข้อเท็จจริงไม่ได้บอก' : ''}):\n${factLines}`
+      : 'ข้อเท็จจริงที่มี: (มีแค่หัวข้อ — เขียนเป็นความรู้ทั่วไปของเรื่องนี้จากหลักการที่คนในวงการรู้กันทั่วไป ห้ามอ้างคลิป ข่าว หรือแหล่งใด ห้ามตัวเลข วันที่ สถิติ)',
+    facts && split.notes.length ? `หมายเหตุถึงผู้เขียน (ไม่ใช่ข้อเท็จจริง ห้ามใส่ลงโพสต์ ห้ามเล่าว่าเป็นเนื้อหาของประกาศ/รายงาน): ${split.notes.join(' · ')}` : '',
+    `ประเภท: ${idea.subtype || 'market'} · แหล่ง: ${idea.source || 'ไม่ระบุ'}`,
+    ctx.sourceLine,
+    `กติกาของประเภทนี้: ${noteFor(idea.subtype, idea.source)}`,
+    `กลุ่มเป้าหมาย (เขียนถึงคนคนเดียวในกลุ่มนี้ ยึดกลุ่มเดียวตลอดโพสต์${audienceCodes.length ? ` · โพสต์นี้พูดกับกลุ่ม ${audienceCodes.join('/')} เป็นหลัก` : ''}):\n${audienceLines(idea.audience, brand)}`,
+    idea.event_date ? `วันที่ของเหตุการณ์: ${idea.event_date} (ค.ศ.)` : '',
+    `มุมเล่าที่ต้องใช้: ${scrub(angle.label || '')} — ${scrub(angle.brief || '')}`,
+    `รูปแบบโพสต์: ${spec.label} — ${spec.guide}`,
+    avoid.length ? `ห้ามเปิดด้วยประโยคแนวนี้ (โพสต์อื่นของเราใช้แล้ว ต้องต่างทั้งประโยคเปิดและโครง):\n${avoid.map((s, i) => `${i + 1}. ${s.slice(0, 120)}`).join('\n')}` : '',
+    avoidPoints.length ? `ประเด็นที่โพสต์อื่นของเรื่องนี้ใช้ไปแล้ว ห้ามใช้ซ้ำ ให้หาประเด็นอื่นของเรื่องเดียวกันที่ยังไม่ได้พูด: ${avoidPoints.map((p) => scrub(p)).join(' · ')}` : '',
+    avoidHeadlines.length ? `พาดหัวที่โพสต์อื่นของเรื่องนี้ใช้แล้ว ห้ามซ้ำคำหลักเกินครึ่ง: ${avoidHeadlines.map((h) => scrub(h)).join(' · ')}` : '',
+    'เขียนโพสต์ตามมุมเล่าและรูปแบบนี้ เป็น JSON object ตามที่กำหนด',
+    hint ? `สำคัญที่สุด: ${scrub(hint)}` : '',
+  ].filter(Boolean).join('\n\n')
+
+  return { system, prompt, policy: ctx.policy, format }
+}
+
+// โมเดลเล็กบางครั้งเรียงข้อ "1. … 2. … 3. …" ไว้ในบรรทัดเดียว (เจอจริง #8 6 พ.ย. 2569) → แยกเป็นย่อหน้าเมื่อบรรทัดนั้นมีเลขข้อ ≥ 2 ตัวกลางบรรทัด
+export function splitInlineList(caption) {
+  return String(caption || '').split('\n').map((line) => {
+    const markers = line.match(/(?:^|\s)\d{1,2}[.)]\s+(?=\S)/g) || []
+    if (markers.length < 2) return line
+    return line.replace(/\s+(\d{1,2}[.)]\s+)(?=\S)/g, '\n\n$1').trim()
+  }).join('\n')
+}
+
+function cutAtParagraph(text, max) {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max)
+  const at = cut.lastIndexOf('\n\n')
+  return (at > max * 0.5 ? cut.slice(0, at) : cut).trim()
+}
+
+function trimHeadline(text) {
+  let s = String(text || '').replace(/[#"“”]/g, '').replace(/\s+/g, ' ').trim()
+  if (s.length > HEADLINE_MAX + 4) s = s.slice(0, HEADLINE_MAX).replace(/[ัิ-ฺ็-๎]+$/, '').trim()
+  return s
+}
+
+// โมเดลเล็กชอบ "ตัด" บรรทัดแรกของแคปชั่นมาครึ่งประโยคให้พอดี 30 ตัวอักษร (เจอจริง: "ขายคอนโดติดหนี้ ปิดหนี้และมีเง")
+// → ถ้าพาดหัวเป็นส่วนหัวของบรรทัดแรกที่ยาวกว่า หรือยาวเกิน ให้ตัดใหม่ด้วยกติกาไทยของ marketing-model (ไม่ผ่ากลางคำ)
+// ตัวแบ่งคำไทยของระบบ (ICU) — ใช้หาว่าชิ้นท้ายพาดหัวเป็น "เศษคำ" ที่โมเดลตัดทิ้งกลางคำหรือไม่
+const thaiWords = new Intl.Segmenter('th', { granularity: 'word' })
+// ICU ไม่รู้จักคำย่อ "อสังหา/อสังหาฯ" จึงแบ่งเป็น "อสัง"/"หา" ทำให้เศษคำ "อสัง" ดูเหมือนคำจริง (เจอจริง 6 พ.ย. 2569) → ขยายเป็นคำเต็มก่อนแบ่งคำ
+const normalizeForWords = (text) => String(text || '').replace(/ฯ/g, '').replace(/อสังหา(?![฀-๿])/g, 'อสังหาริมทรัพย์')
+const wordSet = (text) => new Set([...thaiWords.segment(normalizeForWords(text))].filter((p) => p.isWordLike).map((p) => p.segment))
+// คำเชื่อม/คำช่วยที่พาดหัวไม่ควรจบด้วย (เหลือจากการตัดเศษคำท้าย)
+// ("แล้ว" ไม่อยู่ในลิสต์ — "ประกาศแล้ว" "เริ่มแล้ว" เป็นวลีจบในตัว ตัดแล้วแย่กว่าเดิม)
+const DANGLING_WORDS = new Set(['และ', 'หรือ', 'กับ', 'ที่', 'ของ', 'ใน', 'จาก', 'ให้', 'เพื่อ', 'แต่', 'ก็', 'จะ', 'ซึ่ง', 'โดย', 'ต่อ', 'ตาม', 'เป็น', 'คือ', 'ว่า', 'มี', 'กว่า', 'ยัง', 'ต้อง', 'ควร', 'อาจ', 'จึง', 'เมื่อ', 'ถ้า', 'หาก'])
+
+export function tidyHeadline(headline, firstLine, context = '') {
+  const h = String(headline || '').replace(/\s+/g, ' ').trim()
+  const f = String(firstLine || '').replace(/\s+/g, ' ').trim()
+  const looksCut = h.length >= 20 && f.length > h.length && f.startsWith(h)
+  if (!h || looksCut) return splitHeadline(f).headline || h
+  if (h.length > HEADLINE_MAX + 4) return splitHeadline(h).headline || trimHeadline(h)
+  // โมเดลเล็กชอบตัดพาดหัวให้พอดีเพดานกลางคำ (เจอซ้ำ 4 ครั้ง: "…ปิดหนี้และเหล" "…น้อยกว่าท" "…และมีเง") — นับตัวอักษรแยกไม่ออกจากพาดหัวดี ๆ
+  // → ดูชิ้นคำท้ายสุด: ถ้าสั้น (≤ 4 ตัว) เป็นไทยล้วน และไม่พบเป็นคำในแคปชั่น/ชื่อเรื่องเลย = เศษคำ ตัดทิ้ง แล้วตัดคำเชื่อมที่ค้างท้ายออกด้วย
+  // โมเดลตัดพาดหัวค้างคำเชื่อม/คำช่วยได้ทุกความยาว ("ลงทุนคอนโดพระราม 4 ยัง" "ซื้อคอนโดพระราม 4 ต้อง") → ตัดคำค้างท้ายเสมอ · เศษคำ (ไม่ใช่คำ) ตัดเฉพาะพาดหัวยาว ≥ 25
+  const parts = [...thaiWords.segment(h)]
+  let end = parts.length
+  const lastWord = () => { for (let i = end - 1; i >= 0; i -= 1) if (parts[i].isWordLike) return { i, w: parts[i].segment }; return null }
+  let last = lastWord()
+  if (h.length >= 25 && String(context || '').trim()) {
+    const known = wordSet(`${f}\n${context}`)
+    // เศษคำ = สั้น (≤ 5 ตัว) เป็นไทยล้วน และไม่พบเป็นคำเดี่ยวในเนื้อหา ("ทรัพย" ไม่พบ แต่ "ทรัพย์" พบ) · เคยลองกฎ "เนื้อหามีคำยาวกว่าที่ขึ้นต้นด้วยชิ้นนี้" แล้วตัดคำดี ๆ อย่าง "ใช้" "ใจ" ทิ้ง — ไม่ใช้
+    if (last && last.w.length <= 5 && /^[฀-๿]+$/.test(last.w) && !known.has(last.w)) { end = last.i; last = lastWord() }
+  }
+  while (last && DANGLING_WORDS.has(last.w)) { end = last.i; last = lastWord() }
+  const cut = parts.slice(0, end).map((p) => p.segment).join('').replace(/[\s:：·,-]+$/, '').trim()
+  if (cut !== h && cut.length >= 12) return cut
+  return h
+}
+
+const CAVEAT_LINE = 'ข้อมูลนี้เป็นความรู้ทั่วไป ต้องดูเอกสารและข้อเท็จจริงของแต่ละกรณี'
+const CAVEAT_RE = /(ความรู้ทั่วไป|ไม่ใช่คำแนะนำ|แต่ละกรณี|ขึ้นกับ|ไม่ใช่ลูกค้าจริง)/
+// โครงเคสสมมุติต้องบอกชัดว่าไม่ใช่ลูกค้าจริง (content_formats ของแบรนด์) — บรรทัดกำกับความรู้ทั่วไปอย่างเดียวไม่พอ
+export const CASE_CAVEAT_LINE = 'เคสสมมุติเพื่ออธิบายหลักการ ไม่ใช่ลูกค้าจริง ผลลัพธ์ต่างกันทุกกรณี'
+const CASE_CAVEAT_RE = /ไม่ใช่ลูกค้าจริง/
+
+// ย่อหน้าปิด: บรรทัดกำกับ + ชวนทำต่อ — โมเดลเล็กลืมใส่ในแคปชั่นบ่อย (ส่ง cta มาแยกแต่แคปชั่นจบห้วน) → เติมให้แน่นอนในโค้ด
+export function ensureClosing(caption, cta, { caveat = CAVEAT_LINE, caveatRe = CAVEAT_RE } = {}) {
+  let text = String(caption || '').trim()
+  const call = String(cta || '').trim()
+  const callKey = call.replace(/\s+/g, ' ').slice(0, 14)
+  const hasCall = call && callKey && text.replace(/\s+/g, ' ').includes(callKey)
+  const parts = []
+  if (!caveatRe.test(text)) parts.push(caveat)
+  if (call && !hasCall) parts.push(call)
+  if (!parts.length) return text
+  // บรรทัด "ที่มา:" ต้องอยู่ท้ายสุดเสมอ
+  const lines = text.split('\n')
+  const last = lines.at(-1) || ''
+  if (/^ที่มา\s*[:：]/.test(last.trim())) {
+    return `${lines.slice(0, -1).join('\n').trim()}\n\n${parts.join('\n\n')}\n\n${last.trim()}`
+  }
+  return `${text}\n\n${parts.join('\n\n')}`
+}
+
+// ตรวจ/ทำความสะอาดคำตอบ AI → { ok, draft } หรือ { ok:false, error }
+// ล้าง PII · ตัดแฮชแท็กและลิงก์ออกจากแคปชั่น · บังคับนโยบายเครดิต · ด่านคำต้องห้าม (block = ไม่ผ่าน · warn = เก็บไว้ให้คนตรวจ)
+// · จับของที่โมเดลเล็กทำบ่อย: \n ตัวอักษรดิบ · markdown · คัดลอกรายการความจริงของแบรนด์/ชื่อหัวข้อจากคำแนะนำโครงมาวางทั้งบรรทัด
+export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChars = DRAFT_MAX_CHARS, brand = {}, subtype = '', facts = '', format = '', eventDate = '', today = '', audience = [] } = {}) {
+  const obj = data && typeof data === 'object' && !Array.isArray(data)
+    ? (data.draft && typeof data.draft === 'object' ? data.draft : data)
+    : null
+  if (!obj) return { ok: false, error: 'คำตอบไม่ใช่ JSON object' }
+  const warningsExtra = []
+
+  let caption = scrubDraftText(String(obj.caption ?? '')).replace(/\r/g, '')
+  // "\n" เป็นตัวอักษรสองตัว (โมเดล escape ซ้อน) → ขึ้นบรรทัดจริง · markdown ไม่แสดงบน Facebook
+  caption = caption.replace(/\\n/g, '\n').replace(/\\t/g, ' ')
+  caption = caption.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*\*/g, '').replace(/^#{1,6}\s+/gm, '')
+  // เครื่องหมายคำพูดเกินที่โมเดลทิ้งไว้หัว/ท้ายบรรทัด (เจอจริง: `**ข้อที่ 4 คือ…"`)
+  caption = caption.split('\n').map((l) => l.replace(/^["“”]\s*/, '').replace(/\s*["“”]$/, '')).join('\n')
+  caption = caption.replace(/https?:\/\/\S+/gi, '').replace(/(^|\s)#[\p{L}\p{M}\p{N}_]+/gu, '$1')
+  caption = splitInlineList(caption)
+  caption = thaiDates(caption)
+  // ตัวอักษรละตินโดด ๆ หน้าขีดรายการ ("g- สินเชื่อ…" เจอจริงรอบสุดท้าย 6 พ.ย. 2569) = นิ้วพลาดของโมเดล
+  caption = caption.replace(/^[A-Za-z](?=[-•]\s)/gm, '')
+  caption = caption.split('\n').map((l) => l.replace(/[ \t]+$/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  let headline = trimHeadline(thaiDates(scrubDraftText(String(obj.headline ?? ''))))
+  const label = String(sourceLabel || '').trim()
+  if (label) {
+    const re = new RegExp(escapeRegExp(label), 'gi')
+    if (policy === 'no_cite') {
+      caption = caption.replace(re, 'เพจหนึ่ง')
+      headline = trimHeadline(headline.replace(re, ''))
+    } else if (isInternalSourceLabel(label)) {
+      // ป้ายภายใน (ปฏิทินเหตุการณ์) หลุดมาเป็น "ที่มา" ไม่ได้ — ตัดบรรทัดนั้นทิ้ง แล้วอ้างหน่วยงานที่ออกประกาศจากข้อเท็จจริง/ชื่อเรื่องแทน (ผู้ตรวจรอบสอง: โพสต์ ธปท. ไม่มีที่มา)
+      caption = caption.split('\n').filter((line) => !(/ที่มา\s*[:：]/.test(line) && re.test(line))).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+      const agency = String(facts || '').match(AGENCY_RE)
+      if (agency && !/ที่มา\s*[:：]/.test(caption)) caption = `${caption}\n\nที่มา: ${/^ธปท/.test(agency[0]) ? 'ธนาคารแห่งประเทศไทย' : agency[0]}`
+    } else if (!/ที่มา\s*[:：]/.test(caption)) {
+      caption = `${caption}\n\nที่มา: ${label}`
+    }
+  }
+  if (/ปฏิทินเหตุการณ์|ปฏิทินในระบบ/.test(caption)) return { ok: false, error: 'ข้อความกำกับภายใน (ปฏิทินเหตุการณ์/ปฏิทินในระบบ) หลุดลงโพสต์' }
+  // รหัสกลุ่มเป้าหมาย A–D เป็นภาษาภายใน — หลุดลงโพสต์แล้วคนอ่านไม่เข้าใจ (เจอจริงร่างแรก 6 พ.ย. 2569: "กระทบกลุ่ม B นักลงทุน…")
+  if (/กลุ่ม\s*[A-D](?![A-Za-z])/.test(`${headline}\n${caption}`)) return { ok: false, error: 'มีรหัสกลุ่มเป้าหมาย (กลุ่ม A/B/C/D) หลุดลงข้อความ — ให้เรียกคนอ่านตามที่เขาเป็น' }
+  // คัดลอกความจริงของแบรนด์/โครงจากคำแนะนำมาวางทั้งบรรทัด (เจอจริงร่างแรก 6 พ.ย. 2569) — ต้องเล่าเป็นประโยคของตัวเอง
+  const mustSay = Array.isArray(brand.must_say) && brand.must_say.length > 1 ? brand.must_say.join(' · ') : ''
+  if (mustSay && caption.includes(mustSay)) return { ok: false, error: 'คัดลอกรายการ "ต้องพูดเสมอ" ของแบรนด์มาวางทั้งบรรทัด — ต้องเขียนเป็นประโยคของตัวเอง' }
+  if ((caption.match(/→/g) || []).length >= 3) return { ok: false, error: 'คัดลอกขั้นตอนแบบลูกศร → มาวาง — ต้องเล่าเป็นประโยค' }
+  if (/^ขั้นตอนจริง\s*[:：]/m.test(caption)) return { ok: false, error: 'คัดลอกหัวข้อ "ขั้นตอนจริง:" จากความจริงของแบรนด์มาวาง — ต้องเล่าเป็นประโยค' }
+  // คำอธิบายกลุ่มเป้าหมายจาก brand.audiences ("เจ้าของทรัพย์ที่ต้องการเงิน (ผู้ขายฝาก/ผู้จำนอง)") หลุดมาทั้งวรรค (เจอจริง 6 พ.ย. 2569)
+  const audiencePhrases = Object.values(brand.audiences || {}).map((v) => String(v).split(' — ')[0].trim()).filter((s) => s.length >= 12)
+  if (audiencePhrases.some((phrase) => caption.includes(phrase))) return { ok: false, error: 'คัดลอกคำอธิบายกลุ่มเป้าหมายของเรามาวางทั้งวรรค — ให้เรียกคนอ่านด้วยคำของตัวเอง' }
+  if (PRONOUN_RE.test(caption)) return { ok: false, error: 'ใช้สรรพนาม "คุณผู้ใช้บริการ/ท่านลูกค้า/ลูกค้าของเรา" — เรียกคนอ่านตามบทบาท เช่น เจ้าของห้อง เขา' }
+  if (HERO_RE.test(caption)) return { ok: false, error: 'เล่าว่าทีมงาน/เราทำให้หรือช่วยให้สำเร็จ = รับประกันผลโดยอ้อม — ให้แสดงกลไกและสิ่งที่ตัวละครตรวจหรือทำเอง' }
+  const opener = caption.split('\n').map((l) => l.trim()).find(Boolean) || ''
+  if (FILLER_OPENER_RE.test(opener) || /ดูรายละเอียดด้านล่าง/.test(caption)) return { ok: false, error: 'ประโยคเปิดแบบใบปลิว ("วันนี้จะมาแนะนำ" "หลายท่านอาจ" "ดูรายละเอียดด้านล่าง") — เปิดด้วยสถานการณ์หรือคำถามของคนอ่านตรง ๆ' }
+  const repeated = repeatedLinePrefix(caption)
+  if (repeated) return { ok: false, error: `ประโยคแม่แบบซ้ำ ${repeated.count} ครั้ง ("${repeated.prefix}…") — คำอธิบาย/ผลเสียแต่ละข้อต้องเป็นประโยคของตัวเองที่ต่างกัน` }
+  const comfort = `${headline}\n${caption}`.match(FALSE_COMFORT_RE)
+  if (comfort) return { ok: false, error: `คำปลอบ/คำสัญญาที่ผิดจริงหรือรับประกันผล ("${comfort[0]}") — ขายฝากโอนกรรมสิทธิ์ทันที ทุกการลงทุนมีความเสี่ยง ห้ามสัญญาผลตอบแทน` }
+  if (policy === 'no_cite') {
+    const leaked = foreignNamesIn(facts).find((name) => new RegExp(escapeRegExp(name), 'i').test(caption) || new RegExp(escapeRegExp(name), 'i').test(headline))
+    if (leaked) return { ok: false, error: `เอ่ยชื่อบริษัท/โครงการจากต้นทางที่ห้ามอ้าง ("${leaked}") — เล่าเป็นหลักทั่วไป เรียกว่า "ผู้พัฒนารายหนึ่ง/โครงการหนึ่ง"` }
+  }
+  // ข้อเท็จจริงไม่ได้บอกทิศทางดอกเบี้ย/มติ แต่โพสต์สรุปเอง (เฉพาะเรื่องดอกเบี้ย/สินเชื่อ)
+  if (['rate', 'credit_market'].includes(subtype) && RATE_CLAIM_RE.test(caption) && !FACTS_RATE_RE.test(String(facts || ''))) {
+    return { ok: false, error: 'สรุปทิศทางดอกเบี้ย/มติเองโดยข้อเท็จจริงไม่ได้บอก — เขียนแบบ "ติดตามผลจากหน่วยงาน" และสิ่งที่ควรเตรียมไม่ว่าผลจะเป็นอย่างไร' }
+  }
+  // โมเดลเล็กดื้อใช้ชื่อหัวข้อจากคำแนะนำโครงเคสสมมุติแม้ย้ำแล้ว (ลองใหม่ก็ยังใส่) → ลอกป้ายทิ้ง เหลือเนื้อเป็นร้อยแก้ว
+  caption = caption.replace(/^(สถานการณ์(ตั้งต้น)?|จุดที่เกือบพลาด|สิ่งที่ทำแล้วรอด|บทเรียน)\s*[:：]\s*/gm, '')
+  if (caption.length < DRAFT_MIN_CHARS) return { ok: false, error: `แคปชั่นสั้นเกิน (${caption.length} ตัวอักษร) — ขยายแต่ละประเด็นให้มีสิ่งที่ผู้อ่านตรวจหรือเตรียมได้จริง` }
+  if (caption.length > maxChars) caption = cutAtParagraph(caption, maxChars)
+  const firstLine = caption.split('\n').map((l) => l.trim()).find(Boolean) || ''
+  headline = tidyHeadline(headline, firstLine, `${caption}\n${facts || ''}`)
+  if (OUTCOME_RE.test(headline)) return { ok: false, error: `พาดหัวสัญญาผลลัพธ์ทางการเงิน ("${headline}") — ให้เป็นคำถามหรือวิธีเช็ก ไม่ใช่ผลที่จะได้` }
+  // "ดอกเบี้ยคงที่ 1%" บนเพจรับจำนองอ่านเป็นข้อเสนอของแบรนด์ — ตัวเลข % ในพาดหัวต้องบอกว่าเป็นดอกเบี้ยนโยบาย และ "คงอัตรา" ≠ "อัตราคงที่"
+  if (/\d+(\.\d+)?\s*%/.test(headline) && !/นโยบาย/.test(headline)) return { ok: false, error: `พาดหัวมีตัวเลข % โดยไม่บอกว่าเป็นดอกเบี้ยอะไร ("${headline}") — ถ้าเป็นดอกเบี้ยนโยบายให้เขียน "ดอกเบี้ยนโยบาย" ไม่งั้นตัดตัวเลขออก` }
+  if (['rate', 'credit_market'].includes(subtype) && /ดอกเบี้ยคงที่/.test(`${headline}\n${caption}`) && /คง(อัตรา)?ดอกเบี้ย|คงที่/.test(String(facts || ''))) {
+    return { ok: false, error: 'ใช้คำว่า "ดอกเบี้ยคงที่" (สินเชื่ออัตราคงที่) แทน "คงอัตราดอกเบี้ยนโยบาย" (ไม่เปลี่ยนแปลง) — คนละความหมาย' }
+  }
+  if (eventDate && today && String(eventDate) > String(today) && PAST_EVENT_RE.test(`${headline}\n${caption}`)) {
+    return { ok: false, error: `เหตุการณ์วันที่ ${thaiDates(eventDate)} ยังไม่เกิด แต่เขียนเหมือนเกิดแล้ว — ใช้ "จะ…ในวันที่ …" และบอกว่าต้องยืนยันกับหน่วยงาน` }
+  }
+  // ผลลัพธ์ในเนื้อหาต้องมีเงื่อนไขกำกับในบรรทัดเดียวกัน — ไม่ปัดตก แต่ติดคำเตือนให้คนตรวจ
+  const promise = caption.split('\n').map((l) => l.trim()).find((l) => OUTCOME_RE.test(l) && !CONDITION_RE.test(l))
+  if (promise) warningsExtra.push(`มีประโยคสัญญาผลลัพธ์โดยไม่มีเงื่อนไขกำกับ: "${promise.slice(0, 80)}"`)
+  // โพสต์เรื่องคอนโดที่เรียกเอกสารว่า "โฉนด" (ห้องชุดใช้ อ.ช.2) — ผู้ตรวจอิสระจับได้ 6 พ.ย. 2569
+  // ("สำนักงานที่ดิน" อยู่แทบทุกโพสต์ จึงยกเว้นเฉพาะโพสต์ที่พูดถึงที่ดินเปล่า/บ้าน/น.ส. จริง ๆ)
+  if (/คอนโด|ห้องชุด/.test(`${facts}\n${caption}`) && /โฉนด/.test(caption) && !/ที่ดินเปล่า|บ้านพร้อมที่ดิน|ทาวน์โฮม|น\.ส\./.test(caption)) {
+    warningsExtra.push('โพสต์เรื่องคอนโดใช้คำว่า "โฉนด" — เอกสารห้องชุดคือหนังสือกรรมสิทธิ์ห้องชุด (อ.ช.2) ตรวจคำนี้ก่อนโพสต์')
+  }
+
+  let cta = scrubDraftText(String(obj.cta ?? '')).replace(/\s+/g, ' ').trim().slice(0, 160)
+  if (!validCta(cta)) {
+    // CTA ที่เป็นเนื้อหา/คำแนะนำลอย ๆ/นอกบริการ → ตัดประโยคนั้นออกจากแคปชั่น (ถ้าลอกมา) แล้วใช้ CTA ตามกลุ่มของแบรนด์แทน
+    if (cta.length >= 12) caption = caption.split('\n').filter((line) => line.trim() !== cta).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+    cta = defaultCta(brand, audience)
+    warningsExtra.push('CTA ที่ AI เขียนไม่ใช่การชวนทำที่เกี่ยวกับบริการ จึงใช้ CTA ตามกลุ่มของแบรนด์แทน — ตรวจว่าเข้ากับโพสต์')
+  }
+  caption = format === 'case'
+    ? ensureClosing(caption, cta, { caveat: CASE_CAVEAT_LINE, caveatRe: CASE_CAVEAT_RE })
+    : ensureClosing(caption, cta)
+  const seen = new Set()
+  let hashtags = []
+  for (const value of Array.isArray(obj.hashtags) ? obj.hashtags : []) {
+    const tag = String(value).trim().replace(/^#+/, '').replace(/[^\p{L}\p{M}\p{N}_]/gu, '')
+    if (!tag || seen.has(tag.toLowerCase())) continue
+    seen.add(tag.toLowerCase())
+    hashtags.push(tag)
+  }
+  // แฮชแท็กต้องเป็นคำที่อยู่ในโพสต์จริง — "จำนอง" ติดมากับโพสต์ขายคอนโดทำให้บทบาทของเราไม่ชัด (ผู้ตรวจ 6 พ.ย. 2569)
+  const lowerCaption = caption.toLowerCase()
+  hashtags = hashtags.filter((h) => /^assetx/i.test(h) || lowerCaption.includes(h.toLowerCase()))
+  if (!hashtags.some((h) => /^assetx/i.test(h))) hashtags.unshift('AssetXEstate')
+  // โมเดลชอบลอกตัวอย่าง ("วันที่มีผล" "ตัวบทประกาศ") มาใส่แม้โพสต์ไม่มีประกาศหรือตัวเลขเลย → ตัดข้อที่ไม่เกี่ยวกับโพสต์
+  const mentionsNotice = /ประกาศ|มีผล|\d/.test(caption.replace(/^\d+\.\s/gm, ''))   // เลขหัวข้อ 1. 2. 3. ไม่นับเป็นตัวเลขในเนื้อหา
+  const needs_check = (Array.isArray(obj.needs_check) ? obj.needs_check : [])
+    .map((x) => scrubDraftText(String(x ?? '')).replace(/\s+/g, ' ').trim().slice(0, 160)).filter(Boolean)
+    .filter((item) => mentionsNotice || !/วันที่มีผล|ตัวบทประกาศ|ชื่อประกาศ|เลขประกาศ/.test(item))
+    // หัวข้อของตัวเองที่ลอกมาใส่ซ้ำ ("ประเมินราคาที่เหมาะสม") ไม่ใช่สิ่งที่ต้องยืนยัน — เก็บเฉพาะข้อที่ไม่ได้ปรากฏตรง ๆ ในโพสต์
+    .filter((item) => !caption.includes(item))
+    .slice(0, 4)
+
+  const findings = [...checkText(headline, 'พาดหัว'), ...checkText(caption, 'แคปชั่น')]
+  const blocking = findings.filter((f) => f.severity === 'block')
+  if (blocking.length) return { ok: false, error: `ติดด่านคำต้องห้าม: ${blocking.map((f) => f.message).join(' · ')}`, blocking: blocking.map((f) => f.id) }
+  const warnings = [...new Set([...findings.filter((f) => f.severity === 'warn').map((f) => f.message), ...warningsExtra])]
+
+  return { ok: true, draft: { headline, caption, cta, hashtags: hashtags.slice(0, 5), needs_check, warnings } }
+}
+
+// ร่างทีละมุม บันทึกทีละมุมผ่าน onSave (timeout กลางทางไม่ทิ้งงานที่ได้แล้ว) · มุมที่มีร่างแล้วไม่ทำซ้ำ
+// ประโยคเปิดของร่างที่มีแล้วในไอเดียเดียวกันส่งเข้าเป็น "ห้ามเปิดแบบนี้" เพื่อให้ 3 มุมต่างกันจริง
+export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 1500, log = () => {}, now = () => new Date(), maxPerIdea = 3, duplicateLimit = DUPLICATE_SIMILARITY }) {
+  const done = []
+  const failed = []
+  let stopped = false
+  // บันทึกล้มชั่วคราว (เน็ต/Supabase สะดุด) → ลองซ้ำ 1 ครั้ง · ร่างยังอยู่ใน angles ของรอบนี้ การบันทึกครั้งถัดไปของไอเดียเดียวกันจะพาไปด้วย
+  const persist = async (id, angles) => {
+    if (!onSave) return { ok: true }
+    let lastError = null
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try { await onSave(id, angles); return { ok: true } } catch (e) { lastError = e; if (attempt === 0) await sleep(1000) }
+    }
+    return { ok: false, error: lastError?.message || String(lastError) }
+  }
+  for (const idea of ideas) {
+    if (stopped) break
+    const angles = Array.isArray(idea.angles) ? idea.angles.map((a) => (a && typeof a === 'object' ? { ...a } : a)) : []
+    const pending = angles.map((a, i) => [a, i]).filter(([a]) => a && typeof a === 'object' && !a.draft?.caption).slice(0, maxPerIdea)
+    if (!pending.length) continue
+    let made = 0
+    for (const [angle, index] of pending) {
+      const existing = angles.filter((a) => a?.draft?.caption).map((a) => a.draft)
+      const avoidOpenings = existing.map((d) => d.caption.split('\n')[0])
+      const avoidPoints = usedPoints(existing.map((d) => d.caption))
+      const avoidHeadlines = existing.map((d) => d.headline).filter(Boolean)
+      const usedFormats = existing.map((d) => d.format).filter(Boolean)
+      let result = null
+      let error = null
+      let provider = null
+      let hint = ''
+      for (let attempt = 0; attempt < 2 && !result; attempt += 1) {
+        const { system, prompt, policy, format } = buildDraftPrompt({ idea, angle, brand, avoidOpenings, avoidPoints, avoidHeadlines, usedFormats, hint })
+        const res = await ask({ system, prompt })
+        if (!res.ok) {
+          error = res.error
+          if (/ไม่มีผู้ให้บริการ/.test(String(error || ''))) { stopped = true; break }
+          // ตอบไม่ใช่ JSON / ผู้ให้บริการสะดุด — ลองใหม่อีกครั้งพร้อมย้ำรูปแบบ (ไม่ใช่เหตุให้หยุดทั้งรอบ)
+          hint = 'คำตอบก่อนหน้าไม่ใช่ JSON ที่อ่านได้ — ตอบเป็น JSON object เดียว ขึ้นบรรทัดใหม่ในสตริงต้องเขียนเป็น \\n'
+          continue
+        }
+        provider = res.provider
+        const parsed = parseDraft(res.data, { policy, sourceLabel: idea.source_label, brand, subtype: idea.subtype, facts: `${idea.title || ''}\n${idea.summary || ''}`, format, eventDate: idea.event_date || '', today: now().toISOString().slice(0, 10), audience: idea.audience || [] })
+        if (!parsed.ok) { error = parsed.error; hint = `คำตอบก่อนหน้าใช้ไม่ได้ (${parsed.error}) — เขียนใหม่ให้ผ่านเงื่อนไขนี้`; continue }
+        // พาดหัวเดียวกับมุมอื่นของเรื่องนี้ (เจอจริง #4: "ธปท. 57/2569 ประกาศแล้ว" สองมุม) → ลองใหม่
+        const sameHeadline = avoidHeadlines.find((h) => h.replace(/\s+/g, ' ').trim() === parsed.draft.headline.replace(/\s+/g, ' ').trim())
+        if (sameHeadline) {
+          error = `พาดหัวซ้ำกับมุมอื่นของเรื่องนี้ ("${sameHeadline}")`
+          hint = `พาดหัวก่อนหน้าซ้ำกับมุมอื่น ("${sameHeadline}") — ตั้งพาดหัวใหม่ที่บอกมุมของโพสต์นี้ (เช็กลิสต์/เคสสมมุติ/ถามตอบ) ไม่ใช่ชื่อเรื่อง`
+          continue
+        }
+        // ซ้ำกับร่างมุมอื่นของเรื่องเดียวกัน = ยังไม่ต่างจริง → ลองใหม่พร้อมบอกประเด็นที่ห้ามใช้
+        const twin = existing.find((d) => similarity(d.caption, parsed.draft.caption) >= duplicateLimit)
+        if (twin) {
+          error = `ซ้ำกับร่างมุมอื่นของเรื่องนี้ (${Math.round(similarity(twin.caption, parsed.draft.caption) * 100)}%)`
+          hint = `ร่างก่อนหน้าซ้ำกับมุมอื่นของเรื่องนี้ — เปลี่ยนทั้งประเด็นและโครง ห้ามพูดถึง: ${avoidPoints.join(' · ') || 'ประเด็นเดิม'}`
+          continue
+        }
+        result = { ...parsed.draft, format }
+      }
+      if (result) {
+        angles[index] = { ...angle, draft: { ...result, provider, at: now().toISOString() } }
+        made += 1
+        const saved = await persist(idea.id, angles)
+        if (saved.ok) log(`[drafts] #${idea.id} "${angle.label}" ${result.caption.length} ตัวอักษร · ${result.format} (${provider})`)
+        else {
+          failed.push({ id: idea.id, angle: angle.label, error: `บันทึกไม่สำเร็จ: ${saved.error}` })
+          log(`[drafts] #${idea.id} "${angle.label}" ร่างได้แต่บันทึกไม่สำเร็จ: ${saved.error}`)
+        }
+      } else {
+        failed.push({ id: idea.id, angle: angle?.label, error })
+        log(`[drafts] #${idea.id} "${angle?.label}" ไม่ได้ร่าง: ${error}`)
+        if (stopped) break
+      }
+      if (delayMs) await sleep(delayMs)
+    }
+    if (made) done.push({ id: idea.id, drafts: made })
+  }
+  return { done, failed, stopped }
+}

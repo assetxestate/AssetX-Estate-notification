@@ -25,10 +25,11 @@ export const PII_RULES = [
 ]
 
 // คืน { text, hits } · hits = [{ kind, count }] เฉพาะชนิดที่เจอ
-export function scrubPersonalData(input) {
+// rules: ส่งชุดกฎอื่นได้ (เช่น drafts.js ใช้ชุดที่ไม่จับ "คุณ" + คำถัดไป เพราะโพสต์การตลาดพูดกับ "คุณ" ตลอด) · ค่าเริ่มต้น = ชุดเต็ม
+export function scrubPersonalData(input, rules = PII_RULES) {
   let text = String(input ?? '')
   const hits = []
-  for (const rule of PII_RULES) {
+  for (const rule of rules) {
     let count = 0
     text = text.replace(rule.re, () => {
       count += 1
@@ -40,8 +41,8 @@ export function scrubPersonalData(input) {
 }
 
 // ทางลัดเมื่อต้องการแค่ข้อความ
-export function scrub(input) {
-  return scrubPersonalData(input).text
+export function scrub(input, rules = PII_RULES) {
+  return scrubPersonalData(input, rules).text
 }
 
 export function hasPersonalData(input) {

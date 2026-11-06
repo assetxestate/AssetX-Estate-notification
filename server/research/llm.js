@@ -17,10 +17,39 @@ export function stripFences(text) {
   return String(text ?? '').replace(/```(?:json)?/gi, '').trim()
 }
 
+// โมเดลเล็ก (qwen 14b) ชอบใส่ "ขึ้นบรรทัดใหม่จริง" ในสตริง JSON แทน \n → JSON.parse ล้ม (เจอจริง 6 พ.ย. 2569 ตอนร่างโพสต์ยาว)
+// ซ่อมเฉพาะอักขระควบคุมที่อยู่ "ในสตริง" — นอกสตริงไม่แตะ
+export function repairJsonText(text) {
+  let out = ''
+  let inString = false
+  let escaped = false
+  for (const ch of String(text)) {
+    if (inString) {
+      if (escaped) { out += ch; escaped = false; continue }
+      if (ch === '\\') { out += ch; escaped = true; continue }
+      if (ch === '"') { out += ch; inString = false; continue }
+      if (ch === '\n') { out += '\\n'; continue }
+      if (ch === '\r') continue
+      if (ch === '\t') { out += '\\t'; continue }
+      out += ch
+      continue
+    }
+    if (ch === '"') inString = true
+    out += ch
+  }
+  return out
+}
+
+function parseJsonLoose(s) {
+  try { return JSON.parse(s) } catch { /* ลองซ่อมขึ้นบรรทัดในสตริง */ }
+  try { return JSON.parse(repairJsonText(s)) } catch { return null }
+}
+
 // ดึง JSON ก้อนแรกออกจากคำตอบที่อาจมีคำพูดนำ/ตาม
 export function extractJson(text) {
   const s = stripFences(text)
-  try { return JSON.parse(s) } catch { /* ลองตัดส่วนเกิน */ }
+  const whole = parseJsonLoose(s)
+  if (whole !== null) return whole
   const starts = [s.indexOf('['), s.indexOf('{')].filter((i) => i >= 0)
   if (!starts.length) return null
   const start = Math.min(...starts)
@@ -28,7 +57,7 @@ export function extractJson(text) {
   const close = open === '[' ? ']' : '}'
   const end = s.lastIndexOf(close)
   if (end <= start) return null
-  try { return JSON.parse(s.slice(start, end + 1)) } catch { return null }
+  return parseJsonLoose(s.slice(start, end + 1))
 }
 
 export function hermesConfigured(env = process.env) {

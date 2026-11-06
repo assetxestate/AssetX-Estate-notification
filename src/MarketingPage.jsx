@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { appendMarketingHashtags, assetxChannels, canPublishAssetxPost, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
+import { aiDraftReviewNotes, appendMarketingHashtags, applyAiDraft, assetxChannels, canPublishAssetxPost, isAiDraft, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
@@ -35,6 +35,8 @@ function researchIdeaToCard(row) {
     score: Math.round(Math.min(99, 40 + Number(row.score || 0) * 7)),
     radarScore: Number(row.score || 0),
     title: row.title,
+    // มีข้อเท็จจริงที่ถอดจากต้นทางแล้ว (📌) หรือเจ้าของวางเอง — ไอเดียที่ไม่มี AI จะไม่ร่างให้ (ป้ายบนการ์ดบอก)
+    hasFacts: /^📌/.test(String(row.summary || '').trim()) || row.source === 'manual',
     angle: row.angles?.[0]?.brief || row.summary || 'รอ AI เขียนมุมเล่า — เลือกได้เลยถ้าหัวข้อตรงใจ',
     audience,
     channel: 'Facebook',
@@ -1619,7 +1621,9 @@ export default function MarketingPage({ onBack }) {
       sourceIdeaId,
     }
     // ติดเลขไอเดียไปกับร่างใน Studio → พอส่งเข้ารอตรวจ ร่างจะบอก "จากไอเดีย N" (ตัวร่างไม่ถูกแก้ แค่ติดป้ายผลลัพธ์)
-    const generated = { ...runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || '')), ...(sourceIdeaId ? { sourceIdeaId } : {}) }
+    // ไอเดียจากคลัง/การ์ดที่มีร่าง AI ล่วงหน้า (มุมที่เลือก หรือมุมแรก) → ใช้ร่างนั้นแทนเทมเพลต
+    const aiDraft = sourceIdea?.draft?.caption ? sourceIdea.draft : (sourceIdea?.angles?.[0]?.draft?.caption ? sourceIdea.angles[0].draft : null)
+    const generated = applyAiDraft({ ...runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || '')), ...(sourceIdeaId ? { sourceIdeaId } : {}) }, aiDraft, { channel: input.channel })
     save((current) => ({ ...current, studio: input, generated }))
     goTo('studio')
     notify('ร่างโพสต์แล้ว · ตรวจแล้วกด ส่งเข้ารอตรวจ')
@@ -1638,7 +1642,9 @@ export default function MarketingPage({ onBack }) {
       channel: sourceIdea?.channel ? (/facebook/i.test(sourceIdea.channel) ? 'facebook' : /LINE/i.test(sourceIdea.channel) ? 'line-oa' : ws.studio.channel) : ws.studio.channel,
       sourceIdeaId,
     }
-    const generated = { ...runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || '')), ...(sourceIdeaId ? { sourceIdeaId } : {}) }
+    // ร่างที่ AI เขียนล่วงหน้าจากข้อเท็จจริงของไอเดีย (รอบรีเสิร์ช) ชนะเทมเพลต — เทมเพลต 6 หัวข้อให้โพสต์หน้าตาเดียวกันทุกเรื่อง
+    const aiDraft = sourceIdea?.draft?.caption ? sourceIdea.draft : null
+    const generated = applyAiDraft({ ...runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || '')), ...(sourceIdeaId ? { sourceIdeaId } : {}) }, aiDraft, { channel: input.channel })
     const publishCheck = reviewAssetxContent({ ...generated, topic: input.prompt })
     const post = {
       id: Date.now(),
@@ -1651,9 +1657,13 @@ export default function MarketingPage({ onBack }) {
       videoScript: generated.videoScript,
       mediaAssetId: generated.mediaAssetId || null,
       reviewStatus: publishCheck.ok ? 'passed' : 'needs_edit',
-      reviewNotes: publishCheck.ok
-        ? [...publishCheck.notes, 'ผ่านการตรวจเบื้องต้น ต้องตรวจข้อเท็จจริงก่อนอนุมัติ']
-        : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
+      reviewNotes: aiDraft
+        ? [...publishCheck.notes, ...aiDraftReviewNotes(generated)]
+        : publishCheck.ok
+          ? [...publishCheck.notes, 'ผ่านการตรวจเบื้องต้น ต้องตรวจข้อเท็จจริงก่อนอนุมัติ']
+          : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
+      // ป้ายว่าแคปชั่นมาจากร่าง AI (ด่านตรวจไม่เทียบกับแม่แบบหัวข้อ · การ์ดโชว์ป้าย) + มุมเล่าที่เลือก
+      ...(aiDraft ? { draftSource: 'ai', angleLabel: sourceIdea?.angleLabel || null } : {}),
       source: sourceIdea?.source || 'ไอเดียวันนี้',
       // ไอเดียรีเสิร์ชที่เป็นต้นเรื่อง (เลขเดียวกับ "ไอเดีย N" บนการ์ด) — ตามกลับไปหาแหล่งข้อเท็จจริงได้ตอนแก้
       ...(sourceIdea?.dbId ? { ideaId: sourceIdea.dbId } : {}),
@@ -1685,9 +1695,12 @@ export default function MarketingPage({ onBack }) {
       videoScript: ws.generated.videoScript,
       mediaAssetId: ws.generated.mediaAssetId || null,
       reviewStatus: publishCheck.ok ? 'passed' : 'needs_edit',
-      reviewNotes: publishCheck.ok
-        ? ['ผ่านเงื่อนไขเบื้องต้น', 'ควรตรวจรายละเอียดจริงก่อนโพสต์']
-        : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
+      reviewNotes: isAiDraft(ws.generated)
+        ? [...publishCheck.notes, ...aiDraftReviewNotes(ws.generated)]
+        : publishCheck.ok
+          ? ['ผ่านเงื่อนไขเบื้องต้น', 'ควรตรวจรายละเอียดจริงก่อนโพสต์']
+          : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
+      ...(isAiDraft(ws.generated) ? { draftSource: 'ai' } : {}),
       source: 'AssetX Studio',
       ...(ws.generated.sourceIdeaId ? { ideaId: ws.generated.sourceIdeaId } : {}),
       createdAt: new Date().toISOString(),
@@ -1735,7 +1748,8 @@ export default function MarketingPage({ onBack }) {
         .then(() => setResearchIdeas((items) => items.filter((item) => item.dbId !== idea.dbId)))
         .catch((err) => notify(`ร่างแล้ว แต่บันทึกว่าเลือกไอเดียนี้ไม่สำเร็จ — ${errorMessage(err, 'ลองใหม่อีกครั้ง')}`, 'error'))
     }
-    createApprovalContentFromIdea(prompt, chosen?.brief ? { ...idea, angle: chosen.brief } : idea)
+    // ส่งร่างที่ AI เขียนล่วงหน้าของมุมนี้ไปด้วย (ถ้ามี) — ตัวสร้างร่างจะใช้แทนเทมเพลต
+    createApprovalContentFromIdea(prompt, chosen?.brief ? { ...idea, angle: chosen.brief, angleLabel: chosen.label, draft: chosen.draft || null } : idea)
   }
 
   // ทิ้ง = ใส่เหตุผลสั้น ๆ (ใช้ปรับเกณฑ์คัดไอเดียทีหลัง) · ไม่ลบแถว
@@ -2629,7 +2643,7 @@ function IdeasView({
             {angles.map((item, index) => (
               <label key={`${idea.id}-${index}`} className={angleIndex === index ? 'active' : ''}>
                 <input type="radio" name={`angle-${idea.id}`} checked={angleIndex === index} onChange={() => setAngleChoice((prev) => ({ ...prev, [idea.id]: index }))} />
-                <span>{item.label}</span>
+                <span>{item.label}{item.draft?.caption ? ' · ร่างพร้อม' : ''}</span>
               </label>
             ))}
           </fieldset>
@@ -2641,6 +2655,11 @@ function IdeasView({
           </button>
         )}
         <div className="mx-tags">
+          {isResearch && (angles[angleIndex]?.draft?.caption
+            ? <span className="mx-tag-ai" title="AI เขียนร่างโพสต์เต็มจากข้อเท็จจริงของไอเดียนี้ไว้แล้ว — กด ร่างโพสต์ ได้ร่างนี้ทันที">ร่าง AI พร้อม</span>
+            : idea.hasFacts
+              ? <span title="มีข้อเท็จจริงแล้ว รอ AI ร่างในรอบรีเสิร์ชถัดไป — กด ร่างโพสต์ ตอนนี้จะได้ร่างจากแม่แบบ">รอร่าง AI</span>
+              : <span title="AI ไม่ร่างให้ไอเดียที่ยังไม่มีข้อเท็จจริงจากต้นทาง (คลิปที่ยังไม่ถอดคำบรรยาย · ข่าวที่ดึงเนื้อไม่ได้) เพราะจะเดารายละเอียด — กด ร่างโพสต์ จะได้ร่างจากแม่แบบ">ไม่มีข้อเท็จจริง · ใช้แม่แบบ</span>)}
           {!isExample && <span>{displaySource(idea.source)}</span>}
           {idea.audience && <span>{idea.audience}</span>}
           {idea.eventDate && <span>วันที่ {thaiDate(idea.eventDate) || idea.eventDate}</span>}
@@ -2721,7 +2740,7 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
           {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
         </select>
       </label>
-      <div className="mx-model-note">ร่างจากแม่แบบของ AssetX — ตรวจข้อเท็จจริงและแก้ข้อความก่อนส่งตรวจทุกครั้ง</div>
+      <div className="mx-model-note">{generated?.meta?.generatedBy === 'llm' ? 'ร่างโดย AI จากข้อเท็จจริงที่สำรวจมา — ตรวจกับแหล่งที่มาและแก้ข้อความก่อนส่งตรวจทุกครั้ง' : 'ร่างจากแม่แบบของ AssetX — ตรวจข้อเท็จจริงและแก้ข้อความก่อนส่งตรวจทุกครั้ง'}</div>
       {generated && (
         <div className="mx-generated-grid">
           <article className="mx-review-card wide">
@@ -2825,7 +2844,7 @@ function ApprovalsView({
                 <div className="mx-approval-copy-column">
                   <div className="mx-review-head">
                     <div>
-                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
+                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{post.draftSource === 'ai' ? ` · ร่าง AI${post.angleLabel ? ` (${post.angleLabel})` : ''}` : ''}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
                       <h2><ContentNo post={post} onCopy={onCopy} />{post.title}</h2>
                     </div>
                     <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{reviewLabel(post)}</span>
@@ -3972,6 +3991,7 @@ const styles = `
   .mx-angle-pick input { position: absolute; opacity: 0; width: 0; height: 0; }
   .mx-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
   .mx-tags span, .mx-tags a { border: 1px solid var(--mx-line); background: rgba(66,199,216,.06); color: #bfe9f0; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 500; text-decoration: none; }
+  .mx-tags .mx-tag-ai { border-color: rgba(66,199,216,.6); background: rgba(66,199,216,.18); color: #eafdff; }
   .mx-tags a { color: var(--mx-sky); border-color: var(--mx-line-2); }
   .mx-tags a:hover { background: rgba(66,199,216,.16); }
   .mx-card-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

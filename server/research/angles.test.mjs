@@ -46,7 +46,8 @@ test('prompt: ล้าง PII · เก็บชื่อสำนักเม�
 test('parseAngles: รับ array หรือ {angles} · ตัด label 22 ตัว · ล้าง PII · ต้องได้ ≥ 2', () => {
   const ok = parseAngles([{ label: 'เช็กลิสต์ก่อนเซ็น ยาวเกินยี่สิบสองตัวอักษรแน่นอน', brief: 'โพสต์เช็กลิสต์ 5 ข้อ' }, { label: 'ถามตอบ', brief: 'Q&A ติดต่อ 081-111-2222' }, { label: 'ถามตอบ', brief: 'ซ้ำ' }, { label: 'เตือนภัย', brief: 'x' }])
   assert.equal(ok.length, 3)
-  assert.equal(ok[0].label.length, 22)
+  assert.ok(ok[0].label.length <= 22 && ok[0].label.length >= 6, ok[0].label)
+  assert.equal(ok[0].label, 'เช็กลิสต์ก่อนเซ็น ยาว', 'ตัดที่ขอบคำ (ตัวแบ่งคำไทย) ไม่ผ่ากลางพยางค์')
   assert.match(ok[1].brief, /\[ลบ\]/)
   assert.equal(parseAngles({ angles: [{ label: 'a', brief: 'b' }, { label: 'c', brief: 'd' }] }).length, 2)
   assert.equal(parseAngles([{ label: 'a', brief: 'b' }]), null)

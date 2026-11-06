@@ -1,9 +1,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createAsk, ollamaConfigured, ollamaEndpoint, isUnreachableError, NO_PROVIDER_MESSAGE } from './llm.js'
+import { createAsk, ollamaConfigured, ollamaEndpoint, isUnreachableError, NO_PROVIDER_MESSAGE, extractJson, repairJsonText } from './llm.js'
 
 const ANGLES = '[{"label":"ก","brief":"1"},{"label":"ข","brief":"2"},{"label":"ค","brief":"3"}]'
 const okJson = (content) => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content } }] }) })
+
+test('extractJson ซ่อมขึ้นบรรทัดจริงในสตริง (โมเดลเล็กทำบ่อยตอนเขียนแคปชั่นยาว) แต่ไม่แตะ JSON ที่ถูกอยู่แล้ว', () => {
+  const broken = '{"headline":"หัว","caption":"บรรทัดแรก\nบรรทัดสอง\n\nย่อหน้าใหม่ มี \\"คำพูด\\" ด้วย","hashtags":["ก","ข"]}'
+  assert.throws(() => JSON.parse(broken), 'ขึ้นบรรทัดดิบในสตริงต้องทำให้ JSON.parse ปกติล้มจริง')
+  const fixed = extractJson(broken)
+  assert.equal(fixed.caption, 'บรรทัดแรก\nบรรทัดสอง\n\nย่อหน้าใหม่ มี "คำพูด" ด้วย')
+  assert.deepEqual(fixed.hashtags, ['ก', 'ข'])
+  assert.equal(repairJsonText('{"a":"x"}\n'), '{"a":"x"}\n', 'นอกสตริงไม่แตะ')
+  assert.deepEqual(extractJson('ตอบ: ```json\n{"a":"1\n2"}\n```'), { a: '1\n2' })
+  assert.equal(extractJson('{"a":"ไม่ปิด'), null)
+})
 
 test('ลำดับผู้ให้บริการ Hermes → Ollama → Gemini · Ollama เปิดด้วย OLLAMA_MODEL เท่านั้น · ไม่มีเลย = ok:false พร้อมคำแนะนำ', async () => {
   assert.deepEqual(createAsk({ env: { HERMES_AGENT_URL: 'http://h/x', OLLAMA_MODEL: 'qwen2.5:14b', GEMINI_API_KEY: 'k' } }).providers, ['hermes', 'ollama', 'gemini'])

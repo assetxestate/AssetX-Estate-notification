@@ -4,6 +4,7 @@ import {
   runMarketingModel,
 } from './marketing-model/index.js'
 import { checkText, formatWarnings } from './marketing-model/rules.js'
+import { scoreCaption } from './marketing-model/scoring.js'
 import { checkTopicContent, resolveTopic } from './marketing-model/topics.js'
 
 export const assetxContentTypes = [
@@ -118,6 +119,47 @@ export function appendMarketingHashtags(caption = '', hashtags = []) {
   return added.length ? `${text}${text ? '\n\n' : ''}${added.join(' ')}` : text
 }
 
+// ร่างโพสต์ที่ AI เขียนล่วงหน้าในรอบรีเสิร์ช (server/research/drafts.js → marketing_ideas.angles[i].draft) ทับผลจากเทมเพลต
+// ทำไม: เทมเพลต 6 หัวข้อ (topics.js) ให้โพสต์หน้าตาเดียวกันทุกเรื่อง และไม่เคยใช้ข้อเท็จจริงที่สำรวจมา (6 พ.ย. 2569)
+// เก็บ imagePrompt/videoScript ของเทมเพลตไว้ (ร่าง AI ไม่ได้เขียนส่วนนี้) · meta.generatedBy = 'llm' ให้ด่านตรวจรู้ว่าไม่ต้องเทียบกับแม่แบบหัวข้อ
+export function applyAiDraft(generated, draft, { channel = 'facebook' } = {}) {
+  if (!generated || !draft?.caption) return generated
+  const hashtags = Array.isArray(draft.hashtags) && draft.hashtags.length ? draft.hashtags : (generated.hashtags || [])
+  const caption = appendMarketingHashtags(draft.caption, hashtags)
+  return {
+    ...generated,
+    headline: draft.headline || generated.headline,
+    caption,
+    cta: draft.cta || generated.cta,
+    hashtags,
+    automationPayload: { ...(generated.automationPayload || {}), postText: caption },
+    meta: {
+      ...(generated.meta || {}),
+      generatedBy: 'llm',
+      draftFormat: draft.format || null,
+      draftProvider: draft.provider || null,
+      needsCheck: Array.isArray(draft.needs_check) ? draft.needs_check : [],
+      draftWarnings: Array.isArray(draft.warnings) ? draft.warnings : [],
+      captionQuality: scoreCaption(draft.caption, channel),
+    },
+  }
+}
+
+// โพสต์/ผลร่างที่แคปชั่นมาจาก AI (ไม่ใช่เทมเพลต) — ใช้ทั้งฝั่งเว็บและด่านโพสต์ฝั่ง server (payload.post ส่ง draftSource มาด้วย)
+export function isAiDraft(item = {}) {
+  return item?.draftSource === 'ai' || item?.meta?.generatedBy === 'llm'
+}
+
+// หมายเหตุให้คนตรวจเมื่อร่างมาจาก AI — สิ่งที่ AI บอกว่าต้องยืนยัน + คำเตือนจากด่านคำ (warn) ที่ติดมากับร่าง
+export function aiDraftReviewNotes(generated = {}) {
+  const meta = generated.meta || {}
+  return [
+    'ร่างโดย AI จากข้อเท็จจริงที่สำรวจมา — ตรวจกับแหล่งที่มาก่อนอนุมัติ',
+    ...(meta.needsCheck || []).map((item) => `ต้องตรวจ: ${item}`),
+    ...(meta.draftWarnings || []),
+  ]
+}
+
 export function canPublishAssetxPost(post, opts = {}) {
   const gate = canPublish(post, {
     publishableChannels: ['facebook', 'line-oa'],
@@ -136,7 +178,9 @@ export function reviewAssetxContent(post = {}) {
     ...checkText(post.title || post.headline, 'หัวข้อ'),
     ...checkText(post.caption, 'แคปชั่น'),
     ...checkText(post.videoScript, 'สคริปต์วิดีโอ'),
-    ...checkTopicContent(topic, post),
+    // ร่าง AI เขียนจากข้อเท็จจริงของไอเดีย ไม่ได้มาจากแม่แบบ 6 หัวข้อ — การเทียบกับแม่แบบ (unsupported_topic/topic_mismatch)
+    // จึงไม่มีความหมายกับร่างแบบนี้ (หัวข้ออย่าง "ประกาศ ธปท." ไม่เข้าแม่แบบไหนเลยแต่เป็นโพสต์ที่ถูกต้อง) · ด่านคำต้องห้ามยังตรวจเต็มทุกบรรทัด
+    ...(isAiDraft(post) ? [] : checkTopicContent(topic, post)),
   ]
   if (!String(post.caption || '').trim()) findings.push({ id: 'empty_caption', severity: 'block', where: 'แคปชั่น', message: 'ยังไม่มีเนื้อหาโพสต์' })
   const ok = !findings.some(item => ['block', 'warn'].includes(item.severity))

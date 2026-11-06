@@ -44,7 +44,8 @@ export const AUDIENCE_FALLBACK = {
   D: 'ผู้ซื้อบ้าน/ที่ดิน/คอนโด',
 }
 
-function audienceLines(codes, brand) {
+// ใช้ร่วมกับ drafts.js (ร่างโพสต์เต็ม) — บรรทัดกลุ่มเป้าหมายต้องเป็นชุดเดียวกันทั้งมุมเล่าและร่าง
+export function audienceLines(codes, brand) {
   const table = brand.audiences || AUDIENCE_FALLBACK
   const list = Array.isArray(codes) && codes.length ? codes : Object.keys(table)
   return list.map((code) => `- ${code}: ${table[code] || AUDIENCE_FALLBACK[code] || code}`).join('\n')
@@ -101,6 +102,20 @@ export function buildAnglesPrompt({ idea, brand = {} }) {
   return { system, prompt, policy: ctx.policy }
 }
 
+// ตัดชื่อมุมให้ไม่เกิน max ตัวอักษร "ที่ขอบคำ" ด้วยตัวแบ่งคำไทยของระบบ — เดิม slice(0, 22) ตัดกลางพยางค์ ("เช็กลิสต์ขายคอนโดติดหน") และป้ายนี้โผล่บนหน้าเลือกมุม
+const labelWords = new Intl.Segmenter('th', { granularity: 'word' })
+export function trimLabel(text, max = 22) {
+  const s = String(text || '').replace(/\s+/g, ' ').trim()
+  if (s.length <= max) return s
+  let out = ''
+  for (const { segment } of labelWords.segment(s)) {
+    if ((out + segment).length > max) break
+    out += segment
+  }
+  out = out.replace(/[\s:：·,\-–—]+$/, '').trim()
+  return out.length >= 6 ? out : s.slice(0, max).replace(/[ัิ-ฺ็-๎]+$/, '').trim()
+}
+
 // ตรวจ/ทำความสะอาดคำตอบ AI → [{label, brief}] อย่างน้อย 2 รายการ ไม่งั้น null
 export function parseAngles(data) {
   const list = Array.isArray(data) ? data : Array.isArray(data?.angles) ? data.angles : null
@@ -109,7 +124,7 @@ export function parseAngles(data) {
   const seen = new Set()
   for (const item of list) {
     if (!item || typeof item !== 'object') continue
-    const label = scrub(String(item.label ?? '').replace(/\s+/g, ' ').trim()).slice(0, 22)
+    const label = trimLabel(scrub(String(item.label ?? '').replace(/\s+/g, ' ').trim()), 22)
     const brief = scrub(String(item.brief ?? item.description ?? '').replace(/\s+/g, ' ').trim()).slice(0, 400)
     if (!label || !brief || seen.has(label)) continue
     seen.add(label)

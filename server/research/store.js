@@ -3,11 +3,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
+import { needsFacts } from './enrich.js'
 
 const DAY_MS = 86400000
 
 export function missingTable(error) {
   return ['42P01', 'PGRST205'].includes(error?.code) || /relation .* does not exist|Could not find the table/i.test(String(error?.message || ''))
+}
+
+// มีมุมเล่าแล้วแต่บางมุมยังไม่มีร่างโพสต์ (angles[i].draft.caption) — เงื่อนไขเดียวกับ needsDraft ใน drafts.js แต่ไม่ import เพื่อให้ store ไม่ผูกกับ prompt
+function lacksDraft(row) {
+  return Array.isArray(row?.angles) && row.angles.length > 0 && row.angles.some((a) => a && !a.draft?.caption)
 }
 
 function cutoffFor(subtypes, subtype, purgeDays) {
@@ -98,6 +104,20 @@ export function createSupabaseStore({ url = process.env.SUPABASE_URL || process.
       const { error } = await ideas().update({ angles }).eq('id', id)
       if (error) throw error
     },
+    // ไอเดียที่มีลิงก์แต่ยังไม่มีข้อเท็จจริงที่ถอดจากต้นทาง (enrich.js) — เรียงคะแนน · retry = ลองซ้ำที่เคยดึงไม่ได้
+    async ideasNeedingFacts(limit = 15, { retry = false } = {}) {
+      const rows = await all(ideas().select('id,source,source_label,subtype,title,summary,url,score').eq('status', 'new').not('url', 'is', null).order('score', { ascending: false }).limit(Math.max(limit * 3, 40)))
+      return rows.filter((r) => needsFacts(r, { retry })).slice(0, limit)
+    },
+    async saveSummary(id, summary) {
+      const { error } = await ideas().update({ summary }).eq('id', id)
+      if (error) throw error
+    },
+    // ไอเดียที่มีมุมเล่าแล้วแต่บางมุมยังไม่มีร่างโพสต์ (drafts.js) — กรองใน JS เพราะเป็นเงื่อนไขใน jsonb
+    async ideasNeedingDrafts(limit = 12) {
+      const rows = await all(ideas().select('id,source,source_label,subtype,title,summary,url,audience,event_date,score,angles').eq('status', 'new').not('angles', 'is', null).order('score', { ascending: false }).limit(Math.max(limit * 3, 30)))
+      return rows.filter(lacksDraft).slice(0, limit)
+    },
     async leadsRecent(weeks = 9, now = new Date()) {
       try {
         return await all(db.from('leads').select('received_at,channel,audience,service,property_type,service_area,amount_band,qualified,closed').gte('received_at', new Date(now.getTime() - weeks * 7 * DAY_MS).toISOString()))
@@ -111,17 +131,24 @@ export function createSupabaseStore({ url = process.env.SUPABASE_URL || process.
       const byStatus = {}
       const queue = {}
       let withAngles = 0
+      let withDrafts = 0
       let newCount = 0
       for (const row of rows) {
         byStatus[row.status] = (byStatus[row.status] || 0) + 1
         if (row.status === 'new') {
           newCount += 1
           if (row.angles) withAngles += 1
+          if (row.angles && !lacksDraft(row)) withDrafts += 1
           const k = `${row.source}/${row.subtype}`
           queue[k] = (queue[k] || 0) + 1
         }
       }
-      return { total: rows.length, byStatus, queue, anglesCoverage: newCount ? Math.round((withAngles / newCount) * 100) : null }
+      return {
+        total: rows.length, byStatus, queue,
+        anglesCoverage: newCount ? Math.round((withAngles / newCount) * 100) : null,
+        // % ของไอเดีย new ที่มีมุมเล่า ซึ่งทุกมุมมีร่างโพสต์แล้ว
+        draftsCoverage: withAngles ? Math.round((withDrafts / withAngles) * 100) : null,
+      }
     },
     async markLaneRuns() { /* สถานะเลนเก็บในไฟล์ state ฝั่ง CLI */ },
   }
@@ -177,6 +204,17 @@ export function createDryRunStore({ file, log = () => {} }) {
     },
     async ideasNeedingAngles(limit = 20) {
       return data.ideas.filter((r) => r.status === 'new' && !r.angles).sort((a, b) => b.score - a.score).slice(0, limit)
+    },
+    async ideasNeedingDrafts(limit = 12) {
+      return data.ideas.filter((r) => r.status === 'new' && lacksDraft(r)).sort((a, b) => b.score - a.score).slice(0, limit)
+    },
+    async ideasNeedingFacts(limit = 15, { retry = false } = {}) {
+      return data.ideas.filter((r) => r.status === 'new' && needsFacts(r, { retry })).sort((a, b) => b.score - a.score).slice(0, limit)
+    },
+    async saveSummary(id, summary) {
+      const row = data.ideas.find((r) => r.id === id)
+      if (row) row.summary = summary
+      save()
     },
     async saveAngles(id, angles) {
       const row = data.ideas.find((r) => r.id === id)
