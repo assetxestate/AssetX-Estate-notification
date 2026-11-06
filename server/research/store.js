@@ -118,6 +118,11 @@ export function createSupabaseStore({ url = process.env.SUPABASE_URL || process.
       const rows = await all(ideas().select('id,source,source_label,subtype,title,summary,url,audience,event_date,score,angles').eq('status', 'new').not('angles', 'is', null).order('score', { ascending: false }).limit(Math.max(limit * 3, 30)))
       return rows.filter(lacksDraft).slice(0, limit)
     },
+    // ไอเดียที่ระบุเอง (drafts --id) — ไม่สนสถานะ แต่ต้องมีมุมเล่าแล้ว · ไอเดียที่ถูก dismiss/expired ก็ร่างได้ถ้าสั่งเอง (ใช้ทดสอบ)
+    async ideasByIds(ids = []) {
+      if (!ids.length) return []
+      return all(ideas().select('id,status,source,source_label,subtype,title,summary,url,audience,event_date,score,angles').in('id', ids).not('angles', 'is', null))
+    },
     async leadsRecent(weeks = 9, now = new Date()) {
       try {
         return await all(db.from('leads').select('received_at,channel,audience,service,property_type,service_area,amount_band,qualified,closed').gte('received_at', new Date(now.getTime() - weeks * 7 * DAY_MS).toISOString()))
@@ -207,6 +212,9 @@ export function createDryRunStore({ file, log = () => {} }) {
     },
     async ideasNeedingDrafts(limit = 12) {
       return data.ideas.filter((r) => r.status === 'new' && lacksDraft(r)).sort((a, b) => b.score - a.score).slice(0, limit)
+    },
+    async ideasByIds(ids = []) {
+      return data.ideas.filter((r) => ids.includes(r.id) && Array.isArray(r.angles) && r.angles.length)
     },
     async ideasNeedingFacts(limit = 15, { retry = false } = {}) {
       return data.ideas.filter((r) => r.status === 'new' && needsFacts(r, { retry })).sort((a, b) => b.score - a.score).slice(0, limit)

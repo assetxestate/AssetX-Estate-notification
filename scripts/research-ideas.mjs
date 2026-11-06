@@ -7,7 +7,7 @@
 // node scripts/research-ideas.mjs collect [--dry-run]       เก็บอย่างเดียว (--dry-run เขียน .local/research/dry-run.json ไม่แตะ DB)
 // node scripts/research-ideas.mjs enrich [--limit N] [--retry]  ดึงหน้าต้นทางของไอเดียที่ยังไม่มีข้อเท็จจริง (📌) แล้วให้ AI สรุป ≤ 7 ข้อ · --retry ลองซ้ำที่เคยดึงไม่ได้ · ใน run ใช้ --enrich-limit / --no-enrich
 // node scripts/research-ideas.mjs angles [--limit N]        เขียนมุมเล่าให้ไอเดียที่ยังไม่มี (Hermes → Ollama ในเครื่อง → Gemini)
-// node scripts/research-ideas.mjs drafts [--limit N] [--include-no-facts]  ร่างโพสต์เต็มให้ทุกมุมเล่าของไอเดียที่ "มีข้อเท็จจริง" (📌) · ค่าเริ่มต้น 8 ไอเดีย/รอบ ~1.5–2 นาที/มุมบน Ollama 14b · ใน run ใช้ --drafts-limit
+// node scripts/research-ideas.mjs drafts [--limit N] [--include-no-facts] [--id 32,33]  ร่างโพสต์เต็มให้ทุกมุมเล่าของไอเดียที่ "มีข้อเท็จจริง" (📌) · ค่าเริ่มต้น 8 ไอเดีย/รอบ ~1.5–2 นาที/มุมบน Ollama 14b · ใน run ใช้ --drafts-limit · --id = ไอเดียที่ระบุเอง ไม่สนสถานะ (ร่างใหม่ให้ไอเดียที่เจ้าของเลือกไปแล้วได้ หลังลบร่างเดิมด้วย .local/reset-drafts.mjs)
 //     ไอเดียที่ไม่มีข้อเท็จจริง (คลิปยังไม่ถอดคำบรรยาย · ดึงเนื้อข่าวไม่ได้) ไม่ร่างให้ — ผู้ตรวจอิสระ 6 พ.ย. 2569 พบว่า AI เดาเอกสาร/ขั้นตอนผิดบริบทไทย · --include-no-facts เปิดได้ถ้าเจ้าของยอมรับ
 // node scripts/research-ideas.mjs expire                    ตั้ง status=expired ให้ไอเดียเก่า (ไม่ลบแถว)
 // node scripts/research-ideas.mjs probe                     ทดสอบทุกแหล่งแบบเบามือ (ยิง 1 ครั้ง/แหล่ง · สถานะ · จำนวน · วันล่าสุด · บล็อกไหม)
@@ -159,13 +159,20 @@ async function doEnrich({ cfg, brand, store, limit, retry = false }) {
 // ร่างโพสต์เต็มให้ทุกมุมเล่าที่ยังไม่มีร่าง — เก็บใน angles[i].draft (คอลัมน์เดิม) · ทีละมุม บันทึกทีละมุม
 // บน Ollama 14b เครื่องนี้ ~1–2 นาที/มุม → จำกัดไอเดียต่อรอบ ที่เหลือรอรอบถัดไป (หรือสั่ง drafts --limit N เอง)
 // เฉพาะไอเดียที่มีข้อเท็จจริง (📌/manual) — ไม่มีข้อเท็จจริง = AI เดา (ผู้ตรวจอิสระ 6 พ.ย. 2569) · --include-no-facts เปิดได้เอง
-async function doDrafts({ brand, store, limit, includeNoFacts = false }) {
+// ids = ไอเดียที่ระบุเอง (--id 32,33) ไม่สนสถานะ new/picked — ไอเดียที่เจ้าของเลือกไปแล้ว (picked) ไม่อยู่ในคิวร่างปกติ แต่ร่างใหม่หลังแก้ความรู้/ด่านได้
+async function doDrafts({ brand, store, limit, includeNoFacts = false, ids = null }) {
   const ask = createAsk({ log })
   if (!ask.providers.length) {
     out(`[drafts] ${NO_PROVIDER_MESSAGE} — ข้าม`)
     return { done: [], failed: [], skipped: true }
   }
-  const candidates = await store.ideasNeedingDrafts(includeNoFacts ? limit : Math.max(limit * 4, 40))
+  const candidates = ids?.length ? await store.ideasByIds(ids) : await store.ideasNeedingDrafts(includeNoFacts ? limit : Math.max(limit * 4, 40))
+  if (ids?.length) {
+    const missing = ids.filter((id) => !candidates.some((c) => c.id === id))
+    if (missing.length) out(`[drafts] ไม่พบไอเดีย #${missing.join(' #')} หรือยังไม่มีมุมเล่า`)
+    if (!candidates.length) return { done: [], failed: [], skippedNoFacts: 0 }
+    limit = candidates.length
+  }
   // เหตุการณ์ปฏิทินที่ยังไม่ถึงวัน (รายงานยังไม่ออก) ร่างแล้วกลวง — ผู้ตรวจรอบสอง 6 พ.ย. 2569 → รอให้ถึงวันก่อน
   const futureCalendar = (idea) => isInternalSourceLabel(idea.source_label) && idea.event_date && String(idea.event_date) > today()
   const withFacts = candidates.filter(hasResearchFacts)
@@ -289,7 +296,8 @@ async function cmdAngles() {
 async function cmdDrafts() {
   const { brand } = loadConfig()
   const store = makeStore(flags.has('--dry-run'))
-  await doDrafts({ brand, store, limit: Number(flagValue('--limit', 8)), includeNoFacts: flags.has('--include-no-facts') })
+  const ids = String(flagValue('--id', '')).split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0)
+  await doDrafts({ brand, store, limit: Number(flagValue('--limit', 8)), includeNoFacts: flags.has('--include-no-facts'), ids })
 }
 
 async function cmdEnrich() {
