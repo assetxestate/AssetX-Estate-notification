@@ -111,7 +111,8 @@ const PRONOUN_RE = /คุณผู้ใช้บริการ|ท่าน�
 const FILLER_OPENER_RE = /^(วันนี้|ในวันนี้|หลายท่าน|หลายคน)/
 
 // บรรทัดที่ขึ้นต้นเหมือนกัน ≥ 3 ครั้ง = ประโยคแม่แบบถมช่อง (เจอจริง: "ถ้าข้ามข้อนี้ อาจทำให้ขายไม่ได้" ซ้ำ 4 ใน 5 ข้อ) · ไม่นับเลขข้อและป้าย ถาม:/ตอบ:
-export function repeatedLinePrefix(caption, { minLines = 3, prefixLen = 12 } = {}) {
+// prefixLen 18 (เดิม 12): ถามตอบเรื่องเดียวกันขึ้นต้นคล้ายกันโดยธรรมชาติ ("ค่าใช้จ่ายในการจดทะเบียน…" / "ค่าใช้จ่ายในการประเมิน…" ถูกปัดทั้งที่ต่างกัน 6 พ.ย. 2569) · ประโยคแม่แบบที่ซ้ำจริงยังยาวพอให้จับได้
+export function repeatedLinePrefix(caption, { minLines = 3, prefixLen = 18 } = {}) {
   const counts = new Map()
   for (const raw of String(caption || '').split('\n')) {
     const line = raw.trim().replace(/^\d+[.)]\s*/, '').replace(/^(ถาม|ตอบ|Q|A)\s*[:：]\s*/i, '')
@@ -368,7 +369,9 @@ const normalizeForWords = (text) => String(text || '').replace(/ฯ/g, '').repla
 const wordSet = (text) => new Set([...thaiWords.segment(normalizeForWords(text))].filter((p) => p.isWordLike).map((p) => p.segment))
 // คำเชื่อม/คำช่วยที่พาดหัวไม่ควรจบด้วย (เหลือจากการตัดเศษคำท้าย)
 // ("แล้ว" ไม่อยู่ในลิสต์ — "ประกาศแล้ว" "เริ่มแล้ว" เป็นวลีจบในตัว ตัดแล้วแย่กว่าเดิม)
-const DANGLING_WORDS = new Set(['และ', 'หรือ', 'กับ', 'ที่', 'ของ', 'ใน', 'จาก', 'ให้', 'เพื่อ', 'แต่', 'ก็', 'จะ', 'ซึ่ง', 'โดย', 'ต่อ', 'ตาม', 'เป็น', 'คือ', 'ว่า', 'มี', 'กว่า', 'ยัง', 'ต้อง', 'ควร', 'อาจ', 'จึง', 'เมื่อ', 'ถ้า', 'หาก'])
+const DANGLING_WORDS = new Set(['และ', 'หรือ', 'กับ', 'ที่', 'ของ', 'ใน', 'จาก', 'ให้', 'เพื่อ', 'แต่', 'ก็', 'จะ', 'ซึ่ง', 'โดย', 'ต่อ', 'ตาม', 'เป็น', 'คือ', 'ว่า', 'มี', 'กว่า', 'ยัง', 'ต้อง', 'ควร', 'อาจ', 'จึง', 'เมื่อ', 'ถ้า', 'หาก', 'แค่', 'เพียง', 'ระหว่าง', 'ทั้ง'])
+// คำถาม/คำลงท้ายสั้น ๆ ที่จบพาดหัวได้ดี แต่มักไม่ปรากฏในแคปชั่น จึงเคยถูกนับเป็น "เศษคำ" แล้วตัดทิ้ง (เจอจริง 6 พ.ย. 2569: "ค่าใช้จ่ายขายฝาก จำเป็นแค่ไหน" → "…จำเป็นแค่")
+const HEADLINE_END_WORDS = new Set(['ไหน', 'ไหม', 'มั้ย', 'อะไร', 'ยังไง', 'อย่างไร', 'เท่าไร', 'เท่าไหร่', 'กี่', 'ใคร', 'ทำไม', 'บ้าง', 'ได้', 'เลย', 'ดี', 'จริง', 'ก่อน', 'ทัน', 'คุ้ม', 'พอ', 'ครบ'])
 
 export function tidyHeadline(headline, firstLine, context = '') {
   const h = String(headline || '').replace(/\s+/g, ' ').trim()
@@ -386,7 +389,7 @@ export function tidyHeadline(headline, firstLine, context = '') {
   if (h.length >= 25 && String(context || '').trim()) {
     const known = wordSet(`${f}\n${context}`)
     // เศษคำ = สั้น (≤ 5 ตัว) เป็นไทยล้วน และไม่พบเป็นคำเดี่ยวในเนื้อหา ("ทรัพย" ไม่พบ แต่ "ทรัพย์" พบ) · เคยลองกฎ "เนื้อหามีคำยาวกว่าที่ขึ้นต้นด้วยชิ้นนี้" แล้วตัดคำดี ๆ อย่าง "ใช้" "ใจ" ทิ้ง — ไม่ใช้
-    if (last && last.w.length <= 5 && /^[฀-๿]+$/.test(last.w) && !known.has(last.w)) { end = last.i; last = lastWord() }
+    if (last && last.w.length <= 5 && /^[฀-๿]+$/.test(last.w) && !known.has(last.w) && !HEADLINE_END_WORDS.has(last.w)) { end = last.i; last = lastWord() }
   }
   while (last && DANGLING_WORDS.has(last.w)) { end = last.i; last = lastWord() }
   const cut = parts.slice(0, end).map((p) => p.segment).join('').replace(/[\s:：·,-]+$/, '').trim()
