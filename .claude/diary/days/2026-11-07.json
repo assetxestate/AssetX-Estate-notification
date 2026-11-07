@@ -115,9 +115,34 @@
     },
     {
       "id": "higgsfield-login",
-      "done": false,
+      "done": true,
       "text": "Higgsfield: เปิด PowerShell พิมพ์ higgsfield auth login ล็อกอินในเบราว์เซอร์ แล้ว higgsfield workspace list + higgsfield workspace set <id> แล้วบอก Claude — Claude จะเช็ก account status (แพ็กเกจ/เครดิต) และเสนอทดสอบ 1 ชิ้นพร้อมราคาเครดิตก่อนสั่ง · ต้องมีแพ็กเกจเสียเงินจึงเจนผ่าน CLI ได้",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-07T11:17:58.069Z"
+    },
+    {
+      "id": "higgsfield-next",
+      "owner": "decide",
+      "text": "Higgsfield จะไปต่ออย่างไร? (ทดสอบเจนผ่าน CLI ถูกปฏิเสธเพราะแพ็กเกจฟรี ต้องอย่างน้อย Starter · ราคาวัดจริง: โปสเตอร์ GPT Image 2.6 high 4:5 = 1.5 เครดิต · คลิป Kling 5 วิ = 7.5 · Seedance 5 วิ = 35)",
+      "options": [
+        {
+          "id": "a",
+          "label": "ลองด้วยมือบนเว็บ higgsfield.ai ก่อน",
+          "note": "แพ็กเกจฟรีมีโควตาเจนบนเว็บจำกัด · วางคำสั่งโพสต์ #4 จาก .local/poster-prompt-4-chatgpt-app.txt เลือก GPT Image 2.6 แนบโลโก้ + อ้างอิง 3 ภาพ · เห็นคุณภาพก่อนจ่าย"
+        },
+        {
+          "id": "b",
+          "label": "สมัคร Starter $15 = 200 เครดิต แล้วให้ Claude ทดสอบผ่าน CLI",
+          "note": "โปสเตอร์ 1.5 เครดิต/ภาพ · คลิป 5 วิ 7.5–35 เครดิต · Claude บอกราคาก่อนทุกครั้ง · ไม่มีเพดานในตัว เครดิตแพ็กเสริมหมดอายุ 90 วัน"
+        },
+        {
+          "id": "c",
+          "label": "พักไว้ก่อน ใช้คิว Codex/Plus ต่อ",
+          "note": "ยังไม่มีค่าใช้จ่าย · กลับมาเปิดได้ทุกเมื่อ CLI และสกิลติดตั้งไว้แล้ว"
+        }
+      ],
+      "recommended": "a",
+      "done": false
     }
   ],
   "stories": [
@@ -254,7 +279,7 @@
       ],
       "what": "เจ้าของส่งลิงก์ higgsfield.ai/mcp จากคลิป borntodev · เพจทางการบอกว่า Claude Code ควรใช้ CLI + สกิล ไม่ใช่ MCP URL → ติดตั้ง @higgsfield/cli 1.2.2 และสกิล 7 ตัวใน .claude/skills/higgsfield-* (+ skills-lock.json) · เขียน docs/higgsfield.md (ขั้นล็อกอิน ตารางราคา กติกา) และกติกาสั้นใน CLAUDE.md · ยังไม่ได้เจนจริง รอเจ้าของล็อกอิน",
       "title": "ติดตั้ง Higgsfield (ภาพ/วิดีโอ AI) เป็น CLI + สกิลของ Claude Code",
-      "result": "CLI ตอบ --help ครบ · สกิลติดตั้งแล้ว (โหลดใน session ใหม่) · จุดที่น่าใช้: วิดีโอสั้นสำหรับ Reels และ GPT Image 2.6 ที่คิว Codex ไปไม่ถึง"
+      "result": "เจ้าของล็อกอินแล้ว Claude ตั้ง workspace · บัญชีแพ็กเกจฟรี 10 เครดิต · ราคาวัดจริง: GPT Image 2.6 high 4:5 = 1.5 เครดิต · Nano Banana Pro 2 · Kling 3.0 Turbo 5 วิ 7.5 · Seedance 2.5 5 วิ 35 · GPT Image 2.6 รับ 4:5 ตรงและรับภาพอ้างอิง · ทดสอบ 1 ภาพที่เจ้าของอนุมัติถูกปฏิเสธ job_minimum_basic_plan_required ไม่หักเครดิต = แพ็กเกจฟรีเจนผ่าน CLI ไม่ได้ · จุดที่น่าใช้: วิดีโอสั้นสำหรับ Reels และ GPT Image 2.6 ที่คิว Codex ไปไม่ถึง"
     }
   ],
   "decisions": [
