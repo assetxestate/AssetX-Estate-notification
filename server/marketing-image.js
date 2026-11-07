@@ -1,4 +1,5 @@
 import { verifySession } from '../api/_auth.js'
+import { POSTER_DESIGN_SYSTEM } from '../src/lib/posterDesignSystem.js'
 
 const OPENAI_IMAGES_URL = 'https://api.openai.com/v1/images/generations'
 const ASSETX_PALETTE = 'AssetX logo-inspired palette: midnight navy #08213f, deep indigo/violet #4b2a82, cyan/teal #42c7d8, soft sky blue #70d7e8, coral-pink-to-warm-orange #f26b4f, and clean white. Use cyan/teal and navy as the primary poster colors, violet as the depth/shadow color, and coral-pink/orange only as a small warm accent. CTA bands and badges should be navy, teal, white, or cyan-glow style. Avoid metallic gold CTA bars, dominant red map pins, green loan-ad themes, and generic high-saturation finance-ad colors.'
@@ -20,7 +21,7 @@ function buildStyleGuidance(styleProfile = {}) {
     layoutRules ? `Layout rules: ${layoutRules}.` : '',
     'Output must look like a new original premium brand asset, not a copy of an existing ad or reference image.',
     allowPosterText
-      ? 'If this is a poster/key-visual request, create a complete ready-to-post social-ad composition with the provided Thai headline, benefit badges, CTA, layered visual zones, realistic cutout-like property elements, and reusable design structure. Do not return only a plain background photo.'
+      ? `If this is a poster/key-visual request, create a complete ready-to-post social-ad composition with the provided Thai headline, a content card built from the post, CTA, layered visual zones, realistic cutout-like property elements, and reusable design structure. Do not return only a plain background photo.\n${POSTER_DESIGN_SYSTEM}`
       : 'Create a complete premium commercial image for the selected visual style. If the prompt asks for a poster, include meaningful real-estate visual elements and composition depth, but do not add placeholder headline bars or empty CTA boxes.',
     styleProfile.photorealistic === false
       ? 'Clearly illustrative, not a photograph or depiction of an actual property or client case. Preserve the selected visual style; keep the composition clear and trustworthy.'

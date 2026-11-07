@@ -7,6 +7,7 @@ import { canRecoverManualFacebookPost, recoverManualFacebookPost } from './lib/m
 import { prioritizeMarketingIdeas, redemptionIdeas } from './lib/marketingIdeaMix.js'
 import { importHermesDraft } from './lib/hermesMarketingDraft.js'
 import { assetxImageStyles, buildGalleryFireflyPrompt } from './lib/assetxImageStyles.js'
+import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction } from './lib/posterDesignSystem.js'
 import { marketingChannelSetup, validateManualPublicationReference } from './lib/marketingChannels.js'
 import { organizeMarketingQueue } from './lib/marketingQueuePlan.js'
 import { SESSION_EXPIRED_MESSAGE, errorMessage, friendlyApiError } from './lib/marketingErrors.js'
@@ -969,41 +970,29 @@ function buildPosterCopy(brief = {}, copyInput = {}) {
   ].filter(Boolean).join('\n')
 }
 
+// v2 (7 พ.ย. 2569): ใช้ระบบออกแบบโปสเตอร์ร่วมกับคิวสร้างภาพบนคอมสำนักงาน — การ์ดเนื้อหาตามโครงโพสต์แทนป้าย 3 ป้าย (ถอดจากตัวอย่างโปสเตอร์ของเจ้าของ · คงโทนน้ำเงิน-ไซยาน)
 function buildSocialPosterPrompt(brief = {}, posterCopy = defaultPosterCopy) {
   const baseVisual = String(brief.imagePrompt || brief.title || '').trim()
+  const body = String(brief.caption || brief.body || '').replace(/\s+\n/g, '\n').trim().slice(0, 1500)
+  const layout = body ? pickPosterLayout(body) : 'explain'
   return [
-    'Create a ready-to-post vertical 4:5 Thai social media marketing poster for AssetX Estate, a Thai real-estate consultancy.',
+    'Create a ready-to-post vertical 4:5 Thai social media marketing poster for AssetX Estate, a Thai real-estate consultancy for ขายฝาก (sale with right of redemption) and จำนอง (mortgage).',
     '',
-    'Poster goal:',
-    'Make it look like a complete Facebook/LINE ad creative, not an empty background. The image should already contain a Thai headline, benefit badges, CTA area, visual hierarchy, icons, and real-estate objects arranged like a professional poster.',
+    POSTER_DESIGN_SYSTEM,
     '',
     'Core content:',
     buildPosterCopy(brief, posterCopy),
     '',
-    'Visual direction:',
-    baseVisual || 'Thai land deed, open land plot, house/property, map pins, document and consultation theme.',
+    body
+      ? ['POST CONTENT (context: build the content card and the ribbon sub-line from it; do not paste it whole):', '"""', body, '"""', '', `CONTENT CARD (layout: ${layout}): ${posterLayoutInstruction(layout)} Every line on the card must be copied exactly from the post text, read as a complete idea on its own and not start with a connecting word such as และ, หรือ, แต่ or ที่. If a line cannot be copied safely, use fewer lines.`].join('\n')
+      : 'CONTENT CARD: use the three benefit badges above as a checklist card with cyan check circles.',
     '',
-    'Composition:',
-    '- Vertical 4:5 poster layout.',
-    '- Big bold Thai headline in the top third.',
-    '- Hero visual: Thai land deed document, open land plot with boundary markers, modern house/property, map pins.',
-    '- 3 benefit badges or 3-step blocks in the middle.',
-    '- Small supporting photo panels or icon cards.',
-    '- Bottom CTA/contact band with AssetX Estate brand text only.',
-    '- Premium but energetic Thai property advertising style, inspired by real social media ads but original.',
+    'Hero scene:',
+    baseVisual || 'Pick the one scene from the design system that matches the topic: a plain generic title-deed document with a pen, an open land plot with boundary pegs, a modern Thai house, coin stacks, or a calm consultation desk.',
     '',
-    'Style:',
-    `Photorealistic advertising composite, sharp commercial lighting, polished graphic design, high contrast, readable on mobile. ${assetxPalettePrompt}`,
-    '',
-    'Allowed:',
-    '- Thai headline and Thai benefit text.',
-    '- Generic symbols/icons such as check marks, shield, map pin, chat bubble, percent sign, document icon.',
-    '- AssetX Estate brand text.',
-    '',
-    'Avoid:',
+    'RULES:',
+    ...POSTER_TEXT_RULES.map((rule) => `- ${rule}`),
     '- Do not use real customer information.',
-    '- Do not invent deed numbers, addresses, random phone numbers, random LINE IDs, random company logos, or unrelated watermarks.',
-    '- Do not promise guaranteed approval, instant cash for every case, or guaranteed returns.',
   ].join('\n')
 }
 

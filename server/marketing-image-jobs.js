@@ -12,6 +12,7 @@ import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
 import { scrub } from './research/pii.js'
 import { POSTER_SIZES, DEFAULT_POSTER_SIZE, cropPlan } from '../src/lib/posterSizes.js'
+import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction } from '../src/lib/posterDesignSystem.js'
 
 export const IMAGE_BUCKET = 'marketing-images'
 export const WORKER_ID = 'office-pc'
@@ -37,38 +38,43 @@ const multiLine = (value) => scrub(String(value ?? ''))
 
 const SHAPES = { portrait: 'vertical (portrait)', square: 'square', landscape: 'horizontal (landscape)' }
 
-// คำสั่งภาพจากเนื้อหาโพสต์: Codex (โมเดลภาษา) อ่านเนื้อหาแล้วเลือกฉากกับข้อความประกอบเอง ก่อนเรียกเครื่องมือสร้างภาพ
+// คำสั่งภาพจากเนื้อหาโพสต์: Codex (โมเดลภาษา) อ่านเนื้อหาแล้วเลือกฉาก + สร้างการ์ดเนื้อหาตามโครงโพสต์ ก่อนเรียกเครื่องมือสร้างภาพ
+// v2 (7 พ.ย. 2569): ใช้ระบบออกแบบโปสเตอร์ร่วม (src/lib/posterDesignSystem.js) — การ์ดเนื้อหาเป็นหัวใจของภาพ แทน "ป้าย 3 ป้าย" แบบเดิมที่ภาพออกมาโล่งและเหมือนกันทุกโพสต์
 export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE } = {}) {
   const headline = oneLine(title).slice(0, 120) || 'รับจำนอง · ขายฝาก'
   const body = multiLine(caption).slice(0, CAPTION_LIMIT)
   const plan = cropPlan(size)
   const ratio = `${plan.width}:${plan.height}`
+  const layout = body ? pickPosterLayout(body) : 'explain'
   return [
     `Design ONE finished ${SHAPES[plan.aspect]} Thai social-media poster for AssetX Estate, a Thai real-estate consultancy for ขายฝาก (sale with right of redemption) and จำนอง (mortgage). It will be posted as a ${plan.platform} image (${plan.width}x${plan.height} px).`,
     plan.edges
-      ? `SAFE AREA (strict): the ${plan.sourceWidth}x${plan.sourceHeight} image will be center-cropped to ${ratio}, cutting ${plan.cutPx} px off the ${plan.edges} edges. Keep the headline, every badge, the CTA band and the logo at least ${plan.safePx} px away from the ${plan.edges} edges. Those outer ${plan.safePx} px strips must contain background scenery only.`
+      ? `SAFE AREA (strict): the ${plan.sourceWidth}x${plan.sourceHeight} image will be center-cropped to ${ratio}, cutting ${plan.cutPx} px off the ${plan.edges} edges. Keep the headline, the content card, the CTA band and the logo at least ${plan.safePx} px away from the ${plan.edges} edges. Those outer ${plan.safePx} px strips must contain background scenery only.`
       : 'SAFE AREA: keep all text and the logo at least 5% away from every edge.',
-    'The attached image is the official AssetX logo. Place it small at the bottom. Do not redraw or alter it.',
+    'The attached image is the official AssetX logo. Place it small inside the bottom band. Do not redraw or alter it.',
     '',
-    'HEADLINE (render exactly, large and bold in the top third; you may break it into two lines but must not change, add or drop any Thai character):',
+    POSTER_DESIGN_SYSTEM,
+    '',
+    'HEADLINE (render exactly, large and bold in the top zone; you may break it into two lines but must not change, add or drop any Thai character):',
     headline,
     '',
     body
-      ? ['POST CONTENT (context only, do not paste it whole). Read it, then add at most 3 short supporting badges, each 2 to 5 Thai words copied from this text. Each badge must read as a complete idea on its own: do not start a badge with a connecting word such as และ, หรือ, แต่ or ที่, and do not split one phrase across badges.', '"""', body, '"""'].join('\n')
+      ? [
+          'POST CONTENT (context: read it, then build the sub-line and the content card from it; do not paste it whole):',
+          '"""', body, '"""',
+          '',
+          `CONTENT CARD (layout: ${layout}): ${posterLayoutInstruction(layout)} Every line on the card must be copied exactly from the post text (no new words, no paraphrase), must read as a complete idea on its own and must not start with a connecting word such as และ, หรือ, แต่ or ที่. If a line cannot be copied safely, use fewer lines.`,
+          'SUB-LINE on the ribbon: one short phrase copied from the post (3 to 8 Thai words) that says who this is for or what they get. If none fits, leave the ribbon out.',
+        ].join('\n')
       : 'SUPPORTING BADGES (render exactly): ประเมินเบื้องต้น | ปรึกษาฟรี | ดูแลเอกสาร',
     '',
     'BOTTOM CTA BAND (render exactly): ติดต่อ AssetX Estate',
     '',
-    'VISUAL: one hero scene that clearly matches the topic of this post (for example contract and document review for legal or checklist topics, an open land plot with boundary markers for land topics, a modern Thai house for housing topics, a calm consultation desk for advice topics). Photorealistic advertising composite, polished graphic design, clear hierarchy, high contrast, readable on a phone.',
+    'HERO SCENE: pick the one scene from the design system that matches this post (document and pen for contract, cost or legal topics; land plot with pegs for land topics; modern house for housing topics; coin stacks for money topics; consultation desk for advice topics). Photorealistic advertising composite, polished graphic design, clear hierarchy, high contrast, readable on a phone.',
     ASSETX_PALETTE,
     '',
     'RULES:',
-    '- Thai text must be spelled exactly. Use fewer words rather than risk a misspelled word.',
-    '- Do not add punctuation that is not in the given text: no trailing periods, no extra quotation marks.',
-    '- Do not add phone numbers, LINE IDs, URLs, deed numbers, addresses, people\'s names, prices, interest rates or percentages unless they appear in the HEADLINE.',
-    '- No Garuda, national emblem, government seals or official logos. Draw any land title deed as a plain generic document without emblems or numbers.',
-    '- No other company names, logos or watermarks.',
-    '- No promises of guaranteed approval, instant cash or guaranteed returns.',
+    ...POSTER_TEXT_RULES.map((rule) => `- ${rule}`),
   ].join('\n')
 }
 
