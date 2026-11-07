@@ -22,6 +22,7 @@ import { IMAGE_BUCKET, WORKER_ID } from '../server/marketing-image-jobs.js'
 import { POSTER_SIZES } from '../src/lib/posterSizes.js'
 import { createAsk, ollamaConfigured } from '../server/research/llm.js'
 import { enhanceBriefWithAi } from '../server/poster-brief-ai.js'
+import { syncPosterRefs } from '../server/poster-refs.js'
 import { scrub } from '../server/research/pii.js'
 
 const VERSION = '1'
@@ -37,6 +38,10 @@ const GENERATE_TIMEOUT_MS = 9 * 60 * 1000
 const LOCAL_DIR = path.join(repo, '.local')
 const OUTPUT_DIR = path.join(LOCAL_DIR, 'image-jobs')
 const LOCK_FILE = path.join(LOCAL_DIR, 'image_worker.lock')
+// รูปตัวอย่างโปสเตอร์ที่เจ้าของส่งเข้าบอทเทเลแกรม (ตาราง poster_refs) → ดึงลงโฟลเดอร์นี้ทุก ๆ 20 วินาที (ดู server/poster-refs.js)
+const REFS_INBOX = path.join(LOCAL_DIR, 'poster-refs', 'inbox')
+const REF_SYNC_MS = 20 * 1000
+const REF_SYNC_RETRY_MS = 10 * 60 * 1000
 // โลโก้สำหรับแปะบนโปสเตอร์ = เฉพาะเครื่องหมาย X (public/logo-mark.jpg ตัดจาก logo.jpg 7 พ.ย. 2569) — ไฟล์เต็มมีข้อความ "AssetX Estate Co., Ltd." ติดมา โมเดลวาดซ้ำแล้วดูไม่เป็นมืออาชีพ (เจ้าของติ)
 const LOGO_MARK = path.join(repo, 'public', 'logo-mark.jpg')
 const LOGO = existsSync(LOGO_MARK) ? LOGO_MARK : path.join(repo, 'public', 'logo.jpg')
@@ -323,7 +328,13 @@ async function main() {
     await heartbeat(db)
     const { count, error } = await db.from('marketing_image_jobs').select('id', { count: 'exact', head: true }).eq('status', 'queued')
     if (error) throw error
-    log(`ตั้งค่าพร้อม · ปลั๊กอิน ${PLUGIN_SERVER} · งานรอคิว ${count ?? 0} งาน`)
+    // ใช้ select ธรรมดา ไม่ใช่ head+count: ตารางที่ยังไม่มี PostgREST ตอบ head เป็น 204 ไม่มี error (ตรวจ 7 พ.ย. 2569)
+    let refs = 'ตาราง poster_refs ยังไม่มี (รัน supabase_poster_refs.sql ก่อน)'
+    try {
+      const pending = await db.from('poster_refs').select('id').eq('status', 'new').limit(50)
+      if (!pending.error) refs = `รูปตัวอย่างรอดึง ${pending.data?.length ?? 0} ภาพ`
+    } catch { /* ยังไม่ได้รัน supabase_poster_refs.sql */ }
+    log(`ตั้งค่าพร้อม · ปลั๊กอิน ${PLUGIN_SERVER} · งานรอคิว ${count ?? 0} งาน · ${refs}`)
     return
   }
 
@@ -351,7 +362,20 @@ async function main() {
     await releaseStaleJobs(db)
     await beat()
     log(`ตัวรับงานสร้างภาพเปิดแล้ว${ONCE ? ' (ทำงานเดียวแล้วจบ)' : ''} · ปิดด้วย Ctrl+C`)
+    // รูปตัวอย่างจากเทเลแกรม: ดึงลง inbox ทุก REF_SYNC_MS · ล้ม (เช่น ยังไม่ได้รัน SQL) → พัก 10 นาทีแล้วลองใหม่ ไม่กระทบคิวภาพ
+    let nextRefSync = 0
+    const syncRefs = async () => {
+      if (Date.now() < nextRefSync) return
+      try {
+        await syncPosterRefs(db, { inboxDir: REFS_INBOX, log })
+        nextRefSync = Date.now() + REF_SYNC_MS
+      } catch (err) {
+        log('ดึงรูปตัวอย่างไม่สำเร็จ (ลองใหม่ใน 10 นาที · ยังไม่ได้รัน supabase_poster_refs.sql?):', shortError(err))
+        nextRefSync = Date.now() + REF_SYNC_RETRY_MS
+      }
+    }
     while (!stopping) {
+      await syncRefs()
       let job = null
       try { job = await claimNextJob(db) } catch (err) { log('อ่านคิวไม่สำเร็จ:', shortError(err)) }
       if (job) {

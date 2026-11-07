@@ -1,4 +1,6 @@
+import { createClient } from '@supabase/supabase-js';
 import { buildAssetxTelegramReply } from './_assetxTelegramAssistant.js';
+import { handlePosterRefMessage } from '../server/poster-refs.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
 // /diary หรือ /diary@ชื่อบอท (ตามด้วยข้อความอะไรก็ได้) → ส่งปุ่มเปิดไดอารี่งาน ไม่ส่งต่อให้ AI
@@ -56,6 +58,24 @@ async function sendTelegramMessage(chatId, text, extra = {}) {
     ...extra,
   });
 }
+
+// รูปตัวอย่างโปสเตอร์ (ส่งรูปพร้อมคำว่า "รูปตัวอย่าง") → เก็บขึ้น Supabase ให้คอมสำนักงานดึงลง inbox — ดู server/poster-refs.js
+function adminDb() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  return url && key ? createClient(url, key, { auth: { persistSession: false } }) : null;
+}
+
+const telegramFiles = {
+  getFile: (file_id) => callTelegram('getFile', { file_id }),
+  async download(filePath) {
+    const token = process.env.ASSETX_TELEGRAM_BOT_TOKEN;
+    const response = await fetch(`${TELEGRAM_API}/file/bot${token}/${filePath}`);
+    if (!response.ok) throw new Error(`Telegram file download ${response.status}`);
+    return Buffer.from(await response.arrayBuffer());
+  },
+  send: (chatId, text) => sendTelegramMessage(chatId, text),
+};
 
 // ปุ่มเปิดไดอารี่งานในห้อง: ข้อความพร้อมปุ่มลิงก์ (ปักหมุดไว้บนห้อง) · ปุ่มเมนูข้างช่องพิมพ์ (Telegram ให้ตั้งได้เฉพาะแชทส่วนตัว)
 // · ลงทะเบียน /diary ในรายการคำสั่งของบอท — ขั้นเสริมล้มได้โดยไม่กระทบปุ่มหลัก (เช่น บอทไม่ได้เป็นแอดมินกลุ่มจึงปักหมุดไม่ได้)
@@ -123,6 +143,22 @@ export default async function handler(req, res) {
 
   if (!isAllowedChat(chatId)) {
     return res.status(200).json({ ok: true, skipped: 'chat_not_allowed' });
+  }
+
+  if (message.photo || message.document) {
+    try {
+      const posterRef = await handlePosterRefMessage({
+        message,
+        db: adminDb(),
+        telegram: telegramFiles,
+        log: (line) => console.warn('AssetX Telegram poster ref:', line),
+      });
+      if (posterRef) return res.status(200).json({ ok: true, posterRef: { status: posterRef.status, stored: posterRef.stored } });
+    } catch (error) {
+      console.error('AssetX Telegram poster ref error:', error.message);
+      await sendTelegramMessage(chatId, 'เก็บรูปตัวอย่างไม่สำเร็จ ลองส่งใหม่อีกครั้ง (ถ้ายังไม่ได้รัน supabase_poster_refs.sql ใน Supabase ให้รันก่อน)').catch(() => {});
+      return res.status(200).json({ ok: false, error: 'poster_ref_failed' });
+    }
   }
 
   if (DIARY_COMMAND.test(String(message.text || '').trim())) {
