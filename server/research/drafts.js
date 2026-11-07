@@ -142,6 +142,18 @@ export function copiedCompetitorRate(facts = '', text = '') {
   const body = squash(text)
   return [...new Set((String(facts || '').match(/\d+(?:[.,]\d+)?\s*%/g) || []).map(squash))].filter((n) => n !== '15%').find((n) => body.includes(n)) || ''
 }
+// ลอกข้อความแอด/โพสต์ของเพจอื่นมาทั้งท่อน (เจอจริง #34 7 พ.ย. 2569: ประโยคเปิดของร่าง = ฮุคของแอดคำต่อคำ) — กติกา SUBTYPE_NOTES "ห้ามลอกข้อความ" · เทียบช่วง 30 ตัวอักษรหลังยุบช่องว่าง
+export function copiedCompetitorSpan(quoted = '', text = '', { span = 30, step = 8 } = {}) {
+  const squash = (s) => String(s || '').replace(/[\s"“”]/g, '')
+  const src = squash(quoted)
+  const body = squash(text)
+  if (src.length < span || !body) return ''
+  for (let i = 0; i + span <= src.length; i += step) {
+    const piece = src.slice(i, i + span)
+    if (body.includes(piece)) return piece
+  }
+  return ''
+}
 
 // ชื่อบริษัท/โครงการ/แบรนด์อื่นที่โผล่ในข้อเท็จจริงของแหล่งที่ห้ามอ้าง (กระทู้/คลิป/เพจ) — ถ้าหลุดลงโพสต์ = เล่าเคสของเขา/พาดพิงบริษัทอื่น
 export function foreignNamesIn(facts = '') {
@@ -421,11 +433,14 @@ const DANGLING_WORDS = new Set(['และ', 'หรือ', 'กับ', 'ท�
 const HEADLINE_END_WORDS = new Set(['ไหน', 'ไหม', 'มั้ย', 'อะไร', 'ยังไง', 'อย่างไร', 'เท่าไร', 'เท่าไหร่', 'กี่', 'ใคร', 'ทำไม', 'บ้าง', 'ได้', 'เลย', 'ดี', 'จริง', 'ก่อน', 'ทัน', 'คุ้ม', 'พอ', 'ครบ'])
 
 export function tidyHeadline(headline, firstLine, context = '') {
-  const h = String(headline || '').replace(/\s+/g, ' ').trim()
+  let h = String(headline || '').replace(/\s+/g, ' ').trim()
   const f = String(firstLine || '').replace(/\s+/g, ' ').trim()
   const looksCut = h.length >= 20 && f.length > h.length && f.startsWith(h)
-  if (!h || looksCut) return splitHeadline(f).headline || h
-  if (h.length > HEADLINE_MAX + 4) return splitHeadline(h).headline || trimHeadline(h)
+  // พาดหัวที่ตัดมาจากบรรทัดแรก/ยาวเกิน → ตัดใหม่ด้วย splitHeadline แล้ว "ไม่ return ทันที": บรรทัดแรกที่ไม่มีช่องว่างใน 30 ตัวแรก splitHeadline ตัดกลางคำ
+  // (เจอจริง #33 7 พ.ย. 2569: "การขายฝากเป็นวิธีที่เจ้าของทรั") จึงต้องผ่านด่านเศษคำ/คำเชื่อมค้างท้ายด้านล่างต่อ
+  if (!h || looksCut) h = splitHeadline(f).headline || h
+  else if (h.length > HEADLINE_MAX + 4) h = splitHeadline(h).headline || trimHeadline(h)
+  if (!h) return h
   // โมเดลเล็กชอบตัดพาดหัวให้พอดีเพดานกลางคำ (เจอซ้ำ 4 ครั้ง: "…ปิดหนี้และเหล" "…น้อยกว่าท" "…และมีเง") — นับตัวอักษรแยกไม่ออกจากพาดหัวดี ๆ
   // → ดูชิ้นคำท้ายสุด: ถ้าสั้น (≤ 4 ตัว) เป็นไทยล้วน และไม่พบเป็นคำในแคปชั่น/ชื่อเรื่องเลย = เศษคำ ตัดทิ้ง แล้วตัดคำเชื่อมที่ค้างท้ายออกด้วย
   // โมเดลตัดพาดหัวค้างคำเชื่อม/คำช่วยได้ทุกความยาว ("ลงทุนคอนโดพระราม 4 ยัง" "ซื้อคอนโดพระราม 4 ต้อง") → ตัดคำค้างท้ายเสมอ · เศษคำ (ไม่ใช่คำ) ตัดเฉพาะพาดหัวยาว ≥ 25
@@ -433,12 +448,14 @@ export function tidyHeadline(headline, firstLine, context = '') {
   let end = parts.length
   const lastWord = () => { for (let i = end - 1; i >= 0; i -= 1) if (parts[i].isWordLike) return { i, w: parts[i].segment }; return null }
   let last = lastWord()
-  if (h.length >= 25 && String(context || '').trim()) {
-    const known = wordSet(`${f}\n${context}`)
+  const known = String(context || '').trim() ? wordSet(`${f}\n${context}`) : new Set()
+  if (h.length >= 25 && known.size) {
     // เศษคำ = สั้น (≤ 5 ตัว) เป็นไทยล้วน และไม่พบเป็นคำเดี่ยวในเนื้อหา ("ทรัพย" ไม่พบ แต่ "ทรัพย์" พบ) · เคยลองกฎ "เนื้อหามีคำยาวกว่าที่ขึ้นต้นด้วยชิ้นนี้" แล้วตัดคำดี ๆ อย่าง "ใช้" "ใจ" ทิ้ง — ไม่ใช้
     if (last && last.w.length <= 5 && /^[฀-๿]+$/.test(last.w) && !known.has(last.w) && !HEADLINE_END_WORDS.has(last.w)) { end = last.i; last = lastWord() }
   }
-  while (last && DANGLING_WORDS.has(last.w)) { end = last.i; last = lastWord() }
+  // คำเชื่อมค้างท้ายที่จริง ๆ เป็นครึ่งหลังของคำประสม ("เจ้า|ของ" — ICU แบ่งผิดเมื่อถัดไปเป็นเศษคำ แต่ในเนื้อหาแบ่งเป็น "เจ้าของ") ไม่ตัด
+  const prevWord = () => { for (let i = (last?.i ?? 0) - 1; i >= 0; i -= 1) if (parts[i].isWordLike) return parts[i].segment; return '' }
+  while (last && DANGLING_WORDS.has(last.w) && !known.has(`${prevWord()}${last.w}`)) { end = last.i; last = lastWord() }
   const cut = parts.slice(0, end).map((p) => p.segment).join('').replace(/[\s:：·,-]+$/, '').trim()
   if (cut !== h && cut.length >= 12) return cut
   return h
@@ -548,6 +565,8 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
     if (COMPETITOR_COPY_SUBTYPES.includes(subtype)) {
       const copied = copiedCompetitorRate(facts, `${headline}\n${caption}`)
       if (copied) return { ok: false, error: `ตัวเลข % จากแอด/โพสต์ของคู่แข่งที่ห้ามอ้าง ("${copied}") หลุดลงโพสต์ — เรตของเขาเป็นโฆษณา ตัดตัวเลขออก เล่าเป็นหลักทั่วไป` }
+      const span = copiedCompetitorSpan(socialCaption(facts), `${headline}\n${caption}`)
+      if (span) return { ok: false, error: `ลอกข้อความแอด/โพสต์ของเพจอื่นมาทั้งท่อน ("${span}…") — เล่าหัวข้อเดียวกันด้วยประโยคของเราเอง ห้ามใช้ฮุคหรือประโยคของเขา` }
     }
   }
   // ตัวแทนที่ระบบใส่แทนเรต/ลิงก์ในข้อเท็จจริง (ads-library.js adIdeaRow · stripLinks) — โมเดลลอกมาทั้งวงเล็บ

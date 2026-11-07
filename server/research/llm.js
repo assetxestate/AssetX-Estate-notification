@@ -138,10 +138,20 @@ async function askHermes({ system, prompt, env, fetchImpl, timeoutMs }) {
   return postChat({ label: 'Hermes', url, body, headers, fetchImpl, timeoutMs })
 }
 
+// ยิง /api/chat (API ของ Ollama เอง) แทน /v1/chat/completions — ทางเข้าแบบ OpenAI ไม่รับ options.num_ctx เซิร์ฟเวอร์จึงใช้ค่าเริ่มต้น 4096
+// แล้ว "ตัดหัว" prompt ร่างโพสต์ (~8,000 โทเค็น) เหลือ 2,050: system prompt ที่มีกติกาแบรนด์/ความรู้โดเมนหายทั้งก้อน แคปชั่นออกมา 0–80 ตัวอักษร (9 จาก 14 มุมล้ม 7 พ.ย. 2569)
+// วัดจริง: num_ctx 8192 → prompt_eval_count 8,153 แคปชั่น 836 ตัวอักษรผ่านด่าน ใช้เวลาเท่าเดิม (~3 นาที) · ตั้ง OLLAMA_NUM_CTX ใน .env.local ถ้าเครื่องแรงกว่า/อ่อนกว่า
+export const DEFAULT_OLLAMA_NUM_CTX = 12288
+export function ollamaNativeEndpoint(env = process.env) {
+  const base = String(env.OLLAMA_URL || DEFAULT_OLLAMA_URL).trim().replace(/\/+$/, '').replace(/\/(v1\/chat\/completions|v1|api\/chat)$/, '')
+  return `${base}/api/chat`
+}
 async function askOllama({ system, prompt, env, fetchImpl }) {
-  const body = { model: String(env.OLLAMA_MODEL).trim(), stream: false, temperature: 0.4, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] }
+  const numCtx = Number(env.OLLAMA_NUM_CTX || DEFAULT_OLLAMA_NUM_CTX)
+  // format:'json' = ให้ Ollama บังคับคำตอบเป็น JSON (ทุกผู้เรียกของ createAsk อ่าน JSON อยู่แล้ว)
+  const body = { model: String(env.OLLAMA_MODEL).trim(), stream: false, format: 'json', options: { temperature: 0.4, num_ctx: numCtx }, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] }
   const timeoutMs = Number(env.OLLAMA_TIMEOUT_MS || DEFAULT_OLLAMA_TIMEOUT_MS)
-  return postChat({ label: 'Ollama', url: ollamaEndpoint(env), body, fetchImpl, timeoutMs })
+  return postChat({ label: 'Ollama', url: ollamaNativeEndpoint(env), body, fetchImpl, timeoutMs })
 }
 
 async function askGemini({ system, prompt, env }) {

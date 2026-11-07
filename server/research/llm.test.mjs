@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createAsk, ollamaConfigured, ollamaEndpoint, isUnreachableError, NO_PROVIDER_MESSAGE, extractJson, repairJsonText } from './llm.js'
+import { createAsk, ollamaConfigured, ollamaEndpoint, ollamaNativeEndpoint, isUnreachableError, NO_PROVIDER_MESSAGE, extractJson, repairJsonText } from './llm.js'
 
 const ANGLES = '[{"label":"ก","brief":"1"},{"label":"ข","brief":"2"},{"label":"ค","brief":"3"}]'
 const okJson = (content) => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content } }] }) })
@@ -36,7 +36,7 @@ test('ollamaEndpoint: โฮสต์เปล่า · มี / ท้าย ·
   assert.equal(ollamaEndpoint({ OLLAMA_URL: 'http://x/v1/chat/completions' }), 'http://x/v1/chat/completions')
 })
 
-test('Ollama: ยิง OpenAI-compatible ด้วยรุ่นจาก env · ไม่สตรีม · system+user · ไม่มี Authorization', async () => {
+test('Ollama: ยิง /api/chat ของ Ollama เอง (ไม่ใช่ทางเข้า OpenAI ที่รับ num_ctx ไม่ได้) · num_ctx 12288 ค่าเริ่มต้น / OLLAMA_NUM_CTX ทับ · format json · ไม่สตรีม · system+user · ไม่มี Authorization', async () => {
   const calls = []
   const fetchImpl = async (url, init) => { calls.push({ url, init }); return okJson(ANGLES) }
   const result = await createAsk({ env: { OLLAMA_MODEL: 'qwen2.5:7b' }, fetchImpl })({ system: 'ระบบ', prompt: 'คำถาม' })
@@ -44,10 +44,22 @@ test('Ollama: ยิง OpenAI-compatible ด้วยรุ่นจาก env 
   assert.equal(result.provider, 'ollama')
   assert.equal(result.data.length, 3)
   assert.equal(calls.length, 1)
-  assert.equal(calls[0].url, 'http://localhost:11434/v1/chat/completions')
+  assert.equal(calls[0].url, 'http://localhost:11434/api/chat')
   const body = JSON.parse(calls[0].init.body)
   assert.equal(body.model, 'qwen2.5:7b')
   assert.equal(body.stream, false)
+  assert.equal(body.format, 'json')
+  assert.equal(body.options.num_ctx, 12288)
+  assert.equal(body.options.temperature, 0.4)
+  await createAsk({ env: { OLLAMA_MODEL: 'qwen2.5:7b', OLLAMA_NUM_CTX: '8192', OLLAMA_URL: 'http://x:11434/v1/chat/completions' }, fetchImpl })({ system: 's', prompt: 'p' })
+  assert.equal(calls[1].url, 'http://x:11434/api/chat', 'OLLAMA_URL แบบเส้นทาง OpenAI เดิมยังใช้ได้')
+  assert.equal(JSON.parse(calls[1].init.body).options.num_ctx, 8192)
+  assert.equal(ollamaNativeEndpoint({ OLLAMA_URL: 'http://x/v1' }), 'http://x/api/chat')
+  assert.equal(ollamaNativeEndpoint({ OLLAMA_URL: 'http://x/api/chat/' }), 'http://x/api/chat')
+  // คำตอบรูป /api/chat ({message:{content}}) อ่านได้
+  const native = await createAsk({ env: { OLLAMA_MODEL: 'q' }, fetchImpl: async () => new Response(JSON.stringify({ message: { role: 'assistant', content: ANGLES }, done: true }), { status: 200 }) })({ system: 's', prompt: 'p' })
+  assert.equal(native.ok, true)
+  assert.equal(native.data.length, 3)
   assert.deepEqual(body.messages.map((m) => m.role), ['system', 'user'])
   assert.equal(body.messages[0].content, 'ระบบ')
   assert.equal(body.messages[1].content, 'คำถาม')

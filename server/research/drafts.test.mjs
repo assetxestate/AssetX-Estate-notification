@@ -84,6 +84,10 @@ test('tidyHeadline: คำถามลงท้าย (ไหน/ไหม/บ�
   assert.equal(tidyHeadline('ค่าใช้จ่ายขายฝาก จำเป็นแค่ไหน', caption.split('\n')[0], caption), 'ค่าใช้จ่ายขายฝาก จำเป็นแค่ไหน')
   assert.equal(tidyHeadline('ค่าใช้จ่ายขายฝาก จำเป็นแค่', caption.split('\n')[0], caption), 'ค่าใช้จ่ายขายฝาก จำเป็น')
   assert.equal(tidyHeadline('ขายฝากต้องเตรียมเอกสารอะไรบ้าง', 'เอกสารที่ต้องเตรียม', 'โฉนด บัตรประชาชน ทะเบียนบ้าน'), 'ขายฝากต้องเตรียมเอกสารอะไรบ้าง')
+  // บรรทัดแรกไม่มีช่องว่างใน 30 ตัวแรก → splitHeadline ตัดกลางคำ "…เจ้าของทรั" (เจอจริง #33 7 พ.ย. 2569) → ต้องตัดเศษคำและคำเชื่อมค้างท้ายต่อ
+  const noSpace = 'การขายฝากเป็นวิธีที่เจ้าของทรัพย์สินสามารถได้รับเงินทันที แต่ก็มีความเสี่ยงที่ต้องพิจารณา'
+  assert.equal(tidyHeadline('การขายฝากเป็นวิธีที่เจ้าของทรั', noSpace, noSpace), 'การขายฝากเป็นวิธีที่เจ้าของ')
+  assert.equal(tidyHeadline('', noSpace, noSpace), 'การขายฝากเป็นวิธีที่เจ้าของ')
 })
 
 test('ไอเดียจากตัวเฝ้าเพจ Facebook (source social): ข้อความโพสต์ในเครื่องหมายคำพูดคือข้อเท็จจริง · ตัวเลขยอดไม่ส่งให้ AI · คำใบ้กลุ่มเพจเป็นหมายเหตุ · ไม่ใช้โครงอัปเดตพร้อมที่มา · ชื่อเรื่องตัดส่วน "แรงกว่าปกติ"', () => {
@@ -150,6 +154,13 @@ test('parseDraft (no_cite): ชื่อแบรนด์ไทยของเ�
   assert.equal(youtube.ok, true, youtube.error)
   const placeholder = parseDraft({ ...base, caption: longBody('บางแอดโฆษณาดอกเบี้ย [เรต] ต่อเดือน ซึ่งต้องดูสัญญาจริงของแต่ละกรณี') }, { policy: 'no_cite', sourceLabel: label, brand, subtype: 'ad_library', facts })
   assert.match(placeholder.error, /\[เรต\]/)
+  // ลอกฮุคของแอดมาทั้งท่อน (เจอจริง #34: ประโยคเปิด = ข้อความแอดคำต่อคำ) → ปัดตก · พูดหัวข้อเดียวกันด้วยคำตัวเองผ่าน
+  const adFacts = 'แอดคู่แข่งรันนาน 653 วัน — ขายบ้านมานานแล้ว ขายไม่ได้สักที\n“ขายบ้านมานานแล้ว ขายไม่ได้สักที 😔 ทำไมยังขายไม่ได้ เป็นเพราะอะไร ลองมาฝากขายบ้านกับเราดูสิ ทีมงานมืออาชีพช่วยดูแลทุกขั้นตอน”'
+  const copied = parseDraft({ ...base, headline: 'ขายบ้านไม่ได้ ทำอย่างไร', caption: longBody('ขายบ้านมานานแล้ว ขายไม่ได้สักที 😔 ทำไมยังขายไม่ได้ เป็นเพราะอะไร ลองดูสามประเด็นนี้ก่อน') }, { policy: 'no_cite', sourceLabel: 'Meta Ad Library · เพจหนึ่ง', brand, subtype: 'ad_library', facts: adFacts })
+  assert.equal(copied.ok, false)
+  assert.match(copied.error, /ลอกข้อความแอด/)
+  const own = parseDraft({ ...base, headline: 'ขายบ้านไม่ได้ ทำอย่างไร', caption: longBody('ประกาศขายบ้านมาหลายเดือนแต่ยังไม่มีคนจอง ส่วนใหญ่ติดที่ราคา รูปถ่าย หรือเอกสารที่ยังไม่พร้อม ลองไล่เช็กทีละข้อ') }, { policy: 'no_cite', sourceLabel: 'Meta Ad Library · เพจหนึ่ง', brand, subtype: 'ad_library', facts: adFacts })
+  assert.equal(own.ok, true, own.error)
 })
 
 test('buildDraftPrompt: ไอเดียที่มีแค่หัวข้อ (⚠️) → โหมดความรู้ทั่วไป ไม่มีชื่อช่อง ไม่มีแฮชแท็กจากชื่อคลิป', () => {
