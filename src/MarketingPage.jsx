@@ -7,7 +7,7 @@ import { canRecoverManualFacebookPost, recoverManualFacebookPost } from './lib/m
 import { prioritizeMarketingIdeas, redemptionIdeas } from './lib/marketingIdeaMix.js'
 import { importHermesDraft } from './lib/hermesMarketingDraft.js'
 import { assetxImageStyles, buildGalleryFireflyPrompt } from './lib/assetxImageStyles.js'
-import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction } from './lib/posterDesignSystem.js'
+import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction, pickHeadlineKeyword } from './lib/posterDesignSystem.js'
 import { marketingChannelSetup, validateManualPublicationReference } from './lib/marketingChannels.js'
 import { organizeMarketingQueue } from './lib/marketingQueuePlan.js'
 import { SESSION_EXPIRED_MESSAGE, errorMessage, friendlyApiError } from './lib/marketingErrors.js'
@@ -975,6 +975,7 @@ function buildSocialPosterPrompt(brief = {}, posterCopy = defaultPosterCopy) {
   const baseVisual = String(brief.imagePrompt || brief.title || '').trim()
   const body = String(brief.caption || brief.body || '').replace(/\s+\n/g, '\n').trim().slice(0, 1500)
   const layout = body ? pickPosterLayout(body) : 'explain'
+  const keyword = pickHeadlineKeyword(String(brief.title || posterCopy?.headline || ''))
   return [
     'Create a ready-to-post vertical 4:5 Thai social media marketing poster for AssetX Estate, a Thai real-estate consultancy for ขายฝาก (sale with right of redemption) and จำนอง (mortgage).',
     '',
@@ -983,12 +984,13 @@ function buildSocialPosterPrompt(brief = {}, posterCopy = defaultPosterCopy) {
     'Core content:',
     buildPosterCopy(brief, posterCopy),
     '',
+    ...(keyword ? [`KEY WORD to highlight in the headline (this whole word only): ${keyword}`, ''] : []),
     body
-      ? ['POST CONTENT (context: build the content card and the ribbon sub-line from it; do not paste it whole):', '"""', body, '"""', '', `CONTENT CARD (layout: ${layout}): ${posterLayoutInstruction(layout)} Every line on the card must be copied exactly from the post text, read as a complete idea on its own and not start with a connecting word such as และ, หรือ, แต่ or ที่. If a line cannot be copied safely, use fewer lines.`].join('\n')
-      : 'CONTENT CARD: use the three benefit badges above as a checklist card with cyan check circles.',
+      ? ['POST CONTENT (context: build the ribbon, the main card and the action panel from it; do not paste it whole):', '"""', body, '"""', '', `CONTENT CARD (layout: ${layout}): ${posterLayoutInstruction(layout)} Every row on the card must be copied exactly from the post text, read as a complete idea on its own and not start with a connecting word such as และ, หรือ, แต่ or ที่. If a row cannot be copied safely, use fewer rows.`, 'BENEFIT RIBBON: one complete phrase of 4-10 Thai words copied from the post that tells the reader what they get. ACTION PANEL: 2 or 3 complete clauses of 5-12 Thai words copied from the post that tell the reader what to do next. READABILITY TEST: the headline, ribbon, card rows and action items alone must tell the whole story of the post.'].join('\n')
+      : 'MAIN CARD: use the three benefit badges above as a checklist card with cyan check circles; no action panel.',
     '',
-    'Hero scene:',
-    baseVisual || 'Pick the one scene from the design system that matches the topic: a plain generic title-deed document with a pen, an open land plot with boundary pegs, a modern Thai house, coin stacks, or a calm consultation desk.',
+    'Hero zone content (small, beside the headline, never reducing the content area):',
+    baseVisual || 'Pick the one scene from the design system that matches the topic: a plain generic title-deed document with a pen, an open land plot with boundary pegs, a modern Thai house, coin stacks, or a calm consultation desk; a head-and-shoulders advisor only if the post is about advice.',
     '',
     'RULES:',
     ...POSTER_TEXT_RULES.map((rule) => `- ${rule}`),

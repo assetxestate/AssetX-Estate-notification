@@ -12,7 +12,7 @@ import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
 import { scrub } from './research/pii.js'
 import { POSTER_SIZES, DEFAULT_POSTER_SIZE, cropPlan } from '../src/lib/posterSizes.js'
-import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction } from '../src/lib/posterDesignSystem.js'
+import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction, pickHeadlineKeyword } from '../src/lib/posterDesignSystem.js'
 
 export const IMAGE_BUCKET = 'marketing-images'
 export const WORKER_ID = 'office-pc'
@@ -45,6 +45,7 @@ export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_
   const plan = cropPlan(size)
   const ratio = `${plan.width}:${plan.height}`
   const layout = body ? pickPosterLayout(body) : 'explain'
+  const keyword = pickHeadlineKeyword(headline)
   return [
     `Design ONE finished ${SHAPES[plan.aspect]} Thai social-media poster for AssetX Estate, a Thai real-estate consultancy for ขายฝาก (sale with right of redemption) and จำนอง (mortgage). It will be posted as a ${plan.platform} image (${plan.width}x${plan.height} px).`,
     plan.edges
@@ -56,6 +57,7 @@ export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_
     '',
     'HEADLINE (render exactly, large and bold in the top zone; you may break it into two lines but must not change, add or drop any Thai character):',
     headline,
+    ...(keyword ? [`KEY WORD to highlight in the cyan-to-coral gradient (this whole word only, every other headline letter stays white): ${keyword}`] : []),
     '',
     body
       ? [
@@ -64,15 +66,17 @@ export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_
           '',
           `CONTENT CARD (layout: ${layout}): ${posterLayoutInstruction(layout)} Every row on the card must be copied exactly from the post text (no new words, no paraphrase), must read as a complete idea on its own and must not start with a connecting word such as และ, หรือ, แต่ or ที่. If a row cannot be copied safely, use fewer rows.`,
           'CARD TITLE (navy pill): 2-4 Thai words copied from the post that name the topic of the rows.',
-          'SUB-LINE on the ribbon: one complete phrase copied from the post (4 to 8 Thai words) that says who this is for or what they get. If none fits, leave the ribbon out.',
-          'CALLOUT CHIP (below the card): one sentence of at most 12 Thai words copied from the post - the key reminder or the "before you sign" line.',
-          'BOTTOM-BAND CHIPS: 2 or 3 two-word labels copied from the post.',
+          'BENEFIT RIBBON: one complete phrase copied from the post (4 to 10 Thai words) that tells the reader what they get or why this matters to them. If none fits, leave the ribbon out.',
+          'ACTION PANEL (below the main card): a title of 1-4 Thai words copied from the post that introduces the actions (e.g. its "ก่อนเซ็น" lead-in; none if the post has none), then 2 or 3 items, each ONE complete clause of 5-12 Thai words copied from the post that tells the reader what to do next or what to check (split the post\'s instruction sentence into its clauses if needed).',
+          'CALLOUT CHIP (optional, below the action panel): one sentence of at most 12 Thai words copied from the post - a key reminder that is not already on the card or the action panel; leave it out if there is none.',
+          'BOTTOM-BAND CHIPS: 2 or 3 two-word labels copied from the post, or nothing.',
+          'READABILITY TEST: after composing, check that the headline, ribbon, card rows and action items alone tell the whole story of the post (topic, key facts, what to do); if a row is only a fragment, replace it with the full clause from the post.',
         ].join('\n')
       : 'SUPPORTING BADGES (render exactly): ประเมินเบื้องต้น | ปรึกษาฟรี | ดูแลเอกสาร',
     '',
     'BOTTOM CTA BAND (render exactly): ติดต่อ AssetX Estate',
     '',
-    `HERO SCENE: ${layout === 'warning' ? 'use the OBJECT HERO (deed and house, no person) from the design system' : 'the presenter from the FOCAL POINT rule is mandatory'}; the photo cluster must match this post (document and pen for contract, cost or legal topics; land plot with pegs for land topics; modern house for housing topics; coin stacks for money topics; consultation desk for advice topics). Photorealistic advertising composite, polished graphic design, clear hierarchy, high contrast, readable on a phone.`,
+    `HERO ZONE CONTENT: ${layout === 'warning' ? 'a plain document being inspected, no person' : 'a small photoreal cluster matching this post, or a head-and-shoulders advisor if the post is about advice'} (document and pen for contract, cost or legal topics; land plot with pegs for land topics; modern house for housing topics; coin stacks for money topics; consultation desk for advice topics) - inside the hero zone only, never reducing the content area. Photorealistic advertising composite, polished graphic design, clear hierarchy, high contrast, readable on a phone.`,
     '',
     'RULES:',
     ...POSTER_TEXT_RULES.map((rule) => `- ${rule}`),
