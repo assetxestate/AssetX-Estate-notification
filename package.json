@@ -29,6 +29,7 @@
     "diary": "node scripts/diary-sync.mjs",
     "research": "node scripts/research-ideas.mjs",
     "research:social": "node scripts/research-social.mjs",
+    "research:ads": "node scripts/research-ads.mjs",
     "preview": "vite preview",
     "migrate": "node migrate.js"
   },
@@ -45,6 +46,7 @@
     "@vitejs/plugin-react": "^4.2.1",
     "dotenv": "^17.4.1",
     "exceljs": "^4.4.0",
+    "playwright-core": "^1.49.1",
     "vite": "^5.0.10"
   }
 }

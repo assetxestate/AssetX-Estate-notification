@@ -1,0 +1,29 @@
+{
+  "_about": "เลนแอดคู่แข่งจาก Meta Ad Library (ขั้นที่ 8 ของระบบรีเสิร์ช · server/research/ads-library.js · ตัวรัน scripts/research-ads.mjs) — เจ้าของเสนอ 6 พ.ย. 2569 (\"คัดเฉพาะแอดที่เนื้อหามีประโยชน์มาใช้งานและปรับปรุงต่อยอด\") และเลือกทาง ก. 7 พ.ย. 2569: อ่านหน้าเว็บสาธารณะของ Ad Library ด้วย Chrome headless โปรไฟล์ชั่วคราว (ไม่ล็อกอิน · ไม่แตะ Chrome profile Research/บัญชีสำรองที่ใช้ร่วมกับ DivisionX · ไม่กินโควตา 4 เพจ/วัน) สัปดาห์ละครั้ง · แก้ไฟล์นี้ไม่ต้องแตะโค้ด",
+  "_rules": "อ่านอย่างเดียว · เก็บแค่ข้อความแอด (ผ่านตัวลบข้อมูลบุคคล) + ชื่อเพจ + รหัสแอด + วันเริ่มรัน + จำนวนเวอร์ชัน · ไม่เก็บภาพ/วิดีโอ/ลิงก์ปลายทาง · ไอเดียที่ได้เป็น source social subtype ad_library = ห้ามอ้างชื่อเพจ ลอกได้แค่แบบแผน เรต/ข้อเสนอของเขาเป็นโฆษณา · API ของ Meta ในไทยครอบคลุมเฉพาะโฆษณาการเมือง จึงใช้หน้าเว็บ",
+  "country": "TH",
+  "search_type": "keyword_exact_phrase",
+  "_search_note": "keyword_exact_phrase + วลียาว — ทดสอบ 6 พ.ย. 2569: \"จำนองบ้าน\" ~240 แอดตรงธุรกิจแทบทั้งหมด · คำ \"ขายฝาก\" โดดเดี่ยวได้ขยะ \"ฝากขาย\" ร้านนาฬิกา/รับจำนำ · keyword_unordered ยิ่งกว้าง",
+  "phrases": [
+    { "q": "จำนองบ้าน", "_note": "~240 แอด ผู้ให้ทุนทั่วประเทศ" },
+    { "q": "รับจำนอง" },
+    { "q": "ขายฝากบ้าน" },
+    { "q": "ขายฝากที่ดิน" },
+    { "q": "ฝากขายบ้าน", "_note": "ฝั่งนายหน้า (บริการฝากขายของเรา)" },
+    { "q": "นายหน้าอสังหา" }
+  ],
+  "cadence_days": 7,
+  "max_ads_per_phrase": 40,
+  "scroll_rounds": 2,
+  "wait_after_load_ms": 6000,
+  "between_phrases_ms": [4000, 8000],
+  "min_days_running": 14,
+  "_min_days_note": "แอดที่รันนาน = น่าจะได้ผล (manual-checklist.md) · แอดใหม่กว่า 14 วันยังไม่บอกอะไร เก็บลงคลังแต่ไม่เสนอเป็นไอเดีย",
+  "min_text_chars": 80,
+  "max_ai_classify": 12,
+  "max_ideas_per_run": 6,
+  "max_in_queue": 6,
+  "keep_days": 180,
+  "browser": { "channel": "chrome", "headless": true, "locale": "en-US", "viewport": { "width": 1280, "height": 2000 }, "timeout_ms": 60000 },
+  "_browser_note": "playwright-core (devDependency · ไม่ดาวน์โหลดเบราว์เซอร์) เปิด Google Chrome ที่ติดตั้งในเครื่องด้วยโปรไฟล์ชั่วคราวว่าง ๆ · locale en-US ให้ป้ายในหน้า (Library ID / Started running on / Sponsored) คงที่ · หน้าแรกบางครั้งตอบ 403 แต่เนื้อหายังโหลด"
+}

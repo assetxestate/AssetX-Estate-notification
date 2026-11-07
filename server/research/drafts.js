@@ -217,8 +217,8 @@ function escapeRegExp(s) {
 export function cleanTitleForPrompt(idea = {}, policy = 'no_cite') {
   let title = scrub(idea.title || '').replace(/(^|\s)#[\p{L}\p{M}\p{N}_]+/gu, '$1').replace(/\s+/g, ' ').trim()
   if (policy === 'no_cite' && idea.source_label) title = title.replace(new RegExp(escapeRegExp(idea.source_label), 'gi'), '').replace(/\s+/g, ' ').trim()
-  // ชื่อไอเดียของตัวเฝ้าเพจ = "<รูปแบบ>แรงกว่าปกติของเพจ N เท่า — <บรรทัดแรกของโพสต์>" · ส่วนหน้าเป็นภาษาภายใน (เทียบยอดของเพจอื่น) ห้ามไปถึง AI
-  if (idea.source === 'social') title = title.replace(/^[^—]*แรงกว่าปกติ[^—]*—\s*/, '').trim()
+  // ชื่อไอเดียของตัวเฝ้าเพจ = "<รูปแบบ>แรงกว่าปกติของเพจ N เท่า — <บรรทัดแรกของโพสต์>" · ของเลนแอดคู่แข่ง = "แอดคู่แข่งรันนาน N วัน — <บรรทัดแรก>" · ส่วนหน้าเป็นภาษาภายใน ห้ามไปถึง AI
+  if (idea.source === 'social') title = title.replace(/^[^—]*(แรงกว่าปกติ|รันนาน)[^—]*—\s*/, '').trim()
   return title
 }
 

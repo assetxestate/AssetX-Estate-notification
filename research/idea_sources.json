@@ -9,7 +9,8 @@
     "yt_dlp": { "allowed": true, "date": "2026-11-02", "note": "ถอดคำบรรยายคลิป · ยังไม่เปิดใช้: เครื่องนี้ไม่มี yt-dlp (ขั้น grounding ยังไม่สร้าง)" },
     "facebook_watch": { "allowed": true, "date": "2026-11-02", "note": "อ่านอย่างเดียวผ่านบัญชีสำรอง · เปิดใช้ 3 พ.ย. 2569: ตัวเฝ้าเพจ (scripts/research-social.mjs · research/social_watch.json) ใช้ Chrome profile Research + บัญชีสำรองชุดเดียวกับ DivisionX Card ตามข้อตกลง shared-browser-dvx-assetx.md (เจ้าของตัดสิน 3 พ.ย.) · AssetX ≤ 4 เพจ/วัน รวมบัญชี ≤ 12 · ลิสต์เต็ม 47 เพจอยู่ใน vault การตลาด facebook-pages-watchlist.json" },
     "reddit": { "allowed": true, "date": "2026-11-02", "note": "อนุมัติแต่ไม่เปิด — ไม่ตรงลูกค้าไทย" },
-    "tos_forbidden_sites": { "allowed": false, "note": "กรมธนารักษ์ · REIC · DDproperty · Kaidee · ราชกิจจาฯ · Meta Ad Library ฯลฯ = คนดูเองตาม research/manual-checklist.md" },
+    "tos_forbidden_sites": { "allowed": false, "note": "กรมธนารักษ์ · REIC · DDproperty · Kaidee · ราชกิจจาฯ ฯลฯ = คนดูเองตาม research/manual-checklist.md (Meta Ad Library ย้ายไปข้อ ad_library 7 พ.ย. 2569)" },
+    "ad_library": { "allowed": true, "date": "2026-11-07", "note": "เจ้าของเสนอ 6 พ.ย. 2569 และเลือกทาง ก. 7 พ.ย.: อ่านหน้าเว็บสาธารณะของ Meta Ad Library โดยไม่ล็อกอิน (Chrome headless โปรไฟล์ชั่วคราว · playwright-core) สัปดาห์ละครั้ง · คัดเฉพาะแอดที่ให้ความรู้ · ไม่แตะบัญชีสำรองร่วม ไม่กินโควตา · เป็นการอ่าน facebook.com อัตโนมัติแบบเดียวกับที่รับความเสี่ยงไว้ 2 พ.ย. · คอนฟิก research/ads_library.json · ตัวรัน scripts/research-ads.mjs" },
     "led_numbers_in_posts": { "allowed": false, "note": "ข้อมูลกรมบังคับคดีเป็น CC BY-NC · ยกตัวเลขลงโพสต์การตลาดต้องได้อนุญาตจากกรมเป็นหนังสือ · ใช้วิเคราะห์ภายในพร้อมอ้างที่มาได้" }
   },
 
@@ -94,6 +95,7 @@
     "community_q": { "max_age_days": 14, "audience": ["A", "C", "D"], "cap": 5 },
     "competitor": { "max_age_days": 14, "audience": [], "cap": 3 },
     "social_fb": { "max_age_days": 21, "audience": [], "cap": 20, "_note": "โพสต์แรงกว่าปกติจากตัวเฝ้าเพจ Facebook (source social) · cap ที่นี่เท่ากับ max_social_in_queue ใน social_watch.json — ตัวเฝ้าเพจคุมคิวเองก่อนใส่ · ห้ามอ้างชื่อเพจในโพสต์" },
+    "ad_library": { "max_age_days": 28, "audience": [], "cap": 6, "_note": "แอดคู่แข่งที่รันนานและให้ความรู้ จาก Meta Ad Library (source social · scripts/research-ads.mjs สัปดาห์ละครั้ง · 7 พ.ย. 2569) · cap เท่ากับ max_in_queue ใน ads_library.json · ห้ามอ้างชื่อเพจ ลอกได้แค่แบบแผน เรต/ข้อเสนอเป็นโฆษณา" },
     "internal": { "max_age_days": 7, "audience": [], "cap": 3 },
     "calendar": { "max_age_days": 400, "audience": ["A", "B", "C", "D"], "cap": 6 }
   },

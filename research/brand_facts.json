@@ -81,6 +81,6 @@
     "_note": "นโยบายเครดิตของอสังหาฯ (ต่างจากต้นแบบ DVX ที่ไม่ให้เครดิต)",
     "cite": ["news", "official", "auction"],
     "no_cite": ["community", "social", "youtube", "manual"],
-    "no_cite_subtypes": ["competitor", "community_q"]
+    "no_cite_subtypes": ["competitor", "community_q", "ad_library"]
   }
 }

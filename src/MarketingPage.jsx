@@ -18,6 +18,7 @@ const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 const researchSubtypeLabels = {
   rate: 'ดอกเบี้ย/กนง.', fee_measure: 'ค่าโอน/มาตรการรัฐ', valuation: 'ราคาประเมิน', law: 'กฎหมาย', scam: 'เตือนภัยมิจฉาชีพ',
   credit_market: 'สินเชื่อ', market: 'ตลาด', auction_npa: 'ขายทอดตลาด/NPA', community_q: 'คำถามจากชุมชน', competitor: 'คู่แข่ง', internal: 'ลีดของเรา', calendar: 'ปฏิทิน',
+  social_fb: 'โพสต์แรงของเพจ', ad_library: 'แอดคู่แข่ง',
 }
 const researchSourceLabels = { news: 'ข่าว', official: 'ทางการ', community: 'ชุมชน', auction: 'ขายทอดตลาด', youtube: 'YouTube', social: 'โซเชียล', internal: 'ลีดของเรา', manual: 'วางเอง' }
 const researchAudienceLabels = { A: 'เจ้าของทรัพย์', B: 'นักลงทุน', C: 'เจ้าของที่อยากขาย', D: 'ผู้ซื้อ' }
