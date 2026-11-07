@@ -1,7 +1,7 @@
 // เทสต์บรีฟครีเอทีฟรายโพสต์ (ก๊อปปี้เด็คคัดจากโพสต์คำต่อคำ + ฉาก/ไอคอน) — รัน: node --test src/lib/posterBrief.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractPosterCopy, posterBriefFor, verbatimMisses, trimClause, sceneFor, iconFor, parsePost } from './posterBrief.js'
+import { extractPosterCopy, posterBriefFor, verbatimMisses, trimClause, sceneFor, sceneText, iconFor, parsePost, chipFromTitle } from './posterBrief.js'
 
 const COST = {
   title: 'ขายฝากมีค่าใช้จ่ายอะไรบ้าง',
@@ -59,12 +59,27 @@ test('extractPosterCopy (โพสต์ค่าใช้จ่าย): คำ�
   assert.equal(c.cardTitle, 'ค่าใช้จ่ายรวม')
   assert.deepEqual(c.rows.map((r) => r.title), ['วันจดทะเบียนที่สำนักงานที่ดิน', 'ระหว่างสัญญา', 'วันไถ่ถอน'])
   assert.equal(c.rows[0].detail, 'ขายฝากถือเป็นการขาย จึงมีค่าธรรมเนียมจดทะเบียนที่คิดจากราคาประเมินราชการ ภาษีเงินได้หัก ณ ที่จ่าย')
-  assert.equal(c.rows[1].detail, 'สินไถ่ที่สูงกว่าราคาขายฝากคือผลประโยชน์ของผู้ซื้อฝาก')
+  assert.equal(c.rows[1].detail, 'สินไถ่ที่สูงกว่าราคาขายฝากคือผลประโยชน์ของผู้ซื้อฝาก และเงินที่ถูกหักล่วงหน้านับเป็นส่วนหนึ่งของสินไถ่ด้วย', 'รายการที่ต่อด้วย "และ…" ไม่ถูกตัดค้างกลางรายการ')
+  assert.equal(c.rows[0].icon, 'calendar', 'หัวข้อขึ้นต้น "วัน…" = ปฏิทิน แม้มีคำว่าสำนักงานที่ดิน')
   assert.equal(c.rows[1].icon, 'handshake')
   assert.equal(c.actionTitle, 'ก่อนเซ็น')
   assert.equal(c.actionItems[0], 'ขอใบสรุปค่าใช้จ่ายรวมเป็นตัวเลขจากผู้รับซื้อฝาก')
   assert.match(c.actionItems[1], /^เทียบเงินที่คุณได้รับจริงในวันจดทะเบียน/)
+  assert.deepEqual(c.bandChips, ['วันจดทะเบียน', 'ระหว่างสัญญา'])
   assert.deepEqual(verbatimMisses(c, COST), [])
+})
+
+test('ชื่อการ์ดจากวลีนามในเนื้อหา ("รายการที่ต้องตรวจ") · กล่องเตือนเลือก อย่า/ห้าม ก่อน ไม่ควร และค้นในข้อย่อยด้วย · ชิปแถบล่างตัดกริยานำ', () => {
+  const caption = `สินไถ่และค่าใช้จ่าย ควรถามให้ชัดก่อนทำสัญญา\n\n1. ตรวจวันครบกำหนดและเงื่อนไขการไถ่ถอนในสัญญา\nเริ่มจากทำตารางวันที่สำคัญและรายการที่ต้องตรวจจากสัญญา ไม่ควรรอให้ใกล้ครบกำหนดจึงเริ่มวางแผน\n\n2. ตรวจยอดสินไถ่และค่าใช้จ่ายพร้อมเอกสารประกอบ\nแยกจำนวนเงินที่ได้รับจริง ยอดสินไถ่ และค่าใช้จ่ายแต่ละรายการออกจากกัน อย่าพิจารณาเฉพาะวงเงินที่เสนอ\n\n3. สอบถามขั้นตอนและเอกสารที่ต้องใช้กับสำนักงานที่ดินหรือผู้เชี่ยวชาญ\nเตรียมข้อมูลทรัพย์ สำเนาสัญญาที่มี และรายการคำถามไปตรวจสอบ\n\nก่อนคุยกับผู้ให้บริการ: จดสิ่งที่รู้แล้ว สิ่งที่ยังไม่ชัด และหลักฐานที่ต้องขอเพิ่ม`
+  const c = extractPosterCopy({ title: 'ขายฝาก เช็กเงื่อนไขก่อนตัดสินใจ', caption })
+  assert.equal(c.ribbon, 'ควรถามให้ชัดก่อนทำสัญญา')
+  assert.equal(c.cardTitle, 'รายการที่ต้องตรวจ')
+  assert.equal(c.callout, 'อย่าพิจารณาเฉพาะวงเงินที่เสนอ')
+  assert.equal(c.actionTitle, 'ก่อนคุยกับผู้ให้บริการ')
+  assert.deepEqual(c.bandChips, ['วันครบกำหนด', 'ยอดสินไถ่'])
+  assert.equal(chipFromTitle('ตรวจเอกสารสิทธิ์และภาระผูกพัน'), 'เอกสารสิทธิ์')
+  assert.equal(chipFromTitle('ตรวจทำเล สภาพจริง'), '', 'คำเดียวไม่เป็นชิป')
+  assert.deepEqual(verbatimMisses(c, { title: 'ขายฝาก เช็กเงื่อนไขก่อนตัดสินใจ', caption }), [])
 })
 
 test('extractPosterCopy (โพสต์ที่ดินสั้น): ข้อสั้นเป็นหัวข้ออย่างเดียว ไม่ซ้ำเป็นรายละเอียด · ริบบิ้นเลือกวรรค "ควร…" · ชื่อการ์ด "ก่อนตัดสินใจซื้อ" · ไม่มีย่อหน้าปิด = ข้อควรทำจากประโยคเตือนในย่อหน้าเปิด', () => {
@@ -80,23 +95,34 @@ test('extractPosterCopy (โพสต์ที่ดินสั้น): ข้�
   assert.deepEqual(verbatimMisses(c, LAND), [])
 })
 
-test('sceneFor/iconFor: "สำนักงานที่ดิน" ไม่ใช่หัวข้อที่ดิน · ดูหัวข้อก่อนเนื้อหา · เตือนภัยไม่มีคน', () => {
-  assert.match(sceneFor(COST.title, COST.caption), /coin stacks/)
-  assert.match(sceneFor(LAND.title, LAND.caption), /boundary pegs/)
-  assert.match(sceneFor('ระวังมิจฉาชีพปลอมโฉนด', 'ที่ดิน'), /magnifier[^\n]*no person/)
-  assert.match(sceneFor('', 'ค่าธรรมเนียมจดทะเบียนที่สำนักงานที่ดิน'), /coin stacks/)
+test('sceneFor/iconFor: "สำนักงานที่ดิน" ไม่ใช่หัวข้อที่ดิน · ดูหัวข้อก่อนเนื้อหา · ฉากเงินไม่มีกองเหรียญ (อ่านเป็นราคา) · เตือนภัยไม่มีคน', () => {
+  const cost = sceneText(sceneFor(COST.title, COST.caption))
+  assert.match(cost, /navy clipboard[^\n]*calculator/)
+  assert.doesNotMatch(cost, /coin stack/)
+  assert.match(sceneText(sceneFor(LAND.title, LAND.caption)), /boundary pegs/)
+  assert.match(sceneText(sceneFor('ระวังมิจฉาชีพปลอมโฉนด', 'ที่ดิน')), /magnifier[^\n]*never a villain/)
+  assert.match(sceneText(sceneFor('', 'ค่าธรรมเนียมจดทะเบียนที่สำนักงานที่ดิน')), /clipboard/)
   assert.equal(iconFor('ตรวจทำเล สภาพจริง'), 'map pin')
   assert.equal(iconFor('วันครบกำหนด'), 'calendar')
+  assert.equal(iconFor('จดสิ่งที่รู้แล้ว'), 'notepad with a pen')
   assert.equal(iconFor('อะไรก็ได้'), 'check mark')
 })
 
-test('buildCreativeBrief: บรรทัดคำสั่งครบ (พาดหัว ริบบิ้น การ์ด แถว แผงลงมือทำ ฉาก ลำดับสายตา เช็กลิสต์) และ verbatimMisses จับสตริงที่ไม่ได้มาจากโพสต์', () => {
+test('buildCreativeBrief: บรรทัดคำสั่งครบตามรูปแบบทีมวิจารณ์ (พาดหัว ริบบิ้น การ์ด แถว แผงลงมือทำ ชิป พื้นหลัง พร็อพ สีเดียว ลำดับสายตา กฎหด มู้ด เช็กลิสต์) และ verbatimMisses จับสตริงที่ไม่ได้มาจากโพสต์', () => {
   const { brief, copy } = posterBriefFor({ ...COST, layout: 'steps' })
   assert.match(brief, /^CREATIVE BRIEF for this post \(rule-based/)
-  assert.match(brief, /- Benefit ribbon: "สิ่งที่ตัดสินว่าคุ้มหรือไม่คุ้มคือ ค่าใช้จ่ายรวม"/)
-  assert.match(brief, /- Row 2 \(navy number badge · icon handshake\): title "ระหว่างสัญญา" · detail "สินไถ่/)
+  assert.match(brief, /- Benefit ribbon: "สิ่งที่ตัดสินว่าคุ้มหรือไม่คุ้มคือ ค่าใช้จ่ายรวม" on ONE line/)
+  assert.match(brief, /- Row 2 \(navy number badge 2 · icon handshake\): title "ระหว่างสัญญา" · detail "สินไถ่/)
   assert.match(brief, /- Action panel titled "ก่อนเซ็น": item 1 "ขอใบสรุป/)
-  assert.match(brief, /- Hero zone scene: a plain generic document on a clipboard[^\n]*coin stacks/)
-  assert.match(brief, /- Eye path: 1\) the headline key word/)
+  assert.match(brief, /- CTA pill: "ติดต่อ AssetX Estate"[^\n]*band chips right: "วันจดทะเบียน" \(icon calendar\)/)
+  assert.match(brief, /- Background scene \(layer 1[^\n]*home-office desk/)
+  assert.match(brief, /- Hero props \(layer 3[^\n]*navy clipboard/)
+  assert.match(brief, /- Single coral: the headline key-word gradient only/)
+  assert.match(brief, /- Eye path: 1\) "ค่าใช้จ่าย" \(largest, the only coral\)/)
+  assert.match(brief, /- Fit rule: 3 rows \+ 2 action items \+ callout no; if the content runs out of height drop the band chips first/)
+  assert.match(brief, /- Review before finishing:[^\n]*caption hidden/)
+  const withExtras = posterBriefFor({ ...COST, layout: 'steps' })
+  assert.ok(withExtras.brief.length > 1500)
   assert.deepEqual(verbatimMisses({ ...copy, ribbon: 'คำที่แต่งขึ้นเอง' }, COST), ['คำที่แต่งขึ้นเอง'])
+  assert.deepEqual(verbatimMisses({ bandChips: ['คำนอกโพสต์'] }, COST), ['คำนอกโพสต์'])
 })

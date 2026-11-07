@@ -20,6 +20,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { IMAGE_BUCKET, WORKER_ID } from '../server/marketing-image-jobs.js'
 import { POSTER_SIZES } from '../src/lib/posterSizes.js'
+import { createAsk, ollamaConfigured } from '../server/research/llm.js'
+import { enhanceBriefWithAi } from '../server/poster-brief-ai.js'
 import { scrub } from '../server/research/pii.js'
 
 const VERSION = '1'
@@ -271,8 +273,16 @@ async function processJob(db, plugin, job) {
   const started = Date.now()
   log(`${label}: เริ่มสร้างภาพ`)
   try {
+    // บรีฟครีเอทีฟเวอร์ชัน AI (Ollama ในเครื่อง ~1–2 นาที) แทนบล็อกแบบกำหนดกฎในคำสั่งภาพ — ปิดได้ด้วย POSTER_BRIEF_AI=0 · ล้ม/หมดเวลา = ใช้บรีฟแบบกำหนดกฎ
+    let prompt = job.prompt
+    if (ollamaConfigured() && process.env.POSTER_BRIEF_AI !== '0') {
+      const t0 = Date.now()
+      const ai = await enhanceBriefWithAi(job.prompt, { ask: createAsk({ log: () => {} }), log: (s) => log(`${label}: ${s}`) })
+      prompt = ai.prompt
+      log(`${label}: ${ai.note} (${Math.round((Date.now() - t0) / 1000)} วินาที)`)
+    }
     const text = await plugin.callTool('generate_image', {
-      prompt: job.prompt,
+      prompt,
       aspect: job.aspect || 'portrait',
       images: existsSync(LOGO) ? [LOGO] : [],
       output_dir: OUTPUT_DIR,
