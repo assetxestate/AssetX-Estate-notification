@@ -79,6 +79,7 @@
       "id": "chrome-shortcut-flags",
       "done": true,
       "text": "จะให้ Claude ใส่ค่ากันหยุดวาดในไอคอน Google Chrome ตัวหลัก (Public Desktop + Start Menu) ด้วยไหม? ตอนนี้มีเฉพาะไอคอนแยกโปรไฟล์ 3 อันที่ DVX ใส่ไว้ 3 พ.ย. — ค่าติดเฉพาะ Chrome process แรกที่เปิด เปิดจากไอคอนตัวหลักหรือจากแอปอื่น = ไม่มีค่า",
+      "acted": true,
       "owner": "decide",
       "choice": "a",
       "done_at": "2026-11-06T11:56:04.237Z",
@@ -99,18 +100,19 @@
           "label": "ตั้ง task เปิด Chrome พร้อมค่าตอนล็อกอิน"
         }
       ],
+      "acted_at": "2026-11-07T02:59:15.406Z",
       "choice_at": "2026-11-06T11:56:00.727Z",
       "choice_note": null,
-      "recommended": "a",
-      "acted": true,
-      "acted_at": "2026-11-07T02:59:15.406Z"
+      "recommended": "a"
     },
     {
       "id": "ad-library-method",
-      "done": false,
+      "done": true,
       "text": "Meta Ad Library (เจ้าของสนใจ 6 พ.ย.: คัดเฉพาะแอดที่เนื้อหามีประโยชน์มาต่อยอด) — ทดสอบแล้ว 18:00: หน้าเว็บเปิดอ่านได้โดยไม่ล็อกอินด้วย Chrome headless โปรไฟล์ชั่วคราว (ไม่แตะบัญชีสำรองร่วม) · วลี \"จำนองบ้าน\" ~240 แอด ตรงธุรกิจแทบทั้งหมด มีวันเริ่มรันบอกว่าแอดไหนรันนาน · คำ \"ขายฝาก\" โดดเดี่ยวเจอขยะ ต้องใช้วลียาว · API ที่ส่งมาครอบคลุมในไทยเฉพาะโฆษณาการเมือง → จะให้สร้างเลน \"แอดคู่แข่ง\" แบบไหน?",
+      "acted": false,
       "owner": "decide",
-      "done_at": null,
+      "choice": "a",
+      "done_at": "2026-11-07T04:01:09.645Z",
       "options": [
         {
           "id": "a",
@@ -128,6 +130,8 @@
           "label": "คนดูเองสัปดาห์ละครั้ง"
         }
       ],
+      "choice_at": "2026-11-07T04:00:28.320Z",
+      "choice_note": null,
       "recommended": "a"
     },
     {
@@ -139,9 +143,12 @@
     },
     {
       "id": "fb-watchlist-apply",
-      "done": false,
+      "done": true,
       "text": "จะให้ปรับรายชื่อเฝ้าตามข้อเสนอในรายงานรีเสิร์ชเพจ (AssetX Knowledge/Research/AssetX Marketing/2026-11-06-fb-pages-research.md ข้อ 3–4) ไหม?",
+      "acted": true,
       "owner": "decide",
+      "choice": "a",
+      "done_at": "2026-11-07T04:00:13.616Z",
       "options": [
         {
           "id": "a",
@@ -159,6 +166,9 @@
           "label": "ยังไม่แก้ อ่านรายงานก่อน"
         }
       ],
+      "acted_at": "2026-11-07T04:09:25.828Z",
+      "choice_at": "2026-11-07T04:00:09.947Z",
+      "choice_note": null,
       "recommended": "b"
     },
     {
@@ -169,9 +179,12 @@
     },
     {
       "id": "draft-no-facts-policy",
-      "done": false,
+      "done": true,
       "text": "จะให้ AI ร่างให้ไอเดียที่ \"ไม่มีข้อเท็จจริง\" (คลิปที่ยังไม่ถอดคำบรรยาย · ข่าวที่ดึงเนื้อไม่ได้ — ตอนนี้ 15 จาก 17 ไอเดีย) ด้วยไหม? ผู้ตรวจอิสระพบว่าร่างแบบนี้เดาเอกสาร/ขั้นตอนผิดบริบทไทย จึงตั้งค่าเริ่มต้นเป็น \"ไม่ร่าง\" · ตัวอย่างที่เจ้าของเจอ 6 พ.ย. ค่ำ: ไอเดีย #28 ข่าวแก๊งปลอมโฉนด (Thaipost ผ่าน Google News) กด ร่างโพสต์ แล้วได้แม่แบบเปล่า \"หัวข้อนี้ต้องตรวจข้อมูลเพิ่มเติม\" · ลองให้ AI ร่างมุม \"ระวังแก๊งปลอมโฉนด\" จากความรู้ทั่วไปแล้ว (ไม่บันทึก) ได้โพสต์เตือนภัย 660 ตัวอักษรที่ผ่านด่าน แต่ยังกว้าง (ไม่มีขั้นตอนตรวจโฉนดที่จับต้องได้)",
+      "acted": true,
       "owner": "decide",
+      "choice": "b",
+      "done_at": "2026-11-07T04:03:33.219Z",
       "options": [
         {
           "id": "a",
@@ -189,6 +202,9 @@
           "label": "ร่างให้ทุกไอเดีย (--include-no-facts)"
         }
       ],
+      "acted_at": "2026-11-07T04:09:26.479Z",
+      "choice_at": "2026-11-07T04:03:30.677Z",
+      "choice_note": null,
       "recommended": "b"
     },
     {
@@ -236,9 +252,10 @@
     },
     {
       "id": "chrome-shortcut-flags-admin",
-      "done": false,
+      "done": true,
       "text": "เลือก ก. แล้ว (ใส่ค่ากันหยุดวาดในไอคอน Google Chrome ตัวหลัก) — Claude ลอง 19:05 แต่บันทึกไอคอนใน Public Desktop และ Start Menu ไม่ได้ (ต้องสิทธิ์ผู้ดูแลระบบ) → รันสคริปต์ PowerShell แบบ Run as Administrator ครั้งเดียวในหัวข้อ \"ตัวเฝ้าเพจ Facebook\" ของ docs/social-research.md (สำรองไอคอนเดิมไว้ที่ ~/.research-browser/chrome-shortcut-backup ให้อัตโนมัติ) แล้วออกจาก Chrome ให้หมดและเปิดใหม่",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-07T04:06:38.158Z"
     },
     {
       "id": "try-ai-drafts-on-web",
@@ -248,9 +265,10 @@
     },
     {
       "id": "research-task-scheduler-0700",
-      "done": false,
+      "done": true,
       "text": "ตั้ง Task Scheduler รอบรีเสิร์ช 07:00 (คำสั่ง PowerShell ในหัวข้อ \"ตารางเวลา\" ของ docs/social-research.md) หรือสั่ง npm run research -- run เองเป็นครั้ง ๆ — ตรวจ 6 พ.ย. แล้วเครื่องนี้ยังไม่มี task ของ AssetX เลย ไอเดียใหม่และร่าง AI จึงเกิดเฉพาะเมื่อสั่งรันเอง",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-07T04:15:06.647Z"
     }
   ],
   "stories": [
