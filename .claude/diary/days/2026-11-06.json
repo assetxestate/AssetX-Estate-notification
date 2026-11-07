@@ -130,10 +130,10 @@
           "label": "คนดูเองสัปดาห์ละครั้ง"
         }
       ],
+      "acted_at": "2026-11-07T04:45:35.663Z",
       "choice_at": "2026-11-07T04:00:28.320Z",
       "choice_note": null,
-      "recommended": "a",
-      "acted_at": "2026-11-07T04:45:35.663Z"
+      "recommended": "a"
     },
     {
       "id": "fb-pages-research-report",
@@ -174,9 +174,10 @@
     },
     {
       "id": "fb-pages-eyeball-and-pick",
-      "done": false,
+      "done": true,
       "text": "หลังรายงานเพจเสร็จ: เปิดดูเพจที่สนใจด้วยตา (เพจปลอมชื่อคล้ายเยอะ ตัวเลขผู้ติดตามเป็น snapshot จาก search engine) แล้วบอกว่าจะเพิ่ม/สลับเพจไหน — Claude ใส่ใน research/social_watch.json ให้ (ภาระต่อวันต้องไม่เกิน 4 เพจ · ช่อง YouTube ใส่ idea_sources.json ได้ไม่กินโควตา)",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-07T10:42:52.903Z"
     },
     {
       "id": "draft-no-facts-policy",
@@ -260,9 +261,10 @@
     },
     {
       "id": "try-ai-drafts-on-web",
-      "done": false,
+      "done": true,
       "text": "หลัง push และขึ้นเว็บ: เปิด /marketing → แท็บ ไอเดีย → เลือกการ์ดที่มีป้าย \"ร่าง AI พร้อม\" → สลับมุมเล่าดูว่าแต่ละมุมต่างกัน → กด ร่างโพสต์ แล้วอ่านในแท็บ ร่าง (มีหมายเหตุ \"ต้องตรวจ: …\") — บอกว่าชอบ/ไม่ชอบตรงไหน จะได้ปรับคำสั่ง AI",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-07T10:43:13.437Z"
     },
     {
       "id": "research-task-scheduler-0700",
