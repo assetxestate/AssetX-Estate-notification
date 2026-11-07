@@ -85,7 +85,7 @@
 | 1 คำค้น | ✅ 11 คำ (ผลทดสอบต่อคำอยู่ใน `_note`) |
 | 2 ตาราง ideas | ✅ `supabase_marketing_ideas.sql` — **เจ้าของต้องรันใน Supabase SQL Editor** |
 | 3 เลน + parser + เทสต์ | ✅ 9 เลน · 71 เทสต์ |
-| 4 มุมเล่า AI | ✅ Hermes (HERMES_AGENT_URL) → Ollama ในเครื่อง (OLLAMA_MODEL) → Gemini · ใช้จริงครั้งแรก 3 พ.ย. 2569 ด้วย qwen2.5:14b · Hermes เครื่องเก่ายังไม่เคยตอบจากเครื่องนี้ |
+| 4 มุมเล่า AI | ✅ **Codex CLI (CODEX_WRITER=1 · GPT-6 ผ่าน ChatGPT Plus บนคอมสำนักงาน · เปิด 7 พ.ย. 2569 ค่ำ)** → Hermes (HERMES_AGENT_URL) → Ollama ในเครื่อง (OLLAMA_MODEL) → Gemini · Ollama qwen2.5:14b ใช้จริง 3–7 พ.ย. แล้วเจ้าของเห็นว่าร่าง "ไม่ตรงและเนื้อหาไม่มี" จึงสลับเป็น Codex (Ollama เป็นตัวสำรองเมื่อ Codex ไม่ได้ล็อกอิน/ชนโควตา) |
 | 5 หน้าเลือกไอเดีย | ✅ การ์ดในหน้า /marketing + pick/dismiss/manual API · ยังไม่มี UI กรอกลีด (ใช้ API `action:"lead"`) |
 | 6 ถอดเนื้อหาจริง (yt-dlp) | ⬜ ยังไม่สร้าง — เครื่องนี้ไม่มี yt-dlp · คลิปทุกตัวติดป้าย ⚠️ |
 | 7 ตัวเฝ้าเพจ Facebook | ✅ สร้าง 3 พ.ย. 2569 — ใช้ Chrome profile Research + บัญชีสำรองชุดเดียวกับ DivisionX Card (บัญชีอ่าน FB มาตั้งแต่ 21 ต.ค. ไม่ต้องวอร์ม) ตามข้อตกลง `shared-browser-dvx-assetx.md` ทุกข้อ · 18 เพจจากลิสต์ 47 · ต้องตั้ง Task Scheduler 21:00/23:00 (ด้านล่าง) |
@@ -123,7 +123,7 @@ Get-ScheduledTask -TaskName 'AssetX Research*' | Format-Table TaskName, State
 
 > ⚠️ อย่าใช้ `schtasks /Create … /TR "cmd /c cd /d `"$repo`" && …"` จาก PowerShell — พาธมีช่องว่าง เครื่องหมายคำพูดที่ escape ด้วย backtick ถูก PowerShell ตัดทิ้งก่อนส่งให้ schtasks ได้ `ERROR: Invalid argument/option` (เจ้าของเจอจริง 7 พ.ย. 2569) · `Register-ScheduledTask` รับสตริงตรง ๆ ไม่มีปัญหานี้
 
-ค่าใน `.env.local` ที่ใช้: `VITE_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (ฐานข้อมูล) · มุมเล่า: `HERMES_AGENT_URL` (+ `HERMES_AGENT_FORMAT` `HERMES_AGENT_MODEL` `HERMES_AGENT_API_KEY`) → `OLLAMA_MODEL` (+ `OLLAMA_URL` ค่าเริ่มต้น localhost:11434 · `OLLAMA_NUM_CTX` ค่าเริ่มต้น 12288 · `OLLAMA_TIMEOUT_MS` ค่าเริ่มต้น 240000) → `GEMINI_API_KEY` — ตั้งตัวใดตัวหนึ่งก็พอ · `ASSETX_TELEGRAM_BOT_TOKEN` + `ASSETX_TELEGRAM_ALLOWED_CHAT_ID` (รายงาน)
+ค่าใน `.env.local` ที่ใช้: `VITE_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (ฐานข้อมูล) · มุมเล่า/ร่าง: `CODEX_WRITER=1` (+ `CODEX_WRITER_MODEL` ถ้าจะบังคับรุ่น · `CODEX_WRITER_TIMEOUT_MS` ค่าเริ่มต้น 180000 · `CODEX_BIN` ถ้า codex อยู่ที่อื่น — ใช้ได้เฉพาะเครื่องที่ `codex auth login` แล้ว) → `HERMES_AGENT_URL` (+ `HERMES_AGENT_FORMAT` `HERMES_AGENT_MODEL` `HERMES_AGENT_API_KEY`) → `OLLAMA_MODEL` (+ `OLLAMA_URL` ค่าเริ่มต้น localhost:11434 · `OLLAMA_NUM_CTX` ค่าเริ่มต้น 12288 · `OLLAMA_TIMEOUT_MS` ค่าเริ่มต้น 240000) → `GEMINI_API_KEY` — ตั้งตัวใดตัวหนึ่งก็พอ · `ASSETX_TELEGRAM_BOT_TOKEN` + `ASSETX_TELEGRAM_ALLOWED_CHAT_ID` (รายงาน)
 
 ### มุมเล่าด้วย Ollama ในเครื่อง (ไม่ต้องมี Gemini)
 

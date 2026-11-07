@@ -29,6 +29,30 @@ test('ลำดับผู้ให้บริการ Hermes → Ollama → 
   assert.match(none.error, /OLLAMA_MODEL/)
 })
 
+test('Codex เป็นนักเขียนตัวแรกเมื่อ CODEX_WRITER=1 · อ่าน JSON ใน code fence ได้ · ไม่ได้ล็อกอิน = ติดต่อไม่ได้ ถอยไป Ollama ตลอดรอบ', async () => {
+  assert.deepEqual(createAsk({ env: { CODEX_WRITER: '1', OLLAMA_MODEL: 'q' } }).providers, ['codex', 'ollama'])
+  assert.deepEqual(createAsk({ env: { CODEX_WRITER: '0', OLLAMA_MODEL: 'q' } }).providers, ['ollama'])
+  assert.deepEqual(createAsk({ env: { CODEX_WRITER: 'true' } }).providers, ['codex'])
+  const prompts = []
+  const ask = createAsk({ env: { CODEX_WRITER: '1', OLLAMA_MODEL: 'q' }, codexRunner: async ({ system, prompt }) => { prompts.push(`${system}|${prompt}`); return '```json\n{"headline":"ก"}\n```' } })
+  const r = await ask({ system: 'ระบบ', prompt: 'คำถาม' })
+  assert.equal(r.provider, 'codex')
+  assert.deepEqual(r.data, { headline: 'ก' })
+  assert.deepEqual(prompts, ['ระบบ|คำถาม'])
+  const fetchImpl = async () => new Response(JSON.stringify({ message: { role: 'assistant', content: '{"headline":"ข"}' }, done: true }), { status: 200 })
+  const logs = []
+  let codexCalls = 0
+  const ask2 = createAsk({ env: { CODEX_WRITER: '1', OLLAMA_MODEL: 'q' }, fetchImpl, codexRunner: async () => { codexCalls += 1; throw new Error('Codex exit 1: Error: Not authenticated.') }, log: (m) => logs.push(m) })
+  const r2 = await ask2({ system: 's', prompt: 'p' })
+  assert.equal(r2.provider, 'ollama')
+  assert.ok(ask2.unreachable.has('codex'), 'ไม่ได้ล็อกอิน = ข้าม Codex ตลอดรอบ')
+  await ask2({ system: 's', prompt: 'p2' })
+  assert.equal(codexCalls, 1, 'ไม่เรียก Codex ซ้ำในรอบเดียวกัน')
+  assert.match(logs.join('\n'), /codex ติดต่อไม่ได้/)
+  const none = await createAsk({ env: {} })({ system: 's', prompt: 'p' })
+  assert.match(none.error, /CODEX_WRITER/)
+})
+
 test('ollamaEndpoint: โฮสต์เปล่า · มี / ท้าย · /v1 · เส้นทางเต็ม · ค่าเริ่มต้น localhost:11434', () => {
   assert.equal(ollamaEndpoint({}), 'http://localhost:11434/v1/chat/completions')
   assert.equal(ollamaEndpoint({ OLLAMA_URL: 'http://192.168.1.5:11434/' }), 'http://192.168.1.5:11434/v1/chat/completions')
