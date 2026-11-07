@@ -247,3 +247,19 @@ test('buildPosterJobPrompt กับ seed: ชุดสไตล์ต่าง�
   const second = db.tables.marketing_image_jobs.at(-1)
   assert.notEqual(second.prompt.match(/VARIANT: seed=(\d+)/)[1], first.prompt.match(/VARIANT: seed=(\d+)/)[1], 'งานที่ 3 ของโพสต์ได้ seed ใหม่')
 })
+
+test('create mode=free → คำสั่งโหมดอิสระ (Codex ออกแบบเอง) · mode แปลก ๆ = ตามเรฟ', async () => {
+  const post = { title: 'ขายฝากมีค่าใช้จ่ายอะไรบ้าง', caption: 'ค่าใช้จ่ายรวมมี 3 ช่วง\n\n1. วันจดทะเบียน: ค่าธรรมเนียมและภาษี\n\n2. ระหว่างสัญญา: สินไถ่\n\n3. วันไถ่ถอน: ค่าธรรมเนียมไถ่ถอน', size: 'feed-4x5' }
+  const db = fakeDb()
+  const res = response()
+  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-11', content_no: 11, mode: 'free', ...post } }, res)
+  assert.equal(res.code, 200, JSON.stringify(res.body))
+  const job = db.tables.marketing_image_jobs.at(-1)
+  assert.match(job.prompt, /^DESIGNER MODE/)
+  assert.match(job.prompt, /\{\{FREE_IMAGES\}\}/)
+  assert.match(job.prompt, /MODE: free seed=\d+ direction=[\w-]+$/)
+  job.status = 'done'
+  const res2 = response()
+  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-11', content_no: 11, mode: 'wild', ...post } }, res2)
+  assert.match(db.tables.marketing_image_jobs.at(-1).prompt, /^PASS-THROUGH RULE/)
+})

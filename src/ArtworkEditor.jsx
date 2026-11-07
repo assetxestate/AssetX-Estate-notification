@@ -32,6 +32,8 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
   const [, setTick] = useState(0)
   // ขนาดที่จะสั่ง ChatGPT (เลือกก่อนกดสร้าง) แยกจาก posterSize ของภาพที่แสดงอยู่ ไม่ให้ภาพอัปโหลดถูกครอปตามไปด้วย
   const [chatSize, setChatSize] = useState(() => (POSTER_SIZES[asset?.design?.posterSize] ? asset.design.posterSize : defaultPosterSizeFor(brief.channel)))
+  // รูปแบบการออกแบบ: ref = ตามเรฟ (โครงการ์ดแน่น หมุนชุดสไตล์) · free = ให้ Codex ออกแบบเองจากหัวข้อ ข้อความ และมู้ดแอนด์โทนของแบรนด์ (ทดลอง)
+  const [chatMode, setChatMode] = useState('ref')
   const chatActive = isActiveJob(chat.job)
   const activeJobId = chatActive ? chat.job.id : null
   const chatDoneUnused = chat.job?.status === 'done' && appliedJobId !== chat.job.id
@@ -101,6 +103,7 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
           title: brief.title || brief.headline || design.headline,
           caption: brief.caption || design.prompt,
           size: chatSize,
+          mode: chatMode,
         }),
       })
       setChat({ job: data.job, worker: data.worker })
@@ -235,6 +238,11 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
           <label>ขนาดภาพตามแพลตฟอร์ม<select value={chatSize} disabled={chatActive} onChange={(e) => setChatSize(e.target.value)}>
             {Object.entries(POSTER_SIZES).map(([id, item]) => <option key={id} value={id}>{item.label} · {item.width} × {item.height}</option>)}
           </select></label>
+          <label>รูปแบบการออกแบบ<select value={chatMode} disabled={chatActive} onChange={(e) => setChatMode(e.target.value)}>
+            <option value="ref">ตามเรฟ · โครงการ์ดแน่น</option>
+            <option value="free">อิสระ · ให้ Codex ออกแบบเอง (ทดลอง)</option>
+          </select></label>
+          {chatMode === 'free' && <p className="ax-artwork-note">ส่งหัวข้อ ข้อความจากโพสต์ และมู้ดแอนด์โทนของแบรนด์ให้ Codex คิดคอนเซปต์และจัดวางเอง ภาพแต่ละครั้งต่างกันมาก · ข้อความไทยยังคัดจากโพสต์คำต่อคำ แต่ตรวจตัวสะกดทุกครั้ง</p>}
           <div className="ax-artwork-actions">
             <button type="button" className="accent" disabled={!postKey || chatActive || chatSending} onClick={startChatJob}>
               {chatActive ? 'กำลังสร้างโปสเตอร์...' : chatSending ? 'กำลังส่งงาน...' : appliedJobId ? 'สร้างโปสเตอร์ใหม่' : 'สร้างโปสเตอร์ด้วย ChatGPT'}

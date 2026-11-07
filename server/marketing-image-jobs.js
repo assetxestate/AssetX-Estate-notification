@@ -4,7 +4,7 @@
 // GET  /api/marketing-image-jobs                         → { worker }                สถานะตัวรับงานบนคอม
 // GET  /api/marketing-image-jobs?id=N[&image=1]          → { job, worker, image? }   image = data URL เมื่อ done และขอ image=1
 // GET  /api/marketing-image-jobs?post_key=K[&image=1]    → { job|null, worker, image? } งานล่าสุดของโพสต์ใน 24 ชม. (เปิดหน้าต่างใหม่แล้วตามงานต่อ)
-// POST { action: "create", post_key, content_no, title, caption, size } → { job, reused }   size = คีย์ใน src/lib/posterSizes.js
+// POST { action: "create", post_key, content_no, title, caption, size, mode } → { job, reused }   size = คีย์ใน src/lib/posterSizes.js · mode = ref (ค่าเริ่มต้น) | free
 // POST { action: "cancel", id }                          → { job }                   ยกเลิกได้เฉพาะงานที่ยังไม่มีใครหยิบ
 //
 // ข้อความโพสต์ผ่านตัวลบข้อมูลบุคคลก่อนเก็บและก่อนส่งให้ Codex · ไม่มีการลบแถว (ยกเลิก = cancelled)
@@ -16,6 +16,7 @@ import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayout
 import { posterBriefFor } from '../src/lib/posterBrief.js'
 import { buildCompactPosterPrompt } from '../src/lib/posterV4.js'
 import { posterSeed } from '../src/lib/posterVariants.js'
+import { buildFreePosterPrompt } from '../src/lib/posterFree.js'
 
 export const IMAGE_BUCKET = 'marketing-images'
 export const WORKER_ID = 'office-pc'
@@ -56,9 +57,12 @@ export function canvasMap(plan) {
 // คำสั่งภาพจากเนื้อหาโพสต์: Codex (โมเดลภาษา) อ่านเนื้อหาแล้วเลือกฉาก + สร้างการ์ดเนื้อหาตามโครงโพสต์ ก่อนเรียกเครื่องมือสร้างภาพ
 // v2 (7 พ.ย. 2569): ใช้ระบบออกแบบโปสเตอร์ร่วม (src/lib/posterDesignSystem.js) — การ์ดเนื้อหาเป็นหัวใจของภาพ แทน "ป้าย 3 ป้าย" แบบเดิมที่ภาพออกมาโล่งและเหมือนกันทุกโพสต์
 // seed = ชุดสไตล์ (src/lib/posterVariants.js posterSeed จากเลขโพสต์ + ลำดับงานของโพสต์) · ไม่ส่ง = ชุดแรก (หน้าตา v4 เดิม)
-export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE, seed = null } = {}) {
+// mode = 'free' → โหมดอิสระ (src/lib/posterFree.js): Codex เป็นอาร์ตไดเรกเตอร์ ออกแบบเองจากหัวข้อ ข้อความจากโพสต์ และบรีฟมู้ดแอนด์โทน (เจ้าของ 7 พ.ย. 2569 ดึก)
+export const POSTER_MODES = ['ref', 'free']
+export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE, seed = null, mode = 'ref' } = {}) {
   const headline = oneLine(title).slice(0, 120) || 'รับจำนอง · ขายฝาก'
   const body = multiLine(caption).slice(0, CAPTION_LIMIT)
+  if (mode === 'free') return buildFreePosterPrompt({ title: headline, caption: body, size, seed })
   // v4 "ตามเรฟ" (7 พ.ย. 2569 ค่ำ): โพสต์ที่มีเนื้อหาใช้คำสั่งแบบบีบสั้นตามสคีมาของสกิล Codex + ภาพแนบที่ตัวรับงานเติม (ดู src/lib/posterV4.js)
   // ไม่มีเนื้อหา (ป้าย 3 ป้าย) ยังใช้คำสั่ง v3.2 แบบเดิม
   if (body) return buildCompactPosterPrompt({ title: headline, caption: body, size, layout: pickPosterLayout(body), seed })
@@ -205,12 +209,13 @@ export function createImageJobsHandler({ authorized = verifySession, database = 
         const prior = await db.from('marketing_image_jobs').select('id', { count: 'exact', head: true }).eq('post_key', postKey)
         if (prior.error) throw prior.error
         const seed = posterSeed({ contentNo: Number.isInteger(contentNo) && contentNo > 0 ? contentNo : null, postKey, jobIndex: prior.count || 0 })
+        const mode = POSTER_MODES.includes(body.mode) ? body.mode : 'ref'
         const row = {
           status: 'queued',
           post_key: postKey,
           content_no: Number.isInteger(contentNo) && contentNo > 0 ? contentNo : null,
           title: title || null,
-          prompt: buildPosterJobPrompt({ title, caption, size, seed }),
+          prompt: buildPosterJobPrompt({ title, caption, size, seed, mode }),
           size,
           aspect: POSTER_SIZES[size].aspect,
         }

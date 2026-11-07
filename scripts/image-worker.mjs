@@ -25,6 +25,7 @@ import { enhanceBriefWithAi } from '../server/poster-brief-ai.js'
 import { pickStyleRefs, syncPosterRefs } from '../server/poster-refs.js'
 import { fillImagePlaceholders, PLACEHOLDER_IMAGES } from '../src/lib/posterV4.js'
 import { parseVariantLine } from '../src/lib/posterVariants.js'
+import { fillFreeImages, parseFreeModeLine, PLACEHOLDER_FREE_IMAGES } from '../src/lib/posterFree.js'
 import { scrub } from '../server/research/pii.js'
 
 const VERSION = '1'
@@ -288,7 +289,15 @@ async function processJob(db, plugin, job) {
   try {
     let prompt = job.prompt
     let images = existsSync(LOGO) ? [LOGO] : []
-    if (String(job.prompt || '').includes(PLACEHOLDER_IMAGES)) {
+    if (String(job.prompt || '').includes(PLACEHOLDER_FREE_IMAGES)) {
+      // โหมดอิสระ: Codex ออกแบบเอง — แนบแค่โลโก้เต็ม + รูปเจ้าของ (ใช้หรือไม่ใช้ก็ได้) ไม่แนบเรฟคู่แข่ง ไม่ให้ลอกโครงเดิม
+      const free = parseFreeModeLine(job.prompt) || { direction: 'none' }
+      const logo = existsSync(LOGO_FULL) ? LOGO_FULL : LOGO
+      const presenter = existsSync(PRESENTER) ? PRESENTER : null
+      images = [logo, ...(presenter ? [presenter] : [])].filter((f) => existsSync(f))
+      prompt = fillFreeImages(job.prompt, { logo: images.includes(logo), presenter: Boolean(presenter) })
+      log(`${label}: โหมดอิสระ (Codex ออกแบบเอง) · ทิศเริ่มต้น ${free.direction} · แนบ ${images.length} ภาพ (โลโก้เต็ม${presenter ? ' · รูปผู้แนะนำ' : ''})`)
+    } else if (String(job.prompt || '').includes(PLACEHOLDER_IMAGES)) {
       // v4: เติมรายการภาพแนบตามไฟล์ที่มีจริง — โลโก้เต็ม · รูปผู้แนะนำ (ถ้ามี) · เรฟสไตล์ตามโครงของโพสต์
       const layout = (String(job.prompt).match(/^LAYOUT:\s*(\w+)/m) || [])[1] || 'steps'
       // ชุดสไตล์ (บรรทัด VARIANT ของคำสั่ง): seed หมุนลำดับเรฟ · refs=finish = ชุดอิสระ ส่งเรฟแค่ 2 ใบและบอกให้เอาแค่ความแน่น/ไอคอน ไม่เอาการจัดวาง
