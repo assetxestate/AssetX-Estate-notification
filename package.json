@@ -16,7 +16,7 @@
     "test:notification-routing": "node api/_notification-routing.test.mjs",
     "test:marketing-facebook": "node server/marketing-facebook.test.mjs",
     "test:marketing-image": "node server/marketing-image.test.mjs",
-    "test:image-jobs": "node --test server/marketing-image-jobs.test.mjs",
+    "test:image-jobs": "node --test server/marketing-image-jobs.test.mjs src/lib/posterBrief.test.mjs",
     "image-worker": "node scripts/image-worker.mjs",
     "test:marketing-content": "node --test src/lib/marketingContent.test.mjs src/lib/marketingContentNumbers.test.mjs",
     "test:contract-summary": "node --test src/lib/contractSummaryReport.test.mjs",

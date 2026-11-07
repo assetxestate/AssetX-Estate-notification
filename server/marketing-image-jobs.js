@@ -13,6 +13,7 @@ import { verifySession } from '../api/_auth.js'
 import { scrub } from './research/pii.js'
 import { POSTER_SIZES, DEFAULT_POSTER_SIZE, cropPlan } from '../src/lib/posterSizes.js'
 import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction, pickHeadlineKeyword } from '../src/lib/posterDesignSystem.js'
+import { posterBriefFor } from '../src/lib/posterBrief.js'
 
 export const IMAGE_BUCKET = 'marketing-images'
 export const WORKER_ID = 'office-pc'
@@ -46,7 +47,8 @@ export function canvasMap(plan) {
   const top = plan.cutPx + slack
   const usable = plan.sourceHeight - 2 * top
   const y = (pct) => Math.round(top + usable * pct / 100)
-  return `CANVAS MAP (${plan.sourceWidth}x${plan.sourceHeight} px, y measured from the top edge): y 0-${top} background only · logo chip and headline block y ${y(5)}-${y(22)} · ribbon y ${y(22)}-${y(27)} · hero zone y ${y(3)}-${y(27)} on the right 36% of the width · main card y ${y(29)}-${y(72)} · action panel y ${y(74)}-${y(85)} · callout y ${y(86)}-${y(90)} · bottom band y ${y(90)}-${y(100)} with its lower edge exactly at y=${y(100)} · y ${y(100)}-${plan.sourceHeight} background only (the band's CTA pill sits at least ${slack} px above y=${y(100)}). Nothing except background may appear above y=${top} or below y=${y(100)}; shrink the text, never the margins, if the content does not fit.`
+  // แถบทึบบน-ล่าง: คำว่า "พื้นหลังเท่านั้น" โมเดลยังเอาแถบติดต่อไปวาง (5 ภาพ ผ่าน 1) — "แถบน้ำเงินทึบที่จะถูกตัดทิ้ง" เป็นภาพที่ชัดกว่า และถ้าแถบล่างไหลเข้าไปก็ถูกตัดเป็นสีเดียวกันโดยไม่เสียอะไร
+  return `LETTERBOX BARS AND CANVAS MAP (${plan.sourceWidth}x${plan.sourceHeight} px, y measured from the top edge): paint y 0-${top} and y ${y(100)}-${plan.sourceHeight} as solid flat navy #08213f bars with NOTHING on them - no text, no pill, no logo, no photo (these bars are cut off before posting). The poster lives only between the bars: logo chip and headline block y ${y(5)}-${y(22)} · ribbon y ${y(22)}-${y(27)} · hero zone y ${y(3)}-${y(27)} on the right 36% of the width · main card y ${y(29)}-${y(72)} · action panel y ${y(74)}-${y(85)} · callout y ${y(86)}-${y(90)} · bottom band y ${y(90)}-${y(100)} sitting directly on top of the lower bar, with its CTA pill vertically centred in that band (so the pill is at least ${slack + Math.round(usable * 0.02)} px above y=${y(100)}). Shrink the text, never the bars or the margins, if the content does not fit.`
 }
 
 // คำสั่งภาพจากเนื้อหาโพสต์: Codex (โมเดลภาษา) อ่านเนื้อหาแล้วเลือกฉาก + สร้างการ์ดเนื้อหาตามโครงโพสต์ ก่อนเรียกเครื่องมือสร้างภาพ
@@ -84,6 +86,9 @@ export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_
           'CALLOUT CHIP (optional, below the action panel): one sentence of at most 12 Thai words copied from the post - a key reminder that is not already on the card or the action panel; leave it out if there is none.',
           'BOTTOM-BAND CHIPS: 2 or 3 two-word labels copied from the post, or nothing.',
           'READABILITY TEST: after composing, check that the headline, ribbon, card rows and action items alone tell the whole story of the post (topic, key facts, what to do); if a row is only a fragment, replace it with the full clause from the post.',
+          '',
+          // บรีฟครีเอทีฟรายโพสต์ (ก๊อปปี้เด็ค + อาร์ตไดเรกชัน) — ฐานแบบกำหนดกฎ ตัวรับงานบนคอมสำนักงานให้ AI ในเครื่องเขียนละเอียดกว่าแล้วแทนบล็อกนี้ได้ (ตรวจคำต่อคำก่อน)
+          posterBriefFor({ title: headline, caption: body, layout }).brief,
         ].join('\n')
       : 'SUPPORTING BADGES (render exactly): ประเมินเบื้องต้น | ปรึกษาฟรี | ดูแลเอกสาร',
     '',

@@ -8,6 +8,7 @@ import { prioritizeMarketingIdeas, redemptionIdeas } from './lib/marketingIdeaMi
 import { importHermesDraft } from './lib/hermesMarketingDraft.js'
 import { assetxImageStyles, buildGalleryFireflyPrompt } from './lib/assetxImageStyles.js'
 import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction, pickHeadlineKeyword } from './lib/posterDesignSystem.js'
+import { posterBriefFor } from './lib/posterBrief.js'
 import { marketingChannelSetup, validateManualPublicationReference } from './lib/marketingChannels.js'
 import { organizeMarketingQueue } from './lib/marketingQueuePlan.js'
 import { SESSION_EXPIRED_MESSAGE, errorMessage, friendlyApiError } from './lib/marketingErrors.js'
@@ -986,7 +987,7 @@ function buildSocialPosterPrompt(brief = {}, posterCopy = defaultPosterCopy) {
     '',
     ...(keyword ? [`KEY WORD to highlight in the headline (this whole word only): ${keyword}`, ''] : []),
     body
-      ? ['POST CONTENT (context: build the ribbon, the main card and the action panel from it; do not paste it whole):', '"""', body, '"""', '', `CONTENT CARD (layout: ${layout}): ${posterLayoutInstruction(layout)} Every row on the card must be copied exactly from the post text, read as a complete idea on its own and not start with a connecting word such as และ, หรือ, แต่ or ที่. If a row cannot be copied safely, use fewer rows.`, 'BENEFIT RIBBON: one complete phrase of 4-10 Thai words copied from the post that tells the reader what they get. ACTION PANEL: 2 or 3 complete clauses of 5-12 Thai words copied from the post that tell the reader what to do next. READABILITY TEST: the headline, ribbon, card rows and action items alone must tell the whole story of the post.'].join('\n')
+      ? ['POST CONTENT (context: build the ribbon, the main card and the action panel from it; do not paste it whole):', '"""', body, '"""', '', `CONTENT CARD (layout: ${layout}): ${posterLayoutInstruction(layout)} Every row on the card must be copied exactly from the post text, read as a complete idea on its own and not start with a connecting word such as และ, หรือ, แต่ or ที่. If a row cannot be copied safely, use fewer rows.`, 'BENEFIT RIBBON: one complete phrase of 4-10 Thai words copied from the post that tells the reader what they get. ACTION PANEL: 2 or 3 complete clauses of 5-12 Thai words copied from the post that tell the reader what to do next. READABILITY TEST: the headline, ribbon, card rows and action items alone must tell the whole story of the post.', '', posterBriefFor({ title: String(brief.title || posterCopy?.headline || ''), caption: body, layout }).brief].join('\n')
       : 'MAIN CARD: use the three benefit badges above as a checklist card with cyan check circles; no action panel.',
     '',
     'Hero zone content (small, beside the headline, never reducing the content area):',

@@ -186,7 +186,7 @@ test('prompt: หัวข้อตรงตัว · ห้ามตราค�
   // v2 7 พ.ย. 2569: โครงการ์ดเนื้อหาเลือกตามโครงโพสต์ (ถอดจากตัวอย่างโปสเตอร์ของเจ้าของ)
   const steps = buildPosterJobPrompt({ title: 'ขายฝากมีค่าใช้จ่ายอะไรบ้าง', caption: 'ค่าใช้จ่ายรวมมี 3 ช่วง\n\n1. วันจดทะเบียน: ค่าธรรมเนียมและภาษี\n\n2. ระหว่างสัญญา: สินไถ่\n\n3. วันไถ่ถอน: ค่าธรรมเนียมไถ่ถอน', size: 'feed-4x5' })
   assert.match(steps, /CONTENT CARD \(layout: steps\): Main card = numbered points/)
-  assert.match(steps, /CANVAS MAP \(1024x1536 px[^\n]*y 0-166 background only[^\n]*bottom band y 1250-1370/, 'ขนาดที่ครอปบน-ล่างได้แผนที่พิกเซล เผื่อระยะ 38 px จากเส้นตัด')
+  assert.match(steps, /LETTERBOX BARS AND CANVAS MAP \(1024x1536 px[^\n]*paint y 0-166 and y 1370-1536 as solid flat navy[^\n]*bottom band y 1250-1370/, 'ขนาดที่ครอปบน-ล่างได้แถบทึบ + แผนที่พิกเซล เผื่อระยะ 38 px จากเส้นตัด')
   assert.doesNotMatch(prompt, /CANVAS MAP/, 'จัตุรัสไม่ครอป ไม่มีแผนที่')
   assert.match(steps, /ROW TITLE of 3-7 Thai words plus ONE DETAIL clause/, 'v3.2: แถว = หัวข้อ + รายละเอียด ภาพอ่านจบในตัว')
   assert.match(steps, /BENEFIT RIBBON/)
