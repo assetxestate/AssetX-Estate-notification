@@ -9,6 +9,7 @@
 // AI ได้แค่เล่า: ไม่มีตัวเลข/วันที่/สถิติที่ไม่อยู่ในข้อเท็จจริง · ไอเดียที่มีแค่หัวข้อ (summary ⚠️) เขียนเป็นความรู้ทั่วไป ห้ามอ้างคลิป/ข่าว
 import { scrub, PII_RULES } from './pii.js'
 import { ideaContextForPrompt, noteFor, audienceLines } from './angles.js'
+import { knowledgeFactLines, knowledgeSourceLabels, knowledgeIds, knowledgeForAngle } from './knowledge.js'
 import { COMPLIANCE_BLOCK } from '../../src/lib/marketing-model/prompts.js'
 import { checkText } from '../../src/lib/marketing-model/rules.js'
 import { splitHeadline } from '../../src/lib/marketing-model/index.js'
@@ -310,8 +311,12 @@ function ctaGuide(brand = {}, brandName = 'AssetX Estate') {
   return `ตัวอย่างต่อกลุ่มผู้อ่าน (เลือกอันเดียวที่ตรงกลุ่มของโพสต์นี้ แล้วเขียนใหม่ให้เข้ากับเรื่อง): ${examples.map(([k, v]) => `${k}: "${v}"`).join(' · ')}`
 }
 
-export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings = [], avoidPoints = [], avoidHeadlines = [], usedFormats = [], hint = '' }) {
+// knowledge = ข้อจากคลังความรู้ AssetX (research/knowledge_base.json ผ่าน knowledge.js) ที่จับคู่กับไอเดีย/มุมนี้แล้ว · kb = คลังทั้งก้อน (เอาชื่อแหล่งมาอ้าง)
+// ไอเดียไม่มีข้อเท็จจริง + มีข้อจากคลัง → ข้อจากคลังเป็น "ข้อเท็จจริงที่มี" (เจ้าของ 7 พ.ย. 2569: "สร้างคลังของเราเองเลย" หลังร่างจากหัวข้ออย่างเดียวออกมากลวง)
+// มีข้อเท็จจริงอยู่แล้ว → ข้อจากคลังเป็นความรู้เสริม ห้ามกลบข้อเท็จจริงหลัก
+export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings = [], avoidPoints = [], avoidHeadlines = [], usedFormats = [], hint = '', knowledge = [], kb = null }) {
   const ctx = ideaContextForPrompt(idea, brand)
+  const kbLines = Array.isArray(knowledge) && knowledge.length ? knowledgeFactLines(knowledge, kb) : []
   if (ctx.policy === 'cite' && isInternalSourceLabel(idea.source_label)) {
     ctx.sourceLine = 'ที่มา: อ้างหน่วยงานที่ออกประกาศตามที่ระบุในข้อเท็จจริง (เช่น ธปท. กรมที่ดิน กรมธนารักษ์) พร้อมวันที่ — ห้ามเขียนคำว่า "ปฏิทินเหตุการณ์" หรือ "ปฏิทินในระบบ" ในโพสต์'
   }
@@ -335,6 +340,9 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     `- ต้องพูดเสมอเมื่อเกี่ยวข้อง (ต้องอยู่ในประโยคเต็มที่บอกคนอ่านว่าต้องรู้หรือทำอะไร ห้ามแปะเป็นหัวข้อย่อยลอย ๆ): ${(brand.must_say || []).join(' · ') || '-'}`,
     ...(Array.isArray(brand.domain_notes) && brand.domain_notes.length
       ? ['', 'ความรู้โดเมนที่ยึดได้ (เอกสารและกลไกตามแบบไทย — ใช้แทนการเดา):', ...brand.domain_notes.map((n) => `- ${n}`)]
+      : []),
+    ...(kbLines.length
+      ? ['', 'คลังความรู้ AssetX: ข้อกฎหมาย ค่าธรรมเนียม และกลไกที่ตรวจกับตัวบทหรือหน้าทางการแล้ว จะอยู่ในส่วน "ข้อเท็จจริงที่มี" ด้านล่าง — ถือเป็นข้อเท็จจริงที่อ้างได้: ชื่อกฎหมาย มาตรา และตัวเลข ใช้ได้ตามที่ให้ไว้เท่านั้น เขียนเป็นประโยคของตัวเอง ห้ามคัดลอกทั้งบรรทัด · ข้อที่ติดป้าย [ยืนยันตัวเลข] มาจากแหล่งรอง ถ้าใช้ตัวเลขนั้นต้องบอกผู้อ่านว่าให้ยืนยันกับสำนักงานที่ดิน · ข้อความกำกับ "(ที่มา: …)" และ "[ยืนยันตัวเลข]" ห้ามคัดลอกลงโพสต์ตรง ๆ (อ้างได้เป็น "ตาม พ.ร.บ.…" หรือ "กรมที่ดินระบุว่า…")']
       : []),
     '',
     'กติกาเด็ดขาดของแบรนด์:',
@@ -379,7 +387,10 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     `ไอเดีย: ${cleanTitleForPrompt(idea, ctx.policy)}`,
     facts
       ? `ข้อเท็จจริงที่มี (ใช้ได้เฉพาะเท่านี้${idea.source === 'community' ? ' · นี่คือสถานการณ์ของผู้ตั้งกระทู้คนหนึ่ง ใช้เพื่อเข้าใจคำถามเท่านั้น ห้ามใส่ชื่อโครงการ ตัวเลขงบ ทำเลเฉพาะ หรือรายละเอียดเฉพาะของเขาลงโพสต์ ให้ตอบเป็นหลักทั่วไปสำหรับคนที่เจอคำถามแบบเดียวกัน' : ''}${socialNote}${ctx.policy === 'no_cite' ? ' · ชื่อบริษัท โครงการ หรือแบรนด์อื่นในข้อเท็จจริง ห้ามใส่ลงโพสต์ (เรียกว่า "ผู้พัฒนารายหนึ่ง" "โครงการหนึ่ง") และห้ามแต่งรายการว่าบริษัทนั้นเสนออะไรบ้างถ้าข้อเท็จจริงไม่ได้บอก' : ''}):\n${factLines}`
-      : 'ข้อเท็จจริงที่มี: (มีแค่หัวข้อ — เขียนเป็นความรู้ทั่วไปของเรื่องนี้จากหลักการที่คนในวงการรู้กันทั่วไป ห้ามอ้างคลิป ข่าว หรือแหล่งใด ห้ามตัวเลข วันที่ สถิติ)',
+      : kbLines.length
+        ? `ข้อเท็จจริงที่มี (จากคลังความรู้ AssetX — หัวข้อนี้ยังไม่มีข้อเท็จจริงจากข่าว/คลิป/เพจ จึงใช้ข้อกฎหมายและกลไกที่ตรวจแล้วเหล่านี้เป็นแกนของโพสต์ ใช้ได้เฉพาะเท่านี้ ห้ามอ้างคลิป ข่าว หรือเพจใด ห้ามแต่งตัวเลขหรือวันที่เพิ่ม · หยิบเฉพาะข้อที่ตรงกับมุมเล่า ไม่ต้องใช้ทุกข้อ):\n${kbLines.join('\n')}`
+        : 'ข้อเท็จจริงที่มี: (มีแค่หัวข้อ — เขียนเป็นความรู้ทั่วไปของเรื่องนี้จากหลักการที่คนในวงการรู้กันทั่วไป ห้ามอ้างคลิป ข่าว หรือแหล่งใด ห้ามตัวเลข วันที่ สถิติ)',
+    facts && kbLines.length ? `ความรู้เสริมจากคลัง AssetX (ตรวจแล้ว · ใช้ได้เมื่อเกี่ยวกับเรื่องนี้โดยตรง เพื่อให้คำแนะนำมีกลไกและตัวเลขจริง · ห้ามให้กลบข้อเท็จจริงหลักด้านบน · หยิบเฉพาะที่จำเป็น):\n${kbLines.join('\n')}` : '',
     facts && split.notes.length ? `หมายเหตุถึงผู้เขียน (ไม่ใช่ข้อเท็จจริง ห้ามใส่ลงโพสต์ ห้ามเล่าว่าเป็นเนื้อหาของประกาศ/รายงาน): ${split.notes.join(' · ')}` : '',
     `ประเภท: ${idea.subtype || 'market'} · แหล่ง: ${idea.source || 'ไม่ระบุ'}`,
     ctx.sourceLine,
@@ -597,7 +608,8 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
   if (promise) warningsExtra.push(`มีประโยคสัญญาผลลัพธ์โดยไม่มีเงื่อนไขกำกับ: "${promise.slice(0, 80)}"`)
   // โพสต์เรื่องคอนโดที่เรียกเอกสารว่า "โฉนด" (ห้องชุดใช้ อ.ช.2) — ผู้ตรวจอิสระจับได้ 6 พ.ย. 2569
   // ("สำนักงานที่ดิน" อยู่แทบทุกโพสต์ จึงยกเว้นเฉพาะโพสต์ที่พูดถึงที่ดินเปล่า/บ้าน/น.ส. จริง ๆ)
-  if (/คอนโด|ห้องชุด/.test(`${facts}\n${caption}`) && /โฉนด/.test(caption) && !/ที่ดินเปล่า|บ้านพร้อมที่ดิน|ทาวน์โฮม|น\.ส\./.test(caption)) {
+  // ประโยคปฏิเสธ "ไม่ใช่โฉนดที่ดิน" (ร่างจากคลังความรู้ #2 7 พ.ย. 2569 เรียกเอกสารถูกแล้ว) ไม่ต้องเตือน
+  if (/คอนโด|ห้องชุด/.test(`${facts}\n${caption}`) && /โฉนด/.test(caption.replace(/ไม่ใช่โฉนด\S*/g, '')) && !/ที่ดินเปล่า|บ้านพร้อมที่ดิน|ทาวน์โฮม|น\.ส\./.test(caption)) {
     warningsExtra.push('โพสต์เรื่องคอนโดใช้คำว่า "โฉนด" — เอกสารห้องชุดคือหนังสือกรรมสิทธิ์ห้องชุด (อ.ช.2) ตรวจคำนี้ก่อนโพสต์')
   }
 
@@ -642,7 +654,8 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
 
 // ร่างทีละมุม บันทึกทีละมุมผ่าน onSave (timeout กลางทางไม่ทิ้งงานที่ได้แล้ว) · มุมที่มีร่างแล้วไม่ทำซ้ำ
 // ประโยคเปิดของร่างที่มีแล้วในไอเดียเดียวกันส่งเข้าเป็น "ห้ามเปิดแบบนี้" เพื่อให้ 3 มุมต่างกันจริง
-export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 1500, log = () => {}, now = () => new Date(), maxPerIdea = 3, duplicateLimit = DUPLICATE_SIMILARITY }) {
+// kb = คลังความรู้ AssetX (loadKnowledgeBase()) — มีแล้วทุกมุมได้ข้อที่จับคู่ได้แนบไป (knowledgeForAngle) · ร่างบันทึก facts_source + knowledge {ids, sources, verify} ให้คนตรวจรู้ว่าอิงอะไร
+export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 1500, log = () => {}, now = () => new Date(), maxPerIdea = 3, duplicateLimit = DUPLICATE_SIMILARITY, kb = null, knowledgeMax = 6 }) {
   const done = []
   const failed = []
   let stopped = false
@@ -671,8 +684,9 @@ export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (
       let error = null
       let provider = null
       let hint = ''
+      const knowledge = kb?.entries?.length ? knowledgeForAngle(idea, angle, { kb, max: knowledgeMax }) : []
       for (let attempt = 0; attempt < 2 && !result; attempt += 1) {
-        const { system, prompt, policy, format } = buildDraftPrompt({ idea, angle, brand, avoidOpenings, avoidPoints, avoidHeadlines, usedFormats, hint })
+        const { system, prompt, policy, format } = buildDraftPrompt({ idea, angle, brand, avoidOpenings, avoidPoints, avoidHeadlines, usedFormats, hint, knowledge, kb })
         const res = await ask({ system, prompt })
         if (!res.ok) {
           error = res.error
@@ -698,7 +712,12 @@ export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (
           hint = `ร่างก่อนหน้าซ้ำกับมุมอื่นของเรื่องนี้ — เปลี่ยนทั้งประเด็นและโครง ห้ามพูดถึง: ${avoidPoints.join(' · ') || 'ประเด็นเดิม'}`
           continue
         }
-        result = { ...parsed.draft, format }
+        result = {
+          ...parsed.draft,
+          format,
+          facts_source: hasResearchFacts(idea) ? 'research' : knowledge.length ? 'knowledge' : 'none',
+          ...(knowledge.length ? { knowledge: { ids: knowledgeIds(knowledge), sources: knowledgeSourceLabels(knowledge, kb), verify: knowledge.some((e) => e.confidence !== 'official') } } : {}),
+        }
       }
       if (result) {
         angles[index] = { ...angle, draft: { ...result, provider, at: now().toISOString() } }

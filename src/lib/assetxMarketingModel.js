@@ -140,6 +140,10 @@ export function applyAiDraft(generated, draft, { channel = 'facebook' } = {}) {
       draftProvider: draft.provider || null,
       needsCheck: Array.isArray(draft.needs_check) ? draft.needs_check : [],
       draftWarnings: Array.isArray(draft.warnings) ? draft.warnings : [],
+      // ร่างที่อิงคลังความรู้ AssetX (research/knowledge_base.json) — ไอเดียไม่มีข้อเท็จจริงจากข่าว แต่มีข้อกฎหมาย/ค่าธรรมเนียมที่ตรวจแล้วเป็นแกน · verify = มีข้อจากแหล่งรองที่ต้องยืนยันตัวเลข
+      factsSource: draft.facts_source || null,
+      knowledgeSources: Array.isArray(draft.knowledge?.sources) ? draft.knowledge.sources : [],
+      knowledgeVerify: Boolean(draft.knowledge?.verify),
       captionQuality: scoreCaption(draft.caption, channel),
     },
   }
@@ -153,8 +157,13 @@ export function isAiDraft(item = {}) {
 // หมายเหตุให้คนตรวจเมื่อร่างมาจาก AI — สิ่งที่ AI บอกว่าต้องยืนยัน + คำเตือนจากด่านคำ (warn) ที่ติดมากับร่าง
 export function aiDraftReviewNotes(generated = {}) {
   const meta = generated.meta || {}
+  const fromKnowledge = meta.factsSource === 'knowledge'
   return [
-    'ร่างโดย AI จากข้อเท็จจริงที่สำรวจมา — ตรวจกับแหล่งที่มาก่อนอนุมัติ',
+    fromKnowledge
+      ? 'ร่างโดย AI จากคลังความรู้ AssetX (ข้อกฎหมาย/ค่าธรรมเนียมที่ตรวจกับตัวบทแล้ว) — ไอเดียนี้ไม่มีข้อเท็จจริงจากข่าว/คลิป ตรวจว่าโพสต์ไม่เล่าเกินข้อกฎหมายที่ให้'
+      : 'ร่างโดย AI จากข้อเท็จจริงที่สำรวจมา — ตรวจกับแหล่งที่มาก่อนอนุมัติ',
+    ...(Array.isArray(meta.knowledgeSources) && meta.knowledgeSources.length ? [`อิงคลังความรู้: ${meta.knowledgeSources.join(' · ')}`] : []),
+    ...(meta.knowledgeVerify ? ['ตัวเลขค่าธรรมเนียม/อากรในคลังมาจากแหล่งรอง — ถ้าโพสต์ใช้ตัวเลขนั้น ยืนยันกับสำนักงานที่ดินก่อนโพสต์'] : []),
     ...(meta.needsCheck || []).map((item) => `ต้องตรวจ: ${item}`),
     ...(meta.draftWarnings || []),
   ]

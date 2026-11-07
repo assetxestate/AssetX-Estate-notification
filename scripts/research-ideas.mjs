@@ -9,6 +9,7 @@
 // node scripts/research-ideas.mjs angles [--limit N]        เขียนมุมเล่าให้ไอเดียที่ยังไม่มี (Hermes → Ollama ในเครื่อง → Gemini)
 // node scripts/research-ideas.mjs drafts [--limit N] [--include-no-facts] [--id 32,33]  ร่างโพสต์เต็มให้ทุกมุมเล่าของไอเดียที่ "มีข้อเท็จจริง" (📌) · ค่าเริ่มต้น 8 ไอเดีย/รอบ ~1.5–2 นาที/มุมบน Ollama 14b · ใน run ใช้ --drafts-limit · --id = ไอเดียที่ระบุเอง ไม่สนสถานะ (ร่างใหม่ให้ไอเดียที่เจ้าของเลือกไปแล้วได้ หลังลบร่างเดิมด้วย .local/reset-drafts.mjs)
 //     ไอเดียที่ไม่มีข้อเท็จจริง (คลิปยังไม่ถอดคำบรรยาย · ดึงเนื้อข่าวไม่ได้) ไม่ร่างให้ — ผู้ตรวจอิสระ 6 พ.ย. 2569 พบว่า AI เดาเอกสาร/ขั้นตอนผิดบริบทไทย · --include-no-facts เปิดได้ถ้าเจ้าของยอมรับ
+//     ยกเว้น: เรื่องมิจฉาชีพ (subtype scam) และไอเดียที่คลังความรู้ AssetX (research/knowledge_base.json) จับคู่ได้ ≥ 2 ข้อ — ร่างจากข้อกฎหมาย/ค่าธรรมเนียมที่ตรวจแล้วแทนการเดา (7 พ.ย. 2569)
 // node scripts/research-ideas.mjs expire                    ตั้ง status=expired ให้ไอเดียเก่า (ไม่ลบแถว)
 // node scripts/research-ideas.mjs probe                     ทดสอบทุกแหล่งแบบเบามือ (ยิง 1 ครั้ง/แหล่ง · สถานะ · จำนวน · วันล่าสุด · บล็อกไหม)
 // node scripts/research-ideas.mjs stats                     จำนวนในคิวตามสถานะ/แหล่ง และ % ที่มีมุมเล่า
@@ -26,6 +27,7 @@ import { createSupabaseStore, createDryRunStore, missingTable } from '../server/
 import { createAsk, NO_PROVIDER_MESSAGE } from '../server/research/llm.js'
 import { generateAngles } from '../server/research/angles.js'
 import { generateDrafts, hasResearchFacts, isInternalSourceLabel } from '../server/research/drafts.js'
+import { loadKnowledgeBase, knowledgeForIdea, KB_MIN_MATCHES } from '../server/research/knowledge.js'
 import { enrichIdeas } from '../server/research/enrich.js'
 import { calendarWatchItems, inMpcWindow } from '../server/research/calendar.js'
 import { sendTelegramReport, telegramConfigured } from '../server/research/notify.js'
@@ -161,6 +163,12 @@ async function doEnrich({ cfg, brand, store, limit, retry = false }) {
 // เฉพาะไอเดียที่มีข้อเท็จจริง (📌/manual) — ไม่มีข้อเท็จจริง = AI เดา (ผู้ตรวจอิสระ 6 พ.ย. 2569) · --include-no-facts เปิดได้เอง
 const NO_FACTS_DRAFT_SUBTYPES = ['scam']
 
+// คลังความรู้ AssetX (research/knowledge_base.json) — ไอเดียที่ไม่มีข้อเท็จจริงแต่คลังจับคู่ได้ ≥ KB_MIN_MATCHES ข้อ ร่างจากคลังได้ (เจ้าของ 7 พ.ย. 2569: "สร้างคลังของเราเองเลย")
+// โหลดไม่ได้ (ไฟล์เพี้ยน) = เตือนแล้วร่างแบบไม่มีคลัง ไม่ล้มทั้งรอบ
+function loadKb() {
+  try { return loadKnowledgeBase() } catch (error) { out(`[drafts] ⚠️ โหลดคลังความรู้ไม่ได้: ${error.message} — ร่างโดยไม่ใช้คลัง`); return null }
+}
+
 // ids = ไอเดียที่ระบุเอง (--id 32,33) ไม่สนสถานะ new/picked — ไอเดียที่เจ้าของเลือกไปแล้ว (picked) ไม่อยู่ในคิวร่างปกติ แต่ร่างใหม่หลังแก้ความรู้/ด่านได้
 async function doDrafts({ brand, store, limit, includeNoFacts = false, ids = null }) {
   const ask = createAsk({ log })
@@ -179,16 +187,21 @@ async function doDrafts({ brand, store, limit, includeNoFacts = false, ids = nul
   const futureCalendar = (idea) => isInternalSourceLabel(idea.source_label) && idea.event_date && String(idea.event_date) > today()
   // เจ้าของเลือก 7 พ.ย. 2569 (ไดอารี่ draft-no-facts-policy ข.): ไอเดียที่ไม่มีข้อเท็จจริงร่างได้เฉพาะเรื่องมิจฉาชีพ/เตือนภัย (subtype scam)
   // — โครงเตือนภัยเขียนจากความรู้โดเมนของแบรนด์ (ตรวจโฉนดที่สำนักงานที่ดิน ฯลฯ) ไม่อ้างรายละเอียดข่าว · เรื่องอื่นยังรอข้อเท็จจริง
-  const withFacts = candidates.filter((idea) => hasResearchFacts(idea) || NO_FACTS_DRAFT_SUBTYPES.includes(idea.subtype))
+  // 7 พ.ย. 2569 ค่ำ: เรื่องอื่นที่ไม่มีข้อเท็จจริงร่างได้เมื่อคลังความรู้ AssetX จับคู่ได้ ≥ KB_MIN_MATCHES ข้อ (ข้อกฎหมาย/ค่าธรรมเนียม/กลไกที่ตรวจแล้ว ใช้แทนการเดา)
+  const kb = loadKb()
+  const kbCovered = (idea) => Boolean(kb) && knowledgeForIdea(idea, { kb }).length >= KB_MIN_MATCHES
+  const fromKb = candidates.filter((idea) => !hasResearchFacts(idea) && !NO_FACTS_DRAFT_SUBTYPES.includes(idea.subtype) && kbCovered(idea))
+  const withFacts = candidates.filter((idea) => hasResearchFacts(idea) || NO_FACTS_DRAFT_SUBTYPES.includes(idea.subtype) || fromKb.includes(idea))
   const ideas = (includeNoFacts ? candidates : withFacts.filter((idea) => !futureCalendar(idea))).slice(0, limit)
   const noFacts = candidates.length - withFacts.length
   const future = withFacts.filter(futureCalendar).length
-  if (!includeNoFacts && noFacts) out(`[drafts] ข้าม ${noFacts} ไอเดียที่ยังไม่มีข้อเท็จจริง (ไม่ร่างจากหัวข้ออย่างเดียว · --include-no-facts เพื่อฝืน)`)
+  if (kb) out(`[drafts] คลังความรู้ AssetX ${kb.entries.length} ข้อ (ปรับปรุง ${kb.updated || '-'}) · ครอบคลุม ${fromKb.length} ไอเดียที่ไม่มีข้อเท็จจริง`)
+  if (!includeNoFacts && noFacts) out(`[drafts] ข้าม ${noFacts} ไอเดียที่ยังไม่มีข้อเท็จจริงและคลังความรู้ไม่ครอบคลุม (ไม่ร่างจากหัวข้ออย่างเดียว · --include-no-facts เพื่อฝืน)`)
   if (!includeNoFacts && future) out(`[drafts] ข้าม ${future} ไอเดียปฏิทินที่ยังไม่ถึงวันเหตุการณ์ (ร่างได้เมื่อถึงวัน)`)
   if (!ideas.length) { out('[drafts] ไม่มีไอเดียที่มีข้อเท็จจริงและยังขาดร่าง'); return { done: [], failed: [], skippedNoFacts: noFacts } }
   const pendingAngles = ideas.reduce((n, idea) => n + idea.angles.filter((a) => a && !a.draft?.caption).length, 0)
   out(`[drafts] ${ideas.length} ไอเดีย · ${pendingAngles} มุมรอร่าง · ผู้ให้บริการ: ${ask.providers.join(' → ')}`)
-  const result = await generateDrafts({ ideas, brand, ask, onSave: (id, angles) => store.saveAngles(id, angles), delayMs: 1500, log })
+  const result = await generateDrafts({ ideas, brand, ask, onSave: (id, angles) => store.saveAngles(id, angles), delayMs: 1500, log, kb })
   out(`[drafts] ร่างแล้ว ${draftCount(result)} มุม (${result.done.length} ไอเดีย) · ไม่ได้ ${result.failed.length}`)
   return { ...result, skippedNoFacts: noFacts }
 }

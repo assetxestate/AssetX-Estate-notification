@@ -367,6 +367,8 @@ test('parseDraft: โครงเคสสมมุติต้องมี "ไ
   const kase = parseDraft({ headline: 'x', caption: longBody('เคสสมมุติ: เจ้าของห้องติดหนี้ธนาคาร') }, { format: 'case' })
   assert.equal(kase.ok, true, kase.error)
   assert.match(kase.draft.caption, /เคสสมมุติเพื่ออธิบายหลักการ ไม่ใช่ลูกค้าจริง/)
+  const negated = parseDraft({ headline: 'x', caption: longBody('คอนโดใช้หนังสือกรรมสิทธิ์ห้องชุด ไม่ใช่โฉนดที่ดิน ตรวจภาระติดพันที่สำนักงานที่ดิน') }, { facts: 'จำนองคอนโด' })
+  assert.ok(negated.ok && !negated.draft.warnings.some((w) => /โฉนด/.test(w)), 'ประโยคปฏิเสธ "ไม่ใช่โฉนดที่ดิน" เรียกเอกสารถูกแล้ว ไม่ควรติดคำเตือน')
   const condo = parseDraft({ headline: 'x', caption: longBody('ก่อนขายคอนโด เตรียมโฉนดและสัญญากู้') }, { facts: 'ขายคอนโดติดหนี้' })
   assert.ok(condo.draft.warnings.some((w) => /อ\.ช\.2/.test(w)), JSON.stringify(condo.draft.warnings))
 })
