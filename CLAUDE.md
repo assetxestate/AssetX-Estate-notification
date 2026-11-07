@@ -90,4 +90,5 @@ AssetX-Estate-notification/
 - ไฟล์ใน `docs/daily` และ `.claude/diary/days` อยู่ในรีโปสาธารณะ: ห้ามชื่อลูกค้า เลขบัตร เบอร์โทร และตัวเลขเงินรายลูกค้า — เขียนเชิงคุณภาพ
 - หลังจบงานชุดใหญ่ที่ commit แล้ว อัปเดตไฟล์ daily ของวันนี้ + JSON ใน `.claude/diary/days/` แล้ว `push-day` (สคริปต์คง `done`/`choice` ที่เจ้าของเปลี่ยนจากเว็บให้เอง และไม่ลบข้อค้างเดิม)
 - เทเลแกรม: พิมพ์ `/diary` ในห้องบอท AssetX ได้ปุ่มเปิดไดอารี่ (ข้อความปักหมุด + ปุ่มเมนูในแชทส่วนตัว) · โค้ด `api/telegram-webhook.js` · ตั้ง `ASSETX_DIARY_URL` บน Vercel ถ้าโดเมนเปลี่ยน
+- Higgsfield (ภาพ/วิดีโอ AI เสียเครดิต): ติดตั้งเป็น CLI `higgsfield` + สกิลใน `.claude/skills/higgsfield-*` (ไม่ใช่ MCP) · ก่อนสั่งเจนทุกครั้งต้องรัน `higgsfield generate cost` แล้วบอกเครดิต งานเกินราว 10 เครดิตถามเจ้าของก่อน · วางแผน/เขียนคำสั่งฝั่งเราเสมอ · ดู docs/higgsfield.md
 - รูปตัวอย่างโปสเตอร์: เจ้าของส่งรูปเข้าห้องบอทพร้อมคำว่า "รูปตัวอย่าง" → ตาราง `poster_refs` (`supabase_poster_refs.sql`) → ตัวรับงานบนคอมสำนักงานดึงลง `.local/poster-refs/inbox/` (ไม่ขึ้น git) · Claude จัดหมวดเมื่อเจ้าของสั่ง · ดู docs/ai-artwork-studio.md
