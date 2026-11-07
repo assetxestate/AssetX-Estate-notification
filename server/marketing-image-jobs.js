@@ -41,10 +41,12 @@ const SHAPES = { portrait: 'vertical (portrait)', square: 'square', landscape: '
 // (7 พ.ย. 2569: พาดหัวและปุ่มโดนตัดหลังครอป 2 จาก 3 ภาพ) จึงบอกเป็นพิกเซลของแคนวาสตรง ๆ ตาม VERTICAL BUDGET ของระบบออกแบบ
 export function canvasMap(plan) {
   if (!/top/.test(String(plan.edges || ''))) return ''
-  const top = plan.cutPx
-  const usable = plan.sourceHeight - 2 * plan.cutPx
+  // เผื่อระยะ ~30% ของส่วนที่ตัด: โมเดลวางเลยเส้นล่างราว 40 px แม้บอกพิกเซลตรง ๆ (ครอปจริง 7 พ.ย. 2569 ปุ่มติดต่อโดนตัดครึ่ง) — โซนทั้งหมดจึงหดเข้าด้านในอีกนิด
+  const slack = Math.round(plan.cutPx * 0.3)
+  const top = plan.cutPx + slack
+  const usable = plan.sourceHeight - 2 * top
   const y = (pct) => Math.round(top + usable * pct / 100)
-  return `CANVAS MAP (${plan.sourceWidth}x${plan.sourceHeight} px, y measured from the top edge): y 0-${top} background only · logo chip and headline block y ${y(5)}-${y(22)} · ribbon y ${y(22)}-${y(27)} · hero zone y ${y(3)}-${y(27)} on the right 36% of the width · main card y ${y(29)}-${y(72)} · action panel y ${y(74)}-${y(85)} · callout y ${y(86)}-${y(90)} · bottom band y ${y(90)}-${y(100)} with its lower edge exactly at y=${y(100)} · y ${y(100)}-${plan.sourceHeight} background only. Nothing except background may appear above y=${top} or below y=${y(100)}; shrink the text, never the margins, if the content does not fit.`
+  return `CANVAS MAP (${plan.sourceWidth}x${plan.sourceHeight} px, y measured from the top edge): y 0-${top} background only · logo chip and headline block y ${y(5)}-${y(22)} · ribbon y ${y(22)}-${y(27)} · hero zone y ${y(3)}-${y(27)} on the right 36% of the width · main card y ${y(29)}-${y(72)} · action panel y ${y(74)}-${y(85)} · callout y ${y(86)}-${y(90)} · bottom band y ${y(90)}-${y(100)} with its lower edge exactly at y=${y(100)} · y ${y(100)}-${plan.sourceHeight} background only (the band's CTA pill sits at least ${slack} px above y=${y(100)}). Nothing except background may appear above y=${top} or below y=${y(100)}; shrink the text, never the margins, if the content does not fit.`
 }
 
 // คำสั่งภาพจากเนื้อหาโพสต์: Codex (โมเดลภาษา) อ่านเนื้อหาแล้วเลือกฉาก + สร้างการ์ดเนื้อหาตามโครงโพสต์ ก่อนเรียกเครื่องมือสร้างภาพ
