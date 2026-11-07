@@ -87,9 +87,10 @@
     },
     {
       "id": "social-watch-task-scheduler",
-      "done": false,
+      "done": true,
       "text": "ตั้ง Task Scheduler ตัวเฝ้าเพจ Facebook \"AssetX Social Watch 21:00\" + \"23:00\" (ช่วงกลางคืนตามที่เจ้าของเลือก) — รันสคริปต์ PowerShell ในหัวข้อ \"ตัวเฝ้าเพจ Facebook\" ของ docs/social-research.md ครั้งเดียว (Claude สร้าง scheduled task ไม่ได้ ตัวจำแนกสิทธิ์ของ auto mode ปฏิเสธ) · รอบสำรอง 23:00 ข้ามเองถ้าวันนั้นอ่านแล้ว",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-07T04:15:16.813Z"
     },
     {
       "id": "verify-watch-pages",
