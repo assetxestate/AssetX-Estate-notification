@@ -159,6 +159,8 @@ async function doEnrich({ cfg, brand, store, limit, retry = false }) {
 // ร่างโพสต์เต็มให้ทุกมุมเล่าที่ยังไม่มีร่าง — เก็บใน angles[i].draft (คอลัมน์เดิม) · ทีละมุม บันทึกทีละมุม
 // บน Ollama 14b เครื่องนี้ ~1–2 นาที/มุม → จำกัดไอเดียต่อรอบ ที่เหลือรอรอบถัดไป (หรือสั่ง drafts --limit N เอง)
 // เฉพาะไอเดียที่มีข้อเท็จจริง (📌/manual) — ไม่มีข้อเท็จจริง = AI เดา (ผู้ตรวจอิสระ 6 พ.ย. 2569) · --include-no-facts เปิดได้เอง
+const NO_FACTS_DRAFT_SUBTYPES = ['scam']
+
 // ids = ไอเดียที่ระบุเอง (--id 32,33) ไม่สนสถานะ new/picked — ไอเดียที่เจ้าของเลือกไปแล้ว (picked) ไม่อยู่ในคิวร่างปกติ แต่ร่างใหม่หลังแก้ความรู้/ด่านได้
 async function doDrafts({ brand, store, limit, includeNoFacts = false, ids = null }) {
   const ask = createAsk({ log })
@@ -175,7 +177,9 @@ async function doDrafts({ brand, store, limit, includeNoFacts = false, ids = nul
   }
   // เหตุการณ์ปฏิทินที่ยังไม่ถึงวัน (รายงานยังไม่ออก) ร่างแล้วกลวง — ผู้ตรวจรอบสอง 6 พ.ย. 2569 → รอให้ถึงวันก่อน
   const futureCalendar = (idea) => isInternalSourceLabel(idea.source_label) && idea.event_date && String(idea.event_date) > today()
-  const withFacts = candidates.filter(hasResearchFacts)
+  // เจ้าของเลือก 7 พ.ย. 2569 (ไดอารี่ draft-no-facts-policy ข.): ไอเดียที่ไม่มีข้อเท็จจริงร่างได้เฉพาะเรื่องมิจฉาชีพ/เตือนภัย (subtype scam)
+  // — โครงเตือนภัยเขียนจากความรู้โดเมนของแบรนด์ (ตรวจโฉนดที่สำนักงานที่ดิน ฯลฯ) ไม่อ้างรายละเอียดข่าว · เรื่องอื่นยังรอข้อเท็จจริง
+  const withFacts = candidates.filter((idea) => hasResearchFacts(idea) || NO_FACTS_DRAFT_SUBTYPES.includes(idea.subtype))
   const ideas = (includeNoFacts ? candidates : withFacts.filter((idea) => !futureCalendar(idea))).slice(0, limit)
   const noFacts = candidates.length - withFacts.length
   const future = withFacts.filter(futureCalendar).length

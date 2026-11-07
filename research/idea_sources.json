@@ -69,7 +69,15 @@
       { "label": "CondoNewb", "channel_id": "UCj0d-5DuYAenV3r9pt_inyg", "kind": "market", "require_group": ["transaction", "policy"] },
       { "label": "ธนาคารอาคารสงเคราะห์", "channel_id": "UCOedRpPpC9vPvX-7HY3LBuQ", "kind": "official" },
       { "label": "กรมบังคับคดี", "channel_id": "UCdsoXg0npMHhV3XgUzI1mXw", "kind": "official", "subtype": "auction_npa" },
-      { "label": "Property Expert Live", "channel_id": "UCGRkm6GsOoRbIV9moHVXp7Q", "kind": "market", "require_group": ["transaction", "policy"], "_note": "กว้างเกิน ต้องกรองคำธุรกรรม/นโยบาย (asset อย่างเดียวไม่พอ)" }
+      { "label": "Property Expert Live", "channel_id": "UCGRkm6GsOoRbIV9moHVXp7Q", "kind": "market", "require_group": ["transaction", "policy"], "_note": "กว้างเกิน ต้องกรองคำธุรกรรม/นโยบาย (asset อย่างเดียวไม่พอ)" },
+
+      { "label": "Kim Property Live", "channel_id": "UCoUTEqb6IFuhXBRDtWAMang", "kind": "creator", "require_group": ["transaction", "policy"], "_note": "เพิ่ม 7 พ.ย. 2569 จากรายงานรีเสิร์ชเพจ · 1.1M · คลิปล่าสุดเอนข่าวมาโคร/ทอง ต้องกรองคำธุรกรรม/นโยบาย · เพจ FB เฝ้าอยู่ (ยืดเป็น 14 วันแล้ว)" },
+      { "label": "Guru Living", "channel_id": "UCSq-ymhgsUgV-LaQNF6L5gg", "kind": "media", "require_group": ["transaction", "policy"], "_note": "เพิ่ม 7 พ.ย. 2569 · 450K · สินเชื่อบ้าน/ดอกเบี้ย/โปะหนี้ · มี Exclusive Talk เจาะลึกธุรกิจจำนอง-ขายฝาก" },
+      { "label": "อสังหาชิ้นโบว์แดง (Emperor Land Group)", "channel_id": "UCq8yLlzFdW3O8RSrFdJvZzg", "kind": "lender", "subtype": "competitor", "_note": "เพิ่ม 7 พ.ย. 2569 · 65.3K · รับซื้อขาย จำนอง ขายฝาก กทม.-ปริมณฑล · อัปโหลดถึง 3 พ.ย. 2569 · พาดหัวเร้าอารมณ์" },
+      { "label": "ตลาดที่ดิน TaladTeedin", "channel_id": "UCDDllnPTvKVQS44xb0rlLBw", "kind": "platform", "require_group": ["transaction", "policy", "asset"], "_note": "เพิ่ม 7 พ.ย. 2569 · 5.21K · สินเชื่อที่ดิน/หนังสือรับรองราคาประเมิน/ค่าใช้จ่ายขายฝาก · โปรโมตแพลตฟอร์มตัวเอง" },
+      { "label": "Smartfinn Solutions", "channel_id": "UCZfDoWPA2_8DUUWqBt1XCmQ", "kind": "platform", "subtype": "competitor", "_note": "เพิ่ม 7 พ.ย. 2569 · 1.63K · แพลตฟอร์มจับคู่ขายฝาก · คลิปล่าสุดเป็นโปรโมตสั้น วิวน้อย · เรต/การันตีผลตอบแทนเป็นโฆษณา" },
+      { "label": "Future Developer Academy", "channel_id": "UCwLQelsKYPMa3al6yh-wGhw", "kind": "educator", "subtype": "competitor", "_note": "เพิ่ม 7 พ.ย. 2569 · 1.35K · คอร์สเสือนอนกิน จำนอง-ขายฝาก · funnel ของ Land for Loan · ผลตอบแทน 9–15% ที่โฆษณาเป็นโฆษณา" },
+      { "label": "TUMFON ประมูลอสังหา", "channel_id": "UCnWp5utFhx0hlwpHKbOLLRA", "kind": "educator", "subtype": "auction_npa", "require_group": ["transaction", "policy", "asset"], "_note": "เพิ่ม 7 พ.ย. 2569 · 16.1K · ไลฟ์ถี่ 2.6K คลิป สัญญาณรบกวนสูง (max_per_channel 3 คุม) · ขายคอร์ส/E-Book" }
     ]
   },
 

@@ -65,7 +65,7 @@
 | video ⚠️ | YouTube channel RSS 11 ช่อง (คู่แข่ง · ทนาย · นายหน้า · ตลาด · ทางการ) ≤ 7 วัน ≤ 3/ช่อง | youtube / competitor หรือตัวจัดประเภท | ⚠️ เจ้าของอนุมัติ · ยังไม่ถอดคำบรรยาย |
 | internal | ตาราง `leads` (ลีดพุ่งตามกลุ่ม×พื้นที่ · คำถามยอดนิยม) รายสัปดาห์ | internal / internal | ของเราเอง · ไม่มีข้อมูลบุคคล |
 | calendar | `calendar.json` (กนง. · ราคาประเมิน 2570 · สิ้นสุดลดค่าโอน/LTV 30 มิ.ย. 2570) ล่วงหน้า 21 วัน | official / ตามเหตุการณ์ | ของเราเอง |
-| social ⚠️ | เพจ Facebook 18 เพจ (คู่แข่งขายฝาก-จำนอง 8 ทุก 4 วัน · สื่อ 6 · หน่วยงาน 3 · ครีเอเตอร์ 1 ทุก 7 วัน) อ่าน DOM ผ่าน OpenCLI + Chrome profile Research · ≤ 4 เพจ/วัน · วันละ 1 รอบ | social / social_fb | ⚠️ robots ของ Facebook ห้าม — เจ้าของอนุมัติ 2 พ.ย. · บัญชีสำรองใช้ร่วมกับ DVX (3 พ.ย.) · ดูหัวข้อ "ตัวเฝ้าเพจ Facebook" |
+| social ⚠️ | เพจ Facebook 26 เพจ (เปิด 24 · ปิดรอตรวจด้วยตา 2) — ปรับ 7 พ.ย. 2569 ตามรายงานรีเสิร์ชเพจ: คู่แข่งขายฝาก-จำนอง 8 เดิม ทุก 4 วัน + เพจใหม่ 8 (Land for Loan ฝั่งผู้กู้ · พรชัย แคปปิตอล พัทยา · มิตรเมืองไทย · FDA · ทนายใกล้ตัว · Winner Estate Education · Pattaya88tmc และ Guru Living ปิดไว้) · สื่อ 6 + กรมที่ดิน + REIC + KIM ยืดเป็น 14 วัน · ธอส. 7 วัน · ภาระ ≈ 3.9/วัน ≤ 4 · อ่าน DOM ผ่าน OpenCLI + Chrome profile Research · วันละ 1 รอบ | social / social_fb | ⚠️ robots ของ Facebook ห้าม — เจ้าของอนุมัติ 2 พ.ย. · บัญชีสำรองใช้ร่วมกับ DVX (3 พ.ย.) · ดูหัวข้อ "ตัวเฝ้าเพจ Facebook" |
 | manual | เจ้าของวางหัวข้อ/ลิงก์ที่หน้า `/marketing` หรือ API | manual / market | — |
 
 แหล่งที่ **ห้ามอัตโนมัติ** (กรมธนารักษ์ · ราชกิจจาฯ · REIC · DDproperty · TikTok · เว็บประกาศ · ธนาคาร NPA · เพจ Facebook อีก 29 เพจที่ไม่อยู่ในตัวเฝ้าเพจ) → `research/manual-checklist.md`
@@ -106,14 +106,20 @@ node scripts/research-ideas.mjs stats
 node scripts/research-ideas.mjs report
 ```
 
-ตั้งเวลาบน Windows (รันใน PowerShell ครั้งเดียว · ตั้ง 3 เวลา สคริปต์ข้ามเองถ้าวันนั้นสำเร็จแล้ว):
+ตั้งเวลาบน Windows (รันใน PowerShell ครั้งเดียว · ตั้ง 3 เวลา สคริปต์ข้ามเองถ้าวันนั้นสำเร็จแล้ว · เครื่องหลับตอน 07:00 = รันเมื่อตื่น):
 
 ```powershell
 $repo = 'C:\Projects\AssetX Estate\AssetX-Estate-notification'
+$act = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c cd /d "' + $repo + '" && node scripts\research-ideas.mjs run >> .local\research\task.log 2>&1')
+$set = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 foreach ($t in '07:00','07:30','08:00') {
-  schtasks /Create /F /TN "AssetX Research $t" /SC DAILY /ST $t /TR "cmd /c cd /d `"$repo`" && node scripts\research-ideas.mjs run >> .local\research\task.log 2>&1"
+  Register-ScheduledTask -TaskName ('AssetX Research ' + $t.Replace(':','')) -Action $act -Trigger (New-ScheduledTaskTrigger -Daily -At $t) -Settings $set -Force | Out-Null
+  "ตั้งแล้ว: AssetX Research $t"
 }
+Get-ScheduledTask -TaskName 'AssetX Research*' | Format-Table TaskName, State
 ```
+
+> ⚠️ อย่าใช้ `schtasks /Create … /TR "cmd /c cd /d `"$repo`" && …"` จาก PowerShell — พาธมีช่องว่าง เครื่องหมายคำพูดที่ escape ด้วย backtick ถูก PowerShell ตัดทิ้งก่อนส่งให้ schtasks ได้ `ERROR: Invalid argument/option` (เจ้าของเจอจริง 7 พ.ย. 2569) · `Register-ScheduledTask` รับสตริงตรง ๆ ไม่มีปัญหานี้
 
 ค่าใน `.env.local` ที่ใช้: `VITE_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (ฐานข้อมูล) · มุมเล่า: `HERMES_AGENT_URL` (+ `HERMES_AGENT_FORMAT` `HERMES_AGENT_MODEL` `HERMES_AGENT_API_KEY`) → `OLLAMA_MODEL` (+ `OLLAMA_URL` ค่าเริ่มต้น localhost:11434 · `OLLAMA_TIMEOUT_MS` ค่าเริ่มต้น 240000) → `GEMINI_API_KEY` — ตั้งตัวใดตัวหนึ่งก็พอ · `ASSETX_TELEGRAM_BOT_TOKEN` + `ASSETX_TELEGRAM_ALLOWED_CHAT_ID` (รายงาน)
 
@@ -174,10 +180,16 @@ node scripts/research-social.mjs report            # รอบล่าสุด
 
 ```powershell
 $repo = 'C:\Projects\AssetX Estate\AssetX-Estate-notification'
+$act = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c cd /d "' + $repo + '" && node scripts\research-social.mjs run >> .local\research\social\task.log 2>&1')
+$set = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 40)
 foreach ($t in '21:00','23:00') {
-  schtasks /Create /F /TN "AssetX Social Watch $t" /SC DAILY /ST $t /TR "cmd /c cd /d `"$repo`" && node scripts\research-social.mjs run >> .local\research\social\task.log 2>&1"
+  Register-ScheduledTask -TaskName ('AssetX Social Watch ' + $t.Replace(':','')) -Action $act -Trigger (New-ScheduledTaskTrigger -Daily -At $t) -Settings $set -Force | Out-Null
+  "ตั้งแล้ว: AssetX Social Watch $t"
 }
+Get-ScheduledTask -TaskName 'AssetX Social Watch*' | Format-Table TaskName, State
 ```
+
+(ไม่ใส่ `-StartWhenAvailable` ให้รอบเฝ้าเพจ — รอบที่พลาดตอนกลางคืนห้ามไปรันตอนเช้าชนรอบ 07:00 ของ DVX · ใช้ `Register-ScheduledTask` แทน `schtasks` ด้วยเหตุผลเดียวกับรอบรีเสิร์ชด้านบน)
 
 เมื่อมีปัญหา (ตารางเต็มในข้อตกลงข้อ 6): รายงานบอก `browser ไม่ว่าง (dvx …)` ทุกวัน = เวลาทับ DVX ย้ายเวลา · `Facebook พักอยู่` = เจ้าของเปิด Chrome profile Research ดูว่าโดนขอยืนยันตัวตนไหมแล้วทำด้วยมือ (ห้ามหาทางเลี่ยง · ระบบลองใหม่เองหลัง 3 วัน) ·
 `ต่อ Chrome profile Research ไม่ได้` = เปิด Chrome profile นั้นค้างไว้และเช็กว่าส่วนเสริม OpenCLI เปิดอยู่ (แก้ครั้งเดียวได้ทั้งสองโปรเจกต์) · โควตาเต็มทุกวัน = ลดเพจ/ยืด `every_days` ห้ามขยับเพดานฝั่งเดียว ·
