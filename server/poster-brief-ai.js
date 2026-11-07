@@ -125,7 +125,8 @@ export function mergeAiBrief(data, base, { title, caption }) {
     background: artQuality(background) ? background : '',
     props: artQuality(props) ? props : '',
     mood: englishOnly(data.mood, 200),
-    summaryTest: englishOnly(data.summary_test, 300),
+    // โมเดลชอบใส่วลีนำ "with the caption hidden a reader must be able to say:" มาด้วย — บรรทัดตรวจมีวลีนี้อยู่แล้ว
+    summaryTest: englishOnly(String(data.summary_test || '').replace(/^\s*with the caption hidden[^:]*:\s*/i, ''), 300),
   }
   return { copy, extras, replaced }
 }
