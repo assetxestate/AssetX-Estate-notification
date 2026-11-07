@@ -67,6 +67,9 @@ export function pickHeadlineKeyword(headline = '') {
   return ranked[0]
 }
 
+// ช่องทางติดต่อของบริษัทที่ขึ้นบนโปสเตอร์ (เจ้าของกำหนด 7 พ.ย. 2569 ค่ำ) — ข้อมูลธุรกิจสาธารณะ ไม่ใช่ข้อมูลลูกค้า · เบอร์/ไอดีอื่นยังห้ามเหมือนเดิม
+export const POSTER_CONTACT = { phone: '096-986-8888', line: 'assetxestate', cta: 'ติดต่อ AssetX Estate' }
+
 // กติกาข้อความบนภาพที่ใช้ซ้ำทุกทาง — ทุกคำต้องมาจากโพสต์ · สะกดผิดไม่ได้ · ไม่มีข้อมูลที่ไม่ได้ให้
 export const POSTER_TEXT_RULES = [
   'Thai text must be spelled exactly as given. Use fewer words rather than risk a misspelled word.',

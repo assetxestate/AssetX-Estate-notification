@@ -22,7 +22,8 @@ import { IMAGE_BUCKET, WORKER_ID } from '../server/marketing-image-jobs.js'
 import { POSTER_SIZES } from '../src/lib/posterSizes.js'
 import { createAsk, ollamaConfigured } from '../server/research/llm.js'
 import { enhanceBriefWithAi } from '../server/poster-brief-ai.js'
-import { syncPosterRefs } from '../server/poster-refs.js'
+import { pickStyleRefs, syncPosterRefs } from '../server/poster-refs.js'
+import { fillImagePlaceholders, PLACEHOLDER_IMAGES } from '../src/lib/posterV4.js'
 import { scrub } from '../server/research/pii.js'
 
 const VERSION = '1'
@@ -45,6 +46,11 @@ const REF_SYNC_RETRY_MS = 10 * 60 * 1000
 // โลโก้สำหรับแปะบนโปสเตอร์ = เฉพาะเครื่องหมาย X (public/logo-mark.jpg ตัดจาก logo.jpg 7 พ.ย. 2569) — ไฟล์เต็มมีข้อความ "AssetX Estate Co., Ltd." ติดมา โมเดลวาดซ้ำแล้วดูไม่เป็นมืออาชีพ (เจ้าของติ)
 const LOGO_MARK = path.join(repo, 'public', 'logo-mark.jpg')
 const LOGO = existsSync(LOGO_MARK) ? LOGO_MARK : path.join(repo, 'public', 'logo.jpg')
+// v4 "ตามเรฟ" (7 พ.ย. 2569 ค่ำ): โลโก้เต็มพร้อมชื่อบริษัท (เจ้าของสั่ง) · รูปเจ้าของเป็นผู้แนะนำ (ไฟล์นอก git) · ภาพอ้างอิงสไตล์จากคลัง (ไม่เกิน 5 ภาพรวมกัน = เพดานของ Codex)
+const LOGO_FULL = path.join(repo, 'public', 'logo-full.jpg')
+const REFS_ROOT = path.join(LOCAL_DIR, 'poster-refs')
+const PRESENTER = path.join(REFS_ROOT, 'presenter', 'presenter-cut.jpg')
+const MAX_IMAGES = 5
 const PLUGIN_SERVER = process.env.GPT_IMAGE_SERVER || path.join('C:', 'tools', 'gpt-image-marketplace', 'gpt-image', 'server', 'index.mjs')
 
 // --log = เขียนลง .local/image-worker.log ด้วย (ตอนเปิดแบบซ่อนหน้าต่างผ่าน scripts/image-worker-hidden.vbs ไม่มีหน้าจอให้ดู)
@@ -201,7 +207,8 @@ const TO_JPEG_PS = [
   '    if ($ratio -gt 0) {',
   '      $want = [int][math]::Round($w / $ratio)',
   '      if ($want -lt ($bottom - $top) -and ($bottom - $top - $want) -lt (($bottom - $top) * 0.12)) {',
-  '        $extra = ($bottom - $top) - $want; $top += [int]($extra / 2); $bottom = $top + $want',
+  // ส่วนเกินตัดจากด้านบน 70% (โซนบนเป็นม่านแสง/พื้นหลัง) ด้านล่าง 30% — แถบล่างมีป้ายชิดเส้นตัด (คิวงาน 6 ป้ายชิปโดนครอป)
+  '        $extra = ($bottom - $top) - $want; $top += [int]($extra * 0.7); $bottom = $top + $want',
   '      }',
   '    }',
   '  }',
@@ -278,9 +285,19 @@ async function processJob(db, plugin, job) {
   const started = Date.now()
   log(`${label}: เริ่มสร้างภาพ`)
   try {
-    // บรีฟครีเอทีฟเวอร์ชัน AI (Ollama ในเครื่อง ~1–2 นาที) แทนบล็อกแบบกำหนดกฎในคำสั่งภาพ — ปิดได้ด้วย POSTER_BRIEF_AI=0 · ล้ม/หมดเวลา = ใช้บรีฟแบบกำหนดกฎ
     let prompt = job.prompt
-    if (ollamaConfigured() && process.env.POSTER_BRIEF_AI !== '0') {
+    let images = existsSync(LOGO) ? [LOGO] : []
+    if (String(job.prompt || '').includes(PLACEHOLDER_IMAGES)) {
+      // v4: เติมรายการภาพแนบตามไฟล์ที่มีจริง — โลโก้เต็ม · รูปผู้แนะนำ (ถ้ามี) · เรฟสไตล์ตามโครงของโพสต์
+      const layout = (String(job.prompt).match(/^LAYOUT:\s*(\w+)/m) || [])[1] || 'steps'
+      const logo = existsSync(LOGO_FULL) ? LOGO_FULL : LOGO
+      const presenter = existsSync(PRESENTER) ? PRESENTER : null
+      const refs = pickStyleRefs(REFS_ROOT, layout, MAX_IMAGES - 1 - (presenter ? 1 : 0))
+      images = [logo, ...(presenter ? [presenter] : []), ...refs].filter((f) => existsSync(f)).slice(0, MAX_IMAGES)
+      prompt = fillImagePlaceholders(job.prompt, { logo: true, presenter: Boolean(presenter), refs: refs.length })
+      log(`${label}: v4 โครง ${layout} · แนบ ${images.length} ภาพ (โลโก้เต็ม${presenter ? ' · ผู้แนะนำ' : ' · ไม่มีรูปผู้แนะนำ'}${refs.length ? ` · เรฟ ${refs.length}` : ' · ไม่มีเรฟ'})`)
+    } else if (ollamaConfigured() && process.env.POSTER_BRIEF_AI !== '0' && /CREATIVE BRIEF/.test(String(job.prompt))) {
+      // คำสั่งแบบเดิม (v3.2): บรีฟครีเอทีฟเวอร์ชัน AI (Ollama ในเครื่อง ~1–2 นาที) แทนบล็อกแบบกำหนดกฎ — ปิดได้ด้วย POSTER_BRIEF_AI=0 · ล้ม/หมดเวลา = ใช้บรีฟแบบกำหนดกฎ
       const t0 = Date.now()
       const ai = await enhanceBriefWithAi(job.prompt, { ask: createAsk({ log: () => {} }), log: (s) => log(`${label}: ${s}`) })
       prompt = ai.prompt
@@ -289,14 +306,14 @@ async function processJob(db, plugin, job) {
     const text = await plugin.callTool('generate_image', {
       prompt,
       aspect: job.aspect || 'portrait',
-      images: existsSync(LOGO) ? [LOGO] : [],
+      images,
       output_dir: OUTPUT_DIR,
     }, GENERATE_TIMEOUT_MS)
     const saved = text.match(/Image saved:\s*(.+)/)?.[1]?.trim()
     if (!saved || !existsSync(saved)) throw new Error('ปลั๊กอินไม่ได้บอกตำแหน่งไฟล์ภาพ')
-    // คำสั่งภาพของขนาดที่ต้องครอปมี "LETTERBOX BARS" → ตัดแถบทึบที่เห็นจริงทิ้งก่อนส่งขึ้นเว็บ
+    // คำสั่งภาพของขนาดที่ต้องครอปมีแถบทึบ (v3.2 "LETTERBOX BARS" น้ำเงิน · v4 แถบดำ) → ตัดแถบที่เห็นจริงทิ้งก่อนส่งขึ้นเว็บ
     const target = POSTER_SIZES[job.size] || null
-    const { file: jpg, note } = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`), { trim: /LETTERBOX BARS/.test(String(job.prompt || '')), ratio: target ? target.width / target.height : 0 })
+    const { file: jpg, note } = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`), { trim: /LETTERBOX BARS|BLACK #000000 bars/.test(String(job.prompt || '')), ratio: target ? target.width / target.height : 0 })
     if (note) log(`${label}: ${note}`)
     const isJpeg = /\.jpe?g$/i.test(jpg)
     const objectPath = `jobs/${job.id}.${isJpeg ? 'jpg' : 'png'}`

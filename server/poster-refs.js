@@ -12,6 +12,7 @@
 // รูปเดี่ยวที่ไม่มีคำนำ → ไม่ใช่ธุระของโมดูลนี้ (คืน null ให้ผู้ช่วยตอบตามเดิม)
 // ไม่มี DELETE โดยตั้งใจ · ไม่พิมพ์ชื่อไฟล์/หมายเหตุลง log ของ Vercel เกินจำเป็น · หมายเหตุผ่านตัวลบข้อมูลบุคคลก่อนเก็บ
 import fs from 'node:fs/promises'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { IMAGE_BUCKET } from './marketing-image-jobs.js'
 import { scrub } from './research/pii.js'
@@ -140,6 +141,17 @@ export async function handlePosterRefMessage({ message, db, telegram, log = () =
 
   if (trigger) await telegram.send(chatId, replyText(stored, note))
   return { handled: true, status, stored }
+}
+
+// เลือกภาพอ้างอิงสไตล์ให้โพสต์: โฟลเดอร์หมวดตามโครง (.local/poster-refs/<layout>/) ก่อน ไม่มีก็ไฟล์ในโฟลเดอร์หลัก (ยกเว้นโลโก้) · เรียงชื่อ · ไม่เกิน max
+export function pickStyleRefs(rootDir, layout = 'steps', max = 3) {
+  const isImage = (f) => /\.(jpe?g|png|webp)$/i.test(f) && !/^1-logo/i.test(f)
+  for (const dir of [path.join(rootDir, String(layout || 'steps')), rootDir]) {
+    if (!existsSync(dir)) continue
+    const files = readdirSync(dir).filter((f) => isImage(f) && statSync(path.join(dir, f)).isFile()).sort()
+    if (files.length) return files.slice(0, max).map((f) => path.join(dir, f))
+  }
+  return []
 }
 
 // คอมสำนักงาน: ดึงแถว new ลงโฟลเดอร์ inbox แล้วตั้ง fetched · คืนจำนวนที่ดึงได้

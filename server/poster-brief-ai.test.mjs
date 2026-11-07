@@ -2,7 +2,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseJobPrompt, mergeAiBrief, replaceBriefInPrompt, buildBriefAiPrompt } from './poster-brief-ai.js'
-import { buildPosterJobPrompt } from './marketing-image-jobs.js'
+// ชั้นบรีฟ AI อ่านคำสั่งรูปแบบ v3.2 (บรรทัด HEADLINE/POST CONTENT/CREATIVE BRIEF) — คำสั่ง v4 ไม่ผ่านชั้นนี้
+import { buildLegacyPosterJobPrompt as buildPosterJobPrompt } from './marketing-image-jobs.js'
 import { extractPosterCopy, buildCreativeBrief } from '../src/lib/posterBrief.js'
 
 const title = 'ขายฝาก เช็กเงื่อนไขก่อนตัดสินใจ'

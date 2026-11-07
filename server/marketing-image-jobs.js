@@ -14,6 +14,7 @@ import { scrub } from './research/pii.js'
 import { POSTER_SIZES, DEFAULT_POSTER_SIZE, cropPlan } from '../src/lib/posterSizes.js'
 import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction, pickHeadlineKeyword } from '../src/lib/posterDesignSystem.js'
 import { posterBriefFor } from '../src/lib/posterBrief.js'
+import { buildCompactPosterPrompt } from '../src/lib/posterV4.js'
 
 export const IMAGE_BUCKET = 'marketing-images'
 export const WORKER_ID = 'office-pc'
@@ -54,6 +55,16 @@ export function canvasMap(plan) {
 // คำสั่งภาพจากเนื้อหาโพสต์: Codex (โมเดลภาษา) อ่านเนื้อหาแล้วเลือกฉาก + สร้างการ์ดเนื้อหาตามโครงโพสต์ ก่อนเรียกเครื่องมือสร้างภาพ
 // v2 (7 พ.ย. 2569): ใช้ระบบออกแบบโปสเตอร์ร่วม (src/lib/posterDesignSystem.js) — การ์ดเนื้อหาเป็นหัวใจของภาพ แทน "ป้าย 3 ป้าย" แบบเดิมที่ภาพออกมาโล่งและเหมือนกันทุกโพสต์
 export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE } = {}) {
+  const headline = oneLine(title).slice(0, 120) || 'รับจำนอง · ขายฝาก'
+  const body = multiLine(caption).slice(0, CAPTION_LIMIT)
+  // v4 "ตามเรฟ" (7 พ.ย. 2569 ค่ำ): โพสต์ที่มีเนื้อหาใช้คำสั่งแบบบีบสั้นตามสคีมาของสกิล Codex + ภาพแนบที่ตัวรับงานเติม (ดู src/lib/posterV4.js)
+  // ไม่มีเนื้อหา (ป้าย 3 ป้าย) ยังใช้คำสั่ง v3.2 แบบเดิม
+  if (body) return buildCompactPosterPrompt({ title: headline, caption: body, size, layout: pickPosterLayout(body) })
+  return buildLegacyPosterJobPrompt({ title, caption, size })
+}
+
+// คำสั่ง v3.2 แบบเดิม (ระบบออกแบบ + บรีฟรายโพสต์ + แถบน้ำเงิน) — ใช้กับโพสต์ไม่มีเนื้อหา และเป็นรูปแบบที่ชั้นบรีฟ AI ของตัวรับงาน (server/poster-brief-ai.js) อ่าน
+export function buildLegacyPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE } = {}) {
   const headline = oneLine(title).slice(0, 120) || 'รับจำนอง · ขายฝาก'
   const body = multiLine(caption).slice(0, CAPTION_LIMIT)
   const plan = cropPlan(size)
