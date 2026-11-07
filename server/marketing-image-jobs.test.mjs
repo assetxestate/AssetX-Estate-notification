@@ -224,3 +224,26 @@ test('หน้าต่างออกแบบภาพ: รหัสโพส
   assert.match(chatJobMessage({ status: 'failed', error: 'โควตาหมด' }, null, NOW), /โควตาหมด/)
   assert.equal(chatJobMessage(null, { online: true }, NOW), '')
 })
+
+test('buildPosterJobPrompt กับ seed: ชุดสไตล์ต่างกันตาม seed · ไม่ส่ง seed = ชุดเดิม · งานที่สองของโพสต์เดิมได้คำสั่งต่างจากงานแรก', async () => {
+  const post = { title: 'ขายฝากมีค่าใช้จ่ายอะไรบ้าง', caption: 'ค่าใช้จ่ายรวมมี 3 ช่วง\n\n1. วันจดทะเบียน: ค่าธรรมเนียมและภาษี\n\n2. ระหว่างสัญญา: สินไถ่\n\n3. วันไถ่ถอน: ค่าธรรมเนียมไถ่ถอน', size: 'feed-4x5' }
+  assert.match(buildPosterJobPrompt(post), /VARIANT: seed=default /)
+  const a = buildPosterJobPrompt({ ...post, seed: 123 })
+  const b = buildPosterJobPrompt({ ...post, seed: 124 })
+  assert.match(a, /VARIANT: seed=123 set=\S+ refs=\w+\nLAYOUT: steps$/)
+  assert.notEqual(a, b)
+  // สร้างงานผ่าน API สองครั้ง (งานแรกเสร็จแล้ว) → seed ต่างกันเพราะนับงานเดิมของโพสต์
+  const done = { id: 1, status: 'done', post_key: 'no-9', content_no: 9, created_at: new Date(NOW - 60000).toISOString(), prompt: 'old' }
+  const db = fakeDb({ jobs: [done] })
+  const res1 = response()
+  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-9', content_no: 9, ...post } }, res1)
+  assert.equal(res1.code, 200, JSON.stringify(res1.body))
+  const first = db.tables.marketing_image_jobs.at(-1)
+  assert.match(first.prompt, /VARIANT: seed=\d+ /)
+  first.status = 'done'
+  const res2 = response()
+  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-9', content_no: 9, ...post } }, res2)
+  assert.equal(res2.code, 200, JSON.stringify(res2.body))
+  const second = db.tables.marketing_image_jobs.at(-1)
+  assert.notEqual(second.prompt.match(/VARIANT: seed=(\d+)/)[1], first.prompt.match(/VARIANT: seed=(\d+)/)[1], 'งานที่ 3 ของโพสต์ได้ seed ใหม่')
+})

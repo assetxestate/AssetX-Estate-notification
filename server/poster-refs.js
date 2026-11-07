@@ -144,12 +144,16 @@ export async function handlePosterRefMessage({ message, db, telegram, log = () =
 }
 
 // เลือกภาพอ้างอิงสไตล์ให้โพสต์: โฟลเดอร์หมวดตามโครง (.local/poster-refs/<layout>/) ก่อน ไม่มีก็ไฟล์ในโฟลเดอร์หลัก (ยกเว้นโลโก้) · เรียงชื่อ · ไม่เกิน max
-export function pickStyleRefs(rootDir, layout = 'steps', max = 3) {
+// seed = ชุดสไตล์ของงาน (posterVariants.js) → หมุนลำดับไฟล์ ให้งานต่างชุดได้เรฟคนละชุด/คนละลำดับ (เรฟใบแรกมีน้ำหนักกับโมเดลมากสุด)
+export function pickStyleRefs(rootDir, layout = 'steps', max = 3, { seed = 0 } = {}) {
   const isImage = (f) => /\.(jpe?g|png|webp)$/i.test(f) && !/^1-logo/i.test(f)
   for (const dir of [path.join(rootDir, String(layout || 'steps')), rootDir]) {
     if (!existsSync(dir)) continue
     const files = readdirSync(dir).filter((f) => isImage(f) && statSync(path.join(dir, f)).isFile()).sort()
-    if (files.length) return files.slice(0, max).map((f) => path.join(dir, f))
+    if (!files.length) continue
+    const start = (Number(seed) || 0) % files.length
+    const rotated = [...files.slice(start), ...files.slice(0, start)]
+    return rotated.slice(0, max).map((f) => path.join(dir, f))
   }
   return []
 }

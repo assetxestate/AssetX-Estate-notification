@@ -15,6 +15,7 @@ import { POSTER_SIZES, DEFAULT_POSTER_SIZE, cropPlan } from '../src/lib/posterSi
 import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction, pickHeadlineKeyword } from '../src/lib/posterDesignSystem.js'
 import { posterBriefFor } from '../src/lib/posterBrief.js'
 import { buildCompactPosterPrompt } from '../src/lib/posterV4.js'
+import { posterSeed } from '../src/lib/posterVariants.js'
 
 export const IMAGE_BUCKET = 'marketing-images'
 export const WORKER_ID = 'office-pc'
@@ -54,12 +55,13 @@ export function canvasMap(plan) {
 
 // คำสั่งภาพจากเนื้อหาโพสต์: Codex (โมเดลภาษา) อ่านเนื้อหาแล้วเลือกฉาก + สร้างการ์ดเนื้อหาตามโครงโพสต์ ก่อนเรียกเครื่องมือสร้างภาพ
 // v2 (7 พ.ย. 2569): ใช้ระบบออกแบบโปสเตอร์ร่วม (src/lib/posterDesignSystem.js) — การ์ดเนื้อหาเป็นหัวใจของภาพ แทน "ป้าย 3 ป้าย" แบบเดิมที่ภาพออกมาโล่งและเหมือนกันทุกโพสต์
-export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE } = {}) {
+// seed = ชุดสไตล์ (src/lib/posterVariants.js posterSeed จากเลขโพสต์ + ลำดับงานของโพสต์) · ไม่ส่ง = ชุดแรก (หน้าตา v4 เดิม)
+export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE, seed = null } = {}) {
   const headline = oneLine(title).slice(0, 120) || 'รับจำนอง · ขายฝาก'
   const body = multiLine(caption).slice(0, CAPTION_LIMIT)
   // v4 "ตามเรฟ" (7 พ.ย. 2569 ค่ำ): โพสต์ที่มีเนื้อหาใช้คำสั่งแบบบีบสั้นตามสคีมาของสกิล Codex + ภาพแนบที่ตัวรับงานเติม (ดู src/lib/posterV4.js)
   // ไม่มีเนื้อหา (ป้าย 3 ป้าย) ยังใช้คำสั่ง v3.2 แบบเดิม
-  if (body) return buildCompactPosterPrompt({ title: headline, caption: body, size, layout: pickPosterLayout(body) })
+  if (body) return buildCompactPosterPrompt({ title: headline, caption: body, size, layout: pickPosterLayout(body), seed })
   return buildLegacyPosterJobPrompt({ title, caption, size })
 }
 
@@ -199,12 +201,16 @@ export function createImageJobsHandler({ authorized = verifySession, database = 
         }
 
         const contentNo = Number(body.content_no)
+        // ชุดสไตล์: งานที่ N ของโพสต์เดิม (รวมงานที่เสร็จ/ล้ม/ยกเลิก) ได้ seed ใหม่ → กด "สร้างโปสเตอร์ใหม่" ได้หน้าตาใหม่ (เจ้าของ 7 พ.ย. 2569: ภาพคล้ายกันทุกโพสต์)
+        const prior = await db.from('marketing_image_jobs').select('id', { count: 'exact', head: true }).eq('post_key', postKey)
+        if (prior.error) throw prior.error
+        const seed = posterSeed({ contentNo: Number.isInteger(contentNo) && contentNo > 0 ? contentNo : null, postKey, jobIndex: prior.count || 0 })
         const row = {
           status: 'queued',
           post_key: postKey,
           content_no: Number.isInteger(contentNo) && contentNo > 0 ? contentNo : null,
           title: title || null,
-          prompt: buildPosterJobPrompt({ title, caption, size }),
+          prompt: buildPosterJobPrompt({ title, caption, size, seed }),
           size,
           aspect: POSTER_SIZES[size].aspect,
         }

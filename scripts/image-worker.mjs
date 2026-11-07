@@ -24,6 +24,7 @@ import { createAsk, ollamaConfigured } from '../server/research/llm.js'
 import { enhanceBriefWithAi } from '../server/poster-brief-ai.js'
 import { pickStyleRefs, syncPosterRefs } from '../server/poster-refs.js'
 import { fillImagePlaceholders, PLACEHOLDER_IMAGES } from '../src/lib/posterV4.js'
+import { parseVariantLine } from '../src/lib/posterVariants.js'
 import { scrub } from '../server/research/pii.js'
 
 const VERSION = '1'
@@ -290,12 +291,15 @@ async function processJob(db, plugin, job) {
     if (String(job.prompt || '').includes(PLACEHOLDER_IMAGES)) {
       // v4: เติมรายการภาพแนบตามไฟล์ที่มีจริง — โลโก้เต็ม · รูปผู้แนะนำ (ถ้ามี) · เรฟสไตล์ตามโครงของโพสต์
       const layout = (String(job.prompt).match(/^LAYOUT:\s*(\w+)/m) || [])[1] || 'steps'
+      // ชุดสไตล์ (บรรทัด VARIANT ของคำสั่ง): seed หมุนลำดับเรฟ · refs=finish = ชุดอิสระ ส่งเรฟแค่ 2 ใบและบอกให้เอาแค่ความแน่น/ไอคอน ไม่เอาการจัดวาง
+      const variant = parseVariantLine(job.prompt)
       const logo = existsSync(LOGO_FULL) ? LOGO_FULL : LOGO
       const presenter = existsSync(PRESENTER) ? PRESENTER : null
-      const refs = pickStyleRefs(REFS_ROOT, layout, MAX_IMAGES - 1 - (presenter ? 1 : 0))
+      const refsMax = Math.min(variant.refsMode === 'finish' ? 2 : MAX_IMAGES, MAX_IMAGES - 1 - (presenter ? 1 : 0))
+      const refs = pickStyleRefs(REFS_ROOT, layout, refsMax, { seed: variant.seed })
       images = [logo, ...(presenter ? [presenter] : []), ...refs].filter((f) => existsSync(f)).slice(0, MAX_IMAGES)
-      prompt = fillImagePlaceholders(job.prompt, { logo: true, presenter: Boolean(presenter), refs: refs.length })
-      log(`${label}: v4 โครง ${layout} · แนบ ${images.length} ภาพ (โลโก้เต็ม${presenter ? ' · ผู้แนะนำ' : ' · ไม่มีรูปผู้แนะนำ'}${refs.length ? ` · เรฟ ${refs.length}` : ' · ไม่มีเรฟ'})`)
+      prompt = fillImagePlaceholders(job.prompt, { logo: true, presenter: Boolean(presenter), refs: refs.length, refsMode: variant.refsMode })
+      log(`${label}: v4 โครง ${layout}${variant.set ? ` · ชุดสไตล์ ${variant.set} (seed ${variant.seed})` : ''} · แนบ ${images.length} ภาพ (โลโก้เต็ม${presenter ? ' · ผู้แนะนำ' : ' · ไม่มีรูปผู้แนะนำ'}${refs.length ? ` · เรฟ ${refs.length}` : ' · ไม่มีเรฟ'})`)
     } else if (ollamaConfigured() && process.env.POSTER_BRIEF_AI !== '0' && /CREATIVE BRIEF/.test(String(job.prompt))) {
       // คำสั่งแบบเดิม (v3.2): บรีฟครีเอทีฟเวอร์ชัน AI (Ollama ในเครื่อง ~1–2 นาที) แทนบล็อกแบบกำหนดกฎ — ปิดได้ด้วย POSTER_BRIEF_AI=0 · ล้ม/หมดเวลา = ใช้บรีฟแบบกำหนดกฎ
       const t0 = Date.now()

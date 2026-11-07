@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { handlePosterRefMessage, isRefCaption, localFileName, pickImage, refNote, slugNote, storagePathFor, syncPosterRefs } from './poster-refs.js'
+import { handlePosterRefMessage, isRefCaption, localFileName, pickImage, pickStyleRefs, refNote, slugNote, storagePathFor, syncPosterRefs } from './poster-refs.js'
 
 // ฐานข้อมูลปลอม: ตาราง poster_refs ในหน่วยความจำ + storage ที่จำไฟล์ที่อัปโหลด
 function fakeDb(rows = []) {
@@ -176,4 +176,17 @@ test('syncPosterRefs: ดึงแถว new ลง inbox เป็นไฟล�
   assert.match(logs.join('\n'), /รับรูปตัวอย่างจากเทเลแกรม 1 ภาพ/)
   assert.equal(await syncPosterRefs(db, { inboxDir: inbox }), 0)
   await fs.rm(inbox, { recursive: true, force: true })
+})
+
+test('pickStyleRefs: หมุนลำดับเรฟตาม seed (ชุดสไตล์ต่างกันได้เรฟใบแรกต่างกัน) · โลโก้ไม่นับ · โฟลเดอร์ตามโครงมาก่อน', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'poster-refs-pick-'))
+  for (const f of ['1-logo-mark.jpg', '2-a.jpg', '3-b.jpg', '4-c.jpg']) await fs.writeFile(path.join(root, f), 'x')
+  await fs.mkdir(path.join(root, 'qa'))
+  await fs.writeFile(path.join(root, 'qa', 'q1.jpg'), 'x')
+  const names = (list) => list.map((p) => path.basename(p))
+  assert.deepEqual(names(pickStyleRefs(root, 'steps', 3)), ['2-a.jpg', '3-b.jpg', '4-c.jpg'])
+  assert.deepEqual(names(pickStyleRefs(root, 'steps', 3, { seed: 1 })), ['3-b.jpg', '4-c.jpg', '2-a.jpg'])
+  assert.deepEqual(names(pickStyleRefs(root, 'steps', 2, { seed: 5 })), ['4-c.jpg', '2-a.jpg'], 'seed 5 % 3 = 2 · เอาแค่ 2 ใบ')
+  assert.deepEqual(names(pickStyleRefs(root, 'qa', 3, { seed: 9 })), ['q1.jpg'], 'มีโฟลเดอร์ของโครงนั้น = ใช้โฟลเดอร์นั้น')
+  await fs.rm(root, { recursive: true, force: true })
 })

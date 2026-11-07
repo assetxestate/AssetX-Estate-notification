@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildCompactPosterPrompt, canvasMapV4, clausesOf, describeInputImages, extractPosterCopyV4, fillImagePlaceholders, pickBandChips, splitChecklist, verbatimMissesV4 } from './posterV4.js'
 import { cropPlan } from './posterSizes.js'
+import { pickPosterVariant, posterSeed, parseVariantLine, sceneTopic, COMPOSITIONS, PALETTES } from './posterVariants.js'
 
 const POST4 = {
   title: 'ขายฝาก เช็กเงื่อนไขก่อนตัดสินใจ',
@@ -96,4 +97,63 @@ test('describeInputImages / fillImagePlaceholders: นับลำดับภ�
   assert.doesNotMatch(filled, /\{\{/)
   assert.match(filled, /generic Thai man advisor/)
   assert.match(fillImagePlaceholders('{{PRESENTER}}', { presenter: true }), /the man from the identity reference image/)
+  assert.match(describeInputImages({ logo: true, presenter: true, refs: 2, refsMode: 'finish' }), /STYLE REFERENCES for finish only[^]*NOT their composition/)
+})
+
+test('ชุดสไตล์: seed=null คือชุดแรกทุกมิติ (หน้าตา v4 เดิม) · seed ต่างกันได้ชุดต่างกัน · posterSeed กำหนดได้และเปลี่ยนตามลำดับงาน · ฉากตามหัวข้อ', () => {
+  const base = pickPosterVariant({ layout: 'steps', seed: null, text: POST4.caption })
+  assert.equal(base.id, 'presenter-right/sun-coral/extrude-3d/point/sparkle-arrow/white-pill/photo-composite/desk-1')
+  const seeds = Array.from({ length: 8 }, (_, i) => posterSeed({ contentNo: 20, jobIndex: i }))
+  const ids = new Set(seeds.map((seed) => pickPosterVariant({ layout: 'steps', seed, text: POST4.caption }).id))
+  assert.ok(ids.size >= 7, `8 งานของโพสต์เดียวกันควรได้ชุดต่างกันเกือบทั้งหมด (ได้ ${ids.size})`)
+  assert.ok(new Set([...ids].map((id) => id.split('/')[0])).size >= 3, 'ควรหมุนการจัดวางหลายแบบ')
+  assert.ok(new Set([...ids].map((id) => id.split('/')[1])).size >= 3, 'ควรหมุนชุดสีหลายชุด')
+  assert.notEqual(seeds[0], seeds[1])
+  assert.notEqual(posterSeed({ contentNo: 20, jobIndex: 0 }), posterSeed({ contentNo: 4, jobIndex: 0 }))
+  assert.equal(posterSeed({ contentNo: 20, jobIndex: 0 }), seeds[0], 'กำหนดได้ ไม่สุ่ม')
+  assert.ok(posterSeed({ postKey: 'draft-abc' }) >= 0, 'ไม่มีเลขโพสต์ใช้ hash ของ post_key')
+  for (const layout of ['steps', 'checklist', 'qa', 'compare', 'warning', 'explain']) assert.ok(Object.keys(COMPOSITIONS).includes(pickPosterVariant({ layout, seed: 5 }).compositionId), layout)
+  assert.equal(sceneTopic(POST4.caption), 'office', 'สำนักงานที่ดิน/ไถ่ถอน → ฉากสำนักงาน ("งาน" ในคำว่าสำนักงานไม่ใช่ไร่-งาน)')
+  assert.equal(sceneTopic('ข้อควรรู้ก่อนซื้อที่ดินเปล่า 2 ไร่'), 'land')
+  assert.equal(sceneTopic('เอาคอนโดไปจำนอง'), 'condo')
+  assert.equal(pickPosterVariant({ layout: 'steps', seed: 9, text: POST4.caption }).scene.topic, 'office')
+  assert.deepEqual(parseVariantLine('x\nVARIANT: seed=77 set=a/b refs=finish\nLAYOUT: qa'), { seed: 77, set: 'a/b', refsMode: 'finish' })
+  assert.deepEqual(parseVariantLine('no line'), { seed: 0, set: '', refsMode: 'layout' })
+})
+
+test('buildCompactPosterPrompt กับชุดสไตล์: แถบดำ/แถบล่างคงที่ทุกการจัดวาง · โซนตามการจัดวาง · สีตามชุด · VARIANT ก่อน LAYOUT · โลโก้ย้ายมุมเมื่อผู้แนะนำอยู่ซ้าย', () => {
+  const withComposition = (compositionId, seed = 11) => ({ ...pickPosterVariant({ layout: 'steps', seed, text: POST4.caption }), compositionId, composition: COMPOSITIONS[compositionId] })
+  for (const compositionId of Object.keys(COMPOSITIONS)) {
+    const prompt = buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps', variant: withComposition(compositionId) })
+    assert.match(prompt, /^PASS-THROUGH RULE/, compositionId)
+    assert.match(prompt, /y 0-186 and y 1350-1536 are two solid flat BLACK #000000 bars/, compositionId)
+    assert.match(prompt, /bottom band y 1199-1350 sitting directly on the black bar[^\n]*ending above y 1309/, compositionId)
+    assert.match(prompt, /"โทร 096-986-8888"[^\n]*"LINE: assetxestate"/, compositionId)
+    assert.match(prompt, /\nVARIANT: seed=11 set=\S+ refs=(layout|finish)\nLAYOUT: steps$/, compositionId)
+    assert.doesNotMatch(prompt, /\{a1\}|\{a2\}|\{rest\}|undefined/, compositionId)
+    assert.match(buildCompactPosterPrompt({ ...POST4, size: 'square-1x1', layout: 'steps', variant: withComposition(compositionId) }), /bottom band 87%-100% on the bottom edge/, compositionId)
+  }
+  const hero = buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps', variant: withComposition('hero-scene') })
+  assert.match(hero, /scene strip y \d+-\d+ full width/)
+  assert.match(hero, /refs=finish/)
+  assert.match(hero, /shown sharp inside the scene strip/)
+  const left = buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps', variant: withComposition('presenter-left') })
+  assert.match(left, /logo chip top-right/)
+  assert.match(left, /presenter cutout on the left 40%/)
+  assert.match(fillImagePlaceholders(left, { logo: true, presenter: true, refs: 2, refsMode: 'layout' }), /white rounded chip in the top-right corner/)
+  const steps = buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps', variant: withComposition('numbered-steps') })
+  assert.match(steps, /Steps card[^\n]*vertical dotted cyan line/)
+  assert.match(steps, /row 1 \(number 1, small calendar icon after the title\): "ตรวจวันครบกำหนดและเงื่อนไขการไถ่ถอนในสัญญา"/)
+  const lightSeed = Array.from({ length: 80 }, (_, i) => i).find((s) => pickPosterVariant({ layout: 'steps', seed: s }).paletteId === 'light-sun-coral')
+  assert.ok(lightSeed !== undefined, 'ต้องมี seed ที่ได้ชุดพื้นสว่าง')
+  const light = buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps', seed: lightSeed })
+  assert.match(light, /off-white #eef6fb background/)
+  assert.match(light, /the rest of the headline [^\n]*solid navy/)
+  assert.match(light, new RegExp(`VARIANT: seed=${lightSeed} `))
+  const tangerine = { ...pickPosterVariant({ layout: 'steps', seed: 11 }), paletteId: 'tangerine-magenta', palette: PALETTES['tangerine-magenta'] }
+  const orange = buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps', variant: tangerine })
+  assert.match(orange, /Left card of the pair \(tangerine orange header pill/)
+  assert.match(orange, /Right card of the pair \(hot magenta header pill[^\n]*hot magenta exclamation circle/)
+  // seed=null = คำสั่งเดิมทุกบรรทัดที่เทสต์ก่อนหน้าตรวจ (ผู้แนะนำขวา เหลือง/ชมพู นูน 3D)
+  assert.match(buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps' }), /VARIANT: seed=default set=presenter-right\/sun-coral\/extrude-3d\/point\/sparkle-arrow\/white-pill\/photo-composite\/desk-1 refs=layout/)
 })
