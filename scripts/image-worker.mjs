@@ -19,6 +19,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { IMAGE_BUCKET, WORKER_ID } from '../server/marketing-image-jobs.js'
+import { POSTER_SIZES } from '../src/lib/posterSizes.js'
 import { scrub } from '../server/research/pii.js'
 
 const VERSION = '1'
@@ -162,31 +163,66 @@ class PluginClient {
 
 // ---------------------------------------------------------------- แปลงภาพเป็น JPG (Windows: System.Drawing ส่ง path ผ่าน env ไม่ต่อสตริงคำสั่ง)
 
+// AX_TRIM=1: ตัด "แถบทึบบน-ล่าง" ที่คำสั่งภาพสั่งให้ทาไว้ (ขนาดที่ต้องครอป เช่น ฟีด 4:5 จากภาพ 2:3) ออกก่อนส่งขึ้นเว็บ
+// — โมเดลวางแถบติดต่อเลยเส้นครอปราว 40–130 px แม้บอกพิกเซลตรง ๆ (ครอปจริง 7 ภาพ 7 พ.ย. 2569 ผ่าน 1) การตัดที่ "ขอบแถบทึบที่เห็นจริง" จึงแม่นกว่าตัดตามตัวเลข
+// แถว = แถบทึบเมื่อทุกจุดที่สุ่ม (ทุก 16 px) เป็นน้ำเงินเข้มของแบรนด์ (8,33,63 ±40) หรือสีเดียวกันทั้งแถว (±10) · ตัดได้ข้างละไม่เกิน 25% ของความสูง · บางกว่า 24 px ไม่นับ (ขอบมืดของภาพถ่าย)
 const TO_JPEG_PS = [
   'Add-Type -AssemblyName System.Drawing',
   '$img = [System.Drawing.Image]::FromFile($env:AX_SRC)',
   'try {',
+  '  $w = $img.Width; $h = $img.Height; $top = 0; $bottom = $h',
+  "  if ($env:AX_TRIM -eq '1') {",
+  '    $src = New-Object System.Drawing.Bitmap $img',
+  '    function Test-BarRow([int]$y) {',
+  '      $first = $src.GetPixel(0, $y); $navy = $true; $uniform = $true',
+  '      for ($x = 0; $x -lt $w; $x += 16) {',
+  '        $p = $src.GetPixel($x, $y)',
+  '        if ([math]::Abs($p.R - 8) -gt 40 -or [math]::Abs($p.G - 33) -gt 40 -or [math]::Abs($p.B - 63) -gt 48) { $navy = $false }',
+  '        if ([math]::Abs($p.R - $first.R) -gt 10 -or [math]::Abs($p.G - $first.G) -gt 10 -or [math]::Abs($p.B - $first.B) -gt 10) { $uniform = $false }',
+  '        if (-not $navy -and -not $uniform) { return $false }',
+  '      }',
+  '      return $true',
+  '    }',
+  '    $limit = [int]($h * 0.25)',
+  '    while ($top -lt $limit -and (Test-BarRow $top)) { $top++ }',
+  '    while (($h - $bottom) -lt $limit -and (Test-BarRow ($bottom - 1))) { $bottom-- }',
+  '    if ($top -lt 24) { $top = 0 }',
+  '    if (($h - $bottom) -lt 24) { $bottom = $h }',
+  '    $src.Dispose()',
+  '    # หลังตัดแถบ ถ้าสัดส่วนใกล้เป้า (ภายใน 12%) ครอปกลางให้ตรงสัดส่วนแพลตฟอร์มพอดี (AX_RATIO = กว้าง/สูง)',
+  '    $ratio = 0.0; [double]::TryParse($env:AX_RATIO, [ref]$ratio) | Out-Null',
+  '    if ($ratio -gt 0) {',
+  '      $want = [int][math]::Round($w / $ratio)',
+  '      if ($want -lt ($bottom - $top) -and ($bottom - $top - $want) -lt (($bottom - $top) * 0.12)) {',
+  '        $extra = ($bottom - $top) - $want; $top += [int]($extra / 2); $bottom = $top + $want',
+  '      }',
+  '    }',
+  '  }',
+  '  $ch = $bottom - $top',
   '  $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }',
   '  $params = New-Object System.Drawing.Imaging.EncoderParameters 1',
   '  $params.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality), 90L',
-  '  $bmp = New-Object System.Drawing.Bitmap $img.Width, $img.Height',
+  '  $bmp = New-Object System.Drawing.Bitmap $w, $ch',
   '  $g = [System.Drawing.Graphics]::FromImage($bmp)',
   '  $g.Clear([System.Drawing.Color]::White)',
-  '  $g.DrawImage($img, 0, 0, $img.Width, $img.Height)',
+  '  $g.DrawImage($img, (New-Object System.Drawing.Rectangle 0, 0, $w, $ch), (New-Object System.Drawing.Rectangle 0, $top, $w, $ch), [System.Drawing.GraphicsUnit]::Pixel)',
   '  $g.Dispose()',
   '  $bmp.Save($env:AX_DST, $codec, $params)',
   '  $bmp.Dispose()',
+  '  Write-Output "trim top=$top bottom=$($h - $bottom) size=${w}x${ch}"',
   '} finally { $img.Dispose() }',
 ].join('\n')
 
-function toJpeg(src, dst) {
-  if (process.platform !== 'win32') return Promise.resolve(src)
+function toJpeg(src, dst, { trim = false, ratio = 0 } = {}) {
+  if (process.platform !== 'win32') return Promise.resolve({ file: src, note: '' })
   return new Promise((resolve) => {
+    let note = ''
     const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', TO_JPEG_PS], {
-      env: { ...process.env, AX_SRC: src, AX_DST: dst }, windowsHide: true, stdio: 'ignore',
+      env: { ...process.env, AX_SRC: src, AX_DST: dst, AX_TRIM: trim ? '1' : '0', AX_RATIO: ratio ? String(ratio) : '' }, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
     })
-    child.on('exit', (code) => resolve(code === 0 && existsSync(dst) ? dst : src))
-    child.on('error', () => resolve(src))
+    child.stdout.on('data', (d) => { note += String(d) })
+    child.on('exit', (code) => resolve(code === 0 && existsSync(dst) ? { file: dst, note: note.trim() } : { file: src, note: '' }))
+    child.on('error', () => resolve({ file: src, note: '' }))
   })
 }
 
@@ -225,7 +261,7 @@ async function claimNextJob(db) {
   const claimed = await db.from('marketing_image_jobs')
     .update({ status: 'running', claimed_at: new Date().toISOString(), worker: WORKER_ID })
     .eq('id', next.id).eq('status', 'queued')
-    .select('id,content_no,prompt,aspect').maybeSingle()
+    .select('id,content_no,prompt,aspect,size').maybeSingle()
   if (claimed.error) throw claimed.error
   return claimed.data // null = หน้าเว็บยกเลิกไปก่อนหยิบทัน
 }
@@ -243,7 +279,10 @@ async function processJob(db, plugin, job) {
     }, GENERATE_TIMEOUT_MS)
     const saved = text.match(/Image saved:\s*(.+)/)?.[1]?.trim()
     if (!saved || !existsSync(saved)) throw new Error('ปลั๊กอินไม่ได้บอกตำแหน่งไฟล์ภาพ')
-    const jpg = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`))
+    // คำสั่งภาพของขนาดที่ต้องครอปมี "LETTERBOX BARS" → ตัดแถบทึบที่เห็นจริงทิ้งก่อนส่งขึ้นเว็บ
+    const target = POSTER_SIZES[job.size] || null
+    const { file: jpg, note } = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`), { trim: /LETTERBOX BARS/.test(String(job.prompt || '')), ratio: target ? target.width / target.height : 0 })
+    if (note) log(`${label}: ${note}`)
     const isJpeg = /\.jpe?g$/i.test(jpg)
     const objectPath = `jobs/${job.id}.${isJpeg ? 'jpg' : 'png'}`
     const bytes = await fs.readFile(jpg)
