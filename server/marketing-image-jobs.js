@@ -23,7 +23,6 @@ export const WORKER_ONLINE_MS = 90 * 1000
 const RECENT_MS = 24 * 60 * 60 * 1000
 const CAPTION_LIMIT = 1500
 
-const ASSETX_PALETTE = 'Palette from the logo: midnight navy #08213f and cyan/teal #42c7d8 as the primary colors, deep violet #4b2a82 for depth and shadows, a small coral-orange #f26b4f accent, clean white. Avoid metallic gold bars, dominant red, green loan-ad themes and generic high-saturation finance-ad colors.'
 
 function defaultDatabase() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
@@ -49,9 +48,9 @@ export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_
   return [
     `Design ONE finished ${SHAPES[plan.aspect]} Thai social-media poster for AssetX Estate, a Thai real-estate consultancy for ขายฝาก (sale with right of redemption) and จำนอง (mortgage). It will be posted as a ${plan.platform} image (${plan.width}x${plan.height} px).`,
     plan.edges
-      ? `SAFE AREA (strict): the ${plan.sourceWidth}x${plan.sourceHeight} image will be center-cropped to ${ratio}, cutting ${plan.cutPx} px off the ${plan.edges} edges. Keep the headline, the content card, the CTA band and the logo at least ${plan.safePx} px away from the ${plan.edges} edges. Those outer ${plan.safePx} px strips must contain background scenery only.`
+      ? `SAFE AREA (strict): the ${plan.sourceWidth}x${plan.sourceHeight} image will be center-cropped to ${ratio}, cutting ${plan.cutPx} px off the ${plan.edges} edges. Keep the headline, the content card, the logo and all text at least ${plan.safePx} px away from the ${plan.edges} edges; the outer ${plan.cutPx} px strips contain background scenery only. The bottom band is the one exception: its lower edge sits exactly ${plan.cutPx} px above the bottom edge (on the crop line) so the cropped poster ends with the band, with the band's text at least ${plan.safePx} px from the bottom edge.`
       : 'SAFE AREA: keep all text and the logo at least 5% away from every edge.',
-    'The attached image is the official AssetX logo. Place it small inside the bottom band. Do not redraw or alter it.',
+    'The attached image is the official AssetX logo mark. Place it exactly as the LOGO rule of the design system says (small, top corner, white chip, no text beside it). Do not redraw or alter it.',
     '',
     POSTER_DESIGN_SYSTEM,
     '',
@@ -63,15 +62,17 @@ export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_
           'POST CONTENT (context: read it, then build the sub-line and the content card from it; do not paste it whole):',
           '"""', body, '"""',
           '',
-          `CONTENT CARD (layout: ${layout}): ${posterLayoutInstruction(layout)} Every line on the card must be copied exactly from the post text (no new words, no paraphrase), must read as a complete idea on its own and must not start with a connecting word such as และ, หรือ, แต่ or ที่. If a line cannot be copied safely, use fewer lines.`,
-          'SUB-LINE on the ribbon: one short phrase copied from the post (3 to 8 Thai words) that says who this is for or what they get. If none fits, leave the ribbon out.',
+          `CONTENT CARD (layout: ${layout}): ${posterLayoutInstruction(layout)} Every row on the card must be copied exactly from the post text (no new words, no paraphrase), must read as a complete idea on its own and must not start with a connecting word such as และ, หรือ, แต่ or ที่. If a row cannot be copied safely, use fewer rows.`,
+          'CARD TITLE (navy pill): 2-4 Thai words copied from the post that name the topic of the rows.',
+          'SUB-LINE on the ribbon: one complete phrase copied from the post (4 to 8 Thai words) that says who this is for or what they get. If none fits, leave the ribbon out.',
+          'CALLOUT CHIP (below the card): one sentence of at most 12 Thai words copied from the post - the key reminder or the "before you sign" line.',
+          'BOTTOM-BAND CHIPS: 2 or 3 two-word labels copied from the post.',
         ].join('\n')
       : 'SUPPORTING BADGES (render exactly): ประเมินเบื้องต้น | ปรึกษาฟรี | ดูแลเอกสาร',
     '',
     'BOTTOM CTA BAND (render exactly): ติดต่อ AssetX Estate',
     '',
-    'HERO SCENE: pick the one scene from the design system that matches this post (document and pen for contract, cost or legal topics; land plot with pegs for land topics; modern house for housing topics; coin stacks for money topics; consultation desk for advice topics). Photorealistic advertising composite, polished graphic design, clear hierarchy, high contrast, readable on a phone.',
-    ASSETX_PALETTE,
+    `HERO SCENE: ${layout === 'warning' ? 'use the OBJECT HERO (deed and house, no person) from the design system' : 'the presenter from the FOCAL POINT rule is mandatory'}; the photo cluster must match this post (document and pen for contract, cost or legal topics; land plot with pegs for land topics; modern house for housing topics; coin stacks for money topics; consultation desk for advice topics). Photorealistic advertising composite, polished graphic design, clear hierarchy, high contrast, readable on a phone.`,
     '',
     'RULES:',
     ...POSTER_TEXT_RULES.map((rule) => `- ${rule}`),

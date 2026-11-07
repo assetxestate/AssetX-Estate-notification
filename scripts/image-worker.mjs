@@ -34,7 +34,9 @@ const GENERATE_TIMEOUT_MS = 9 * 60 * 1000
 const LOCAL_DIR = path.join(repo, '.local')
 const OUTPUT_DIR = path.join(LOCAL_DIR, 'image-jobs')
 const LOCK_FILE = path.join(LOCAL_DIR, 'image_worker.lock')
-const LOGO = path.join(repo, 'public', 'logo.jpg')
+// โลโก้สำหรับแปะบนโปสเตอร์ = เฉพาะเครื่องหมาย X (public/logo-mark.jpg ตัดจาก logo.jpg 7 พ.ย. 2569) — ไฟล์เต็มมีข้อความ "AssetX Estate Co., Ltd." ติดมา โมเดลวาดซ้ำแล้วดูไม่เป็นมืออาชีพ (เจ้าของติ)
+const LOGO_MARK = path.join(repo, 'public', 'logo-mark.jpg')
+const LOGO = existsSync(LOGO_MARK) ? LOGO_MARK : path.join(repo, 'public', 'logo.jpg')
 const PLUGIN_SERVER = process.env.GPT_IMAGE_SERVER || path.join('C:', 'tools', 'gpt-image-marketplace', 'gpt-image', 'server', 'index.mjs')
 
 // --log = เขียนลง .local/image-worker.log ด้วย (ตอนเปิดแบบซ่อนหน้าต่างผ่าน scripts/image-worker-hidden.vbs ไม่มีหน้าจอให้ดู)
