@@ -37,6 +37,16 @@ const multiLine = (value) => scrub(String(value ?? ''))
 
 const SHAPES = { portrait: 'vertical (portrait)', square: 'square', landscape: 'horizontal (landscape)' }
 
+// แผนที่แถวบนแคนวาส (พิกเซล) สำหรับขนาดที่ต้องครอปบน-ล่าง — โมเดลทำตามโซนที่บอกเป็น % ของ "โปสเตอร์สุดท้าย" ไม่ตรงเมื่อเนื้อหาแน่น
+// (7 พ.ย. 2569: พาดหัวและปุ่มโดนตัดหลังครอป 2 จาก 3 ภาพ) จึงบอกเป็นพิกเซลของแคนวาสตรง ๆ ตาม VERTICAL BUDGET ของระบบออกแบบ
+export function canvasMap(plan) {
+  if (!/top/.test(String(plan.edges || ''))) return ''
+  const top = plan.cutPx
+  const usable = plan.sourceHeight - 2 * plan.cutPx
+  const y = (pct) => Math.round(top + usable * pct / 100)
+  return `CANVAS MAP (${plan.sourceWidth}x${plan.sourceHeight} px, y measured from the top edge): y 0-${top} background only · logo chip and headline block y ${y(5)}-${y(22)} · ribbon y ${y(22)}-${y(27)} · hero zone y ${y(3)}-${y(27)} on the right 36% of the width · main card y ${y(29)}-${y(72)} · action panel y ${y(74)}-${y(85)} · callout y ${y(86)}-${y(90)} · bottom band y ${y(90)}-${y(100)} with its lower edge exactly at y=${y(100)} · y ${y(100)}-${plan.sourceHeight} background only. Nothing except background may appear above y=${top} or below y=${y(100)}; shrink the text, never the margins, if the content does not fit.`
+}
+
 // คำสั่งภาพจากเนื้อหาโพสต์: Codex (โมเดลภาษา) อ่านเนื้อหาแล้วเลือกฉาก + สร้างการ์ดเนื้อหาตามโครงโพสต์ ก่อนเรียกเครื่องมือสร้างภาพ
 // v2 (7 พ.ย. 2569): ใช้ระบบออกแบบโปสเตอร์ร่วม (src/lib/posterDesignSystem.js) — การ์ดเนื้อหาเป็นหัวใจของภาพ แทน "ป้าย 3 ป้าย" แบบเดิมที่ภาพออกมาโล่งและเหมือนกันทุกโพสต์
 export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE } = {}) {
@@ -51,6 +61,7 @@ export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_
     plan.edges
       ? `SAFE AREA (strict): the ${plan.sourceWidth}x${plan.sourceHeight} image will be center-cropped to ${ratio}, cutting ${plan.cutPx} px off the ${plan.edges} edges. Keep the headline, the content card, the logo and all text at least ${plan.safePx} px away from the ${plan.edges} edges; the outer ${plan.cutPx} px strips contain background scenery only. The bottom band is the one exception: its lower edge sits exactly ${plan.cutPx} px above the bottom edge (on the crop line) so the cropped poster ends with the band, with the band's text at least ${plan.safePx} px from the bottom edge.`
       : 'SAFE AREA: keep all text and the logo at least 5% away from every edge.',
+    ...(plan.edges && canvasMap(plan) ? [canvasMap(plan)] : []),
     'The attached image is the official AssetX logo mark. Place it exactly as the LOGO rule of the design system says (small, top corner, white chip, no text beside it). Do not redraw or alter it.',
     '',
     POSTER_DESIGN_SYSTEM,

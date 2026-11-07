@@ -26,7 +26,7 @@ export const POSTER_DESIGN_SYSTEM = [
 ].join('\n')
 
 // แถวการ์ด = หัวข้อสั้น (3–7 คำ) + รายละเอียด 1 วรรค (8–18 คำ) คัดจากจุดเดียวกันของโพสต์ (v3.2 เจ้าของ: ภาพต้องอ่านแล้วรู้เรื่องโดยไม่เปิดแคปชั่น) · แถวละ "เครื่องหมายเดียว"
-const ROW_RULE = 'each row = a ROW TITLE of 3-7 Thai words plus ONE DETAIL clause of 8-18 Thai words, both copied word for word from the same point of the post (if the point is shorter, use the whole point as the detail); never a 1-2 word fragment and never a title without its detail.'
+const ROW_RULE = 'each row = a ROW TITLE of 3-7 Thai words plus ONE DETAIL clause of 8-18 Thai words, both copied word for word from the same point of the post; the detail must add words the title does not already say - if the whole point is a single short sentence (at most 10 words) show it as the title only, with no detail line; never a 1-2 word fragment and never repeat the title inside the detail.'
 const LAYOUTS = {
   steps: `Main card = numbered points: copy the numbered points of the post in order (3 to 5 rows); ${ROW_RULE} Marker = navy number badge only.`,
   qa: `Main card = question and answer pairs: each row title is a "ถาม:" line (without the label) and the detail is the first 8-18 words of its "ตอบ:" (2 or 3 rows); ${ROW_RULE} Marker = cyan icon circle only.`,
@@ -40,8 +40,10 @@ export const POSTER_LAYOUTS = Object.keys(LAYOUTS)
 
 export function pickPosterLayout(caption = '') {
   const t = String(caption || '')
+  const firstLine = t.split('\n').map((s) => s.trim()).find(Boolean) || ''
   if (/^(ถาม|ตอบ)\s*[:：]/m.test(t)) return 'qa'
-  if (/\bvs\.?\b|ต่างกันอย่างไร|ต่างกันยังไง|เปรียบเทียบ|แบบไหนดีกว่า|กับ.{1,20}ต่างกัน/i.test(t)) return 'compare'
+  // "เปรียบเทียบ" นับเป็นโครงเทียบสองฝั่งเฉพาะเมื่ออยู่ในบรรทัดแรก — โพสต์เช็กลิสต์ที่มีข้อ "เปรียบเทียบราคา" เคยถูกจัดเป็น compare (7 พ.ย. 2569 โพสต์ #2 #4)
+  if (/\bvs\.?\b|ต่างกันอย่างไร|ต่างกันยังไง|แบบไหนดีกว่า|กับ.{1,20}ต่างกัน/i.test(t) || /เปรียบเทียบ/.test(firstLine)) return 'compare'
   if (/มิจฉาชีพ|หลอก|โกง|ปลอมแปลง|โฉนดปลอม|แก๊ง|เตือนภัย/.test(t)) return 'warning'
   const numbered = (t.match(/^\s*\d{1,2}[.)]\s/gm) || []).length
   if (numbered >= 2) return 'steps'

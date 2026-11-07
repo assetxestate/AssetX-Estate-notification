@@ -152,6 +152,10 @@ test('parseDraft (no_cite): ชื่อแบรนด์ไทยของเ�
   assert.equal(cap.ok, true, cap.error)
   const youtube = parseDraft({ ...base, caption: longBody('ค่าธรรมเนียมจดจำนอง 1% ของวงเงิน ซึ่งต้องดูประกาศจริงของแต่ละกรณี') }, { policy: 'no_cite', sourceLabel: 'ช่องความรู้', brand, subtype: 'legal', facts: '📌 ค่าธรรมเนียมจดจำนอง 1% ของวงเงิน' })
   assert.equal(youtube.ok, true, youtube.error)
+  // คำปลอบผิดจริงรูปใหม่ (เจอจริง #33 หลังเปิด context เต็ม): ขายฝากโอนกรรมสิทธิ์ทันที "มั่นใจว่าทรัพย์สินไม่ถูกยึด" จึงผิด
+  const comfort = parseDraft({ ...base, caption: longBody('ขายฝากคือการโอนกรรมสิทธิ์ทรัพย์สินให้ผู้รับซื้อฝากทันที ทำให้ผู้ขายฝากมั่นใจว่าทรัพย์สินไม่ถูกยึดหรือโอนผิดคน') }, { policy: 'no_cite', sourceLabel: 'Facebook · เพจหนึ่ง', brand, subtype: 'social_fb', facts: '“ขายฝากคืออะไร ข้อดีข้อเสีย”' })
+  assert.equal(comfort.ok, false)
+  assert.match(comfort.error, /คำปลอบ/)
   const placeholder = parseDraft({ ...base, caption: longBody('บางแอดโฆษณาดอกเบี้ย [เรต] ต่อเดือน ซึ่งต้องดูสัญญาจริงของแต่ละกรณี') }, { policy: 'no_cite', sourceLabel: label, brand, subtype: 'ad_library', facts })
   assert.match(placeholder.error, /\[เรต\]/)
   // ลอกฮุคของแอดมาทั้งท่อน (เจอจริง #34: ประโยคเปิด = ข้อความแอดคำต่อคำ) → ปัดตก · พูดหัวข้อเดียวกันด้วยคำตัวเองผ่าน
