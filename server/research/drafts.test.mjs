@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { buildDraftPrompt, parseDraft, generateDrafts, draftFormatFor, pickDraftFormat, usedPoints, hasResearchFacts, needsDraft, cleanTitleForPrompt, ensureClosing, tidyHeadline, splitInlineList, thaiDates, validCta, defaultCta, splitFactsNotes, DRAFT_MIN_CHARS } from './drafts.js'
+import { buildDraftPrompt, parseDraft, generateDrafts, draftFormatFor, pickDraftFormat, usedPoints, hasResearchFacts, needsDraft, cleanTitleForPrompt, ensureClosing, tidyHeadline, splitInlineList, thaiDates, validCta, defaultCta, splitFactsNotes, socialCaption, DRAFT_MIN_CHARS } from './drafts.js'
 
 const brand = JSON.parse(readFileSync(new URL('../../research/brand_facts.json', import.meta.url), 'utf8'))
 
@@ -93,6 +93,9 @@ test('ไอเดียจากตัวเฝ้าเพจ Facebook (source
   assert.equal(hasResearchFacts({ ...idea, summary: '❤️ 50 · เห็นครั้งแรก 3 พ.ย. 2026\nกลุ่มเพจ: สื่อ' }), false, 'ไม่มีข้อความโพสต์ = ไม่มีข้อเท็จจริง')
   assert.equal(hasResearchFacts({ ...idea, summary: '❤️ 50\n“สั้นไป”\nกลุ่มเพจ: สื่อ' }), false, 'ข้อความสั้นกว่า 40 ตัวอักษรไม่นับ')
   assert.equal(hasResearchFacts({ ...idea, summary: `❤️ 50\n“${'ยาวพอแต่เครื่องหมายปิดหายเพราะ summary ถูกตัดที่ 2000 ตัวอักษร '.repeat(2)}` }), true, 'เครื่องหมายปิดหาย (summary ถูกตัด) ยังอ่านได้')
+  // “” ในบรรทัดหัวข้อ และ ” กลางข้อความโพสต์ ต้องไม่ทำให้ข้อเท็จจริงขาด (ผู้ตรวจ 7 พ.ย. 2569: แถวเก่าใน marketing_ideas ยังเป็นแบบนี้)
+  assert.equal(socialCaption('❤️ 50 · หัวข้อ: “ขายฝาก” คืออะไร\n“โพสต์เน้นคำว่า ”ขายฝาก” กับ ”จำนอง” ว่าต่างกันตรงไหน และต้องเตรียมเอกสารอะไรบ้าง”\nกลุ่มเพจ: สื่อ'), 'โพสต์เน้นคำว่า ”ขายฝาก” กับ ”จำนอง” ว่าต่างกันตรงไหน และต้องเตรียมเอกสารอะไรบ้าง')
+  assert.equal(socialCaption('ไม่ขึ้นบรรทัดใหม่ “ข้อความสั้น ๆ ในบรรทัดเดียวกัน” ท้าย'), 'ข้อความสั้น ๆ ในบรรทัดเดียวกัน', 'รูปเดิมยังเป็นทางสำรอง')
   const split = splitFactsNotes(summary, { source: 'social' })
   assert.deepEqual(split.facts, ['ขายฝากที่ดินต้องเตรียมเอกสารอะไรบ้าง โฉนด บัตรประชาชน ทะเบียนบ้าน และใบปลอดภาระ มาดูกันว่าแต่ละอย่างใช้ทำอะไร'])
   assert.ok(split.notes.some((n) => /กลุ่มเพจ: คู่แข่ง/.test(n)), 'คำใบ้กลุ่มเพจเป็นหมายเหตุ')
@@ -123,6 +126,30 @@ test('parseDraft: ชื่อเพจจากป้าย "Facebook · <ช�
   assert.equal(r2.ok, true, r2.error)
   assert.doesNotMatch(`${r2.draft.headline}\n${r2.draft.caption}`, /Cashpital/)
   assert.match(r2.draft.caption, /AssetX Estate/)
+})
+
+test('parseDraft (no_cite): ชื่อแบรนด์ไทยของเพจเป็นคำเดี่ยว → ปัดตกเมื่อแอด/โพสต์เอ่ยชื่อตัวเอง · ไม่อยู่ในข้อเท็จจริง = ไม่ปัด · คำบริการ/จังหวัดในชื่อเพจไม่นับ · เรตของคู่แข่งเฉพาะ subtype แอด/เพจ · 15% (เพดานกฎหมาย) ไม่นับ', () => {
+  const cta = 'ทักแชต AssetX Estate ส่งข้อมูลทรัพย์มาให้ประเมินเบื้องต้นได้ ปิดข้อมูลส่วนบุคคลได้'
+  const base = { headline: 'ขายฝากกับจำนอง ต่างกันตรงไหน', cta, hashtags: [], needs_check: [] }
+  const label = 'Meta Ad Library · ทุนที่ดิน รับจำนอง ขายฝาก พัทยา'
+  const facts = 'แอดคู่แข่งรันนาน 67 วัน — ทุนที่ดิน อธิบาย\n“ทุนที่ดิน อธิบาย: ขายฝากโอนกรรมสิทธิ์ทันที ดอกเบี้ย 1.25% ต่อเดือน เพดานตามกฎหมาย 15% ต่อปี”'
+  const leak = parseDraft({ ...base, headline: 'ทุนที่ดิน สอนอะไร', caption: longBody('เพจ ทุนที่ดิน อธิบายว่าขายฝากโอนกรรมสิทธิ์ทันที ซึ่งต้องดูเอกสารจริงของแต่ละกรณี') }, { policy: 'no_cite', sourceLabel: label, brand, subtype: 'ad_library', facts })
+  assert.equal(leak.ok, false)
+  assert.match(leak.error, /เอ่ยชื่อเพจต้นทาง.*ทุนที่ดิน/)
+  const coincidence = parseDraft({ ...base, caption: longBody('ทุนที่ดินของครอบครัวควรดูเอกสารก่อน ซึ่งต้องดูเอกสารจริงของแต่ละกรณี') }, { policy: 'no_cite', sourceLabel: label, brand, subtype: 'ad_library', facts: '“โพสต์ที่ไม่เอ่ยชื่อตัวเอง”' })
+  assert.equal(coincidence.ok, true, coincidence.error)
+  const generic = parseDraft({ ...base, caption: longBody('รับจำนองหรือขายฝากที่พัทยา ต้องดูเอกสารจริงของแต่ละกรณี รีไฟแนนซ์ก็เช่นกัน') }, { policy: 'no_cite', sourceLabel: 'Meta Ad Library · รับจำนอง ขายฝาก ปิดบัญชี รีไฟแนนซ์ พัทยา', brand, subtype: 'ad_library', facts: '“รับจำนอง ขายฝาก รีไฟแนนซ์ พัทยา บริการครบ”' })
+  assert.equal(generic.ok, true, generic.error)
+  assert.match(generic.draft.caption, /รับจำนองหรือขายฝากที่พัทยา/)
+  const rate = parseDraft({ ...base, caption: longBody('บางแอดโฆษณาดอกเบี้ย 1.25 % ต่อเดือน ซึ่งต้องดูสัญญาจริงของแต่ละกรณี') }, { policy: 'no_cite', sourceLabel: label, brand, subtype: 'ad_library', facts })
+  assert.equal(rate.ok, false)
+  assert.match(rate.error, /ตัวเลข %.*คู่แข่ง.*1\.25%/)
+  const cap = parseDraft({ ...base, caption: longBody('กฎหมายกำหนดเพดานดอกเบี้ย 15% ต่อปี ซึ่งต้องดูสัญญาจริงของแต่ละกรณี') }, { policy: 'no_cite', sourceLabel: label, brand, subtype: 'ad_library', facts })
+  assert.equal(cap.ok, true, cap.error)
+  const youtube = parseDraft({ ...base, caption: longBody('ค่าธรรมเนียมจดจำนอง 1% ของวงเงิน ซึ่งต้องดูประกาศจริงของแต่ละกรณี') }, { policy: 'no_cite', sourceLabel: 'ช่องความรู้', brand, subtype: 'legal', facts: '📌 ค่าธรรมเนียมจดจำนอง 1% ของวงเงิน' })
+  assert.equal(youtube.ok, true, youtube.error)
+  const placeholder = parseDraft({ ...base, caption: longBody('บางแอดโฆษณาดอกเบี้ย [เรต] ต่อเดือน ซึ่งต้องดูสัญญาจริงของแต่ละกรณี') }, { policy: 'no_cite', sourceLabel: label, brand, subtype: 'ad_library', facts })
+  assert.match(placeholder.error, /\[เรต\]/)
 })
 
 test('buildDraftPrompt: ไอเดียที่มีแค่หัวข้อ (⚠️) → โหมดความรู้ทั่วไป ไม่มีชื่อช่อง ไม่มีแฮชแท็กจากชื่อคลิป', () => {

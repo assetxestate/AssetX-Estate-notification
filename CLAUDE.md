@@ -26,6 +26,8 @@ npm run build     # build สำหรับ production
 npm run preview   # preview หลัง build
 npm run report:contracts   # สร้าง PDF สรุปสัญญาที่มีผล (A4 แนวนอน) จากข้อมูลสดใน Supabase ไปที่โฟลเดอร์แม่ของโปรเจกต์
 npm run research -- run    # รอบรีเสิร์ชโซเชียล/เทรนด์ประจำวัน (probe · collect --dry-run · angles · stats · report) ดู docs/social-research.md
+npm run research:social -- run   # ตัวเฝ้าเพจ Facebook (Chrome profile Research ที่ใช้ร่วมกับ DivisionX — ห้ามเรียก opencli เอง ดู docs/social-research.md ขั้น 7)
+npm run research:ads -- run      # เลนแอดคู่แข่ง Meta Ad Library รายสัปดาห์ (Chrome headless โปรไฟล์ชั่วคราว ไม่ล็อกอิน · --dry-run ทดสอบ · ดู docs/social-research.md ขั้น 10)
 npm run test:research      # เทสต์ระบบรีเสิร์ช (ตัวลบข้อมูลบุคคล · ด่านดอกเบี้ย · parser · ตัวเก็บ · API)
 npm run test:payments      # เทสต์ยอดงวด ชำระไม่ครบ/ชำระเพิ่ม และข้อความเตือนชำระ — รันก่อน commit ทุกครั้งที่แตะ logic ดอกเบี้ย/การชำระ (ดู docs/partial-payments.md)
 

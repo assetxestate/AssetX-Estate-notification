@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// scripts/research-ads.mjs — เลนแอดคู่แข่งจาก Meta Ad Library (ขั้นที่ 8) · อ่านหน้าเว็บสาธารณะโดยไม่ล็อกอินด้วย Chrome headless โปรไฟล์ชั่วคราว
+// scripts/research-ads.mjs — เลนแอดคู่แข่งจาก Meta Ad Library (ขั้นที่ 10) · อ่านหน้าเว็บสาธารณะโดยไม่ล็อกอินด้วย Chrome headless โปรไฟล์ชั่วคราว
 // ไม่แตะ Chrome profile Research / บัญชีสำรองที่ใช้ร่วมกับ DivisionX · ไม่ถือกุญแจ browser ร่วม · ไม่กินโควตา 4 เพจ/วัน · เครื่องยนต์: server/research/ads-library.js
 //
 // node scripts/research-ads.mjs run [--dry-run] [--force] [--phrase คำ] [--no-ai] [--no-report]
@@ -22,7 +22,7 @@ import { createAsk } from '../server/research/llm.js'
 import { sendTelegramReport, telegramConfigured } from '../server/research/notify.js'
 import { scrub } from '../server/research/pii.js'
 import {
-  DEFAULTS, SUBTYPE, SOURCE, readAdLibraryPhrase, mergeAds, pruneAds, pickCandidates, buildClassifyPrompt, parseClassify, adIdeaRow, dueForRun, daysBetween,
+  DEFAULTS, SUBTYPE, SOURCE, readAdLibraryPhrase, mergeAds, pruneAds, cleanStore, pickCandidates, buildClassifyPrompt, parseClassify, adIdeaRow, planQueue, dueForRun, daysBetween,
 } from '../server/research/ads-library.js'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -95,24 +95,40 @@ async function cmdRun() {
     appendRun({ status: 'skipped', reason: 'not_due', day })
     return
   }
-  if (!acquireLock()) { out('[ads] มีรอบอื่นกำลังรัน — ข้าม'); appendRun({ status: 'skipped', reason: 'locked', day }); return }
   const started = Date.now()
   const phraseFilter = flagValue('--phrase')
-  const phrases = (cfg.phrases || []).filter((p) => p && p.q && p.enabled !== false && (!phraseFilter || p.q.includes(phraseFilter)))
+  const phrases = (cfg.phrases || []).filter((p) => p && typeof p.q === 'string' && p.enabled !== false && (!phraseFilter || p.q.includes(phraseFilter)))
   const store = readJson(STORE_FILE, { ads: {} })
+  // ล้างคลังด้วยกติกาปัจจุบันทุกรอบ (ลิงก์ · บล็อกพรีวิว · ฟุตเตอร์ · เบอร์ +66) — mergeAds เก็บข้อความที่ "ยาวกว่า" จึงไม่ล้างของเก่าเอง
+  const cleaned = cleanStore(store)
+  if (cleaned) out(`[ads] ล้างคลังเก่า ${cleaned} เรคอร์ด (ลิงก์/บล็อกพรีวิว/ข้อมูลบุคคลตามกติกาใหม่)`)
   const report = { phrases: [], warnings: [], added: 0, candidates: 0, inserted: 0, duplicates: 0, known: 0, room: null, aiChecked: 0 }
   out(`[ads] ${dryRun ? 'DRY RUN · ' : ''}วลี ${phrases.length} · คลัง ${Object.keys(store.ads || {}).length} แอด · ประเทศ ${cfg.country} · ${cfg.search_type}`)
+  // ล็อกทันทีก่อน try — โค้ดระหว่างล็อกกับ finally ที่โยน error เคยทำให้ล็อกค้าง 30 นาที
+  if (!acquireLock()) { out('[ads] มีรอบอื่นกำลังรัน — ข้าม'); appendRun({ status: 'skipped', reason: 'locked', day }); return }
   try {
     for (let i = 0; i < phrases.length; i += 1) {
       const { q } = phrases[i]
       if (i) await sleep(rand(cfg.between_phrases_ms || DEFAULTS.between_phrases_ms))
-      const res = await readAdLibraryPhrase({ q, cfg, launch: launchChrome, sleep, log })
+      let res
+      try {
+        res = await readAdLibraryPhrase({ q, cfg, launch: launchChrome, sleep, log })
+      } catch (e) {
+        // error นอก try ของเครื่องยนต์ (launch Chrome ไม่ได้ ฯลฯ) — วลีเดียวพัง ไม่ล้มทั้งรอบ (docs/social-research.md ข้อ 4) · stack ของ Playwright ยาว ส่งแค่บรรทัดแรก
+        const msg = String(e?.message || e).split('\n')[0].slice(0, 160)
+        report.phrases.push({ q, status: null, ads: 0, results: '', loginWall: false, error: msg })
+        report.warnings.push(`⚠️ [ads] "${q}": อ่านไม่สำเร็จ ${msg}`)
+        out(report.warnings.at(-1))
+        continue
+      }
       const entry = { q, status: res.status, ads: res.ads.length, results: res.results, loginWall: res.loginWall, error: res.error || null }
       report.phrases.push(entry)
-      if (res.loginWall) { report.warnings.push(`⚠️ [ads] "${q}": เจอหน้าล็อกอิน — หยุดเลนรอบนี้ (ห้ามหาทางเลี่ยง)`); out(report.warnings.at(-1)); break }
+      if (res.loginWall) { report.warnings.push(`⚠️ [ads] "${q}": เจอหน้าล็อกอิน — หยุดเลนรอบนี้ (ห้ามหาทางเลี่ยง) · IP เดียวกับ browser ร่วมของ DivisionX ถ้าเจอซ้ำให้แจ้งอีกฝั่ง`); out(report.warnings.at(-1)); break }
       if (!res.ads.length) { report.warnings.push(`⚠️ [ads] "${q}": อ่านการ์ดแอดไม่ได้เลย (HTTP ${res.status ?? '-'}${res.error ? ` · ${res.error}` : ''}) — หน้าอาจเปลี่ยนโครง`); out(report.warnings.at(-1)); continue }
       const added = mergeAds(store, res.ads, q, day)
       report.added += added
+      // เก็บทันทีทุกวลี — โดนฆ่า/วลีถัดไปล้ม ก็ไม่เสียแอดที่อ่านแล้ว (ตัวเฝ้าเพจบันทึกต่อเพจแบบเดียวกัน)
+      if (!dryRun) writeJson(STORE_FILE, store)
       out(`[ads] "${q}": ${res.results || '?'} · อ่านได้ ${res.ads.length} แอด (ใหม่ ${added}) · HTTP ${res.status ?? '-'}`)
     }
   } finally {
@@ -133,12 +149,15 @@ async function cmdRun() {
       let failed = 0
       for (let i = 0; i < batchAll.length; i += 4) {
         const batch = batchAll.slice(i, i + 4)
-        const { system, prompt } = buildClassifyPrompt(batch.map((p) => ({ libraryId: p.libraryId, text: p.rec.text })), brand)
+        const batchAds = batch.map((p) => ({ libraryId: p.libraryId, text: p.rec.text }))
+        const { system, prompt } = buildClassifyPrompt(batchAds, brand)
         const res = await ask({ system, prompt })
-        const parsed = res.ok ? parseClassify(res.data) : null
-        if (!parsed) { failed += batch.length; out(`[ads] AI คัดชุด ${i / 4 + 1} ไม่ได้ (${res.error || 'คำตอบอ่านไม่ออก'})`); continue }
+        // ส่งชุดที่ส่งไปให้ parseClassify แมป id (โมเดลตอบเลขลำดับ [n] หรือตัวเลขเพี้ยนเกิน 2^53) · คำตัดสินที่แมปไม่ติด = ไม่นับว่าคัดแล้ว
+        const parsed = res.ok ? parseClassify(res.data, batchAds) : null
+        if (!parsed || !parsed.size) { failed += batch.length; out(`[ads] AI คัดชุด ${i / 4 + 1} ไม่ได้ (${res.error || 'คำตอบอ่านไม่ออก/ id ไม่ตรง'})`); continue }
         for (const [id, v] of parsed) aiVerdicts.set(id, v)
         report.aiChecked += parsed.size
+        failed += batch.length - parsed.size
       }
       out(`[ads] AI คัด ${report.aiChecked} ชิ้น: ให้ความรู้ ${[...aiVerdicts.values()].filter((v) => v.useful).length} · ตัด ${[...aiVerdicts.values()].filter((v) => !v.useful).length}${failed ? ` · อ่านคำตอบไม่ออก ${failed} (ผ่านด้วยตัวคัดเบื้องต้น)` : ''}`)
       if (failed && !report.aiChecked) report.warnings.push('⚠️ [ads] AI คัดไม่ได้เลยรอบนี้ — ใช้ตัวคัดเบื้องต้นอย่างเดียว ตรวจไอเดียก่อนใช้')
@@ -158,17 +177,15 @@ async function cmdRun() {
         const db = createSupabaseStore({ log })
         const existing = await db.existing()
         const inQueue = existing.queueCounts.get(`${SOURCE}|${SUBTYPE}`) || 0
-        const room = Math.max(Number(cfg.max_in_queue ?? DEFAULTS.max_in_queue) - inQueue, 0)
-        report.room = room
-        if (room) {
-          const known = await db.knownUrls(rows.map((r) => r.row.url))
-          const fresh = rows.filter((r) => !known.has(r.row.url))
-          const chosen = fresh.slice(0, room)
-          const saved = await db.insertIdeas(chosen.map((r) => r.row))
+        const knownUrls = inQueue < Number(cfg.max_in_queue ?? DEFAULTS.max_in_queue) ? await db.knownUrls(rows.map((r) => r.row.url)) : new Set()
+        const plan = planQueue({ rows, inQueue, maxInQueue: cfg.max_in_queue ?? DEFAULTS.max_in_queue, knownUrls })
+        report.room = plan.room
+        if (plan.room) {
+          const saved = await db.insertIdeas(plan.chosen.map((r) => r.row))
           report.inserted = saved.inserted
           report.duplicates = saved.duplicates
-          report.known = rows.length - fresh.length
-          for (const r of [...chosen, ...rows.filter((x) => known.has(x.row.url))]) store.ads[r.libraryId].idea = day
+          report.known = plan.known.length
+          for (const id of plan.markIds) if (store.ads[id]) store.ads[id].idea = day
           out(`[ads] ✅ เข้าคิวไอเดีย ${saved.inserted} ชิ้น (ผู้สมัคร ${rows.length} · มีในคิวแล้ว ${report.known} · กุญแจซ้ำ ${saved.duplicates})`)
         } else out(`[ads] คิวแอดคู่แข่งค้างครบ ${cfg.max_in_queue} ชิ้นแล้ว — รอบนี้ไม่เติม`)
       } catch (error) {
@@ -178,7 +195,8 @@ async function cmdRun() {
       }
     }
     writeJson(STORE_FILE, store)
-    writeJson(STATE_FILE, { ...state, last_run_day: day, last_status: report.warnings.length ? 'warn' : 'ok' })
+    // last_run_day เฉพาะรอบเต็ม — รัน --phrase ทดสอบวลีเดียวเคยทำให้รอบสัปดาห์ถัดไปถูกข้ามว่า not_due
+    writeJson(STATE_FILE, { ...state, ...(phraseFilter ? {} : { last_run_day: day }), last_status: report.warnings.length ? 'warn' : 'ok' })
   }
   appendRun({ status: 'ok', day, dry_run: dryRun, ms: Date.now() - started, phrases: report.phrases.map((p) => ({ q: p.q, ads: p.ads, status: p.status })), added: report.added, store: Object.keys(store.ads).length, candidates: report.candidates, ai_checked: report.aiChecked, inserted: report.inserted, warnings: report.warnings.length })
 

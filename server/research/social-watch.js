@@ -12,7 +12,7 @@ import crypto from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { Lock, blockedFor, pagesOn, usageRows, todayIso, defaultDir } from './shared-browser.mjs'
-import { scrub } from './pii.js'
+import { scrub, plainQuotes } from './pii.js'
 import { scoreText, DEFAULT_SCORING, round1 } from './classify.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -254,7 +254,9 @@ export function outliers(store, seen, today, cfg = {}, scoring = DEFAULT_SCORING
 // ทุกข้อความผ่านตัวลบข้อมูลบุคคลอีกชั้น · ห้ามใส่ชื่อ/ข้อความคนคอมเมนต์ (FB_JS ไม่คืนมาอยู่แล้ว)
 export function ideaRow(target, rec, hit, today, { audience = null } = {}) {
   const group = GROUP_HINT[target.group] ? target.group : 'media'
-  const headRaw = String(rec.caption || '').split('\n').map((s) => s.trim()).find(Boolean) || '(ไม่มีข้อความ)'
+  // เครื่องหมายคำพูดโค้งในโพสต์ของเพจ → " ตรง (ขั้นร่างอ่านข้อเท็จจริงจากบรรทัด “…” ถ้าข้างในมี ” จะอ่านขาด — ดู pii.js plainQuotes)
+  const captionPlain = plainQuotes(rec.caption || '')
+  const headRaw = captionPlain.split('\n').map((s) => s.trim()).find(Boolean) || '(ไม่มีข้อความ)'
   const head = scrub(headRaw).replace(/\s+/g, ' ').slice(0, 110)
   const fmt = FMT_TH[rec.format] || rec.format || 'โพสต์'
   const title = `${fmt}แรงกว่าปกติของเพจ ${Number(hit.ratio).toFixed(1)} เท่า — ${head}`
@@ -262,7 +264,7 @@ export function ideaRow(target, rec, hit, today, { audience = null } = {}) {
     ? `คลิปปกติของเพจ ≈ ${shortNum(Math.round(hit.base_v))} วิว`
     : hit.base_e !== null && hit.base_e !== undefined ? `โพสต์ปกติของเพจ ≈ ${shortNum(Math.round(hit.base_e))} เอ็นเกจ` : ''
   const when = rec.posted ? `โพสต์ ${thaiDay(rec.posted)}` : `เห็นครั้งแรก ${thaiDay(rec.first_seen || today)}`
-  const cap = scrub(rec.caption || '').replace(/\s+/g, ' ').trim()
+  const cap = scrub(captionPlain).replace(/\s+/g, ' ').trim()
   let summary = [metricsTh(rec.m), base, when].filter(Boolean).join(' · ')
   if (cap) summary += `\n“${cap.slice(0, 300)}${cap.length > 300 ? '…' : ''}”`
   summary += `\n${GROUP_HINT[group]}`

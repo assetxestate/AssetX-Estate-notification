@@ -23,4 +23,4 @@ Kaidee (ToS 4.4–4.5 ห้าม robot + ข้อมูลผู้ขาย)
 
 ## ที่ยังไม่ได้ตรวจ (ตรวจก่อนเปิดเลน `tos: "pending"`)
 
-ToS ของประชาชาติ / กรุงเทพธุรกิจ / SAM / กรมที่ดิน (เลนเปิดอยู่แต่ควรอ่าน · Pantip ตัดออกแล้ว 6 พ.ย. 2569 ไม่ต้องอ่าน) · Hipflat/FazWaz (Lifull Connect ตอบ 429) · LivingInsider/Baania · Meta Ad Library เปิดดูได้โดยไม่ล็อกอินไหม · TikTok Top Ads มีหมวดอสังหาฯ ไทยไหม · ฟีดหมวดอื่นของประชาชาติ (`/finance/feed`) · หน้า NPA กรุงศรี
+ToS ของประชาชาติ / กรุงเทพธุรกิจ / SAM / กรมที่ดิน (เลนเปิดอยู่แต่ควรอ่าน · Pantip ตัดออกแล้ว 6 พ.ย. 2569 ไม่ต้องอ่าน) · Hipflat/FazWaz (Lifull Connect ตอบ 429) · LivingInsider/Baania · TikTok Top Ads มีหมวดอสังหาฯ ไทยไหม · ฟีดหมวดอื่นของประชาชาติ (`/finance/feed`) · หน้า NPA กรุงศรี

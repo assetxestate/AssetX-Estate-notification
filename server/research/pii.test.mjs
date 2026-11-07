@@ -1,10 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { scrubPersonalData, scrub, hasPersonalData } from './pii.js'
+import { scrubPersonalData, scrub, hasPersonalData, foldDigits, plainQuotes } from './pii.js'
 
 // ชุดนี้คือสัญญาของตัวลบข้อมูลบุคคล (จากสเปกโปรไฟล์อสังหาฯ ข้อ 6) — แก้ regex แล้วต้องยังผ่านทั้งหมด
 test('ข้อความธุรกิจที่ต้องไม่ถูกลบ', () => {
-  for (const safe of ['นายหน้า', 'คุณภาพ', 'นางฟ้า', 'ดอกเบี้ย 1.25% ต่อเดือน', 'ราคาประเมินรอบ 2570-2573', 'ค่าจดจำนอง 0.01%', 'ขายฝาก 1,500,000 บาท', 'ปี 2569']) {
+  for (const safe of ['นายหน้า', 'คุณภาพ', 'นางฟ้า', 'ดอกเบี้ย 1.25% ต่อเดือน', 'ราคาประเมินรอบ 2570-2573', 'ค่าจดจำนอง 0.01%', 'ขายฝาก 1,500,000 บาท', 'ปี 2569', 'เปิด 08.00-17.00 น.', 'วงเงิน +66% ของราคาประเมิน', 'เพิ่มขึ้น +66 ล้านบาท']) {
     assert.equal(scrub(safe), safe, safe)
     assert.equal(hasPersonalData(safe), false, safe)
   }
@@ -15,6 +15,12 @@ test('ข้อมูลบุคคลที่ต้องถูกลบ', ()
     ['โทร 081-234-5678', 'phone'],
     ['02 123 4567', 'phone'],
     ['สนใจทัก 0812345678 ได้เลย', 'phone'],
+    ['โทร 02-1234-567', 'phone'],
+    ['โทร : 𝟬81-234-5678', 'phone'],
+    ['โทร +66 81 234 5678', 'phone_intl'],
+    ['WhatsApp : http://wa.me/+66812345678', 'phone_intl'],
+    ['+66 (0) 2 123 4567', 'phone_intl'],
+    ['+66-81-234-5678', 'phone_intl'],
     ['Line: @abc123', 'line_id'],
     ['ไลน์ไอดี abc_99', 'line_id'],
     ['LINE ID: shop.99', 'line_id'],
@@ -47,4 +53,12 @@ test('ค่าว่าง/ไม่ใช่สตริงไม่พัง'
   assert.equal(scrub(null), '')
   assert.equal(scrub(undefined), '')
   assert.equal(scrub(12345), '12345')
+})
+
+test('เบอร์ +66 ไม่เหลือเศษตัวเลข · ตัวเลขหน้าตาคล้ายพับเป็น ASCII โดย "ำ" ไม่เพี้ยน · เครื่องหมายคำพูดโค้ง → ตรง', () => {
+  assert.doesNotMatch(scrub('โทร +66 81 234 5678 หรือ +66-2-123-4567 จำนองได้'), /\d{3}/)
+  assert.equal(foldDigits('𝟬𝟴𝟭 ０２ จำนอง'), '081 02 จำนอง')
+  assert.equal(scrub('ค่าจดจำนอง 0.01% โทร 𝟬𝟴𝟭-𝟮𝟯𝟰-𝟱𝟲𝟳𝟴'), 'ค่าจดจำนอง 0.01% โทร [ลบ]')
+  assert.equal(plainQuotes('“ขายฝาก” กับ „จำนอง‟'), '"ขายฝาก" กับ "จำนอง"')
+  assert.equal(plainQuotes(null), '')
 })

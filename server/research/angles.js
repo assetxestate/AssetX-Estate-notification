@@ -65,6 +65,12 @@ export function ideaContextForPrompt(idea, brand = {}) {
 
 export function buildAnglesPrompt({ idea, brand = {} }) {
   const ctx = ideaContextForPrompt(idea, brand)
+  if (idea.source === 'social') {
+    // ตัวเฝ้าเพจ/เลนแอด: ส่วนหน้าของชื่อเรื่อง ("รูปแรงกว่าปกติของเพจ 2.0 เท่า —" "แอดคู่แข่งรันนาน 67 วัน —") และบรรทัดตัวเลข (ยอด/วัน/เวอร์ชัน/คำค้น) เป็นภาษาภายใน
+    // ขั้นร่างตัดอยู่แล้ว (drafts.js cleanTitleForPrompt · splitFactsNotes) แต่ขั้นมุมเล่าเคยส่งทั้งก้อน → มุม "แอดที่รัน 67 วัน" รั่วเข้าร่างผ่าน angle.brief (ผู้ตรวจ 7 พ.ย. 2569)
+    ctx.title = ctx.title.replace(/^[^—]*(แรงกว่าปกติ|รันนาน)[^—]*—\s*/, '').trim() || ctx.title
+    ctx.summary = ctx.summary.split('\n').filter((l, i) => !(i === 0 && !/^“/.test(l.trim()))).join('\n')
+  }
   const formats = (brand.content_formats || ['ให้ความรู้', 'เช็กลิสต์', 'ถามตอบ', 'เตือนภัย/วิธีป้องกัน', 'เคสสมมติ']).join(' · ')
   const system = [
     `คุณคือนักวางแผนคอนเทนต์ของ "${brand.brand || 'AssetX Estate'}" ธุรกิจขายฝาก/จำนอง/นายหน้าอสังหาริมทรัพย์ในไทย`,

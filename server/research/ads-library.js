@@ -1,17 +1,24 @@
-// เลนแอดคู่แข่งจาก Meta Ad Library (ขั้นที่ 8) — อ่านหน้าเว็บสาธารณะ facebook.com/ads/library โดยไม่ล็อกอิน (Chrome headless โปรไฟล์ชั่วคราว)
+// เลนแอดคู่แข่งจาก Meta Ad Library (ขั้นที่ 10 ของระบบรีเสิร์ช — ตาราง docs/social-research.md) — อ่านหน้าเว็บสาธารณะ facebook.com/ads/library โดยไม่ล็อกอิน (Chrome headless โปรไฟล์ชั่วคราว)
 // เจ้าของเสนอ 6 พ.ย. 2569 "คัดเอาเฉพาะแอดที่มีเนื้อหาที่เป็นประโยชน์มาใช้งานและปรับปรุงต่อยอด" · เลือกทาง ก. (อ่านอัตโนมัติสัปดาห์ละครั้ง) 7 พ.ย. 2569
 //
 // หลักการ: แอดที่ "รันนาน" และ "มีหลายเวอร์ชัน" = ข้อเสนอ/มุมที่ตลาดตอบรับ (research/manual-checklist.md) → คัดเฉพาะแอดที่ให้ความรู้ (ขั้นตอน เอกสาร ข้อควรระวัง
 // ค่าใช้จ่าย กฎหมาย) ไม่ใช่แอดเรต/ข้อเสนอล้วน → เข้าคิว marketing_ideas เป็น source social · subtype ad_library (ห้ามอ้างเพจ ลอกได้แค่แบบแผน)
 // กติกาเดียวกับตัวเฝ้าเพจ: ข้อความผ่านตัวลบข้อมูลบุคคล (pii.js) ก่อนลงคลัง/ก่อนส่ง AI · เก็บแค่ข้อความ+ตัวเลข+รหัสแอด · ไม่แตะ Chrome profile Research · ไม่ถือกุญแจ browser ร่วม
 // ฟังก์ชันคิดทั้งหมดเป็น pure function (เทสต์ได้) · ส่วนที่เปิด browser รับ launch/sleep ฉีดเข้ามา
-import { scrub } from './pii.js'
+import { scrub, plainQuotes } from './pii.js'
 import { scoreText, DEFAULT_SCORING, round1 } from './classify.js'
-import { thaiDay } from './social-watch.js'
 
 export const SUBTYPE = 'ad_library'
 export const SOURCE = 'social'
 export const LABEL_PREFIX = 'Meta Ad Library'
+
+// วันที่ไทยสั้น ๆ (คัดลอกจาก social-watch.js — ไม่ import ตัวเฝ้าเพจ เพราะไฟล์นั้นอ่าน facebook-page.dom.js และผูกกับ browser ร่วมตอนโหลด เลนนี้ต้องไม่พึ่งมัน)
+const MONTH_TH = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+export function thaiDay(iso) {
+  const [y, m, d] = String(iso || '').split('-').map(Number)
+  if (!y || !m || !d) return String(iso || '')
+  return `${d} ${MONTH_TH[m] || m} ${y}`
+}
 
 export const DEFAULTS = {
   country: 'TH',
@@ -40,6 +47,30 @@ export const adUrl = (libraryId) => `https://www.facebook.com/ads/library/?id=${
 // รูปใน innerText (UI อังกฤษ): "Library ID: 123" → "Started running on 1 Sep 2026" → "Platforms" → ("N ads use this creative and text" | "This ad has multiple versions")
 // → "Open Drop-down" → "See ad details"/"See summary details" → <ชื่อเพจ> → "Sponsored" → ข้อความแอด … จนถึง "Library ID:" ถัดไป
 const UI_LINE_RE = /^(Open Drop-down|Platforms|See (ad|summary) details|Sponsored|Learn more|Learn More|Send message|Send Message|Shop now|Shop Now|Sign up|Sign Up|Contact us|Contact Us|Get offer|Get quote|Book now|Apply now|Apply Now|Watch more|Download|Install now|Like Page|Get directions|Active|Inactive|This ad has multiple versions|\d+ ads use this creative and text|\d{1,2}:\d{2} \/ \d{1,2}:\d{2}|…|​+)$/i
+// ฟุตเตอร์ท้ายหน้า (การ์ดสุดท้ายของหน้ากินมาด้วย) — ตัดตั้งแต่บรรทัดนี้ลงไปทั้งหมด
+const FOOTER_RE = /^(System status|Ad Library API|About ads and data use|English \(U[KS]\)|See more$)/i
+// ปุ่ม CTA ของบล็อกพรีวิวปลายทาง (อังกฤษ/ไทยตามภาษาของเพจ) · ยอดไลก์เพจ
+const CTA_RE = /^(See more|See details|Enquire now|Call now|Visit profile|Get Quote|Learn more|Send message|Shop now|Sign up|Contact us|Get offer|Book now|Apply now|Watch more|Download|Install now|Like Page|Get directions|\d[\d,]* people like this|แชทใน Messenger|ส่งข้อความ|เรียนรู้เพิ่มเติม|ดูเพิ่มเติม|สมัครเลย|โทรเลย|ติดต่อเรา|สอบถาม|สอบถามเลย|จองเลย|ดูข้อมูลเพิ่มเติม)$/i
+// หมวดเพจ: บรรทัดอังกฤษสั้น ๆ Title Case คั่นด้วย ", " ("Real Estate, Financial Service") — ใช้เฉพาะตอนตัดจากท้าย
+const CATEGORY_RE = /^[A-Z][A-Za-z&'/ -]{2,40}(, [A-Z][A-Za-z&'/ -]{2,40})*$/
+// ลิงก์ในเนื้อแอด (ปลายทาง/LINE OA/ย่อลิงก์) — กติกาเลน: เก็บแค่ข้อความ · ต้องทำก่อน scrub ไม่งั้นเหลือ "[ลบ]://lin.ee/…" (รูปนั้นจับไว้ด้วยสำหรับคลังเก่า)
+// หยุดที่อักษรไทย เพราะข้อความไทยมักไม่มีช่องว่าง ("คลิกhttps://lin.ee/AbCdเลย")
+const LINK_RE = /(?:https?|\[ลบ\]):\/\/[^\s฀-๿]+|(?<![\w.])(?:www\.|lin\.ee\/|line\.me\/|bit\.ly\/|goo\.gl\/|shorturl\.at\/|linktr\.ee\/)[^\s฀-๿]+/gi
+export const stripLinks = (text) => String(text || '').replace(LINK_RE, '[ลิงก์]')
+
+// ล้างบล็อกพรีวิวปลายทาง (ชื่อเพจซ้ำ · หมวดเพจ · ยอดไลก์ · ปุ่ม) และฟุตเตอร์ออกจากบรรทัดของการ์ด — ใช้ทั้งตอน parse และกับข้อความในคลัง (คลังเก่า 182 ชิ้นปนขยะอยู่ 7 พ.ย. 2569)
+export function cleanAdLines(lines, pageName = '') {
+  let out = (Array.isArray(lines) ? lines : []).map((l) => String(l).trim()).filter(Boolean)
+  const f = out.findIndex((l) => FOOTER_RE.test(l))
+  if (f >= 0) out = out.slice(0, f)
+  const names = new Set([pageName, scrub(pageName)].map((s) => String(s || '').trim()).filter(Boolean))
+  out = out.filter((l) => !names.has(l) && !UI_LINE_RE.test(l) && !CTA_RE.test(l) && !/^https?:\/\//i.test(l) && !/^[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(l))
+  while (out.length && (CATEGORY_RE.test(out[out.length - 1]) || CTA_RE.test(out[out.length - 1]))) out.pop()
+  return out
+}
+export const cleanAdText = (text, pageName = '') => cleanAdLines(String(text || '').split('\n'), pageName).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+// ข้อความแอดที่พร้อมลงคลัง: ตัดลิงก์ → ล้างบล็อกพรีวิว/ฟุตเตอร์ → ล้างข้อมูลบุคคล → ≤ 700 ตัวอักษร (idempotent — ใช้ล้างคลังเก่าซ้ำได้)
+export const storeText = (text, pageName = '') => scrub(cleanAdText(stripLinks(text), pageName)).slice(0, 700)
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
 
 // "1 Sep 2026" · "Sep 1, 2026" → "2026-09-01" (null ถ้าอ่านไม่ออก)
@@ -77,12 +108,13 @@ export function parseAdLibraryText(text) {
       if (s && !started) { started = parseEnglishDate(s[1]); continue }
       const v = l.match(/^(\d+) ads use this creative and text$/i)
       if (v) { versions = Math.max(versions, Number(v[1])); continue }
+      // อีกรูปของ Ad Library ที่ไม่บอกจำนวน — นับว่า ≥ 2 เวอร์ชัน (ได้โบนัสคะแนน/ลำดับเหมือนการ์ดที่บอกจำนวน)
+      if (/^This ad has multiple versions$/i.test(l)) { versions = Math.max(versions, 2); continue }
       if (/^See (ad|summary) details$/i.test(l) && lines[i + 1] && !pageName) { pageName = lines[i + 1]; continue }
       if (/^Sponsored$/i.test(l) && sponsoredAt < 0) { sponsoredAt = i; break }
     }
     const body = sponsoredAt >= 0 ? lines.slice(sponsoredAt + 1) : []
-    const textLines = body.filter((l) => !UI_LINE_RE.test(l) && !/^https?:\/\//i.test(l) && !/^[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(l))
-    const adText = textLines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+    const adText = cleanAdLines(body, pageName).join('\n').replace(/\n{3,}/g, '\n\n').trim()
     ads.push({ libraryId, pageName, started, versions, text: adText })
   }
   return ads
@@ -104,12 +136,14 @@ export function classifyHeuristic(text = '') {
   const percentLines = (t.match(/\d+(\.\d+)?\s*%/g) || []).length
   const noise = NOISE_RE.test(t)
   const hook = EXPLAINER_RE.test(t)
-  const useful = t.length >= 80 && !noise && ((edu >= 3 && promo * 2 <= edu && percentLines <= 1) || (hook && edu >= 2 && promo <= edu))
+  // ตัวเลข % มากกว่า 1 ที่ = แอดเรต ไม่ว่าจะมีฮุคคำถามหรือไม่ (ผู้ตรวจ 7 พ.ย. 2569: สาขาฮุคเคยไม่จำกัด %)
+  const useful = t.length >= 80 && !noise && percentLines <= 1 && ((edu >= 3 && promo * 2 <= edu) || (hook && edu >= 2 && promo <= edu))
   return { useful, edu, promo, percentLines, noise, hook }
 }
 
-// แอดเดียวกันหลาย Library ID (ครีเอทีฟเดิมยิงหลายชุด) — เทียบ 120 ตัวอักษรแรกหลังยุบช่องว่าง
-export const textKey = (text) => String(text || '').replace(/\s+/g, ' ').trim().slice(0, 120)
+// แอดเดียวกันหลาย Library ID (ครีเอทีฟเดิมยิงหลายชุด) — เทียบข้อความทั้งก้อนหลังยุบช่องว่าง (คลังตัดที่ 700 อยู่แล้ว)
+// เดิม 120 ตัวอักษรแรก: เพจผู้ให้ทุนเปิดทุกแอดด้วยย่อหน้าบริการเดิม แอดคนละเรื่องจึงชนกันแล้วถูกกันไม่ให้เสนอ (เทียบคลังจริง 7 พ.ย. 2569: กุญแจเต็มยังรวมกลุ่มซ้ำจริง 18 กลุ่มครบ ชนผิด 0)
+export const textKey = (text) => String(text || '').replace(/\s+/g, ' ').trim()
 
 export function buildClassifyPrompt(ads, brand = {}) {
   const system = [
@@ -120,19 +154,38 @@ export function buildClassifyPrompt(ads, brand = {}) {
     '- โพสต์รีวิวลูกค้า เคสปิดดีล คำอวยพร รับสมัครทีม ชวนเข้าสัมมนา/คอร์ส/อาชีพ หรือคำปลุกใจทั่วไป ("ชีวิตไม่ต้องรอให้พร้อม") = useful false แม้จะเอ่ยคำว่าขั้นตอน/เอกสาร/กฎหมายผ่าน ๆ — useful ต่อเมื่อข้อความนั้น "สอน" อะไรที่คนอ่านเอาไปใช้ได้จริง',
     '- topic = หัวข้อความรู้ที่แอดนั้นพูด (ไม่เกิน 12 คำ ภาษาไทย ไม่เอ่ยชื่อเพจ) · reason = เหตุผล 1 ประโยคสั้น ๆ',
     'ห้ามแต่งเนื้อหาเพิ่ม · ตอบเป็น JSON object เดียวเท่านั้น ไม่มีข้อความนำหรือตาม ไม่มี markdown: {"ads":[{"id":"<libraryId>","useful":true,"topic":"…","reason":"…"}]}',
+    '- id ต้องคัดลอกตัวเลขหลัง "id:" ของแอดนั้นมาเป็นสตริงตรงตัวทุกหลัก (อยู่ในเครื่องหมายคำพูด) — ห้ามใช้เลขลำดับในวงเล็บ [1] [2] และห้ามตอบเป็นตัวเลขเปล่า',
   ].join('\n')
-  const prompt = ads.map((a, i) => `[${i + 1}] id: ${a.libraryId}\nข้อความ: ${scrub(a.text).replace(/\s+/g, ' ').slice(0, 420)}`).join('\n\n')
+  const prompt = ads.map((a, i) => `[${i + 1}] id: ${a.libraryId}\nข้อความ: ${scrub(stripLinks(a.text)).replace(/\s+/g, ' ').slice(0, 420)}`).join('\n\n')
   return { system, prompt: `แอดที่ต้องคัด ${ads.length} ชิ้น (ตอบครบทุก id):\n\n${prompt}` }
 }
 
-export function parseClassify(data) {
+// แมป id ที่โมเดลตอบให้ตรง libraryId ในชุดที่ส่งไป — โมเดล 14b ชอบตอบเลขลำดับตามป้าย "[n]" หรือตอบเป็นตัวเลข JSON (รหัส 16–17 หลักเกิน 2^53 เพี้ยนตอน JSON.parse)
+// ลำดับ: ตรงตัว → ตัวเลขที่ Number(libraryId) เท่ากัน (เพี้ยนทั้งคู่เท่ากัน) → เลขลำดับ 1..batch.length → ทิ้ง · ไม่มี batch = พฤติกรรมเดิม (รับเฉพาะเลขล้วน)
+export function resolveClassifyId(rawId, batch = null) {
+  const id = String(rawId ?? '').trim().replace(/^\[|\]$/g, '').replace(/^id:\s*/i, '')
+  if (!/^\d+$/.test(id)) return null
+  if (!Array.isArray(batch)) return id
+  const ids = batch.map((b) => String(b.libraryId))
+  if (ids.includes(id)) return id
+  if (id.length >= 15) {
+    const n = Number(id)
+    const same = ids.filter((x) => Number(x) === n)
+    return same.length === 1 ? same[0] : null
+  }
+  const ordinal = Number(id)
+  if (ordinal >= 1 && ordinal <= batch.length) return ids[ordinal - 1]
+  return null
+}
+
+export function parseClassify(data, batch = null) {
   const list = Array.isArray(data) ? data : Array.isArray(data?.ads) ? data.ads : null
   if (!list) return null
   const out = new Map()
   for (const item of list) {
-    const id = String(item?.id ?? '').trim()
-    if (!/^\d+$/.test(id)) continue
-    out.set(id, { useful: item.useful === true || String(item.useful).toLowerCase() === 'true', topic: scrub(String(item.topic || '')).slice(0, 80), reason: scrub(String(item.reason || '')).slice(0, 160) })
+    const id = resolveClassifyId(item?.id, batch)
+    if (!id) continue
+    out.set(id, { useful: item.useful === true || String(item.useful).toLowerCase() === 'true', topic: plainQuotes(scrub(String(item.topic || ''))).slice(0, 80), reason: plainQuotes(scrub(String(item.reason || ''))).slice(0, 160) })
   }
   return out
 }
@@ -143,7 +196,8 @@ export function mergeAds(store, ads, phrase, today) {
   let added = 0
   for (const ad of ads) {
     if (!ad.libraryId || !ad.text) continue
-    const text = scrub(ad.text).slice(0, 700)
+    const text = storeText(ad.text, ad.pageName)
+    if (!text) continue
     const prev = store.ads[ad.libraryId]
     if (!prev) {
       store.ads[ad.libraryId] = { first_seen: today, last_seen: today, started: ad.started || null, versions: ad.versions || 1, page: scrub(ad.pageName || '').slice(0, 120), text, phrases: [phrase], idea: null }
@@ -153,10 +207,25 @@ export function mergeAds(store, ads, phrase, today) {
     prev.last_seen = today
     if (ad.started && !prev.started) prev.started = ad.started
     prev.versions = Math.max(prev.versions || 1, ad.versions || 1)
+    // ล้างของเดิมก่อนเทียบความยาว — ไม่งั้นข้อความเก่าที่ปนบล็อกพรีวิว (ยาวกว่า) จะชนะข้อความสะอาดตลอดไป
+    prev.text = storeText(prev.text, prev.page)
     if (text.length > (prev.text || '').length) prev.text = text
     if (!prev.phrases.includes(phrase)) prev.phrases.push(phrase)
   }
   return added
+}
+
+// ล้างคลังทั้งก้อนด้วยกติกาปัจจุบัน (ลิงก์ · บล็อกพรีวิว · ฟุตเตอร์ · ข้อมูลบุคคลรวมเบอร์ +66) — idempotent ตัวรันเรียกทุกรอบตอนโหลด · คืนจำนวนเรคอร์ดที่เปลี่ยน
+export function cleanStore(store) {
+  let changed = 0
+  for (const rec of Object.values(store?.ads || {})) {
+    const text = storeText(rec.text, rec.page)
+    const page = scrub(rec.page || '').slice(0, 120)
+    if (text !== rec.text || page !== rec.page) changed += 1
+    rec.text = text
+    rec.page = page
+  }
+  return changed
 }
 
 export function pruneAds(store, today, keepDays = 180) {
@@ -197,15 +266,20 @@ export function pickCandidates(store, { today, cfg = {}, scoring = DEFAULT_SCORI
 
 // แถวสำหรับ marketing_ideas — source social (ห้ามอ้างเพจ) · subtype ad_library · summary อยู่ในรูปเดียวกับตัวเฝ้าเพจ (บรรทัดตัวเลข · “ข้อความ” · คำใบ้ · บรรทัดกำกับ)
 // ให้ขั้นร่างโพสต์อ่านข้อความแอดเป็นข้อเท็จจริง (drafts.js socialCaption) และไม่ส่งตัวเลข/ชื่อเพจให้ AI
+// เรต/ตัวเลข % ของแอดคู่แข่ง: แทนเป็น [เรต] ในข้อความที่ส่งให้ AI (คลังยังเก็บของเดิม) — โมเดลลอกตัวเลขลงโพสต์เราแล้วคนอ่านตีความเป็นข้อเสนอของ AssetX (ผู้ตรวจ 7 พ.ย. 2569 · คลังจริงมี % 37/182)
+const RATE_RE = /\d+(?:[.,]\d+)?\s*%/g
 export function adIdeaRow({ libraryId, rec, days, ai = null }, today, { audience = null } = {}) {
-  const raw = scrub(rec.text || '')
+  const raw = plainQuotes(scrub(rec.text || '')).replace(RATE_RE, '[เรต]')
   const text = raw.replace(/\s+/g, ' ').trim()
   // หัวเรื่อง = บรรทัดแรกของแอด (ก่อนยุบบรรทัด) — ตัวเฝ้าเพจใช้วิธีเดียวกัน
   const head = (raw.split('\n').map((s) => s.trim()).find(Boolean) || '').replace(/^[^\p{L}\p{N}]+/u, '').split(/[!?]/)[0].trim().slice(0, 90) || '(ไม่มีข้อความ)'
   const versions = Number(rec.versions || 1)
   const phrase = (rec.phrases || [])[0] || ''
+  // หัวข้อจาก AI คัดที่มีคำของชื่อเพจ (≥ 4 ตัวอักษร) ทิ้ง — บรรทัดนี้ไปถึง AI มุมเล่า ซึ่งไม่มีด่านชื่อเพจ
+  const pageToks = String(rec.page || '').split(/\s+/).map((t) => t.replace(/^(เพจ|บริษัท|บจก|หจก|บมจ|โดย)\.?/, '')).filter((t) => t.length >= 4)
+  const topic = ai?.topic && !pageToks.some((t) => String(ai.topic).includes(t)) ? plainQuotes(ai.topic) : ''
   const lines = [
-    `📢 แอด Meta รันตั้งแต่ ${rec.started ? thaiDay(rec.started) : 'ไม่ทราบวัน'} (${days} วัน · ${versions} เวอร์ชัน · เจอจากคำค้น "${phrase}")${ai?.topic ? ` · หัวข้อ: ${ai.topic}` : ''}`,
+    `📢 แอด Meta รันตั้งแต่ ${rec.started ? thaiDay(rec.started) : 'ไม่ทราบวัน'} (${days} วัน · ${versions} เวอร์ชัน · เจอจากคำค้น "${phrase}")${topic ? ` · หัวข้อ: ${topic}` : ''}`,
     `“${text.slice(0, 300)}${text.length > 300 ? '…' : ''}”`,
     'กลุ่มเพจ: คู่แข่ง — แอดที่รันนานคือข้อเสนอ/มุมที่ตลาดตอบรับ ถอดแบบแผน (ฮุค โครง หัวข้อที่ตอบคำถามลูกค้า) แล้วทำมุมของเราด้วยบริการจริง · เรต วงเงิน ความเร็ว และข้อเสนอของเขาเป็นโฆษณา ห้ามลอก ห้ามเอ่ยชื่อเพจ',
     '(Meta Ad Library · อ่านหน้าเว็บสาธารณะโดยไม่ล็อกอิน · ตัวเลขของเขาห้ามลงโพสต์เรา)',
@@ -233,8 +307,19 @@ export function dueForRun(state = {}, today, cadenceDays = 7) {
   return daysBetween(state.last_run_day, today) >= Number(cadenceDays)
 }
 
+// แผนเข้าคิว (pure — ตัวรันเรียก): ที่ว่าง = max_in_queue − ค้างในคิว · ตัด url ที่มีในคิวแล้ว · เลือกเท่าที่ว่าง
+// mark (store.ads[id].idea) เฉพาะที่เลือกเข้าคิวและที่มีในคิวแล้ว — ชิ้นที่ล้นคิวไม่ mark จะได้ถูกเสนอรอบหน้า
+export function planQueue({ rows = [], inQueue = 0, maxInQueue = DEFAULTS.max_in_queue, knownUrls = new Set() }) {
+  const room = Math.max(Number(maxInQueue) - Number(inQueue || 0), 0)
+  const known = rows.filter((r) => knownUrls.has(r.row.url))
+  const fresh = rows.filter((r) => !knownUrls.has(r.row.url))
+  const chosen = room ? fresh.slice(0, room) : []
+  return { room, chosen, known, markIds: [...chosen, ...known].map((r) => r.libraryId) }
+}
+
 // ── อ่านหน้า Ad Library จริง (ฉีด launch/sleep ให้เทสต์ได้) ─────────────────────
 // คืน { ads, status, loginWall, results } · ไม่โยนเมื่อหน้าตอบ 403 แต่ยังโหลดเนื้อหา (เจอจริง 6 พ.ย. 2569) · ไม่มีการ์ดเลย = คืน [] ให้ตัวรันบันทึกคำเตือน
+// ไม่โยนทั้งฟังก์ชัน (goto/evaluate/wheel/newContext): วลีเดียวพังต้องไม่ล้มทั้งรอบ — ตัวรันห่ออีกชั้นสำหรับ launch ที่อยู่นอก try นี้
 export async function readAdLibraryPhrase({ q, cfg = {}, launch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = () => {} }) {
   const b = { ...DEFAULTS.browser, ...(cfg.browser || {}) }
   const url = adLibraryUrl({ q, country: cfg.country || DEFAULTS.country, searchType: cfg.search_type || DEFAULTS.search_type })
@@ -263,6 +348,10 @@ export async function readAdLibraryPhrase({ q, cfg = {}, launch, sleep = (ms) =>
     const ads = parseAdLibraryText(text).slice(0, Number(cfg.max_ads_per_phrase ?? DEFAULTS.max_ads_per_phrase))
     const results = (text.match(/~?\d[\d,]*\s+results?/i) || [])[0] || ''
     return { ads, status, loginWall, results }
+  } catch (e) {
+    const msg = String(e?.message || e).split('\n')[0].slice(0, 160)
+    log(`[ads] "${q}": อ่านหน้าไม่สำเร็จ ${msg}`)
+    return { ads: [], status: null, loginWall: false, results: '', error: msg }
   } finally {
     await browser.close().catch(() => {})
   }

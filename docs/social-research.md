@@ -223,9 +223,10 @@ foreach ($p in "$env:PUBLIC\Desktop\Google Chrome.lnk", "$env:ProgramData\Micros
 
 สิ่งที่รอบทำ: ครบ `cadence_days` (7) นับจากรอบก่อน → เปิด Google Chrome ที่ติดตั้งในเครื่องแบบ headless ด้วยโปรไฟล์ชั่วคราวว่าง ๆ (`playwright-core` ไม่ดาวน์โหลดเบราว์เซอร์ · **ไม่ใช่** Chrome profile Research · ไม่ถือกุญแจ browser ร่วม · ไม่กินโควตา 4 เพจ/วัน)
 → ค้นทีละวลี (`keyword_exact_phrase` · ประเทศ TH · แอดที่กำลังรัน) เว้น 4–8 วิ · อ่าน `innerText` เป็นการ์ด (รหัส · วันเริ่มรัน · จำนวนเวอร์ชัน · ชื่อเพจ · ข้อความ) ≤ 40 แอด/วลี
-→ ล้างข้อมูลบุคคล (`pii.js`) ก่อนลงคลัง `ads.json` (เก็บแค่ข้อความ ≤ 700 ตัวอักษร ชื่อเพจ รหัส วัน เวอร์ชัน — ไม่เก็บภาพ/วิดีโอ/ลิงก์ปลายทาง) · เก็บ 180 วัน
+→ ตัดลิงก์ทุกชนิดในเนื้อแอดเป็น `[ลิงก์]` (`stripLinks` — ต้องทำก่อนล้างข้อมูลบุคคล) → ตัดบล็อกพรีวิวปลายทาง (ชื่อเพจซ้ำ · หมวดเพจ · ยอดไลก์ · ปุ่ม) และฟุตเตอร์ของหน้าที่การ์ดสุดท้ายกินมา (`cleanAdLines`) → ล้างข้อมูลบุคคล (`pii.js` รวมเบอร์ `+66` และตัวเลขหน้าตาคล้าย 𝟬) ก่อนลงคลัง `ads.json` (เก็บแค่ข้อความ ≤ 700 ตัวอักษร ชื่อเพจ รหัส วัน เวอร์ชัน — ไม่เก็บภาพ/วิดีโอ และไม่เก็บลิงก์ปลายทางของการ์ดหรือลิงก์ในเนื้อแอด) · ตัวรันเรียก `cleanStore` ล้างคลังเก่าด้วยกติกาปัจจุบันทุกรอบ (idempotent) และเขียนคลังทันทีหลังทุกวลี · วลีที่อ่านไม่สำเร็จ (Chrome ล้ม/หน้าเปลี่ยน) = คำเตือนต่อวลี ไม่ล้มทั้งรอบ · เก็บ 180 วัน
 → ผู้สมัคร = รันนาน ≥ `min_days_running` (14) + ข้อความ ≥ 80 ตัวอักษร + ผ่าน topic gate อสังหาฯ + ตัวคัดเบื้องต้น "ให้ความรู้" (คำความรู้ ≥ 3 และคำขายไม่ถึงครึ่ง หรือมีฮุคคำถาม/เช็กลิสต์ · ตัดรีวิว/เคสลูกค้า/ปิดดีล/อวยพร/รับสมัครทีม) + ครีเอทีฟเดียวกันหลายรหัสนับครั้งเดียว + ยังไม่เคยเสนอ
-→ Ollama ยืนยันทีละ 4 ชิ้น (≤ `max_ai_classify` 12 · ชุดที่อ่านคำตอบไม่ออกผ่านด้วยตัวคัดเบื้องต้น) → เข้าคิว ≤ `max_ideas_per_run` (6) · คิวค้าง ≤ `max_in_queue` (6) · `source=social` `subtype=ad_library` คะแนน 3.8–6.0 (อายุแอด + หลายเวอร์ชัน + AI ยืนยัน) `external_key=ads:fb:<รหัส>` · `url` = หน้าแอดใน Ad Library (สาธารณะ)
+→ Ollama ยืนยันทีละ 4 ชิ้น (≤ `max_ai_classify` 12 · ชุดที่อ่านคำตอบไม่ออกผ่านด้วยตัวคัดเบื้องต้น · id ที่โมเดลตอบเป็นเลขลำดับ `[n]` หรือตัวเลขเพี้ยนเกิน 2^53 ถูกแมปกลับเป็น libraryId ของชุดที่ส่ง — แมปไม่ติด = ไม่นับว่าคัดแล้ว) → เข้าคิว ≤ `max_ideas_per_run` (6) · คิวค้าง ≤ `max_in_queue` (6) (`planQueue` — ชิ้นที่ล้นคิวไม่ถูก mark จึงถูกเสนอรอบหน้า) · `source=social` `subtype=ad_library` คะแนน 3.8–6.0 (อายุแอด + หลายเวอร์ชัน + AI ยืนยัน) `external_key=ads:fb:<รหัส>` · `url` = หน้าแอดใน Ad Library (สาธารณะ)
+→ ข้อความที่ส่งให้ AI มุมเล่า/ร่าง: ตัวเลข % ของแอดแทนด้วย `[เรต]` · เครื่องหมายคำพูดโค้ง “ ” ในแอดแปลงเป็น " (ขั้นร่างอ่านข้อเท็จจริงจากบรรทัด “…”) · หัวข้อจาก AI คัดที่มีคำของชื่อเพจทิ้ง · ส่วนหัว "แอดคู่แข่งรันนาน N วัน" และบรรทัดตัวเลขไม่ไปถึงขั้นมุมเล่า · ขั้นร่างปัดตกร่างที่เอ่ยชื่อแบรนด์ไทยของเพจเป็นคำเดี่ยว (`pageBrandTokens` — เฉพาะคำที่อยู่ในข้อเท็จจริงและไม่ใช่คำบริการ/จังหวัด) ร่างที่มีตัวเลข % จากแอด/โพสต์คู่แข่ง (ยกเว้น 15% เพดานกฎหมาย) และร่างที่ลอก `[เรต]`/`[ลิงก์]` มาทั้งวงเล็บ · `--phrase` (อ่านบางวลี) ไม่เขียน `last_run_day` จึงไม่ทำให้รอบสัปดาห์ถัดไปถูกข้าม
 → เทเลแกรมสรุปรอบ · ขั้นร่างโพสต์ AI อ่านข้อความแอดเป็นข้อเท็จจริงแบบเดียวกับโพสต์เพจ (ตัวเลข/ชื่อเพจไม่ส่งให้ AI · ห้ามอ้างเพจ · ลอกได้แค่แบบแผน — `SUBTYPE_NOTES.ad_library`)
 
 ผลทดสอบ 6–7 พ.ย. 2569: หน้าแรกของทุกวลีตอบ HTTP 403 แต่เนื้อหายังโหลดครบ (ไม่ถือว่าล้ม) · 6 วลีอ่านได้ 233 การ์ด (ไม่ซ้ำ 182) ใน ~4 นาที · ตัวคัดเบื้องต้นเหลือ 21 · วลี "ขายฝาก" โดดเดี่ยวได้ขยะ "ฝากขาย" ร้านนาฬิกา/รับจำนำ จึงใช้วลียาวเท่านั้น
@@ -241,7 +242,7 @@ node scripts/research-ads.mjs report
 
 ```powershell
 $repo = 'C:\Projects\AssetX Estate\AssetX-Estate-notification'
-$act = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c cd /d "' + $repo + '" && node scripts\research-ads.mjs run >> .local\research\ads\task.log 2>&1')
+$act = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c cd /d "' + $repo + '" && if not exist .local\research\ads mkdir .local\research\ads && node scripts\research-ads.mjs run >> .local\research\ads\task.log 2>&1')
 $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 Register-ScheduledTask -TaskName 'AssetX Ads Weekly' -Action $act -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 09:30) -Settings $set -Force | Out-Null
 Get-ScheduledTask -TaskName 'AssetX Ads Weekly' | Format-Table TaskName, State
