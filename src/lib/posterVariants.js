@@ -68,13 +68,15 @@ export const CARD_STYLES = {
   'tilted-sticker': { label: 'การ์ดสติกเกอร์เอียง', text: 'white sticker-style cards with a thick white border, rotated by about 1–2 degrees alternately, each with a coloured header pill at its top-left' },
 }
 
-// สื่อ — ภาพถ่ายตัดต่อเป็นรสนิยมหลักของเจ้าของ จึงให้สัดส่วนมากกว่า (อยู่ 2 ช่องจาก 4)
+// สื่อ — ภาพถ่ายตัดต่อเป็นรสนิยมหลักของเจ้าของ
 export const MEDIA = {
   'photo-composite': { label: 'ภาพถ่ายตัดต่อ', text: 'photoreal advertising composite with flat vector UI on top' },
   illustrated: { label: 'ภาพประกอบแฟลต', text: 'flat vector illustration backdrop (clean shapes, no outlines) with a photoreal presenter cutout and flat vector UI on top' },
   'soft-3d': { label: '3D เคลย์', text: 'soft matte 3D clay-render backdrop props (rounded, pastel-lit) with a photoreal presenter cutout and flat vector UI on top' },
 }
-const MEDIA_ORDER = ['photo-composite', 'illustrated', 'photo-composite', 'soft-3d']
+// 8 พ.ย. 2569 เจ้าของ: "อยากให้ดูสมจริงไม่ใช่แนวภาพการ์ตูน บ่งบอกอัตลักษณ์ของความพรีเมี่ยมและหรูหรา" → ตัวหมุนเหลือภาพถ่ายตัดต่ออย่างเดียว
+// (ภาพประกอบแฟลตกับ 3D เคลย์ยังอยู่ในตารางให้เรียกตรงได้ แต่ไม่ถูกสุ่มแล้ว)
+const MEDIA_ORDER = ['photo-composite']
 
 // ฉากตามหัวข้อ (ตรวจคำในโพสต์) × 2 ตัวเลือก
 export const SCENES = {

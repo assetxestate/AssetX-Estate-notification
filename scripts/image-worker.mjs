@@ -185,10 +185,16 @@ const TO_JPEG_PS = [
   'Add-Type -AssemblyName System.Drawing',
   '$img = [System.Drawing.Image]::FromFile($env:AX_SRC)',
   'try {',
-  '  $w = $img.Width; $h = $img.Height; $top = 0; $bottom = $h',
+  '  $w = $img.Width; $h = $img.Height; $top = 0; $bottom = $h; $left = 0; $cw = $w',
   "  if ($env:AX_TRIM -eq '1') {",
   '    $src = New-Object System.Drawing.Bitmap $img',
+  // AX_BARS=black (คำสั่ง v4/โหมดอิสระสั่งแถบ BLACK #000000): นับเฉพาะแถวดำล้วนเป็นแถบ — แถวน้ำเงินเรียบหรือสีเรียบอื่นเป็นส่วนของงานออกแบบ (แถบติดต่อน้ำเงิน · พื้นงาช้าง)
+  // ไม่ตั้ง = แบบเดิมของ v2 (แถบน้ำเงิน หรือแถวสีเดียวกันทั้งแถว)
   '    function Test-BarRow([int]$y) {',
+  "      if ($env:AX_BARS -eq 'black') {",
+  '        for ($x = 0; $x -lt $w; $x += 16) { $p = $src.GetPixel($x, $y); if ($p.R -gt 36 -or $p.G -gt 36 -or $p.B -gt 36) { return $false } }',
+  '        return $true',
+  '      }',
   '      $first = $src.GetPixel(0, $y); $navy = $true; $uniform = $true',
   '      for ($x = 0; $x -lt $w; $x += 16) {',
   '        $p = $src.GetPixel($x, $y)',
@@ -211,6 +217,10 @@ const TO_JPEG_PS = [
   '      if ($want -lt ($bottom - $top) -and ($bottom - $top - $want) -lt (($bottom - $top) * 0.12)) {',
   // ส่วนเกินตัดจากด้านบน 70% (โซนบนเป็นม่านแสง/พื้นหลัง) ด้านล่าง 30% — แถบล่างมีป้ายชิดเส้นตัด (คิวงาน 6 ป้ายชิปโดนครอป)
   '        $extra = ($bottom - $top) - $want; $top += [int]($extra * 0.7); $bottom = $top + $want',
+  '      } else {',
+  // แถบที่วาดหนากว่าเส้นตัด (ภาพที่เหลือเตี้ยกว่าสัดส่วน เช่น 1024x1240 แทน 4:5) → ครอปซ้าย-ขวาเท่ากันให้ตรงสัดส่วน (8 พ.ย. 2569 งาน 13-14)
+  '        $wantW = [int][math]::Round(($bottom - $top) * $ratio)',
+  '        if ($wantW -lt $w -and ($w - $wantW) -lt ($w * 0.12)) { $left = [int](($w - $wantW) / 2); $cw = $wantW }',
   '      }',
   '    }',
   '  }',
@@ -218,23 +228,23 @@ const TO_JPEG_PS = [
   '  $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }',
   '  $params = New-Object System.Drawing.Imaging.EncoderParameters 1',
   '  $params.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality), 90L',
-  '  $bmp = New-Object System.Drawing.Bitmap $w, $ch',
+  '  $bmp = New-Object System.Drawing.Bitmap $cw, $ch',
   '  $g = [System.Drawing.Graphics]::FromImage($bmp)',
   '  $g.Clear([System.Drawing.Color]::White)',
-  '  $g.DrawImage($img, (New-Object System.Drawing.Rectangle 0, 0, $w, $ch), (New-Object System.Drawing.Rectangle 0, $top, $w, $ch), [System.Drawing.GraphicsUnit]::Pixel)',
+  '  $g.DrawImage($img, (New-Object System.Drawing.Rectangle 0, 0, $cw, $ch), (New-Object System.Drawing.Rectangle $left, $top, $cw, $ch), [System.Drawing.GraphicsUnit]::Pixel)',
   '  $g.Dispose()',
   '  $bmp.Save($env:AX_DST, $codec, $params)',
   '  $bmp.Dispose()',
-  '  Write-Output "trim top=$top bottom=$($h - $bottom) size=${w}x${ch}"',
+  '  Write-Output "trim top=$top bottom=$($h - $bottom) left=$left size=${cw}x${ch}"',
   '} finally { $img.Dispose() }',
 ].join('\n')
 
-function toJpeg(src, dst, { trim = false, ratio = 0 } = {}) {
+function toJpeg(src, dst, { trim = false, ratio = 0, bars = '' } = {}) {
   if (process.platform !== 'win32') return Promise.resolve({ file: src, note: '' })
   return new Promise((resolve) => {
     let note = ''
     const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', TO_JPEG_PS], {
-      env: { ...process.env, AX_SRC: src, AX_DST: dst, AX_TRIM: trim ? '1' : '0', AX_RATIO: ratio ? String(ratio) : '' }, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
+      env: { ...process.env, AX_SRC: src, AX_DST: dst, AX_TRIM: trim ? '1' : '0', AX_RATIO: ratio ? String(ratio) : '', AX_BARS: bars }, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
     })
     child.stdout.on('data', (d) => { note += String(d) })
     child.on('exit', (code) => resolve(code === 0 && existsSync(dst) ? { file: dst, note: note.trim() } : { file: src, note: '' }))
@@ -291,12 +301,13 @@ async function processJob(db, plugin, job) {
     let images = existsSync(LOGO) ? [LOGO] : []
     if (String(job.prompt || '').includes(PLACEHOLDER_FREE_IMAGES)) {
       // โหมดอิสระ: Codex ออกแบบเอง — แนบแค่โลโก้เต็ม + รูปเจ้าของ (ใช้หรือไม่ใช้ก็ได้) ไม่แนบเรฟคู่แข่ง ไม่ให้ลอกโครงเดิม
-      const free = parseFreeModeLine(job.prompt) || { direction: 'none' }
+      // presenter=use ในบรรทัด MODE = ทิศที่มีคนเป็นจุดเด่น → บังคับใส่รูปเจ้าของ (8 พ.ย. 2569)
+      const free = parseFreeModeLine(job.prompt) || { direction: 'none', presenter: 'optional' }
       const logo = existsSync(LOGO_FULL) ? LOGO_FULL : LOGO
       const presenter = existsSync(PRESENTER) ? PRESENTER : null
       images = [logo, ...(presenter ? [presenter] : [])].filter((f) => existsSync(f))
-      prompt = fillFreeImages(job.prompt, { logo: images.includes(logo), presenter: Boolean(presenter) })
-      log(`${label}: โหมดอิสระ (Codex ออกแบบเอง) · ทิศเริ่มต้น ${free.direction} · แนบ ${images.length} ภาพ (โลโก้เต็ม${presenter ? ' · รูปผู้แนะนำ' : ''})`)
+      prompt = fillFreeImages(job.prompt, { logo: images.includes(logo), presenter: Boolean(presenter), usePresenter: free.presenter === 'use' })
+      log(`${label}: โหมดอิสระ (Codex ออกแบบเอง) · ทิศเริ่มต้น ${free.direction} · รูปผู้แนะนำ ${free.presenter === 'use' ? 'บังคับใส่' : 'Codex เลือกเอง'} · แนบ ${images.length} ภาพ (โลโก้เต็ม${presenter ? ' · รูปผู้แนะนำ' : ''})`)
     } else if (String(job.prompt || '').includes(PLACEHOLDER_IMAGES)) {
       // v4: เติมรายการภาพแนบตามไฟล์ที่มีจริง — โลโก้เต็ม · รูปผู้แนะนำ (ถ้ามี) · เรฟสไตล์ตามโครงของโพสต์
       const layout = (String(job.prompt).match(/^LAYOUT:\s*(\w+)/m) || [])[1] || 'steps'
@@ -326,7 +337,7 @@ async function processJob(db, plugin, job) {
     if (!saved || !existsSync(saved)) throw new Error('ปลั๊กอินไม่ได้บอกตำแหน่งไฟล์ภาพ')
     // คำสั่งภาพของขนาดที่ต้องครอปมีแถบทึบ (v3.2 "LETTERBOX BARS" น้ำเงิน · v4 แถบดำ) → ตัดแถบที่เห็นจริงทิ้งก่อนส่งขึ้นเว็บ
     const target = POSTER_SIZES[job.size] || null
-    const { file: jpg, note } = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`), { trim: /LETTERBOX BARS|BLACK #000000 bars/.test(String(job.prompt || '')), ratio: target ? target.width / target.height : 0 })
+    const { file: jpg, note } = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`), { trim: /LETTERBOX BARS|BLACK #000000 bars/.test(String(job.prompt || '')), bars: /BLACK #000000 bars/.test(String(job.prompt || '')) ? 'black' : '', ratio: target ? target.width / target.height : 0 })
     if (note) log(`${label}: ${note}`)
     const isJpeg = /\.jpe?g$/i.test(jpg)
     const objectPath = `jobs/${job.id}.${isJpeg ? 'jpg' : 'png'}`

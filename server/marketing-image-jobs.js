@@ -4,7 +4,7 @@
 // GET  /api/marketing-image-jobs                         → { worker }                สถานะตัวรับงานบนคอม
 // GET  /api/marketing-image-jobs?id=N[&image=1]          → { job, worker, image? }   image = data URL เมื่อ done และขอ image=1
 // GET  /api/marketing-image-jobs?post_key=K[&image=1]    → { job|null, worker, image? } งานล่าสุดของโพสต์ใน 24 ชม. (เปิดหน้าต่างใหม่แล้วตามงานต่อ)
-// POST { action: "create", post_key, content_no, title, caption, size, mode } → { job, reused }   size = คีย์ใน src/lib/posterSizes.js · mode = ref (ค่าเริ่มต้น) | free
+// POST { action: "create", post_key, content_no, title, caption, size, mode } → { job, reused }   size = คีย์ใน src/lib/posterSizes.js · mode = free (ค่าเริ่มต้น ตั้งแต่ 8 พ.ย. 2569) | ref
 // POST { action: "cancel", id }                          → { job }                   ยกเลิกได้เฉพาะงานที่ยังไม่มีใครหยิบ
 //
 // ข้อความโพสต์ผ่านตัวลบข้อมูลบุคคลก่อนเก็บและก่อนส่งให้ Codex · ไม่มีการลบแถว (ยกเลิก = cancelled)
@@ -58,7 +58,9 @@ export function canvasMap(plan) {
 // v2 (7 พ.ย. 2569): ใช้ระบบออกแบบโปสเตอร์ร่วม (src/lib/posterDesignSystem.js) — การ์ดเนื้อหาเป็นหัวใจของภาพ แทน "ป้าย 3 ป้าย" แบบเดิมที่ภาพออกมาโล่งและเหมือนกันทุกโพสต์
 // seed = ชุดสไตล์ (src/lib/posterVariants.js posterSeed จากเลขโพสต์ + ลำดับงานของโพสต์) · ไม่ส่ง = ชุดแรก (หน้าตา v4 เดิม)
 // mode = 'free' → โหมดอิสระ (src/lib/posterFree.js): Codex เป็นอาร์ตไดเรกเตอร์ ออกแบบเองจากหัวข้อ ข้อความจากโพสต์ และบรีฟมู้ดแอนด์โทน (เจ้าของ 7 พ.ย. 2569 ดึก)
+// ค่าเริ่มต้นของ API create = โหมดอิสระ (เจ้าของ 8 พ.ย. 2569: "ให้โหมดอิสระเป็นค่าเริ่มต้นแทนตามเรฟ") · ตัวสร้างคำสั่งข้างล่างยังตั้งต้นที่ ref เพื่อให้เรียกตรงได้แบบเดิม
 export const POSTER_MODES = ['ref', 'free']
+export const DEFAULT_POSTER_MODE = 'free'
 export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE, seed = null, mode = 'ref' } = {}) {
   const headline = oneLine(title).slice(0, 120) || 'รับจำนอง · ขายฝาก'
   const body = multiLine(caption).slice(0, CAPTION_LIMIT)
@@ -209,7 +211,7 @@ export function createImageJobsHandler({ authorized = verifySession, database = 
         const prior = await db.from('marketing_image_jobs').select('id', { count: 'exact', head: true }).eq('post_key', postKey)
         if (prior.error) throw prior.error
         const seed = posterSeed({ contentNo: Number.isInteger(contentNo) && contentNo > 0 ? contentNo : null, postKey, jobIndex: prior.count || 0 })
-        const mode = POSTER_MODES.includes(body.mode) ? body.mode : 'ref'
+        const mode = POSTER_MODES.includes(body.mode) ? body.mode : DEFAULT_POSTER_MODE
         const row = {
           status: 'queued',
           post_key: postKey,

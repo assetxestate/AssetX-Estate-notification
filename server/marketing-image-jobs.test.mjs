@@ -63,7 +63,7 @@ test('สร้างงาน: เก็บขนาดแพลตฟอร์
   const res = response()
   await handlerWith(db)({ method: 'POST', body: {
     action: 'create', post_key: 'no-6', content_no: 6, title: 'จำนอง ตรวจเงื่อนไขให้ครบ',
-    caption: 'ก่อนจำนอง ควรตรวจเอกสารสิทธิ์\nโทร 081-234-5678 สอบถาม', size: 'story-9x16',
+    caption: 'ก่อนจำนอง ควรตรวจเอกสารสิทธิ์\nโทร 081-234-5678 สอบถาม', size: 'story-9x16', mode: 'ref',
   } }, res)
   assert.equal(res.code, 200)
   assert.equal(res.body.reused, false)
@@ -236,19 +236,19 @@ test('buildPosterJobPrompt กับ seed: ชุดสไตล์ต่าง�
   const done = { id: 1, status: 'done', post_key: 'no-9', content_no: 9, created_at: new Date(NOW - 60000).toISOString(), prompt: 'old' }
   const db = fakeDb({ jobs: [done] })
   const res1 = response()
-  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-9', content_no: 9, ...post } }, res1)
+  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-9', content_no: 9, mode: 'ref', ...post } }, res1)
   assert.equal(res1.code, 200, JSON.stringify(res1.body))
   const first = db.tables.marketing_image_jobs.at(-1)
   assert.match(first.prompt, /VARIANT: seed=\d+ /)
   first.status = 'done'
   const res2 = response()
-  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-9', content_no: 9, ...post } }, res2)
+  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-9', content_no: 9, mode: 'ref', ...post } }, res2)
   assert.equal(res2.code, 200, JSON.stringify(res2.body))
   const second = db.tables.marketing_image_jobs.at(-1)
   assert.notEqual(second.prompt.match(/VARIANT: seed=(\d+)/)[1], first.prompt.match(/VARIANT: seed=(\d+)/)[1], 'งานที่ 3 ของโพสต์ได้ seed ใหม่')
 })
 
-test('create mode=free → คำสั่งโหมดอิสระ (Codex ออกแบบเอง) · mode แปลก ๆ = ตามเรฟ', async () => {
+test('create mode=free → คำสั่งโหมดอิสระ (Codex ออกแบบเอง) · ไม่ส่ง/mode แปลก ๆ = อิสระ (ค่าเริ่มต้นตั้งแต่ 8 พ.ย.) · mode=ref = ตามเรฟ', async () => {
   const post = { title: 'ขายฝากมีค่าใช้จ่ายอะไรบ้าง', caption: 'ค่าใช้จ่ายรวมมี 3 ช่วง\n\n1. วันจดทะเบียน: ค่าธรรมเนียมและภาษี\n\n2. ระหว่างสัญญา: สินไถ่\n\n3. วันไถ่ถอน: ค่าธรรมเนียมไถ่ถอน', size: 'feed-4x5' }
   const db = fakeDb()
   const res = response()
@@ -257,9 +257,17 @@ test('create mode=free → คำสั่งโหมดอิสระ (Codex 
   const job = db.tables.marketing_image_jobs.at(-1)
   assert.match(job.prompt, /^DESIGNER MODE/)
   assert.match(job.prompt, /\{\{FREE_IMAGES\}\}/)
-  assert.match(job.prompt, /MODE: free seed=\d+ direction=[\w-]+$/)
+  assert.match(job.prompt, /MODE: free seed=\d+ direction=[\w-]+ presenter=(use|optional)$/)
   job.status = 'done'
   const res2 = response()
   await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-11', content_no: 11, mode: 'wild', ...post } }, res2)
+  assert.match(db.tables.marketing_image_jobs.at(-1).prompt, /^DESIGNER MODE/)
+  db.tables.marketing_image_jobs.at(-1).status = 'done'
+  const res3 = response()
+  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-11', content_no: 11, ...post } }, res3)
+  assert.match(db.tables.marketing_image_jobs.at(-1).prompt, /^DESIGNER MODE/, 'ไม่ส่ง mode = อิสระ')
+  db.tables.marketing_image_jobs.at(-1).status = 'done'
+  const res4 = response()
+  await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-11', content_no: 11, mode: 'ref', ...post } }, res4)
   assert.match(db.tables.marketing_image_jobs.at(-1).prompt, /^PASS-THROUGH RULE/)
 })

@@ -4,6 +4,7 @@
 // โดยมีบรีฟ มูดแอนด์โทนสไตล์ของเรา ไม่ต้องฟิกร้อยเปอร์เซ็นต์ เพื่อที่จะได้มีรูปแบบที่แตกต่างและอิสระมากกว่าเดิม" — เป็นตัวเลือกเพิ่ม คู่กับ v4 "ตามเรฟ"
 // ต่างจาก v4: ไม่มี PASS-THROUGH RULE (ให้ตัวแทน Codex เขียนคำสั่งภาพเอง) · ไม่มีแผนที่โซน · ไม่แนบเรฟคู่แข่ง · ไม่บังคับกล่องคำพูด/การ์ดคู่
 // สิ่งที่ยังบังคับ (ความถูกต้อง ไม่ใช่หน้าตา): แถบดำกันครอป · ข้อความไทยคัดจากโพสต์คำต่อคำ (เลือกใช้บางข้อได้) · โลโก้ไม่วาดใหม่ · เบอร์/LINE บริษัท · รายการห้าม
+// 8 พ.ย. 2569: เจ้าของให้เป็นค่าเริ่มต้นแทน "ตามเรฟ" · กติกาหน้าตาข้อเดียวที่บังคับ = สมจริงแนวพรีเมียมหรูหรา ไม่ใช่การ์ตูน (เจ้าของสั่ง)
 import { POSTER_CONTACT } from './posterDesignSystem.js'
 import { extractPosterCopyV4 } from './posterV4.js'
 import { cropPlan, DEFAULT_POSTER_SIZE } from './posterSizes.js'
@@ -11,17 +12,21 @@ import { cropPlan, DEFAULT_POSTER_SIZE } from './posterSizes.js'
 export const PLACEHOLDER_FREE_IMAGES = '{{FREE_IMAGES}}'
 
 // ทิศเริ่มต้นที่แนะนำต่อรอบ (หมุนตาม seed) — เป็นแค่จุดตั้งต้น Codex ทิ้งได้ถ้าคิดแบบที่ดีกว่า · ช่วยไม่ให้ตัวแทนออกแบบซ้ำทางเดิมทุกครั้ง
+// 8 พ.ย. 2569 เจ้าของ: "อยากให้ดูสมจริงไม่ใช่แนวภาพการ์ตูน บ่งบอกอัตลักษณ์ของความพรีเมี่ยมและหรูหรา" → ทุกทิศเป็นภาพถ่าย/เรนเดอร์สมจริงแนวหรู
+// (ตัดสมุดจดวาดมือ · คอลลาจกระดาษ · ไดโอรามาดินปั้น · แผนที่ภาพประกอบ ออก)
+// presenter: 'use' = ทิศที่มีคนเป็นจุดเด่น บังคับใส่รูปเจ้าของ (3 ใน 10 ≈ หน้าเจ้าของขึ้นราว 1 ใน 3 ของโปสเตอร์) · 'optional' = Codex เลือกเอง
+// เจ้าของ 8 พ.ย.: "รูปผมจะใส่หรือไม่ใส่ก็ได้ตามที่คุณคิดว่าเหมาะสม" — บังคับทุกภาพจะดึงทุกโปสเตอร์กลับไปเป็นโครงผู้แนะนำ+การ์ดแบบเดิม
 export const FREE_DIRECTIONS = [
-  { id: 'editorial-cover', text: 'an editorial magazine cover: one strong hero photo, the headline as the cover line, the key points as short cover teasers' },
-  { id: 'giant-type', text: 'a bold typographic poster: the headline key word set huge across a third of the design, the key points as small numbered captions around it' },
-  { id: 'journey-map', text: 'an illustrated journey path or road map where each key point is a milestone along the way' },
-  { id: 'split-screen', text: 'a split-screen composition: the situation or question on one side, the clear answer or checklist on the other' },
-  { id: 'notebook-sketch', text: 'a hand-drawn notebook or whiteboard look with marker annotations, arrows and doodles around the key points' },
-  { id: 'paper-collage', text: 'a playful paper-cut collage of document cut-outs, tape, arrows and stickers carrying the key points' },
-  { id: 'single-object', text: 'a minimalist poster built around one large symbolic object (a house key, a contract, a calendar or a house) with generous breathing room' },
-  { id: 'photo-story', text: 'a documentary-style photo of a Thai homeowner moment with the text set in clean overlay panels' },
-  { id: 'clay-diorama', text: 'a soft 3D clay diorama scene of the topic with the text on rounded floating labels' },
-  { id: 'host-explainer', text: 'the advisor as a friendly host on one side presenting the key points with clean callout lines' },
+  { id: 'luxury-cover', presenter: 'use', text: 'a luxury property-magazine cover: one cinematic portrait photograph of the advisor from the attached photo in a refined setting, the headline as the cover line, the key points as small elegant cover teasers' },
+  { id: 'material-type', presenter: 'optional', text: 'a refined typographic poster set on a real luxury material (deep navy lacquer, dark marble or brushed metal) under soft studio light: the headline key word large and elegant, the key points as small fine captions' },
+  { id: 'architecture-dusk', presenter: 'optional', text: 'a premium architectural photograph of a modern Thai house or condominium at blue hour with warm interior lights, the text on real frosted-glass panels' },
+  { id: 'split-screen', presenter: 'optional', text: 'a split composition of two real photographs: the situation or question on one side, the clear answer or checklist on the other, divided by a thin brushed-metal line' },
+  { id: 'desk-still-life', presenter: 'optional', text: 'a luxury still-life photograph on a walnut or marble desk: a real house key on a leather tag, a fountain pen and a plain closed folder, the text set beside them in clean panels' },
+  { id: 'single-object', presenter: 'optional', text: 'a minimalist premium product-style photograph of one symbolic object (a house key, a sealed document envelope or a fine white architectural scale model) under dramatic studio light with generous negative space' },
+  { id: 'advisor-office', presenter: 'use', text: 'a cinematic photograph of the advisor from the attached photo at work in a bright premium office or private lounge, any client seen only from behind, the text in clean overlay panels' },
+  { id: 'host-explainer', presenter: 'use', text: 'the advisor from the attached photo as a photoreal host standing beside the content in a premium interior, presenting the key points with fine callout lines' },
+  { id: 'dark-glass', presenter: 'optional', text: 'a dark premium look: a deep navy scene with one soft spotlight and real frosted-glass cards holding the key points, a subtle cyan rim light' },
+  { id: 'aerial-estate', presenter: 'optional', text: 'an aerial drone photograph of Thai land plots or a calm upscale housing estate in soft morning light, the key points as small refined labels' },
 ]
 
 const q = (s) => `"${String(s || '').trim()}"`
@@ -84,35 +89,48 @@ export function buildFreePosterPrompt({ title = '', caption = '', size = DEFAULT
     `- Contact (required, together in one small tidy area): ${q(`โทร ${phone}`)} and ${q(`LINE: ${line}`)}`,
   ].filter(Boolean)
   return [
-    'DESIGNER MODE: you are the art director of this poster. Do NOT forward this brief as it is. Read it, invent your own concept, composition and visual style, then write your own detailed image_gen prompt (describe the design in English; copy every Thai string you use exactly, inside quotes) and call image_gen once. Surprise us: this poster should look clearly different from a standard stacked-card infographic unless that is truly the best idea for this content.',
+    'DESIGNER MODE: you are the art director of this poster. Do NOT forward this brief as it is. Read it, invent your own concept, composition and camera, then write your own detailed image_gen prompt (describe the design in English; copy every Thai string you use exactly, inside quotes) and call image_gen once. Surprise us: this poster should look clearly different from a standard stacked-card infographic unless that is truly the best idea for this content, while staying photoreal and premium.',
     '',
     technicalFrame(plan),
     `Format: ${plan.platform}, final size ${plan.width}x${plan.height}. Every Thai text must be readable on a phone: nothing smaller than about 2% of the design height, the headline at least three times that.`,
     `Topic: ${q(pool.headline)} — an educational Facebook post from a Thai property advisory about ขายฝาก (sale with right of redemption) and จำนอง (mortgage).`,
-    'Brand brief (guidance, not a template): AssetX Estate is a Thai real-estate advisory. Readers are Thai homeowners who need cash and small investors; they are cautious and want clear, honest guidance. Mood: trustworthy, modern, warm and clear, a knowledgeable friend; premium but approachable, never a loan-shark flyer. Brand colours come from the logo: navy #08213f, cyan #42c7d8, with violet and magenta in the X mark. Use any mood, medium and extra accent colours you like (light or dark, photo, illustration, 3D, typographic, hand-drawn) as long as navy or cyan appears somewhere and it feels like one brand. Thai type: a bold modern Thai display face for the headline (like Kanit, Prompt or Noto Sans Thai Black) and a clean Thai sans for the rest.',
+    'Brand brief (guidance, not a template): AssetX Estate is a Thai real-estate advisory. Readers are Thai homeowners who need cash and investors; they are cautious and want clear, honest guidance. Identity: premium and luxurious, like a private bank or a luxury-property developer; trustworthy, calm, warm and clear; never a loan-shark flyer.',
+    'Visual style (required, the one fixed look rule): photoreal and realistic, never cartoon. Use real photography or photoreal renders of real places, people and materials (modern Thai architecture, refined interiors, marble, walnut, leather, glass, brushed metal), cinematic natural or studio light with soft real shadows, shallow depth of field where it helps, a restrained palette and generous negative space. Icons, if any, are thin, fine-line and minimal. Composition, camera angle, crop and layout are entirely yours.',
+    'Colours: the logo\'s navy #08213f and cyan #42c7d8 lead; violet and magenta from the X mark only as small accents; add warm luxury neutrals (ivory, champagne, charcoal, walnut) as you like. Thai type: a refined modern Thai face for the headline (like Kanit, Prompt or Noto Sans Thai in SemiBold or Bold, never a comic face) and a clean Thai sans for the rest, with calm generous spacing.',
     direction ? `Optional starting direction for this run (drop it if a better idea fits the content): ${direction.text}.` : 'Choose the concept freely.',
     `Input images: ${PLACEHOLDER_FREE_IMAGES}`,
     'Text you may put on the poster (Thai, copy exactly, each string at most once; choose only what serves your concept, less is often better; never paraphrase, shorten, merge or invent Thai text):',
     ...textLines,
     `Hard rules: no other words in any language except the strings above, the logo's own wordmark and "LINE"; the digits ${phone} and the id ${line} copied exactly; the attached logo is the only logo and is never redrawn or retyped; the black bars stay completely empty.`,
-    'Avoid: prices, percentages, interest rates, any other phone number, LINE id, URL, QR code, address, personal name or deed number; Garuda, seals, stamps, government or company emblems; watermarks or AI labels; a green-and-gold loan-flyer look; villains, police or handcuffs; neon glow.',
-    `MODE: free seed=${seed === null || seed === undefined ? 'none' : seed} direction=${direction ? direction.id : 'none'}`,
+    'Avoid: prices, percentages, interest rates, any other phone number, LINE id, URL, QR code, address, personal name or deed number; Garuda, seals, stamps, government or company emblems; watermarks or AI labels; a green-and-gold loan-flyer look; villains, police or handcuffs; neon glow; cartoon or comic style, flat vector illustration, hand-drawn doodles or marker sketches, clay or toy-like 3D, paper collage, stickers, chunky or emoji-style icons, sparkles, starbursts, halftone dots and candy colours.',
+    `MODE: free seed=${seed === null || seed === undefined ? 'none' : seed} direction=${direction ? direction.id : 'none'} presenter=${direction?.presenter === 'use' ? 'use' : 'optional'}`,
   ].join('\n')
 }
 
 // ภาพแนบของโหมดอิสระ: โลโก้เต็ม + รูปเจ้าของ (ถ้ามีไฟล์) · ไม่แนบเรฟคู่แข่ง (ไม่ให้ลอกโครงเดิม) · ตัวรับงานเติมตามไฟล์ที่มีจริง
-export function describeFreeImages({ logo = true, presenter = false } = {}) {
+// usePresenter = บรรทัด MODE บอก presenter=use (ทิศที่มีคนเป็นจุดเด่น) → บังคับใส่รูปเจ้าของ · ไม่มีไฟล์รูป → ไม่ใส่คนเลย (ไม่ให้วาดคนแปลกหน้า)
+const NO_ADVISOR = 'No advisor photo is attached: leave people out of this design and drop the advisor from the starting direction.'
+const OTHER_PEOPLE = 'any other person only from behind or out of focus, never another clear face'
+
+export function describeFreeImages({ logo = true, presenter = false, usePresenter = false } = {}) {
   const parts = []
   let n = 0
   if (logo) {
     n += 1
     parts.push(`Image ${n} = the official AssetX Estate logo (X mark with the wordmark "AssetX Estate Co., Ltd."); place the whole image once, unchanged, wherever it suits your layout (on a white or light chip if the area behind it is dark); never redraw, recolour or retype it.`)
+  } else {
+    parts.push('No logo is attached: draw a plain white rounded chip holding a navy letter X as the logo, with no wordmark.')
   }
   if (presenter) {
     n += 1
-    parts.push(`Image ${n} = IDENTITY REFERENCE (optional to use): if your concept includes a person, it must be this man (same face, hairstyle, skin tone, white dress shirt) as a photoreal figure; ignore that photo's background and any text in it; no other real-looking person's face.`)
+    parts.push(usePresenter
+      ? `Image ${n} = THE ADVISOR (required in this design): show this man as the advisor, a photoreal figure with the same face, hairstyle, skin tone and white dress shirt, lit to match your scene; you choose his size, crop, pose and position; ignore that photo's background and any text in it; ${OTHER_PEOPLE}.`
+      : `Image ${n} = IDENTITY REFERENCE (optional to use): if your concept includes a person, it must be this man (same face, hairstyle, skin tone, white dress shirt) as a photoreal figure; ignore that photo's background and any text in it; ${OTHER_PEOPLE}.`)
+  } else if (usePresenter) {
+    parts.push(NO_ADVISOR)
   }
-  return parts.length ? parts.join(' ') : 'none attached; draw a plain white rounded chip holding a navy letter X as the logo, with no wordmark.'
+  if (n === 0 && !usePresenter) return 'none attached; draw a plain white rounded chip holding a navy letter X as the logo, with no wordmark.'
+  return parts.join(' ')
 }
 
 export function fillFreeImages(prompt = '', opts = {}) {
@@ -122,5 +140,10 @@ export function fillFreeImages(prompt = '', opts = {}) {
 export function parseFreeModeLine(prompt = '') {
   const m = String(prompt || '').match(/^MODE:\s*free\b(.*)$/m)
   if (!m) return null
-  return { seed: (m[1].match(/seed=(\d+)/) || [])[1] ? Number(m[1].match(/seed=(\d+)/)[1]) : null, direction: (m[1].match(/direction=([\w-]+)/) || [])[1] || 'none' }
+  const seed = (m[1].match(/seed=(\d+)/) || [])[1]
+  return {
+    seed: seed ? Number(seed) : null,
+    direction: (m[1].match(/direction=([\w-]+)/) || [])[1] || 'none',
+    presenter: (m[1].match(/presenter=(\w+)/) || [])[1] === 'use' ? 'use' : 'optional',
+  }
 }
