@@ -25,7 +25,7 @@ import { enhanceBriefWithAi } from '../server/poster-brief-ai.js'
 import { pickStyleRefs, syncPosterRefs } from '../server/poster-refs.js'
 import { fillImagePlaceholders, PLACEHOLDER_IMAGES } from '../src/lib/posterV4.js'
 import { parseVariantLine } from '../src/lib/posterVariants.js'
-import { fillFreeImages, parseFreeModeLine, PLACEHOLDER_FREE_IMAGES } from '../src/lib/posterFree.js'
+import { fillFreeImages, footerContactLines, parseFreeModeLine, PLACEHOLDER_FREE_IMAGES } from '../src/lib/posterFree.js'
 import { scrub } from '../server/research/pii.js'
 
 const VERSION = '1'
@@ -50,6 +50,10 @@ const LOGO_MARK = path.join(repo, 'public', 'logo-mark.jpg')
 const LOGO = existsSync(LOGO_MARK) ? LOGO_MARK : path.join(repo, 'public', 'logo.jpg')
 // v4 "ตามเรฟ" (7 พ.ย. 2569 ค่ำ): โลโก้เต็มพร้อมชื่อบริษัท (เจ้าของสั่ง) · รูปเจ้าของเป็นผู้แนะนำ (ไฟล์นอก git) · ภาพอ้างอิงสไตล์จากคลัง (ไม่เกิน 5 ภาพรวมกัน = เพดานของ Codex)
 const LOGO_FULL = path.join(repo, 'public', 'logo-full.jpg')
+// แถบท้ายแบรนด์ของโหมดอิสระ (8 พ.ย. 2569): สคริปต์วาง · โลโก้แนวนอนพื้นโปร่งใส (scripts/make-logo-assets.py) · ฟอนต์ Kanit (OFL)
+const FOOTER_SCRIPT = path.join(repo, 'scripts', 'poster-footer.ps1')
+const FOOTER_LOGO = path.join(repo, 'public', 'logo-lockup-white.png')
+const FOOTER_FONT = path.join(repo, 'scripts', 'assets', 'fonts', 'Kanit-Medium.ttf')
 const REFS_ROOT = path.join(LOCAL_DIR, 'poster-refs')
 const PRESENTER = path.join(REFS_ROOT, 'presenter', 'presenter-cut.jpg')
 const MAX_IMAGES = 5
@@ -239,6 +243,23 @@ const TO_JPEG_PS = [
   '} finally { $img.Dispose() }',
 ].join('\n')
 
+// วางแถบท้ายแบรนด์ลงภาพที่ครอปแล้ว · คืนข้อความสรุปจากสคริปต์ · ล้ม = throw (ให้งานล้ม ไม่ส่งภาพที่ไม่มีช่องทางติดต่อ)
+function addBrandFooter(src, dst) {
+  const [phone, line] = footerContactLines()
+  return new Promise((resolve, reject) => {
+    let out = ''
+    let err = ''
+    const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', FOOTER_SCRIPT,
+      '-Src', src, '-Dst', dst, '-Logo', FOOTER_LOGO, '-FontFile', FOOTER_FONT, '-Phone', phone, '-Line', line], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    child.stdout.on('data', (d) => { out += String(d) })
+    child.stderr.on('data', (d) => { err += String(d) })
+    child.on('error', reject)
+    child.on('exit', (code) => (code === 0 && existsSync(dst) && /footer F=/.test(out)
+      ? resolve(out.trim())
+      : reject(new Error(`วางแถบท้ายแบรนด์ไม่สำเร็จ (exit ${code}) ${err.replace(/\s+/g, ' ').slice(0, 200)}`))))
+  })
+}
+
 function toJpeg(src, dst, { trim = false, ratio = 0, bars = '' } = {}) {
   if (process.platform !== 'win32') return Promise.resolve({ file: src, note: '' })
   return new Promise((resolve) => {
@@ -299,15 +320,22 @@ async function processJob(db, plugin, job) {
   try {
     let prompt = job.prompt
     let images = existsSync(LOGO) ? [LOGO] : []
+    let brandFooter = false
     if (String(job.prompt || '').includes(PLACEHOLDER_FREE_IMAGES)) {
-      // โหมดอิสระ: Codex ออกแบบเอง — แนบแค่โลโก้เต็ม + รูปเจ้าของ (ใช้หรือไม่ใช้ก็ได้) ไม่แนบเรฟคู่แข่ง ไม่ให้ลอกโครงเดิม
+      // โหมดอิสระ: Codex ออกแบบเอง — ไม่แนบเรฟคู่แข่ง ไม่ให้ลอกโครงเดิม
       // presenter=use ในบรรทัด MODE = ทิศที่มีคนเป็นจุดเด่น → บังคับใส่รูปเจ้าของ (8 พ.ย. 2569)
-      const free = parseFreeModeLine(job.prompt) || { direction: 'none', presenter: 'optional' }
+      // footer=brand = Codex ไม่วาดโลโก้/เบอร์ → ไม่แนบโลโก้ แล้ววางแถบท้ายของจริงหลังเจน (งานเก่าไม่มี footer= ยังแนบโลโก้เต็มแบบเดิม)
+      const free = parseFreeModeLine(job.prompt) || { direction: 'none', presenter: 'optional', footer: 'none' }
+      brandFooter = free.footer === 'brand'
+      if (brandFooter) {
+        const missing = [FOOTER_SCRIPT, FOOTER_LOGO, FOOTER_FONT].filter((f) => !existsSync(f))
+        if (missing.length) throw new Error(`ไม่พบไฟล์แถบท้ายแบรนด์: ${missing.map((f) => path.relative(repo, f)).join(', ')}`)
+      }
       const logo = existsSync(LOGO_FULL) ? LOGO_FULL : LOGO
       const presenter = existsSync(PRESENTER) ? PRESENTER : null
-      images = [logo, ...(presenter ? [presenter] : [])].filter((f) => existsSync(f))
-      prompt = fillFreeImages(job.prompt, { logo: images.includes(logo), presenter: Boolean(presenter), usePresenter: free.presenter === 'use' })
-      log(`${label}: โหมดอิสระ (Codex ออกแบบเอง) · ทิศเริ่มต้น ${free.direction} · รูปผู้แนะนำ ${free.presenter === 'use' ? 'บังคับใส่' : 'Codex เลือกเอง'} · แนบ ${images.length} ภาพ (โลโก้เต็ม${presenter ? ' · รูปผู้แนะนำ' : ''})`)
+      images = [...(brandFooter ? [] : [logo]), ...(presenter ? [presenter] : [])].filter((f) => existsSync(f))
+      prompt = fillFreeImages(job.prompt, { logo: !brandFooter && images.includes(logo), presenter: Boolean(presenter), usePresenter: free.presenter === 'use', footer: brandFooter })
+      log(`${label}: โหมดอิสระ (Codex ออกแบบเอง) · ทิศเริ่มต้น ${free.direction} · รูปผู้แนะนำ ${free.presenter === 'use' ? 'บังคับใส่' : 'Codex เลือกเอง'} · ${brandFooter ? 'แถบท้ายแบรนด์วางเองหลังเจน' : 'Codex วาดโลโก้/เบอร์เอง (งานเก่า)'} · แนบ ${images.length} ภาพ`)
     } else if (String(job.prompt || '').includes(PLACEHOLDER_IMAGES)) {
       // v4: เติมรายการภาพแนบตามไฟล์ที่มีจริง — โลโก้เต็ม · รูปผู้แนะนำ (ถ้ามี) · เรฟสไตล์ตามโครงของโพสต์
       const layout = (String(job.prompt).match(/^LAYOUT:\s*(\w+)/m) || [])[1] || 'steps'
@@ -339,9 +367,16 @@ async function processJob(db, plugin, job) {
     const target = POSTER_SIZES[job.size] || null
     const { file: jpg, note } = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`), { trim: /LETTERBOX BARS|BLACK #000000 bars/.test(String(job.prompt || '')), bars: /BLACK #000000 bars/.test(String(job.prompt || '')) ? 'black' : '', ratio: target ? target.width / target.height : 0 })
     if (note) log(`${label}: ${note}`)
-    const isJpeg = /\.jpe?g$/i.test(jpg)
+    let finalFile = jpg
+    if (brandFooter) {
+      // แถบท้ายแบรนด์: โลโก้จริงพื้นโปร่งใส + เบอร์/LINE ตัวพิมพ์ Kanit (เจ้าของ 8 พ.ย. 2569) · ล้ม = งานล้ม (ห้ามส่งโปสเตอร์ที่ไม่มีช่องทางติดต่อ)
+      if (jpg === saved) throw new Error('ตัดแถบ/แปลง JPEG ไม่สำเร็จ จึงวางแถบท้ายแบรนด์ไม่ได้')
+      finalFile = path.join(OUTPUT_DIR, `job-${job.id}-final.jpg`)
+      log(`${label}: ${await addBrandFooter(jpg, finalFile)}`)
+    }
+    const isJpeg = /\.jpe?g$/i.test(finalFile)
     const objectPath = `jobs/${job.id}.${isJpeg ? 'jpg' : 'png'}`
-    const bytes = await fs.readFile(jpg)
+    const bytes = await fs.readFile(finalFile)
     const upload = await db.storage.from(IMAGE_BUCKET).upload(objectPath, bytes, { contentType: isJpeg ? 'image/jpeg' : 'image/png', upsert: true })
     if (upload.error) throw upload.error
     const done = await db.from('marketing_image_jobs')

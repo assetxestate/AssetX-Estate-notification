@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildFreePosterPrompt, describeFreeImages, fillFreeImages, freeDirection, freePoolStrings, freeTextPool, parseFreeModeLine, technicalFrame, FREE_DIRECTIONS, PLACEHOLDER_FREE_IMAGES } from './posterFree.js'
+import { buildFreePosterPrompt, describeFreeImages, fillFreeImages, footerContactLines, footerShare, freeDirection, freePoolStrings, freeTextPool, parseFreeModeLine, technicalFrame, FREE_DIRECTIONS, PLACEHOLDER_FREE_IMAGES } from './posterFree.js'
 import { cropPlan } from './posterSizes.js'
 
 const POST = {
@@ -28,12 +28,15 @@ test('โหมดอิสระ: บอก Codex ให้ออกแบบ�
   assert.match(prompt, /^DESIGNER MODE: you are the art director/)
   assert.doesNotMatch(prompt, /PASS-THROUGH|Canvas map|Zones:|speech bubble|LAYOUT:/)
   assert.match(prompt, /y 0-186 and y 1350-1536 are two solid flat BLACK #000000 bars/, 'ตัวรับงานตัดแถบเมื่อเห็นคำนี้')
-  assert.match(prompt, /"โทร 096-986-8888" and "LINE: assetxestate"/)
+  // เจ้าของ 8 พ.ย.: โลโก้/เบอร์/LINE ย้ายไปแถบท้ายที่ตัวรับงานวางเอง — Codex ต้องเว้นแถบล่างและห้ามวาดเอง
+  assert.doesNotMatch(prompt, /096-986-8888|assetxestate/, 'ไม่ให้ Codex วาดเบอร์/LINE เอง')
+  assert.match(prompt, /Brand footer \(fixed[^\n]*bottom 14% of the design area[^\n]*fade starting 26% from the bottom[^\n]*Do NOT draw any logo, brand mark, company name, phone number, LINE id/)
+  assert.match(prompt, /Hard rules:[^\n]*no logo or brand mark of any kind/)
   assert.match(prompt, /Input images: \{\{FREE_IMAGES\}\}/)
   assert.match(prompt, /Brand brief \(guidance, not a template\)/)
   assert.match(prompt, /\nColours: the logo's navy #08213f and cyan #42c7d8 lead/)
   assert.match(prompt, new RegExp(`Optional starting direction for this run[^\\n]*${FREE_DIRECTIONS[3].text.slice(0, 20)}`))
-  assert.match(prompt, /\nMODE: free seed=3 direction=split-screen presenter=optional$/)
+  assert.match(prompt, /\nMODE: free seed=3 direction=split-screen presenter=optional footer=brand$/)
   assert.match(prompt, /Visual style \(required[^\n]*photoreal and realistic, never cartoon/, 'เจ้าของ 8 พ.ย.: สมจริง ไม่ใช่การ์ตูน')
   assert.match(prompt, /Identity: premium and luxurious/)
   assert.match(prompt, /Avoid:[^\n]*cartoon or comic style, flat vector illustration, hand-drawn doodles/)
@@ -61,7 +64,7 @@ test('ขนาดอื่น · ทิศเริ่มต้นหมุน�
   const ids = new Set(Array.from({ length: FREE_DIRECTIONS.length }, (_, i) => freeDirection(i).id))
   assert.equal(ids.size, FREE_DIRECTIONS.length)
   assert.equal(freeDirection(null), null)
-  assert.match(buildFreePosterPrompt({ ...POST, size: 'feed-4x5' }), /Choose the concept freely\.[^]*MODE: free seed=none direction=none presenter=optional$/)
+  assert.match(buildFreePosterPrompt({ ...POST, size: 'feed-4x5' }), /Choose the concept freely\.[^]*MODE: free seed=none direction=none presenter=optional footer=brand$/)
   const bare = buildFreePosterPrompt({ title: 'ขายฝากต่างจากจำนองอย่างไร', caption: '', size: 'square-1x1', seed: 2 })
   assert.match(bare, /Headline \(required[^\n]*"ขายฝากต่างจากจำนองอย่างไร"/)
   assert.doesNotMatch(bare, /Key points/)
@@ -73,8 +76,8 @@ test('ภาพแนบโหมดอิสระ: โลโก้ + รูป
   assert.match(describeFreeImages({ logo: false, presenter: false }), /none attached/)
   const filled = fillFreeImages(`a\nInput images: ${PLACEHOLDER_FREE_IMAGES}\nb`, { logo: true, presenter: false })
   assert.doesNotMatch(filled, /\{\{/)
-  assert.deepEqual(parseFreeModeLine('x\nMODE: free seed=42 direction=giant-type'), { seed: 42, direction: 'giant-type', presenter: 'optional' }, 'งานเก่าไม่มี presenter= = Codex เลือกเอง')
-  assert.deepEqual(parseFreeModeLine('x\nMODE: free seed=6 direction=advisor-office presenter=use'), { seed: 6, direction: 'advisor-office', presenter: 'use' })
+  assert.deepEqual(parseFreeModeLine('x\nMODE: free seed=42 direction=giant-type'), { seed: 42, direction: 'giant-type', presenter: 'optional', footer: 'none' }, 'งานเก่าไม่มี presenter=/footer= = Codex เลือกเอง · Codex วาดโลโก้/เบอร์เอง')
+  assert.deepEqual(parseFreeModeLine('x\nMODE: free seed=6 direction=advisor-office presenter=use footer=brand'), { seed: 6, direction: 'advisor-office', presenter: 'use', footer: 'brand' })
   assert.equal(parseFreeModeLine('LAYOUT: steps'), null)
 })
 
@@ -84,10 +87,24 @@ test('ทิศแนวหรูสมจริง (เจ้าของ 8 พ
   assert.equal(uses.length, 3)
   for (const d of uses) assert.match(d.text, /advisor from the attached photo/)
   const useSeed = FREE_DIRECTIONS.findIndex((d) => d.presenter === 'use')
-  assert.match(buildFreePosterPrompt({ ...POST, size: 'feed-4x5', seed: useSeed }), new RegExp(`direction=${uses[0].id} presenter=use$`))
+  assert.match(buildFreePosterPrompt({ ...POST, size: 'feed-4x5', seed: useSeed }), new RegExp(`direction=${uses[0].id} presenter=use footer=brand$`))
   const required = describeFreeImages({ logo: true, presenter: true, usePresenter: true })
   assert.match(required, /Image 2 = THE ADVISOR \(required in this design\)/)
   assert.match(required, /never another clear face/)
   assert.match(describeFreeImages({ logo: true, presenter: false, usePresenter: true }), /No advisor photo is attached: leave people out/)
   assert.match(describeFreeImages({ logo: true, presenter: true, usePresenter: false }), /optional to use/)
+})
+
+test('แถบท้ายแบรนด์ (เจ้าของ 8 พ.ย.): ไม่แนบโลโก้ให้ Codex · รูปเจ้าของเป็นภาพที่ 1 · สัดส่วนแถบตรงสูตรเดียวกับสคริปต์ · ข้อความติดต่อจากค่าคงที่', () => {
+  const withPresenter = describeFreeImages({ presenter: true, usePresenter: true, footer: true })
+  assert.match(withPresenter, /^Image 1 = THE ADVISOR \(required in this design\)/)
+  assert.doesNotMatch(withPresenter, /logo/i)
+  assert.match(describeFreeImages({ presenter: true, footer: true }), /^Image 1 = IDENTITY REFERENCE \(optional to use\)/)
+  assert.equal(describeFreeImages({ presenter: false, footer: true }), 'none attached.')
+  assert.match(describeFreeImages({ presenter: false, usePresenter: true, footer: true }), /leave people out/)
+  // feed 4:5 (1080x1350): F = min(178.2, 189) → แถบ 14% · ม่าน 26% · square: F = min(178.2, 151.2) → 14% · ม่าน 27%
+  assert.deepEqual(footerShare(cropPlan('feed-4x5')), { band: 14, fade: 26 })
+  assert.deepEqual(footerShare(cropPlan('square-1x1')), { band: 14, fade: 27 })
+  assert.ok(footerShare(cropPlan('story-9x16')).band < 14, 'สตอรี่สูง แถบกินพื้นที่น้อยกว่า')
+  assert.deepEqual(footerContactLines(), ['โทร 096-986-8888', 'LINE: assetxestate'])
 })

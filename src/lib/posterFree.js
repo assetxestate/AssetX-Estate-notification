@@ -5,6 +5,7 @@
 // ต่างจาก v4: ไม่มี PASS-THROUGH RULE (ให้ตัวแทน Codex เขียนคำสั่งภาพเอง) · ไม่มีแผนที่โซน · ไม่แนบเรฟคู่แข่ง · ไม่บังคับกล่องคำพูด/การ์ดคู่
 // สิ่งที่ยังบังคับ (ความถูกต้อง ไม่ใช่หน้าตา): แถบดำกันครอป · ข้อความไทยคัดจากโพสต์คำต่อคำ (เลือกใช้บางข้อได้) · โลโก้ไม่วาดใหม่ · เบอร์/LINE บริษัท · รายการห้าม
 // 8 พ.ย. 2569: เจ้าของให้เป็นค่าเริ่มต้นแทน "ตามเรฟ" · กติกาหน้าตาข้อเดียวที่บังคับ = สมจริงแนวพรีเมียมหรูหรา ไม่ใช่การ์ตูน (เจ้าของสั่ง)
+// 8 พ.ย. บ่าย: โลโก้และเบอร์/LINE ย้ายไปแถบท้ายที่ตัวรับงานวางเอง (scripts/poster-footer.ps1) — Codex เว้นแถบล่างไว้ ไม่วาดโลโก้/เบอร์เอง
 import { POSTER_CONTACT } from './posterDesignSystem.js'
 import { extractPosterCopyV4 } from './posterV4.js'
 import { cropPlan, DEFAULT_POSTER_SIZE } from './posterSizes.js'
@@ -37,12 +38,12 @@ export function technicalFrame(plan) {
   const bar = (plan.cutPx || 0) + slack
   if (/top/.test(String(plan.edges || ''))) {
     const bottom = plan.sourceHeight - bar
-    return `Technical frame (the ONLY fixed layout rule, keep it word for word in your image_gen prompt): the canvas is ${plan.sourceWidth}x${plan.sourceHeight} px; y 0-${bar} and y ${bottom}-${plan.sourceHeight} are two solid flat BLACK #000000 bars with absolutely nothing on them (they are cut off before posting). The whole design lives in y ${bar}-${bottom}; keep every text, the logo and the contact area at least 30 px inside that zone.`
+    return `Technical frame (the ONLY fixed layout rule, keep it word for word in your image_gen prompt): the canvas is ${plan.sourceWidth}x${plan.sourceHeight} px; y 0-${bar} and y ${bottom}-${plan.sourceHeight} are two solid flat BLACK #000000 bars with absolutely nothing on them (they are cut off before posting). The whole design lives in y ${bar}-${bottom}; keep every text at least 30 px inside that zone.`
   }
   if (/left/.test(String(plan.edges || ''))) {
-    return `Technical frame (the ONLY fixed layout rule, keep it word for word in your image_gen prompt): the left ${bar} px and right ${bar} px of the ${plan.sourceWidth}x${plan.sourceHeight} canvas are two solid flat BLACK #000000 bars with nothing on them (cut off before posting); keep every text, the logo and the contact area at least 30 px inside the area between them.`
+    return `Technical frame (the ONLY fixed layout rule, keep it word for word in your image_gen prompt): the left ${bar} px and right ${bar} px of the ${plan.sourceWidth}x${plan.sourceHeight} canvas are two solid flat BLACK #000000 bars with nothing on them (cut off before posting); keep every text at least 30 px inside the area between them.`
   }
-  return `Technical frame (the ONLY fixed layout rule): ${plan.sourceWidth}x${plan.sourceHeight} canvas; keep every text, the logo and the contact area at least 4% away from every edge.`
+  return `Technical frame (the ONLY fixed layout rule): ${plan.sourceWidth}x${plan.sourceHeight} canvas; keep every text at least 4% away from every edge.`
 }
 
 // คลังข้อความที่ใช้ได้ — ทุกข้อคัดจากโพสต์คำต่อคำ (ยกเว้นช่องทางติดต่อของบริษัท) · ไม่ใส่ประโยคกล่องคำพูด (เจ้าของถามว่ามีไว้ทำไม — ถูกดึงจากรายละเอียดมาลอย ๆ)
@@ -69,6 +70,21 @@ export function freePoolStrings(pool) {
   return [pool.headline, pool.opening, pool.pointsTitle, ...pool.points.flatMap((p) => [p.title, p.detail]), pool.doTitle, ...pool.doItems, pool.avoidTitle, ...pool.avoidItems, pool.tip].filter(Boolean)
 }
 
+// แถบท้ายแบรนด์ (เจ้าของ 8 พ.ย. 2569: โลโก้ไม่เอาพื้นขาว · เบอร์/LINE ให้เป็นระเบียบและสวยกว่านี้)
+// Codex ไม่วาดโลโก้/เบอร์/LINE — ตัวรับงานวางของจริงทีหลังด้วย scripts/poster-footer.ps1 (โลโก้พื้นโปร่งใส + ตัวพิมพ์ Kanit)
+// สูตรความสูงแถบต้องตรงกับสคริปต์: F = min(16.5% ของกว้าง, 14% ของสูง) · ม่านไล่สีเริ่ม 1.9F จากขอบล่าง
+export const FOOTER_RATIO = { width: 0.165, height: 0.14, fade: 1.9 }
+
+export function footerShare({ width, height } = {}) {
+  const F = Math.min(width * FOOTER_RATIO.width, height * FOOTER_RATIO.height)
+  const pct = (v) => Math.ceil(Number(((v / height) * 100).toFixed(3))) // toFixed ตัดเศษทศนิยมลอย (14.000…2 ไม่ให้ปัดเป็น 15)
+  return { band: pct(F), fade: pct(F * FOOTER_RATIO.fade) }
+}
+
+export function footerContactLines(contact = POSTER_CONTACT) {
+  return [`โทร ${contact.phone}`, `LINE: ${contact.line}`]
+}
+
 export function freeDirection(seed) {
   if (seed === null || seed === undefined || Number.isNaN(Number(seed))) return null
   return FREE_DIRECTIONS[Math.abs(Math.trunc(Number(seed))) % FREE_DIRECTIONS.length]
@@ -78,7 +94,7 @@ export function buildFreePosterPrompt({ title = '', caption = '', size = DEFAULT
   const plan = cropPlan(size)
   const pool = freeTextPool({ title, caption })
   const direction = freeDirection(seed)
-  const { phone, line } = pool.contact
+  const footer = footerShare(plan)
   const textLines = [
     `- Headline (required, the biggest text): ${q(pool.headline)}${pool.keyWord ? `; you may emphasise the key word ${q(pool.keyWord)}` : ''}`,
     pool.opening ? `- Opening line (optional): ${q(pool.opening)}` : '',
@@ -86,13 +102,13 @@ export function buildFreePosterPrompt({ title = '', caption = '', size = DEFAULT
     pool.doItems.length ? `- What to do (optional)${pool.doTitle ? `, title ${q(pool.doTitle)}` : ''}: ${pool.doItems.map(q).join(' / ')}` : '',
     pool.avoidItems.length ? `- What to avoid (optional)${pool.avoidTitle ? `, title ${q(pool.avoidTitle)}` : ''}: ${pool.avoidItems.map(q).join(' / ')}` : '',
     pool.tip ? `- Tip (optional): ${q(pool.tip)}` : '',
-    `- Contact (required, together in one small tidy area): ${q(`โทร ${phone}`)} and ${q(`LINE: ${line}`)}`,
   ].filter(Boolean)
   return [
     'DESIGNER MODE: you are the art director of this poster. Do NOT forward this brief as it is. Read it, invent your own concept, composition and camera, then write your own detailed image_gen prompt (describe the design in English; copy every Thai string you use exactly, inside quotes) and call image_gen once. Surprise us: this poster should look clearly different from a standard stacked-card infographic unless that is truly the best idea for this content, while staying photoreal and premium.',
     '',
     technicalFrame(plan),
     `Format: ${plan.platform}, final size ${plan.width}x${plan.height}. Every Thai text must be readable on a phone: nothing smaller than about 2% of the design height, the headline at least three times that.`,
+    `Brand footer (fixed, keep it word for word in your image_gen prompt): after rendering we add our own dark-navy footer with the real logo and contact details over the bottom ${footer.band}% of the design area, with a soft dark fade starting ${footer.fade}% from the bottom. Keep the bottom ${footer.band}% as plain continuing background (scene, floor, wall, water or material) with no text, faces, hands or key objects, and keep every text and the main subject above the bottom ${footer.fade}%. Do NOT draw any logo, brand mark, company name, phone number, LINE id or contact text anywhere.`,
     `Topic: ${q(pool.headline)} — an educational Facebook post from a Thai property advisory about ขายฝาก (sale with right of redemption) and จำนอง (mortgage).`,
     'Brand brief (guidance, not a template): AssetX Estate is a Thai real-estate advisory. Readers are Thai homeowners who need cash and investors; they are cautious and want clear, honest guidance. Identity: premium and luxurious, like a private bank or a luxury-property developer; trustworthy, calm, warm and clear; never a loan-shark flyer.',
     'Visual style (required, the one fixed look rule): photoreal and realistic, never cartoon. Use real photography or photoreal renders of real places, people and materials (modern Thai architecture, refined interiors, marble, walnut, leather, glass, brushed metal), cinematic natural or studio light with soft real shadows, shallow depth of field where it helps, a restrained palette and generous negative space. Icons, if any, are thin, fine-line and minimal. Composition, camera angle, crop and layout are entirely yours.',
@@ -101,18 +117,27 @@ export function buildFreePosterPrompt({ title = '', caption = '', size = DEFAULT
     `Input images: ${PLACEHOLDER_FREE_IMAGES}`,
     'Text you may put on the poster (Thai, copy exactly, each string at most once; choose only what serves your concept, less is often better; never paraphrase, shorten, merge or invent Thai text):',
     ...textLines,
-    `Hard rules: no other words in any language except the strings above, the logo's own wordmark and "LINE"; the digits ${phone} and the id ${line} copied exactly; the attached logo is the only logo and is never redrawn or retyped; the black bars stay completely empty.`,
+    'Hard rules: no other words, letters or numbers in any language except the strings above; no logo or brand mark of any kind (the footer adds the real one); the black bars stay completely empty.',
     'Avoid: prices, percentages, interest rates, any other phone number, LINE id, URL, QR code, address, personal name or deed number; Garuda, seals, stamps, government or company emblems; watermarks or AI labels; a green-and-gold loan-flyer look; villains, police or handcuffs; neon glow; cartoon or comic style, flat vector illustration, hand-drawn doodles or marker sketches, clay or toy-like 3D, paper collage, stickers, chunky or emoji-style icons, sparkles, starbursts, halftone dots and candy colours.',
-    `MODE: free seed=${seed === null || seed === undefined ? 'none' : seed} direction=${direction ? direction.id : 'none'} presenter=${direction?.presenter === 'use' ? 'use' : 'optional'}`,
+    `MODE: free seed=${seed === null || seed === undefined ? 'none' : seed} direction=${direction ? direction.id : 'none'} presenter=${direction?.presenter === 'use' ? 'use' : 'optional'} footer=brand`,
   ].join('\n')
 }
 
-// ภาพแนบของโหมดอิสระ: โลโก้เต็ม + รูปเจ้าของ (ถ้ามีไฟล์) · ไม่แนบเรฟคู่แข่ง (ไม่ให้ลอกโครงเดิม) · ตัวรับงานเติมตามไฟล์ที่มีจริง
+// ภาพแนบของโหมดอิสระ: รูปเจ้าของ (ถ้ามีไฟล์) · ไม่แนบเรฟคู่แข่ง (ไม่ให้ลอกโครงเดิม) · ตัวรับงานเติมตามไฟล์ที่มีจริง
+// footer=brand (ตั้งแต่ 8 พ.ย. 2569) → ไม่แนบโลโก้ให้ Codex (แถบท้ายวางโลโก้จริงเอง) · งานเก่าที่ไม่มี footer= ยังแนบโลโก้เต็มแบบเดิม (logo: true)
 // usePresenter = บรรทัด MODE บอก presenter=use (ทิศที่มีคนเป็นจุดเด่น) → บังคับใส่รูปเจ้าของ · ไม่มีไฟล์รูป → ไม่ใส่คนเลย (ไม่ให้วาดคนแปลกหน้า)
 const NO_ADVISOR = 'No advisor photo is attached: leave people out of this design and drop the advisor from the starting direction.'
 const OTHER_PEOPLE = 'any other person only from behind or out of focus, never another clear face'
 
-export function describeFreeImages({ logo = true, presenter = false, usePresenter = false } = {}) {
+export function describeFreeImages({ logo = true, presenter = false, usePresenter = false, footer = false } = {}) {
+  if (footer) {
+    if (presenter) {
+      return usePresenter
+        ? `Image 1 = THE ADVISOR (required in this design): show this man as the advisor, a photoreal figure with the same face, hairstyle, skin tone and white dress shirt, lit to match your scene; you choose his size, crop, pose and position; ignore that photo's background and any text in it; ${OTHER_PEOPLE}.`
+        : `Image 1 = IDENTITY REFERENCE (optional to use): if your concept includes a person, it must be this man (same face, hairstyle, skin tone, white dress shirt) as a photoreal figure; ignore that photo's background and any text in it; ${OTHER_PEOPLE}.`
+    }
+    return usePresenter ? `none attached. ${NO_ADVISOR}` : 'none attached.'
+  }
   const parts = []
   let n = 0
   if (logo) {
@@ -145,5 +170,6 @@ export function parseFreeModeLine(prompt = '') {
     seed: seed ? Number(seed) : null,
     direction: (m[1].match(/direction=([\w-]+)/) || [])[1] || 'none',
     presenter: (m[1].match(/presenter=(\w+)/) || [])[1] === 'use' ? 'use' : 'optional',
+    footer: (m[1].match(/footer=(\w+)/) || [])[1] === 'brand' ? 'brand' : 'none',
   }
 }

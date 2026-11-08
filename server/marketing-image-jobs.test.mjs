@@ -257,7 +257,7 @@ test('create mode=free → คำสั่งโหมดอิสระ (Codex 
   const job = db.tables.marketing_image_jobs.at(-1)
   assert.match(job.prompt, /^DESIGNER MODE/)
   assert.match(job.prompt, /\{\{FREE_IMAGES\}\}/)
-  assert.match(job.prompt, /MODE: free seed=\d+ direction=[\w-]+ presenter=(use|optional)$/)
+  assert.match(job.prompt, /MODE: free seed=\d+ direction=[\w-]+ presenter=(use|optional) footer=brand$/)
   job.status = 'done'
   const res2 = response()
   await handlerWith(db)({ method: 'POST', body: { action: 'create', post_key: 'no-11', content_no: 11, mode: 'wild', ...post } }, res2)
