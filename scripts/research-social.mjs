@@ -171,7 +171,7 @@ function cmdStatus() {
   }
   const q = quotaLeft({ rows: usageRows(acctBase), today, capDay: acct.capDay, capOwn: acct.capOwn })
   out(acct.mode === 'own'
-    ? `เพจที่บัญชี AssetX เปิดวันนี้ (${today}): ${q.own}/${acct.capOwn} · เหลือ ${Math.max(q.left, 0)}${q.own > 0 ? ' · วันนี้อ่านแล้ว (รอบถัดไปข้าม)' : ''}`
+    ? `เพจที่บัญชี AssetX เปิดวันนี้ (${today}): ${q.own}/${acct.capOwn} · เหลือ ${Math.max(q.left, 0)}${usageRows(acctBase).some((r) => r.date === today && r.round === 'scheduled') ? ' · รอบตามเวลาของวันนี้อ่านแล้ว (รอบสำรองข้าม)' : ''}`
     : `เพจที่เปิดวันนี้ (${today}): รวมทุกโปรเจกต์ ${q.total}/${acct.capDay} · AssetX ${q.own}/${acct.capOwn} · เหลือให้ AssetX ${Math.max(q.left, 0)}${q.own > 0 ? ' · วันนี้อ่านแล้ว (รอบถัดไปข้าม)' : ''}`)
   const state = loadJson(path.join(SOCIAL_DIR, 'state.json'), { visits: {} })
   if (state.last_round) out(`รอบล่าสุดของเรา: ${state.last_round.day} · ${state.last_round.status} · เปิด ${state.last_round.opened} เพจ`)

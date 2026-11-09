@@ -140,9 +140,11 @@ export class AccountBook {
     saveJson(path.join(this.dir, 'state.json'), st)
     return true
   }
-  logUsage(pages, result = 'ok', { day = todayIso(), opened = null } = {}) {
+  // round = 'scheduled' (รอบตามเวลา) | 'manual' (ลองอ่าน --limit / เจ้าของสั่ง --target) — ใส่เฉพาะแถวสรุป ใช้ตัดสิน "วันนี้อ่านรอบแล้วหรือยัง"
+  logUsage(pages, result = 'ok', { day = todayIso(), opened = null, round = null } = {}) {
     const ints = (o) => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => v).map(([k, v]) => [k, Math.trunc(v)]))
     const row = { project: this.project, date: day, start: this.started, end: nowIso(), pages: ints(pages), result }
+    if (round) row.round = round
     if (opened && Object.keys(ints(opened)).length) row.opened = ints(opened)
     fs.mkdirSync(this.dir, { recursive: true })
     fs.appendFileSync(path.join(this.dir, 'usage.jsonl'), `${JSON.stringify(row)}\n`, 'utf8')
@@ -599,7 +601,11 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
   }
   let q = quota()
   // วันละ 1 รอบ (รอบสำรองข้ามเอง) — ยกเว้นเจ้าของสั่งอ่านเพจเฉพาะ (--target) ซึ่งยังต้องอยู่ในเพดานและเคารพแถวพัก (ข้อตกลง 4.7: AssetX ไม่มีข้อยกเว้นอื่น เว้นแต่เจ้าของสั่ง)
-  if (q.own > 0 && !targetFilter) {
+  // บัญชีแยก: นับเฉพาะ "รอบตามเวลา" ที่จบแล้ววันนี้ — รอบลอง (--limit) / เจ้าของสั่ง (--target) ไม่ทำให้รอบ 21:00 ถูกข้าม (เพจที่เปิดยังนับเข้าเพดาน 8)
+  //   (9 พ.ย. 2569: ลองอ่าน 1 เพจตอนสลับบัญชีกลางวัน แล้วรอบคืนนั้นหายทั้งรอบ ไม่ใช่สิ่งที่เจ้าของต้องการ)
+  const manual = Boolean(limit || targetFilter)
+  const roundDoneToday = () => (own ? usageRows(acctBase).some((r) => r.date === today && r.round === 'scheduled') : q.own > 0)
+  if (roundDoneToday() && !targetFilter) {
     out.status = 'already_today'
     say(`[social] วันนี้ AssetX อ่าน Facebook แล้ว ${q.own} เพจ — ข้าม (วันละ 1 รอบ)`)
     return out
@@ -664,7 +670,7 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
       const b1 = blockedFor(PLATFORM, today, acctBase)
       if (b1) { out.status = BLOCKED_STATUS; stop = true; say(own ? '⚠️ [social] บัญชี Facebook ของ AssetX พักอยู่ — ข้ามรอบ' : `⚠️ [social] Facebook พักอยู่ (${b1.by || '?'} เจอระหว่างที่เรารอกุญแจ) — ข้ามรอบ`); return 'return' }
       q = quota()
-      if (first && q.own > 0 && !targetFilter) { out.status = 'already_today'; stop = true; say('[social] AssetX อีกตัวอ่านไปแล้วระหว่างรอ — ข้าม'); return 'return' }
+      if (first && roundDoneToday() && !targetFilter) { out.status = 'already_today'; stop = true; say('[social] AssetX อีกตัวอ่านไปแล้วระหว่างรอ — ข้าม'); return 'return' }
       const todo = batch.slice(0, Math.max(0, q.left))
       if (!todo.length) {
         stop = true
@@ -785,7 +791,7 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
     } finally {
       try {
         // แถวสรุปของชุดนี้ (pages ว่าง ไม่นับโควตา) · บัญชีร่วมต้องยังถือกุญแจ
-        if (touched && (own || lock.held)) rec.usage({}, [...new Set(out.result.slice(result0))].join(',') || 'ok', { opened: { facebook: out.opened.facebook - opened0 }, ...usageDay })
+        if (touched && (own || lock.held)) rec.usage({}, [...new Set(out.result.slice(result0))].join(',') || 'ok', { opened: { facebook: out.opened.facebook - opened0 }, ...usageDay, ...(own ? { round: manual ? 'manual' : 'scheduled' } : {}) })
       } catch { /* กุญแจหลุดแล้ว — ข้ามแถวสรุป ห้ามโยนออกจาก finally */ }
       lock.release() // ปล่อยเสมอ
     }

@@ -3,7 +3,7 @@
   "_rules": "ห้ามใส่คำสั่ง [write] ของ OpenCLI (follow/like/comment/join) · ห้ามกลุ่มส่วนตัว · เพจใหม่ตรวจด้วยตาว่าเป็นเพจจริงก่อน (เพจปลอมชื่อคล้ายเยอะ) · ห้ามใส่อีเมล/รหัสของบัญชีสำรองในไฟล์นี้ (รีโปสาธารณะ) · ใช้ร่วมได้เฉพาะ Facebook — Instagram/Reddit/TikTok ของ AssetX ห้ามผ่าน browser นี้",
   "_agreement": "ข้อตกลง 2 ระบบ: ~/.claude/skills/social-research/profiles/shared-browser-dvx-assetx.md — ค่าในหมวด shared_browser ต้องตรงกับฝั่ง DVX (deploy/tasks/social_watch.json → shared_browser.daily_cap 12 · AssetX ได้ 4) · เปลี่ยนเพดาน/งบเวลา/ชื่อ session ต้องแก้ทั้งสองฝั่งพร้อมกัน (ข้อ 10)",
 
-  "account": "shared",
+  "account": "own",
   "_account_note": "เจ้าของสั่ง 9 พ.ย. 2569: แยกบัญชี Facebook ของ AssetX ออกจาก DivisionX (ข้อตกลงข้อ 9) · shared = บัญชีสำรองร่วม (Chrome profile Research · ค่าด้านล่าง chrome_profile_dir/bridge_profile/shared_browser) · own = บัญชีของ AssetX เอง (หมวด own_account) — แถวพัก/บันทึกการใช้อยู่ใน .local/research/social/account/ ไม่แตะของร่วม · เพดานรวม 12 ไม่นับเรา · กุญแจ lock.json ยังใช้ของร่วม · เปลี่ยนเป็น own หลังเจ้าของตั้ง profile เสร็จ (node scripts/research-social.mjs account check ขึ้น ✅) และลองอ่าน 1 เพจผ่าน",
   "own_account": {
     "chrome_profile_name": "AssetX Research",
@@ -54,7 +54,7 @@
     { "name": "รับจำนองขายฝาก ถูกกฎหมาย (thaitoploan)", "url": "https://www.facebook.com/thaitoploan", "group": "competitor", "kind": "lender", "every_days": 4, "_note": "จุดขายความน่าเชื่อถือ/ถูกกฎหมาย" },
     { "name": "นายทุนบ้าน Naitoonbaan", "url": "https://www.facebook.com/naitoonbaan", "group": "competitor", "kind": "lender", "every_days": 4 },
     { "name": "Landfin247", "url": "https://www.facebook.com/landfin247", "group": "competitor", "kind": "lender", "every_days": 4, "_note": "ทั่วประเทศ" },
-    { "name": "Loan DD รับจำนองขายฝาก", "url": "https://www.facebook.com/p/Loan-DD-รับจำนองขายฝาก-ดอกเบี้ยต่ำ-61557696524403/", "group": "competitor", "kind": "broker", "every_days": 4, "_note": "ตัวกลางครบวงจร · เรตที่โฆษณาเป็นโฆษณา ไม่ใช่ข้อเท็จจริง · รหัสเพจ fb_61557696524403" },
+    { "name": "Loan DD รับจำนองขายฝาก", "url": "https://www.facebook.com/p/Loan-DD-รับจำนองขายฝาก-ดอกเบี้ยต่ำ-61557696524403/", "group": "competitor", "kind": "broker", "every_days": 4, "enabled": false, "_note": "ตัวกลางครบวงจร · เรตที่โฆษณาเป็นโฆษณา ไม่ใช่ข้อเท็จจริง · รหัสเพจ fb_61557696524403 · พักไว้ 9 พ.ย. 2569: อ่านได้ 0 โพสต์ทั้งบัญชีร่วม (8 พ.ย.) และบัญชี AssetX (9 พ.ย.) ขณะที่เพจอื่นอ่านได้ 12 — เพจที่อ่านไม่ได้ถูกนับว่ายังไม่เยี่ยมจึงกินโควตาทุกคืน · เจ้าของเปิดดูด้วยตาว่ายังโพสต์อยู่ไหม แล้วค่อยเปิดกลับ" },
     { "name": "Land for Loan (เพจ)", "url": "https://www.facebook.com/p/ลงทุนจำนอง-ขายฝาก-Land-for-Loan-100068212976075/", "group": "competitor", "kind": "platform", "every_days": 4, "_note": "แพลตฟอร์มจับคู่ผู้ให้กู้-เจ้าของทรัพย์ · ช่อง YouTube อยู่ในเลน video แล้ว · รหัสเพจ fb_100068212976075" },
 
     { "name": "CondoNewb", "url": "https://www.facebook.com/CondoNewb", "group": "media", "kind": "media", "every_days": 14, "_note": "ข่าวค่าธรรมเนียมโอน/จดจำนอง เกี่ยวกับเราโดยตรง · ยืดเป็น 14 วัน 7 พ.ย. 2569 (ข่าวซ้ำกับเลน RSS · ช่อง YouTube อยู่ในเลนแล้ว)" },

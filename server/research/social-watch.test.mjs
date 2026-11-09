@@ -758,3 +758,15 @@ test('linkAccountAlias: ตั้งชื่อ assetx ให้ profile ที
   assert.equal(hasOpenCliExtension('Profile 12', { userDataDir: 'U', exists: (p) => p.endsWith(path.join('Profile 12', 'Extensions', OPENCLI_EXTENSION_ID)) }), true)
   assert.equal(hasOpenCliExtension('', { userDataDir: 'U', exists: () => true }), false)
 })
+
+test('บัญชีแยก: รอบลอง (--limit) ไม่ทำให้รอบตามเวลาวันเดียวกันถูกข้าม · เพจที่ลองเปิดยังนับเพดาน · รอบตามเวลาจบแล้ว = รอบสำรองข้าม', async () => {
+  const h = harness({ aliases: ['research', 'assetx'] }, { deps: { resolveChromeDir: () => 'Profile 12' } })
+  const trial = await h.run({ cfg: OWN_CFG, targets: SIX, limit: 1 })
+  assert.equal(trial.status, 'ok'); assert.equal(trial.opened.facebook, 1)
+  assert.ok(usageRows(accountDir(h.storeDir)).some((r) => r.round === 'manual'))
+  const nightly = await h.run({ cfg: { ...OWN_CFG, own_account: { ...OWN_CFG.own_account, max_targets_per_run: { facebook: 10 } } }, targets: [...SIX, ...SIX.map((t, i) => ({ ...t, name: `เพจเพิ่ม ${i}`, url: `${t.url}x` }))] })
+  assert.equal(nightly.status, 'ok', 'รอบลองไม่นับเป็นรอบของวัน')
+  assert.equal(nightly.opened.facebook, 7, 'เพดาน 8 − ที่ลองเปิดไป 1')
+  const backup = await h.run({ cfg: OWN_CFG, targets: SIX })
+  assert.equal(backup.status, 'already_today')
+})
