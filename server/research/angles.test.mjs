@@ -28,8 +28,14 @@ test('prompt: ล้าง PII · เก็บชื่อสำนักเม�
   assert.match(cite.prompt, /ที่มา: ฐานเศรษฐกิจ/)
   assert.doesNotMatch(cite.prompt, /081-234/)
   assert.match(cite.prompt, /\[ลบ\]/)
-  assert.match(cite.prompt, /- C:/)
-  assert.doesNotMatch(cite.prompt, /- A:/)
+  // เพจพูดกับกลุ่ม A อย่างเดียว (เจ้าของเลือก 9 พ.ย. 2569): ไอเดียป้าย C/D ก็ได้คนอ่านกลุ่มเดียว = A · ไม่ส่งรายชื่อกลุ่มอื่น
+  assert.match(cite.prompt, /คนอ่านของโพสต์ \(กลุ่มเดียว\):\n\n- A:/)
+  assert.doesNotMatch(cite.prompt, /- [BCD]:/)
+  assert.match(cite.system, /คนอ่านของทุกมุม \(กลุ่มเดียว/)
+  assert.match(cite.system, /ห้ามเขียนจากมุมคนปล่อยเงิน/)
+  assert.match(cite.system, /ธุรกิจขายฝาก\/จำนองในไทย/)
+  assert.doesNotMatch(cite.system, /นายหน้า|ฝากขาย|หาซื้อ/)
+  assert.doesNotMatch(cite.system, /"brief":"[^"]*ให้ใคร/)
   assert.match(cite.prompt, /2027-06-30/)
   assert.match(cite.system, /อนุมัติทุกเคส/)
   assert.match(cite.system, /ชลบุรี/)
@@ -40,7 +46,9 @@ test('prompt: ล้าง PII · เก็บชื่อสำนักเม�
   assert.doesNotMatch(noCite.prompt, /Pantip/)
   assert.match(noCite.prompt, /ห้ามอ้างชื่อเพจ/)
   assert.match(noCite.prompt, /มีแค่หัวข้อ — ห้ามเดารายละเอียด/)
-  assert.match(noCite.prompt, /- A:[\s\S]*- D:/)
+  // ไอเดียไม่ติดป้ายกลุ่ม: เดิมส่งรายชื่อทั้ง A–D (ร่างพูดปนกับนักลงทุน) → ตอนนี้กลุ่มของเพจกลุ่มเดียว
+  assert.match(noCite.prompt, /- A:/)
+  assert.doesNotMatch(noCite.prompt, /- [BCD]:/)
 })
 
 test('parseAngles: รับ array หรือ {angles} · ตัด label 22 ตัว · ล้าง PII · ต้องได้ ≥ 2', () => {

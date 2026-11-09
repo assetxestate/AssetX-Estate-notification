@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildCompactPosterPrompt, canvasMapV4, clausesOf, describeInputImages, extractPosterCopyV4, fillImagePlaceholders, pickBandChips, splitChecklist, verbatimMissesV4 } from './posterV4.js'
+import { buildCompactPosterPrompt, canvasMapV4, clausesOf, describeInputImages, extractPosterCopyV4, fillImagePlaceholders, pickBandChips, splitChecklist, verbatimMissesV4, zoneLabels, ZONE_LABELS } from './posterV4.js'
 import { cropPlan } from './posterSizes.js'
 import { pickPosterVariant, posterSeed, parseVariantLine, sceneTopic, COMPOSITIONS, PALETTES } from './posterVariants.js'
 
@@ -156,4 +156,60 @@ test('buildCompactPosterPrompt กับชุดสไตล์: แถบด�
   assert.match(orange, /Right card of the pair \(hot magenta header pill[^\n]*hot magenta exclamation circle/)
   // seed=null = คำสั่งเดิมทุกบรรทัดที่เทสต์ก่อนหน้าตรวจ (ผู้แนะนำขวา เหลือง/ชมพู นูน 3D)
   assert.match(buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps' }), /VARIANT: seed=default set=presenter-right\/sun-coral\/extrude-3d\/point\/sparkle-arrow\/white-pill\/photo-composite\/desk-1 refs=layout/)
+})
+
+// เจอจริง #27 (9 พ.ย. 2569): โพสต์มีรายการตรวจ 4 ข้อ + บรรทัดสรุป 1 บรรทัด ไม่มีคู่ "ควรทำ/ควรหลีกเลี่ยง" แต่แผนที่แคนวาสยังจอง "two side-by-side cards"
+// และคำสั่งบอก "what to do and what to avoid" → โมเดลแต่งการ์ดคู่ 8 ข้อเอง (ไม่อยู่ในโพสต์) · ต้องเปลี่ยนโซนนั้นเป็นแผงเดียว/ของที่ไม่มีตัวอักษร
+const POST27 = {
+  title: 'ขายฝากอย่างไรให้ลดความเสี่ยง',
+  caption: [
+    'ขายฝากที่ดินต้องตรวจเอกสารตรงไหน เพื่อลดความเสี่ยงต่อทรัพย์และสิทธิไถ่คืน',
+    'เช็ก 4 จุดนี้ เพื่อแยกสิ่งที่เขียนไว้กับสิ่งที่ต้องตรวจให้ตรงกัน',
+    '',
+    '1. การใช้ทรัพย์จริง: ตรวจว่าขณะขายฝากใช้ที่ดินเพื่อเกษตรกรรมหรืออยู่อาศัยหรือไม่ หากผู้ขายฝากเป็นบุคคลธรรมดา ต้องพิจารณากฎหมายคุ้มครองการขายฝากที่เกี่ยวข้องด้วย',
+    '',
+    '2. กรรมสิทธิ์และภาระติดพัน: เปิดสารบัญจดทะเบียนด้านหลังเอกสารสิทธิ์ แล้วตรวจซ้ำที่สำนักงานที่ดินว่ามีจำนอง ขายฝาก หรือภาระจำยอมหรือไม่',
+    '',
+    '3. ราคาที่รองรับทำเล: เทียบราคาที่ใช้เจรจากับข้อมูลราคาซื้อขายจริงในทำเลเดียวกัน ไม่ยึดเพียงประกาศขายหรือราคาประเมินราชการ',
+    '',
+    '4. ข้อความและยอดค่าใช้จ่าย: ตรวจร่างสัญญาและสรุปค่าใช้จ่ายรวมเป็นลายลักษณ์อักษรให้เห็นว่าใครจ่ายรายการใด พร้อมตรวจสิทธิไถ่ถอนและกำหนดเวลาให้ชัด หากข้อความไม่ตรงกัน อาจเข้าใจภาระที่ต้องรับผิดชอบคลาดเคลื่อน',
+    '',
+    'ข้อมูลนี้เป็นความรู้ทั่วไป ต้องดูเอกสารและข้อเท็จจริงของแต่ละกรณี ไม่ใช่คำแนะนำเฉพาะราย',
+    '',
+    'ส่งข้อมูลทรัพย์ในชลบุรีพร้อมรูปเอกสารสิทธิ์ทางแชต AssetX Estate โดยปิดข้อมูลส่วนบุคคลก่อน เพื่อให้ทีมประเมินเบื้องต้น',
+  ].join('\n'),
+}
+
+test('โซนที่โพสต์ไม่มีข้อความ (#27): ไม่จองการ์ดคู่ · ไม่สั่ง "what to do and what to avoid" · ห้ามเติมการ์ด/ข้อความเอง', () => {
+  const copy = extractPosterCopyV4(POST27)
+  assert.ok(!(copy.leftItems.length >= 2 && copy.rightItems.length >= 2), 'โพสต์นี้ไม่มีคู่ควรทำ/ควรหลีกเลี่ยง')
+  for (const layout of ['steps', 'checklist', 'warning']) {
+    for (const seed of [null, 195810, 7, 42]) {
+      const prompt = buildCompactPosterPrompt({ ...POST27, size: 'feed-4x5', layout, seed })
+      const map = prompt.split('\n').find((l) => l.startsWith('Canvas map'))
+      assert.doesNotMatch(map, /two side-by-side cards/, `${layout}/${seed}`)
+      assert.match(map, copy.leftItems.length ? /one wide checklist panel/ : /photo band of the backdrop scene \(no text/)
+      assert.doesNotMatch(prompt, /what to do and what to avoid/)
+      assert.doesNotMatch(prompt, /Left card of the pair|Right card of the pair/)
+      assert.match(prompt, /never add cards, lists, header pills or text that are not in the Text section/)
+      assert.doesNotMatch(prompt, /the pair and the strip keep the zones/)
+    }
+  }
+})
+
+test('zoneLabels / canvasMapV4: บล็อกที่ไม่มีข้อความ = ของที่ไม่มีตัวอักษร · ค่าเดิมคงที่เมื่อมีครบ', () => {
+  const plan = cropPlan('feed-4x5')
+  const full = canvasMapV4(plan, null)
+  assert.match(full, /two side-by-side cards[\s\S]*one wide callout strip/)
+  assert.match(full, /brush ribbon/)
+  const bare = canvasMapV4(plan, null, zoneLabels({ pair: false, panel: false, strip: false, ribbon: false }))
+  assert.doesNotMatch(bare, /two side-by-side cards|one wide callout strip|brush ribbon y/)
+  assert.match(bare, /photo band of the backdrop scene \(no text, no cards, no icons\)/)
+  assert.match(bare, /thin cyan divider line \(no text\)/)
+  assert.match(bare, /thin cyan brush-stroke accent \(no text\)/)
+  assert.equal(zoneLabels().pair, ZONE_LABELS.pair)
+  // ชุดที่มีคู่ครบ (โพสต์ #4 เดิม) ยังได้การ์ดคู่และคำสั่ง what to do/avoid ตามเดิม
+  const withPair = buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps' })
+  assert.match(withPair, /two side-by-side cards/)
+  assert.match(withPair, /what to do and what to avoid/)
 })

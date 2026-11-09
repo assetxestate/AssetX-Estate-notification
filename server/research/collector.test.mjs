@@ -78,11 +78,17 @@ test('รอบเก็บเต็ม: เลนพังไม่ล้มท
   // Head Topics ถูกตัด · ข่าวเก่าถูกตัด · ข่าวไม่เกี่ยวไม่ผ่าน gate
   assert.equal(rows.some((r) => /สมชาย|081-234/.test(r.title)), false)
   assert.equal(rows.some((r) => /ดาราแต่งงาน|ข่าวเก่า/.test(r.title)), false)
-  // PII ในหัวข่าวประชาชาติถูกลบ และได้คะแนน area
-  const pcc = byKey['news:https://prachachat.net/real-estate/news-9']
-  assert.ok(pcc, Object.keys(byKey).join(','))
+  // ข่าวตลาด (กลุ่ม B/C/D) ไม่ใช่เรื่องของคนอ่านเพจ — เพจพูดกับกลุ่ม A อย่างเดียว (เจ้าของเลือก 9 พ.ย. 2569) → ไม่เข้าคิว
+  assert.equal(byKey['news:https://prachachat.net/real-estate/news-9'], undefined)
+  assert.ok(report.skipped.audience >= 1)
+  assert.match(formatCollectReport({ rows, report }), /ไม่ใช่กลุ่มคนอ่านของเพจ [1-9]/)
+  // เพจที่พูดกับทุกกลุ่ม: ข่าวเดียวกันเข้าคิว · PII ในหัวข่าวประชาชาติถูกลบ
+  const everyone = await collectIdeas({ cfg, brand: { ...brand, page_audience: ['A', 'B', 'C', 'D'] }, calendar, fetcher, now, existing: { keys: new Set(['pt:43800001']), eventKeys: new Map(), queueCounts: new Map([['community|community_q', 5]]) }, leads: [] })
+  const pcc = everyone.rows.find((r) => r.external_key === 'news:https://prachachat.net/real-estate/news-9')
+  assert.ok(pcc, everyone.rows.map((r) => r.external_key).join(','))
   assert.match(pcc.title, /\[ลบ\]/)
   assert.equal(pcc.source_label, 'ประชาชาติธุรกิจ')
+  assert.equal(everyone.report.skipped.audience, 0)
   // Pantip: เจ้าของตัดเลนออก 6 พ.ย. 2569 (enabled:false ทั้ง 3 เลน) → ไม่ยิงฟีด ไม่มีเลนในรายงาน ไม่มี community เข้าเลย
   assert.equal(rows.some((r) => r.source === 'community'), false)
   assert.equal(report.lanes.some((l) => /pantip/i.test(l.key)), false, 'เลน Pantip ต้องไม่ถูกรันเลย')
@@ -160,4 +166,19 @@ test('planExpiry: อายุต่อ subtype · event_date ยังไม่
   // ไอเดียที่เจ้าของย้อนร่างกลับมาเอง (unpick คง chosen_angle) ไม่หมดอายุเอง แม้อายุเกินเกณฑ์
   const returned = [...rows, { id: 7, status: 'new', subtype: 'market', created_at: '2026-09-01T00:00:00Z', chosen_angle: 'เช็กลิสต์' }]
   assert.deepEqual(planExpiry(returned, { subtypes, purgeDays: 14, now }), [1, 6])
+  // เพจพูดกับกลุ่ม A อย่างเดียว (เจ้าของเลือก 9 พ.ย. 2569): ไอเดียป้าย B/C/D ล้วนหมดอายุทันที แม้ยังใหม่หรือเหตุการณ์ยังไม่ถึง
+  // ป้ายที่มี A · ไม่ติดป้าย · เจ้าของดึงกลับจากร่าง · มีคอนเทนต์อ้าง · ไม่ใช่ new → ไม่แตะ · ไม่ส่ง pageAudience = ไม่กรองกลุ่ม
+  const fresh = '2026-11-01T00:00:00Z'
+  const byAudience = [
+    { id: 11, status: 'new', subtype: 'market', created_at: fresh, audience: ['B', 'C', 'D'] },
+    { id: 12, status: 'new', subtype: 'fee_measure', created_at: fresh, audience: ['C', 'D'], event_date: '2027-06-30' },
+    { id: 13, status: 'new', subtype: 'law', created_at: fresh, audience: ['A', 'B'] },
+    { id: 14, status: 'new', subtype: 'social_fb', created_at: fresh, audience: null },
+    { id: 15, status: 'new', subtype: 'market', created_at: fresh, audience: ['B', 'D'], chosen_angle: 'มุมหลัก' },
+    { id: 16, status: 'new', subtype: 'market', created_at: fresh, audience: ['B', 'D'], content_id: 3 },
+    { id: 17, status: 'picked', subtype: 'market', created_at: fresh, audience: ['B', 'D'] },
+  ]
+  assert.deepEqual(planExpiry(byAudience, { subtypes, purgeDays: 14, now, pageAudience: ['A'] }), [11, 12])
+  assert.deepEqual(planExpiry(byAudience, { subtypes, purgeDays: 14, now }), [])
+  assert.deepEqual(planExpiry(byAudience, { subtypes, purgeDays: 14, now, pageAudience: ['A', 'B'] }), [12])
 })

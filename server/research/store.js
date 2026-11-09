@@ -23,13 +23,17 @@ function cutoffFor(subtypes, subtype, purgeDays) {
 
 // แถวที่ควรตั้ง expired: อายุเกินเกณฑ์ของ subtype · event_date ยังไม่ถึง = ยังไม่หมดอายุ · มีคอนเทนต์อ้างถึง = ไม่แตะ
 // · มี chosen_angle = เจ้าของเคยเลือกแล้วย้อนร่างกลับมาเป็นไอเดียเอง (unpick) → ไม่แตะ ให้เจ้าของตัดสินเอง (ร่างใหม่ หรือกด ทิ้ง)
-export function planExpiry(rows, { subtypes = {}, purgeDays = 14, now = new Date(), referenced = new Set() } = {}) {
+// pageAudience = กลุ่มคนอ่านของเพจ (audience.js) — ไอเดียที่ติดป้ายกลุ่มแต่ไม่มีกลุ่มของเพจเลยหมดอายุทันที แม้เหตุการณ์ยังไม่ถึง
+// (เจ้าของเลือกกลุ่ม A อย่างเดียว 9 พ.ย. 2569 · ไอเดียที่เจ้าของดึงกลับจากร่างยังไม่แตะ) · ไม่ส่ง = ไม่กรองกลุ่ม
+export function planExpiry(rows, { subtypes = {}, purgeDays = 14, now = new Date(), referenced = new Set(), pageAudience = null } = {}) {
   const today = now.toISOString().slice(0, 10)
+  const page = Array.isArray(pageAudience) && pageAudience.length ? pageAudience : null
   const out = []
   for (const row of rows) {
     if (row.status !== 'new') continue
     if (row.content_id || referenced.has(row.id)) continue
     if (row.chosen_angle) continue
+    if (page && Array.isArray(row.audience) && row.audience.length && !row.audience.some((code) => page.includes(code))) { out.push(row.id); continue }
     if (row.event_date && row.event_date >= today) continue
     const ageDays = (now.getTime() - new Date(row.created_at).getTime()) / DAY_MS
     if (ageDays > cutoffFor(subtypes, row.subtype, purgeDays)) out.push(row.id)
@@ -83,8 +87,8 @@ export function createSupabaseStore({ url = process.env.SUPABASE_URL || process.
       const rows = await all(ideas().select('url').in('url', list))
       return new Set(rows.map((r) => r.url))
     },
-    async expireOld({ subtypes, purgeDays, now = new Date() } = {}) {
-      const rows = await all(ideas().select('id,status,subtype,created_at,event_date,content_id,chosen_angle').eq('status', 'new'))
+    async expireOld({ subtypes, purgeDays, now = new Date(), pageAudience = null } = {}) {
+      const rows = await all(ideas().select('id,status,subtype,created_at,event_date,content_id,chosen_angle,audience').eq('status', 'new'))
       let referenced = new Set()
       try {
         const refs = await all(db.from('marketing_content').select('idea_id').not('idea_id', 'is', null))
@@ -92,7 +96,7 @@ export function createSupabaseStore({ url = process.env.SUPABASE_URL || process.
       } catch (error) {
         if (!missingTable(error)) throw error
       }
-      const ids = planExpiry(rows, { subtypes, purgeDays, now, referenced })
+      const ids = planExpiry(rows, { subtypes, purgeDays, now, referenced, pageAudience })
       for (let i = 0; i < ids.length; i += 100) {
         const { error } = await ideas().update({ status: 'expired', dismiss_reason: 'expired' }).in('id', ids.slice(i, i + 100))
         if (error) throw error
@@ -203,8 +207,8 @@ export function createDryRunStore({ file, log = () => {} }) {
       const want = new Set((urls || []).filter(Boolean))
       return new Set(data.ideas.map((r) => r.url).filter((u) => want.has(u)))
     },
-    async expireOld({ subtypes, purgeDays, now = new Date() } = {}) {
-      const ids = planExpiry(data.ideas, { subtypes, purgeDays, now })
+    async expireOld({ subtypes, purgeDays, now = new Date(), pageAudience = null } = {}) {
+      const ids = planExpiry(data.ideas, { subtypes, purgeDays, now, pageAudience })
       for (const row of data.ideas) if (ids.includes(row.id)) { row.status = 'expired'; row.dismiss_reason = 'expired' }
       save()
       return { expired: ids.length, checked: data.ideas.filter((r) => r.status === 'new').length }

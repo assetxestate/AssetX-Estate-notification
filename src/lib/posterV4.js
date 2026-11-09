@@ -141,25 +141,38 @@ export function verbatimMissesV4(copy = {}, { title = '', caption = '' } = {}) {
 // โซนกลางภาพขึ้นกับ "การจัดวาง" ของชุดสไตล์ (posterVariants.js) · แถบดำ โลโก้ และแถบล่างคงที่ทุกแบบ (กันครอปกินเนื้อหา)
 const ZONES = { logoTop: 0.02, logoBottom: 0.10, headTop: 0.02, headBottom: 0.20, ribbonBottom: 0.245, presenterBottom: 0.49, cardTop: 0.26, cardBottom: 0.55, pairTop: 0.57, pairBottom: 0.78, stripTop: 0.80, stripBottom: 0.855, bandTop: 0.87, labelsAbove: 0.965 }
 
-// ข้อความโซนของการจัดวางแต่ละแบบ — Z(a,b) = ช่วง · Y(f) = จุด · topWord = "y <top>" หรือ "the top"
-function compositionZones(compositionId, { Z, Y, topWord, a1 }) {
-  const band = Z(ZONES.bandTop, 1)
-  switch (compositionId) {
-    case 'presenter-left':
-      return `logo chip top-right ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the right 60% of the width, right-aligned, ending left of the logo chip · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · brush ribbon ${Z(ZONES.headBottom, ZONES.ribbonBottom)} right-aligned · presenter cutout on the left 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the left edge of the main card · main card ${Z(ZONES.cardTop, ZONES.cardBottom)} with all its text in the right 62% of the width · two side-by-side cards ${Z(ZONES.pairTop, ZONES.pairBottom)} · one wide callout strip ${Z(ZONES.stripTop, ZONES.stripBottom)} · bottom band ${band}`
-    case 'numbered-steps':
-      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the left 60% of the width · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · brush ribbon ${Z(ZONES.headBottom, ZONES.ribbonBottom)} · presenter cutout on the right 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the right edge of the steps card · steps card ${Z(ZONES.cardTop, 0.60)} (one tall card; a vertical dotted cyan line down its left side joins big ${a1} numbered circles, one per row) · two side-by-side cards ${Z(0.62, ZONES.pairBottom)} · one wide callout strip ${Z(0.815, 0.86)} · bottom band ${band}`
-    case 'hero-scene':
-      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, 0.18)} full width, left-aligned, starting right of the logo chip · brush ribbon ${Z(0.18, 0.225)} · scene strip ${Z(0.235, 0.42)} full width showing the backdrop scene itself, sharp · presenter cutout (head to chest, about 22% of the width) at the right end of the scene strip from ${Y(0.21)} down to ${Y(0.44)}, overlapping the main card's top-right corner · speech bubble (if any) inside the scene strip, left of the presenter · main card ${Z(0.41, 0.62)} overlapping the bottom edge of the scene strip · two side-by-side cards ${Z(0.64, ZONES.pairBottom)} · one wide callout strip ${Z(0.815, 0.86)} · bottom band ${band}`
-    case 'presenter-bottom':
-      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, 0.19)} in the left 65% of the width · speech bubble (if any) in the right 35% of the width inside ${Z(ZONES.logoTop, 0.19)} · brush ribbon ${Z(0.19, 0.235)} · main card ${Z(0.25, 0.52)} full width · two side-by-side cards ${Z(0.54, 0.72)} · one wide callout strip ${Z(0.735, 0.785)} with its text in the left 70% of the width · presenter cutout (head to chest, about 26% of the width) in the bottom-right corner from ${Y(0.68)} down to ${Y(ZONES.bandTop)}, overlapping the right end of the callout strip and the bottom-right corner of the right card, never covering text · bottom band ${band}`
-    default:
-      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the left 60% of the width · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · brush ribbon ${Z(ZONES.headBottom, ZONES.ribbonBottom)} · presenter cutout on the right 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the right edge of the main card · main card ${Z(ZONES.cardTop, ZONES.cardBottom)} · two side-by-side cards ${Z(ZONES.pairTop, ZONES.pairBottom)} · one wide callout strip ${Z(ZONES.stripTop, ZONES.stripBottom)} · bottom band ${band}`
+// ชื่อบล็อกในแผนที่แคนวาส — บล็อกที่โพสต์ไม่มีข้อความให้ ต้องเปลี่ยนเป็นของที่ไม่มีตัวอักษร (zoneLabels)
+// เจอจริง #27 (9 พ.ย. 2569): แผนที่จอง "two side-by-side cards" + คำสั่งบอก "what to do and what to avoid" แต่โพสต์มีแค่ 1 บรรทัด
+// → โมเดลแต่งการ์ด "ควรทำอะไรบ้าง / ควรหลีกเลี่ยงอะไร" 8 ข้อเอง (ไม่อยู่ในโพสต์ ไม่ผ่านด่านตรวจ) รวมข้อที่ไล่ลูกค้าติดจำนอง
+export const ZONE_LABELS = { pair: 'two side-by-side cards', strip: 'one wide callout strip', ribbon: 'brush ribbon' }
+export function zoneLabels({ pair = true, panel = false, strip = true, ribbon = true } = {}) {
+  return {
+    pair: pair ? ZONE_LABELS.pair : panel ? 'one wide checklist panel' : 'a full-width sharp photo band of the backdrop scene (no text, no cards, no icons)',
+    strip: strip ? ZONE_LABELS.strip : 'a thin cyan divider line (no text)',
+    ribbon: ribbon ? ZONE_LABELS.ribbon : 'thin cyan brush-stroke accent (no text)',
   }
 }
 
-export function canvasMapV4(plan, variant = null) {
+// ข้อความโซนของการจัดวางแต่ละแบบ — Z(a,b) = ช่วง · Y(f) = จุด · topWord = "y <top>" หรือ "the top" · L = ชื่อบล็อก (zoneLabels)
+function compositionZones(compositionId, { Z, Y, topWord, a1, L = ZONE_LABELS }) {
+  const band = Z(ZONES.bandTop, 1)
+  switch (compositionId) {
+    case 'presenter-left':
+      return `logo chip top-right ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the right 60% of the width, right-aligned, ending left of the logo chip · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · ${L.ribbon} ${Z(ZONES.headBottom, ZONES.ribbonBottom)} right-aligned · presenter cutout on the left 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the left edge of the main card · main card ${Z(ZONES.cardTop, ZONES.cardBottom)} with all its text in the right 62% of the width · ${L.pair} ${Z(ZONES.pairTop, ZONES.pairBottom)} · ${L.strip} ${Z(ZONES.stripTop, ZONES.stripBottom)} · bottom band ${band}`
+    case 'numbered-steps':
+      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the left 60% of the width · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · ${L.ribbon} ${Z(ZONES.headBottom, ZONES.ribbonBottom)} · presenter cutout on the right 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the right edge of the steps card · steps card ${Z(ZONES.cardTop, 0.60)} (one tall card; a vertical dotted cyan line down its left side joins big ${a1} numbered circles, one per row) · ${L.pair} ${Z(0.62, ZONES.pairBottom)} · ${L.strip} ${Z(0.815, 0.86)} · bottom band ${band}`
+    case 'hero-scene':
+      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, 0.18)} full width, left-aligned, starting right of the logo chip · ${L.ribbon} ${Z(0.18, 0.225)} · scene strip ${Z(0.235, 0.42)} full width showing the backdrop scene itself, sharp · presenter cutout (head to chest, about 22% of the width) at the right end of the scene strip from ${Y(0.21)} down to ${Y(0.44)}, overlapping the main card's top-right corner · speech bubble (if any) inside the scene strip, left of the presenter · main card ${Z(0.41, 0.62)} overlapping the bottom edge of the scene strip · ${L.pair} ${Z(0.64, ZONES.pairBottom)} · ${L.strip} ${Z(0.815, 0.86)} · bottom band ${band}`
+    case 'presenter-bottom':
+      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, 0.19)} in the left 65% of the width · speech bubble (if any) in the right 35% of the width inside ${Z(ZONES.logoTop, 0.19)} · ${L.ribbon} ${Z(0.19, 0.235)} · main card ${Z(0.25, 0.52)} full width · ${L.pair} ${Z(0.54, 0.72)} · ${L.strip} ${Z(0.735, 0.785)} with its text in the left 70% of the width · presenter cutout (head to chest, about 26% of the width) in the bottom-right corner from ${Y(0.68)} down to ${Y(ZONES.bandTop)}, overlapping the right end of the callout strip and the bottom-right corner of the right card, never covering text · bottom band ${band}`
+    default:
+      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the left 60% of the width · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · ${L.ribbon} ${Z(ZONES.headBottom, ZONES.ribbonBottom)} · presenter cutout on the right 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the right edge of the main card · main card ${Z(ZONES.cardTop, ZONES.cardBottom)} · ${L.pair} ${Z(ZONES.pairTop, ZONES.pairBottom)} · ${L.strip} ${Z(ZONES.stripTop, ZONES.stripBottom)} · bottom band ${band}`
+  }
+}
+
+export function canvasMapV4(plan, variant = null, labels = ZONE_LABELS) {
   const compositionId = variant?.compositionId || 'presenter-right'
+  const L = { ...ZONE_LABELS, ...(labels || {}) }
   const a1 = variant?.palette?.a1?.name || 'sunshine yellow'
   const cutsTopBottom = /top/.test(String(plan.edges || ''))
   const cutsSides = /left/.test(String(plan.edges || ''))
@@ -172,11 +185,11 @@ export function canvasMapV4(plan, variant = null) {
     const bottom = plan.sourceHeight - bar
     const usable = bottom - top
     const y = (f) => Math.round(top + usable * f)
-    const zones = compositionZones(compositionId, { Z: (a, b) => `y ${y(a)}-${y(b)}`, Y: (f) => `y ${y(f)}`, topWord: `y ${top}`, a1 })
+    const zones = compositionZones(compositionId, { Z: (a, b) => `y ${y(a)}-${y(b)}`, Y: (f) => `y ${y(f)}`, topWord: `y ${top}`, a1, L })
     return `Canvas map (HIGHEST PRIORITY, ${plan.sourceWidth}x${plan.sourceHeight} px, y from the top): y 0-${top} and y ${bottom}-${plan.sourceHeight} are two solid flat BLACK #000000 bars with absolutely nothing on them; they are cut off before posting. The poster occupies only y ${top}-${bottom} and must be PACKED like the references: no empty area taller than 2% of the poster height anywhere. Zones: ${zones} sitting directly on the black bar, with every pill and label inside it ending above y ${y(ZONES.labelsAbove)} and plain navy between the labels and the black bar. Nothing of the poster may touch the black bars.`
   }
   const sideBars = cutsSides ? ` The left ${bar} px and right ${bar} px of the canvas are solid flat BLACK #000000 bars with nothing on them (cut off before posting); the poster occupies only the area between them.` : ''
-  const zones = compositionZones(compositionId, { Z: (a, b) => `${pct(a)}-${pct(b)}`, Y: pct, topWord: 'the top', a1 })
+  const zones = compositionZones(compositionId, { Z: (a, b) => `${pct(a)}-${pct(b)}`, Y: pct, topWord: 'the top', a1, L })
   return `Canvas map (HIGHEST PRIORITY, ${plan.sourceWidth}x${plan.sourceHeight} px, zones as % of the height from the top):${sideBars} ${zones} on the bottom edge, every label inside it fully above ${pct(ZONES.labelsAbove)}. The poster must be PACKED like the references: no empty area taller than 2% of the height anywhere.`
 }
 
@@ -243,6 +256,12 @@ export function buildCompactPosterPrompt({ title = '', caption = '', size = DEFA
   const contact = copy.contact
   const rows = copy.rows.slice(0, 5)
   const pair = copy.rightItems.length >= 2 && copy.leftItems.length >= 2
+  // บล็อกที่ไม่มีข้อความจากโพสต์ = ของที่ไม่มีตัวอักษร (zoneLabels) — ไม่งั้นโมเดลแต่งข้อความมาเติมเอง
+  const panel = !pair && (copy.leftItems.length > 0 || copy.rightItems.length === 1)
+  const labels = zoneLabels({ pair, panel, strip: Boolean(copy.strip), ribbon: Boolean(copy.ribbon) })
+  const pairName = pair ? 'the pair' : panel ? 'the checklist panel' : 'the photo band'
+  const gets = ['the topic', ...(rows.length ? ['the key points'] : []), ...(pair ? ['what to do', 'what to avoid'] : [])]
+  const readerGets = gets.length > 1 ? `${gets.slice(0, -1).join(', ')} and ${gets.at(-1)}` : gets[0]
   const chips = copy.bandChips
   const steps = v.compositionId === 'numbered-steps'
   const hero = v.compositionId === 'hero-scene'
@@ -254,8 +273,8 @@ export function buildCompactPosterPrompt({ title = '', caption = '', size = DEFA
     'PASS-THROUGH RULE: call image_gen with everything below this line as the prompt, exactly as written, character for character. Do not summarize, shorten, reorder or rewrite it; it is already a finished production spec in your own schema.',
     '',
     `Use case: ads-marketing (dense Thai infographic poster in the style of the reference posters; card layout: ${layout}; style set: ${v.id})`,
-    canvasMapV4(plan, v),
-    `Primary request: ONE finished premium Thai property-advisory infographic poster for AssetX Estate (${plan.platform}, final size ${plan.width}x${plan.height}) about ${q(copy.headline)}, with the energy, density and layering of the style reference images. A reader must get the topic, the key points, what to do and what to avoid without the caption.`,
+    canvasMapV4(plan, v, labels),
+    `Primary request: ONE finished premium Thai property-advisory infographic poster for AssetX Estate (${plan.platform}, final size ${plan.width}x${plan.height}) about ${q(copy.headline)}, with the energy, density and layering of the style reference images. A reader must get ${readerGets} without the caption.`,
     `Input images: ${PLACEHOLDER_IMAGES}`,
     `Presenter (mandatory, the focal point): ${PLACEHOLDER_PRESENTER} Cutout ${v.composition.cutout}, ${presenterPlacement(v.compositionId)}, ${v.pose.text}; it never covers any text.`,
     `Scene/backdrop: ${v.scene.text}${sceneTreatment}${layout === 'warning' ? '; no villains, no police, no handcuffs' : ''}.`,
@@ -285,7 +304,7 @@ export function buildCompactPosterPrompt({ title = '', caption = '', size = DEFA
       : (copy.rightItems.length === 1 ? `- Warning chip (${a2.name}, white text, under the checklist panel): ${q(copy.rightItems[0])}` : ''),
     copy.strip ? `- Wide callout strip (navy, white text, a small cyan document icon at its left): ${q(copy.strip)}` : '',
     `- Bottom band (flat navy, every label fully above the crop line): left a cyan pill with a navy phone icon and navy text ${q(`โทร ${contact.phone}`)} and under it a white pill with a navy chat-bubble icon and navy text ${q(`LINE: ${contact.line}`)}${chips.length ? `; right ${chips.length} small white chips, each a navy line icon above a short label: ${chips.map((c) => `${iconFor(c)} ${q(c)}`).join(', ')}` : ''}. The digits ${contact.phone} and the id ${contact.line} must be copied exactly, character for character.`,
-    `Constraints: every card has one header pill or tab and icon-per-row lists like the references; cards overlap the backdrop with soft shadows; the presenter is ${presenterPlacement(v.compositionId)} but never covers any text; all text inside the cards stays clear of the presenter; the ${mainName}, the pair and the strip keep the zones of the Canvas map; the logo image is the only logo and is never redrawn; the black bars stay completely empty; the poster must tell the story with the caption hidden.`,
+    `Constraints: every card has one header pill or tab and icon-per-row lists like the references; cards overlap the backdrop with soft shadows; the presenter is ${presenterPlacement(v.compositionId)} but never covers any text; all text inside the cards stays clear of the presenter; the ${mainName}, ${pairName} and ${copy.strip ? 'the strip' : 'the divider'} keep the zones of the Canvas map; never add cards, lists, header pills or text that are not in the Text section (if a zone has spare room, use more spacing or more of the backdrop photo instead); the logo image is the only logo and is never redrawn; the black bars stay completely empty; the poster must tell the story with the caption hidden.`,
     `Avoid: any text not listed above; any phone number or LINE id other than the two given above; URLs, QR codes, prices, percentages, interest rates, deed numbers, addresses, names; Garuda, seals, stamps, government or other company emblems; watermarks or AI labels; a second logo; green and gold styling; neon glow, lens flare; anything drawn on the black bars.`,
     variantLine(v),
     `LAYOUT: ${layout}`,

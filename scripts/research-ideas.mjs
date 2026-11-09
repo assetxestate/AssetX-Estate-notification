@@ -37,6 +37,7 @@ import { DEFAULT_LIBRARY_DIR, AREAS, AUTO_PREFIX, knowledgePage, hookPage, weekl
 import { readdirSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
 import { enrichIdeas } from '../server/research/enrich.js'
+import { pageAudience } from '../server/research/audience.js'
 import { calendarWatchItems, inMpcWindow } from '../server/research/calendar.js'
 import { sendTelegramReport, telegramConfigured } from '../server/research/notify.js'
 import { parseRss, parseYoutubeFeed, parseGnewsSitemap, parseBotMpc, parseDolNews, parsePantipTagNextData, parseCkanPackage, googleNewsRssUrl, youtubeFeedUrl } from '../server/research/parsers.js'
@@ -107,9 +108,10 @@ function makeFetcher(cfg) {
   return createFetcher({ userAgent: cfg.user_agent, hostDelaySec: cfg.host_delay_sec, timeoutMs: Number(cfg.timeout_ms || 30000), log })
 }
 
-async function doExpire({ cfg, store }) {
+async function doExpire({ cfg, store, brand = {} }) {
   const subtypes = Object.fromEntries(Object.entries(cfg.subtypes || {}).filter(([k]) => !k.startsWith('_')))
-  const result = await store.expireOld({ subtypes, purgeDays: cfg.queue?.purge_after_days ?? 14 })
+  // ไอเดียที่ไม่ใช่เรื่องของกลุ่มคนอ่านของเพจหมดอายุด้วย (audience.js · เจ้าของเลือกกลุ่ม A อย่างเดียว 9 พ.ย. 2569)
+  const result = await store.expireOld({ subtypes, purgeDays: cfg.queue?.purge_after_days ?? 14, pageAudience: pageAudience(brand) })
   out(`[purge] ตรวจ ${result.checked} แถว · ตั้ง expired ${result.expired}`)
   return result
 }
@@ -346,7 +348,7 @@ async function cmdRun() {
   try {
     store = makeStore(dryRun)
     let expire = null
-    try { expire = await doExpire({ cfg, store }) } catch (error) { warnings.push(`⚠️ purge ล้ม: ${error.message}`); out(warnings.at(-1)) }
+    try { expire = await doExpire({ cfg, store, brand }) } catch (error) { warnings.push(`⚠️ purge ล้ม: ${error.message}`); out(warnings.at(-1)) }
 
     let collect
     try {
@@ -435,9 +437,9 @@ async function cmdEnrich() {
 }
 
 async function cmdExpire() {
-  const { cfg } = loadConfig()
+  const { cfg, brand } = loadConfig()
   const store = makeStore(flags.has('--dry-run'))
-  await doExpire({ cfg, store })
+  await doExpire({ cfg, store, brand })
 }
 
 async function cmdStats() {

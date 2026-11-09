@@ -12,6 +12,7 @@ import {
 import { scrub } from './pii.js'
 import { calendarIdeas, inMpcWindow } from './calendar.js'
 import { leadSignals } from './internal.js'
+import { fitsPageAudience } from './audience.js'
 
 const DAY_MS = 86400000
 const DEFAULT_CAP = 3
@@ -84,7 +85,7 @@ export async function collectIdeas({
   const decisions = cfg.owner_decisions || {}
   const laneLast = state.lane_last_run || {}
   const mpc = inMpcWindow(calendar, now)
-  const report = { lanes: [], warnings: [], candidates: 0, accepted: 0, skipped: { duplicate: 0, event: 0, cap: 0, score: 0, subtype: 0, gate: 0, stale: 0 }, ranLanes: [] }
+  const report = { lanes: [], warnings: [], candidates: 0, accepted: 0, skipped: { duplicate: 0, event: 0, cap: 0, score: 0, subtype: 0, gate: 0, stale: 0, audience: 0 }, ranLanes: [] }
   const candidates = []
 
   const lane = async (name, key, label, fn) => {
@@ -323,6 +324,8 @@ export async function collectIdeas({
     const title = scrub(row.title).slice(0, 300)
     const summary = scrub(row.summary || '').slice(0, 2000)
     const audience = Array.isArray(row.audience) && row.audience.length ? row.audience : (subtypes[row.subtype].audience || null)
+    // ไม่ใช่เรื่องของคนอ่านของเพจ (เช่น ข่าวตลาด B/C/D · มาตรการค่าโอนของผู้ซื้อ) → ไม่เข้าคิว (audience.js · เจ้าของเลือกกลุ่ม A อย่างเดียว 9 พ.ย. 2569)
+    if (!fitsPageAudience(audience, brand)) { report.skipped.audience += 1; continue }
     const event_key = row.event_key || (row.needsEvent ? eventKey({ subtype: row.subtype, publishedAt: row.published, title, policyHits: row.policyHits || [] }, now) : null)
     prepared.push({ ...row, title, summary, audience: audience && audience.length ? audience : null, event_key })
   }
@@ -398,7 +401,7 @@ export function formatCollectReport({ rows, report }, { topTitles = 5, inserted 
   const okLanes = ran.filter((l) => l.status === 'ok').length
   lines.push(`[ideas] เลนที่รัน ${ran.length} (สำเร็จ ${okLanes}) · ผู้สมัคร ${report.candidates} · เข้าคิว ${inserted ?? rows.length}`)
   const s = report.skipped
-  lines.push(`[ideas] ตัดออก: ซ้ำ ${s.duplicate} · เหตุการณ์ซ้ำ ${s.event} · เกิน cap ${s.cap} · คะแนนต่ำ ${s.score} · ไม่ผ่าน gate ${s.gate} · เก่า ${s.stale}`)
+  lines.push(`[ideas] ตัดออก: ซ้ำ ${s.duplicate} · เหตุการณ์ซ้ำ ${s.event} · เกิน cap ${s.cap} · คะแนนต่ำ ${s.score} · ไม่ผ่าน gate ${s.gate} · เก่า ${s.stale} · ไม่ใช่กลุ่มคนอ่านของเพจ ${s.audience || 0}`)
   for (const l of ran.filter((x) => x.status !== 'ok')) lines.push(`[ideas] ${l.status === 'blocked' ? '⛔' : l.status === 'empty' ? '∅' : '⚠️'} ${l.label}: ${l.note}`)
   const bySource = {}
   for (const r of rows) bySource[r.source] = (bySource[r.source] || 0) + 1

@@ -9,6 +9,7 @@
 // AI ได้แค่เล่า: ไม่มีตัวเลข/วันที่/สถิติที่ไม่อยู่ในข้อเท็จจริง · ไอเดียที่มีแค่หัวข้อ (summary ⚠️) เขียนเป็นความรู้ทั่วไป ห้ามอ้างคลิป/ข่าว
 import { scrub, PII_RULES } from './pii.js'
 import { ideaContextForPrompt, noteFor, audienceLines } from './angles.js'
+import { targetAudience, pageServices, businessLine, readerRuleLines, lenderViewHit } from './audience.js'
 import { knowledgeFactLines, knowledgeSourceLabels, knowledgeIds, knowledgeForAngle } from './knowledge.js'
 import { COMPLIANCE_BLOCK } from '../../src/lib/marketing-model/prompts.js'
 import { checkText } from '../../src/lib/marketing-model/rules.js'
@@ -292,24 +293,29 @@ export function citeLabelFor(idea = {}, policy = 'no_cite') {
 }
 
 // ขั้นตอนแยกตามบริการ (brand.steps_by_service) — ขั้นตอนขายฝาก/จำนองเคยถูกยกไปใส่โพสต์เรื่องขายคอนโดและสลับลำดับ (ผู้ตรวจ 6 พ.ย. 2569)
+// เฉพาะบริการที่เพจพูดถึง (brand.page_services · เจ้าของเลือก 9 พ.ย. 2569 = ขายฝาก/จำนองเท่านั้น) — ขั้นตอนฝากขาย/หาซื้อไม่ส่งให้ตัวเขียน
 function stepsLines(brand = {}) {
   const byService = brand.steps_by_service && typeof brand.steps_by_service === 'object' ? brand.steps_by_service : null
-  if (byService && Object.keys(byService).length) {
+  const services = pageServices(brand)
+  const entries = byService ? Object.entries(byService).filter(([service]) => !services.length || service.split('/').some((s) => services.includes(s.trim()))) : []
+  if (entries.length) {
     return [
       '- ขั้นตอนตามบริการ (ใช้เป็นข้อเท็จจริงอ้างอิง ไม่ใช่โครงโพสต์ · ห้ามสลับลำดับ · ใช้ชุดที่ตรงกับบริการที่โพสต์พูดถึง: โพสต์เรื่องขายหรือซื้อทรัพย์ห้ามเอาขั้นตอนขายฝาก/จำนอง เช่น "วงเงิน" "สินไถ่" มาใส่):',
-      ...Object.entries(byService).map(([service, steps]) => `  · ${service}: ${(Array.isArray(steps) ? steps : []).join(' → ')}`),
+      ...entries.map(([service, steps]) => `  · ${service}: ${(Array.isArray(steps) ? steps : []).join(' → ')}`),
     ]
   }
   return [`- ขั้นตอนจริง (ขายฝาก/จำนอง · ใช้เป็นข้อเท็จจริงอ้างอิง ห้ามสลับลำดับ): ${(brand.steps || []).join(' → ') || 'ไม่ระบุ'}`]
 }
 
 // ตัวอย่างชวนทำต่อแยกตามกลุ่ม (brand.cta_examples) — เดิมทุกร่างลงท้ายประโยคเดียวกันคำต่อคำ และคำว่า "ปิดข้อมูลส่วนบุคคล" คนอ่านไม่เข้าใจ
-function ctaGuide(brand = {}, brandName = 'AssetX Estate') {
-  const examples = brand.cta_examples && typeof brand.cta_examples === 'object'
+// code = กลุ่มคนอ่านของโพสต์นี้ (targetAudience) → ส่งเฉพาะตัวอย่างของกลุ่มนั้น + แบบชวนคอมเมนต์ (เดิมส่งทุกกลุ่ม ตัวเขียนเลือกผิดกลุ่มได้)
+function ctaGuide(brand = {}, brandName = 'AssetX Estate', code = '') {
+  const all = brand.cta_examples && typeof brand.cta_examples === 'object'
     ? Object.entries(brand.cta_examples).filter(([k]) => !k.startsWith('_'))
     : []
+  const examples = code && all.some(([k]) => k === code) ? all.filter(([k]) => k === code || k === 'engage') : all
   if (!examples.length) return `เช่น "ส่งรูปเอกสารสิทธิ์มาทางแชต (ปิดชื่อและเลขบัตรก่อนได้) ทีม ${brandName} ช่วยประเมินเบื้องต้นให้" หรือชวนคอมเมนต์ถ้าเป็นโพสต์ชวนคุย`
-  return `ตัวอย่างต่อกลุ่มผู้อ่าน (เลือกอันเดียวที่ตรงกลุ่มของโพสต์นี้ แล้วเขียนใหม่ให้เข้ากับเรื่อง): ${examples.map(([k, v]) => `${k}: "${v}"`).join(' · ')}`
+  return `ตัวอย่าง (เลือกอันเดียวที่เข้ากับโพสต์นี้ แล้วเขียนใหม่ให้เข้ากับเรื่อง): ${examples.map(([k, v]) => `${k === 'engage' ? 'ชวนคุย' : 'ชวนทัก'}: "${v}"`).join(' · ')}`
 }
 
 // knowledge = ข้อจากคลังความรู้ AssetX (research/knowledge_base.json ผ่าน knowledge.js) ที่จับคู่กับไอเดีย/มุมนี้แล้ว · kb = คลังทั้งก้อน (เอาชื่อแหล่งมาอ้าง)
@@ -334,14 +340,18 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
   const hookLines = hookPromptLines(hookPatterns, { rules: hookLibrary?.rules || [] })
   const brandName = brand.brand || 'AssetX Estate'
   const forbidden = (brand.forbidden_phrases || []).join(' · ')
-  const audienceCodes = Array.isArray(idea.audience) && idea.audience.length ? idea.audience : []
+  // โพสต์ละกลุ่มเดียวเสมอ (audience.js · เจ้าของเลือก 9 พ.ย. 2569: เพจพูดกับเจ้าของทรัพย์ที่ต้องการเงินอย่างเดียว)
+  const reader = targetAudience(idea, brand)
 
   const system = [
-    `คุณคือคนเขียนโพสต์ Facebook ของ "${brandName}"${brand.tagline ? ` (${brand.tagline})` : ''} ธุรกิจขายฝาก/จำนอง/นายหน้าอสังหาริมทรัพย์ในไทย`,
+    `คุณคือคนเขียนโพสต์ Facebook ของ "${brandName}"${brand.tagline ? ` (${brand.tagline})` : ''} ${businessLine(brand)}`,
     'หน้าที่: เขียนโพสต์ 1 ชิ้นจาก "ข้อเท็จจริงที่มี" และ "มุมเล่า" ที่กำหนดให้เท่านั้น เนื้อหาต้องผูกกับเรื่องนี้โดยเฉพาะ — ถ้าเปลี่ยนชื่อเรื่องแล้วโพสต์ยังใช้ได้ แปลว่ายังกว้างเกินไป',
     '',
+    'คนอ่านของโพสต์นี้ (กลุ่มเดียว · สำคัญที่สุด ถ้าขัดกับข้ออื่นให้ยึดข้อนี้):',
+    ...readerRuleLines(reader),
+    '',
     'ความจริงของแบรนด์ (ใช้เป็นความรู้พื้นหลัง เลือกหยิบเฉพาะที่เกี่ยวกับเรื่องนี้ ห้ามแต่งเพิ่ม และห้ามคัดลอกรายการด้านล่างมาวางทั้งบรรทัด เช่น ขั้นตอนที่มีลูกศร → หรือคำที่คั่นด้วย ·):',
-    `- บริการ: ${(brand.services || []).join(', ') || 'ขายฝาก, จำนอง'}`,
+    `- บริการ: ${pageServices(brand).join(', ') || 'ขายฝาก, จำนอง'}`,
     `- พื้นที่ให้บริการ: ${(brand.service_area || []).join(', ') || 'ไม่ระบุ'}`,
     `- ประเภททรัพย์ที่รับ: ${(brand.property_types || []).join(', ') || 'ไม่ระบุ'}`,
     ...stepsLines(brand),
@@ -361,7 +371,7 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     '- นิยามขายฝากต้องถูก: ขายฝากคือการขายที่จดทะเบียนโอนกรรมสิทธิ์ให้ผู้รับซื้อฝากทันที โดยผู้ขายฝากมีสิทธิไถ่คืนภายในกำหนดเวลาในสัญญา — ห้ามเขียนว่าเป็นการให้ครอบครองชั่วคราว ยังเป็นเจ้าของ หรือไม่โอนกรรมสิทธิ์ (นั่นคือจำนอง ไม่ใช่ขายฝาก)',
     '- ห้ามใส่แฮชแท็กในแคปชั่น (ส่งแยกในคีย์ hashtags) · ห้ามใช้เครื่องหมาย ! · อีโมจิไม่เกิน 1 ตัว · ห้ามเปิดประโยคแรกด้วยชื่อแบรนด์',
     '- เขียนเป็นข้อความธรรมดาสำหรับ Facebook: ห้ามใช้ markdown (** หรือ # นำหน้าหัวข้อ) · หัวข้อย่อยให้เป็นบรรทัดสั้น ๆ หรือตัวเลข 1. 2. 3.',
-    '- รหัสกลุ่มเป้าหมาย (A B C D หรือคำว่า "กลุ่ม B") และคำอธิบายกลุ่มเป้าหมายในวงเล็บ เป็นภาษาภายในของเรา ห้ามคัดลอกลงโพสต์ ให้เรียกคนอ่านตามที่เขาเป็นด้วยคำของตัวเอง เช่น "นักลงทุนที่รับซื้อฝาก" "เจ้าของบ้านที่ต้องการเงินก้อน"',
+    '- รหัสกลุ่มเป้าหมาย (A B C D หรือคำว่า "กลุ่ม B") และคำอธิบายกลุ่มเป้าหมายในวงเล็บ เป็นภาษาภายในของเรา ห้ามคัดลอกลงโพสต์ ให้เรียกคนอ่านตามที่เขาเป็นด้วยคำของตัวเอง เช่น "เจ้าของที่ดินที่ต้องการเงินก้อน" "เจ้าของบ้านที่กำลังจะไถ่คืน"',
     '- ถ้าข้อเท็จจริงบอกแค่ว่า "มีการประชุม/แถลง/ประกาศ" โดยไม่บอกผล ตัวเลข หรือทิศทาง ห้ามสรุปผลเอง (ห้ามเขียนว่าดอกเบี้ยขึ้น ลง หรือคง ห้ามเขียนว่ากฎหมายเปลี่ยน) ให้เขียนว่าติดตามผลจากหน่วยงานได้ที่ไหน และผู้อ่านควรเตรียมอะไรไม่ว่าผลจะเป็นอย่างไร',
     '- คำว่า "ปฏิทินเหตุการณ์" "ปฏิทินในระบบ" หรือข้อความกำกับภายในอื่น ๆ ในข้อเท็จจริง ห้ามหลุดลงโพสต์ — ที่มาต้องเป็นหน่วยงานหรือสำนักข่าวจริงเท่านั้น',
     '- ผลลัพธ์ทางการเงิน (ปิดหนี้หมด มีเงินเหลือ ได้เงินก้อน ขายได้ราคาดี) ห้ามอยู่ในพาดหัว และในเนื้อหาต้องมีเงื่อนไขกำกับเสมอ (ถ้า/เมื่อ/ขึ้นกับ) · ห้ามเล่าว่า "ทีมงานของเรา/เรา ทำให้หรือช่วยให้…ได้/สำเร็จ" ซึ่งเป็นการรับประกันผลโดยอ้อม',
@@ -381,7 +391,7 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     '- ความยาวรวม 700–1,400 ตัวอักษร ย่อหน้าสั้น เว้นบรรทัดระหว่างย่อหน้า หนึ่งโพสต์หนึ่งความคิด เขียนถึงคนคนเดียว',
     '- รูปธรรมชนะนามธรรม: บอกสิ่งที่ผู้อ่านเห็น ตรวจ หรือทำได้จริง แทนคำขยาย',
     '- ถ้าเนื้อหาเป็นความรู้หรือแตะกฎหมาย ต้องมีบรรทัดกำกับว่า "ข้อมูลนี้เป็นความรู้ทั่วไป ต้องดูเอกสารและข้อเท็จจริงของแต่ละกรณี"',
-    `- ปิดท้ายด้วยการชวนทำต่อ 1 อย่างเท่านั้น (ย่อหน้าสุดท้ายของแคปชั่น) เลือกให้ตรงคนอ่านแล้วเขียนใหม่ด้วยคำของตัวเอง เป็นภาษาที่ลูกค้าเข้าใจ ห้ามลงท้าย "ได้ … ได้" ซ้อนกัน · ${ctaGuide(brand, brandName)}`,
+    `- ปิดท้ายด้วยการชวนทำต่อ 1 อย่างเท่านั้น (ย่อหน้าสุดท้ายของแคปชั่น) เลือกให้ตรงคนอ่านแล้วเขียนใหม่ด้วยคำของตัวเอง เป็นภาษาที่ลูกค้าเข้าใจ ห้ามลงท้าย "ได้ … ได้" ซ้อนกัน · ${ctaGuide(brand, brandName, reader)}`,
     '',
     'ตอบเป็น JSON object เท่านั้น ไม่มีข้อความอื่น:',
     hookPatterns.length
@@ -407,7 +417,7 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     `ประเภท: ${idea.subtype || 'market'} · แหล่ง: ${idea.source || 'ไม่ระบุ'}`,
     ctx.sourceLine,
     `กติกาของประเภทนี้: ${noteFor(idea.subtype, idea.source)}`,
-    `กลุ่มเป้าหมาย (เขียนถึงคนคนเดียวในกลุ่มนี้ ยึดกลุ่มเดียวตลอดโพสต์${audienceCodes.length ? ` · โพสต์นี้พูดกับกลุ่ม ${audienceCodes.join('/')} เป็นหลัก` : ''}):\n${audienceLines(idea.audience, brand)}`,
+    `คนอ่านของโพสต์นี้ (กลุ่มเดียว เขียนถึงคนคนเดียวในกลุ่มนี้ตลอดโพสต์):\n${audienceLines([reader], brand)}`,
     idea.event_date ? `วันที่ของเหตุการณ์: ${idea.event_date} (ค.ศ.)` : '',
     `มุมเล่าที่ต้องใช้: ${scrub(angle.label || '')} — ${scrub(angle.brief || '')}`,
     `รูปแบบโพสต์: ${spec.label} — ${spec.guide}`,
@@ -419,7 +429,7 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     hint ? `สำคัญที่สุด: ${scrub(hint)}` : '',
   ].filter(Boolean).join('\n\n')
 
-  return { system, prompt, policy: ctx.policy, format, hookPatterns: hookPatterns.map((p) => p.id), hookLibrary }
+  return { system, prompt, policy: ctx.policy, format, hookPatterns: hookPatterns.map((p) => p.id), hookLibrary, audience: reader }
 }
 
 // โมเดลเล็กบางครั้งเรียงข้อ "1. … 2. … 3. …" ไว้ในบรรทัดเดียว (เจอจริง #8 6 พ.ย. 2569) → แยกเป็นย่อหน้าเมื่อบรรทัดนั้นมีเลขข้อ ≥ 2 ตัวกลางบรรทัด
@@ -577,6 +587,9 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
   // คำอธิบายกลุ่มเป้าหมายจาก brand.audiences ("เจ้าของทรัพย์ที่ต้องการเงิน (ผู้ขายฝาก/ผู้จำนอง)") หลุดมาทั้งวรรค (เจอจริง 6 พ.ย. 2569)
   const audiencePhrases = Object.values(brand.audiences || {}).map((v) => String(v).split(' — ')[0].trim()).filter((s) => s.length >= 12)
   if (audiencePhrases.some((phrase) => caption.includes(phrase))) return { ok: false, error: 'คัดลอกคำอธิบายกลุ่มเป้าหมายของเรามาวางทั้งวรรค — ให้เรียกคนอ่านด้วยคำของตัวเอง' }
+  // โพสต์ที่พูดกับเจ้าของทรัพย์ (A) แต่หลุดไปมุมคนปล่อยเงิน (เจอจริง #27 9 พ.ย. 2569 → เจ้าของอ่านแล้วไม่รู้ว่าพูดกับใคร)
+  const lenderView = lenderViewHit(`${headline}\n${caption}`, Array.isArray(audience) ? audience[0] : '')
+  if (lenderView) return { ok: false, error: `เขียนจากมุมคนปล่อยเงิน ("${lenderView}") — คนอ่านคือเจ้าของทรัพย์ที่ต้องการเงิน ให้พูดกับเขาตรง ๆ และบอกว่าแต่ละข้อช่วยเขาอย่างไร` }
   if (PRONOUN_RE.test(caption)) return { ok: false, error: 'ใช้สรรพนาม "คุณผู้ใช้บริการ/ท่านลูกค้า/ลูกค้าของเรา" — เรียกคนอ่านตามบทบาท เช่น เจ้าของห้อง เขา' }
   if (HERO_RE.test(caption)) return { ok: false, error: 'เล่าว่าทีมงาน/เราทำให้หรือช่วยให้สำเร็จ = รับประกันผลโดยอ้อม — ให้แสดงกลไกและสิ่งที่ตัวละครตรวจหรือทำเอง' }
   const opener = caption.split('\n').map((l) => l.trim()).find(Boolean) || ''
@@ -761,7 +774,7 @@ export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (
       const knowledge = kb?.entries?.length ? knowledgeForAngle(idea, angle, { kb, max: knowledgeMax }) : []
       const hooks = hookLibrary ? { library: hookLibrary, lessons: hookLessons, avoid: existing.map((d) => d.hook_pattern).filter(Boolean), recent: recentHooks.slice(-6), seed: `${idea.id}:${index}` } : null
       for (let attempt = 0; attempt < 2 && !result; attempt += 1) {
-        const { system, prompt, policy, format } = buildDraftPrompt({ idea, angle, brand, avoidOpenings, avoidPoints, avoidHeadlines, usedFormats, hint, knowledge, kb, hooks })
+        const { system, prompt, policy, format, audience: reader } = buildDraftPrompt({ idea, angle, brand, avoidOpenings, avoidPoints, avoidHeadlines, usedFormats, hint, knowledge, kb, hooks })
         const res = await ask({ system, prompt })
         if (!res.ok) {
           error = res.error
@@ -771,7 +784,7 @@ export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (
           continue
         }
         provider = res.provider
-        const parsed = parseDraft(res.data, { policy, sourceLabel: idea.source_label, brand, subtype: idea.subtype, facts: `${idea.title || ''}\n${idea.summary || ''}`, format, eventDate: idea.event_date || '', today: now().toISOString().slice(0, 10), audience: idea.audience || [], hookLibrary, recentOpeners: avoidOpenings })
+        const parsed = parseDraft(res.data, { policy, sourceLabel: idea.source_label, brand, subtype: idea.subtype, facts: `${idea.title || ''}\n${idea.summary || ''}`, format, eventDate: idea.event_date || '', today: now().toISOString().slice(0, 10), audience: [reader], hookLibrary, recentOpeners: avoidOpenings })
         if (!parsed.ok) { error = parsed.error; hint = `คำตอบก่อนหน้าใช้ไม่ได้ (${parsed.error}) — เขียนใหม่ให้ผ่านเงื่อนไขนี้`; continue }
         // พาดหัวเดียวกับมุมอื่นของเรื่องนี้ (เจอจริง #4: "ธปท. 57/2569 ประกาศแล้ว" สองมุม) → ลองใหม่
         const sameHeadline = avoidHeadlines.find((h) => h.replace(/\s+/g, ' ').trim() === parsed.draft.headline.replace(/\s+/g, ' ').trim())
@@ -790,6 +803,7 @@ export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (
         const built = {
           ...parsed.draft,
           format,
+          audience: reader,
           facts_source: hasResearchFacts(idea) ? 'research' : knowledge.length ? 'knowledge' : 'none',
           ...(knowledge.length ? { knowledge: { ids: knowledgeIds(knowledge), sources: knowledgeSourceLabels(knowledge, kb), verify: knowledge.some((e) => e.confidence !== 'official') } } : {}),
         }

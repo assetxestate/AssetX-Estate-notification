@@ -24,11 +24,13 @@ const researchSubtypeLabels = {
   social_fb: 'โพสต์แรงของเพจ', ad_library: 'แอดคู่แข่ง',
 }
 const researchSourceLabels = { news: 'ข่าว', official: 'ทางการ', community: 'ชุมชน', auction: 'ขายทอดตลาด', youtube: 'YouTube', social: 'โซเชียล', internal: 'ลีดของเรา', manual: 'วางเอง' }
-const researchAudienceLabels = { A: 'เจ้าของทรัพย์', B: 'นักลงทุน', C: 'เจ้าของที่อยากขาย', D: 'ผู้ซื้อ' }
+// เพจพูดกับเจ้าของทรัพย์ที่ต้องการเงินอย่างเดียว (เจ้าของเลือก 9 พ.ย. 2569 · server/research/audience.js) — ทุกมุมเล่าและร่าง AI ของไอเดียรีเสิร์ชเขียนถึงกลุ่มนี้
+// การ์ดจึงบอกคนอ่านกลุ่มเดียว ไม่ใช่ป้ายกลุ่มของไอเดีย (เดิมขึ้น "ทุกกลุ่ม" แล้วร่างพูดปนกับนักลงทุน)
+const RESEARCH_READER_LABEL = 'เจ้าของทรัพย์ที่ต้องการเงิน'
 
 function researchIdeaToCard(row) {
   const cite = ['news', 'official', 'auction'].includes(row.source) && row.source_label
-  const audience = Array.isArray(row.audience) && row.audience.length ? row.audience.map((a) => researchAudienceLabels[a] || a).join(' · ') : 'ทุกกลุ่ม'
+  const audience = RESEARCH_READER_LABEL
   return {
     id: `research-${row.id}`,
     dbId: row.id,
@@ -2694,7 +2696,7 @@ function IdeasView({
               : <span title="AI ไม่ร่างให้ไอเดียที่ยังไม่มีข้อเท็จจริงจากต้นทาง (คลิปที่ยังไม่ถอดคำบรรยาย · ข่าวที่ดึงเนื้อไม่ได้) เพราะจะเดารายละเอียด — ยกเว้นเรื่องมิจฉาชีพ/เตือนภัย ที่ AI ร่างจากความรู้ทั่วไปให้ในรอบถัดไป · กด ร่างโพสต์ ตอนนี้จะได้ร่างจากแม่แบบ">ไม่มีข้อเท็จจริง · ใช้แม่แบบ</span>)}
           {isResearch && idea.chosenAngle && <span title="เคยกด ร่างโพสต์ แล้วย้อนกลับมาเป็นไอเดีย — ร่างเดิมพักไว้ในคลังผลงาน · ไอเดียนี้ไม่หมดอายุเอง กด ทิ้ง ถ้าไม่ใช้แล้ว">{isReturned ? 'เพิ่งย้อนกลับจากร่าง' : 'เคยร่างแล้ว'}{idea.chosenAngle !== 'มุมหลัก' && !angles.some((item) => item.label === idea.chosenAngle) ? ` (${idea.chosenAngle})` : ''}</span>}
           {!isExample && <span>{displaySource(idea.source)}</span>}
-          {idea.audience && <span>{idea.audience}</span>}
+          {idea.audience && <span title={isResearch ? 'ทุกมุมเล่าและร่าง AI ของไอเดียนี้เขียนถึงคนกลุ่มนี้กลุ่มเดียว' : undefined}>{isResearch ? `พูดกับ: ${idea.audience}` : idea.audience}</span>}
           {idea.eventDate && <span>วันที่ {thaiDate(idea.eventDate) || idea.eventDate}</span>}
           {idea.url && <a href={idea.url} target="_blank" rel="noreferrer">เปิดต้นทาง</a>}
         </div>
