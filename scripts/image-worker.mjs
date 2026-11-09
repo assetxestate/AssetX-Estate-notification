@@ -3,6 +3,7 @@
 // หยิบงานจากตาราง marketing_image_jobs (หน้า /marketing สั่ง) → สร้างภาพผ่านปลั๊กอิน gpt-image (Codex CLI ที่ล็อกอิน ChatGPT Plus)
 // → แปลงเป็น JPG → อัปโหลดขึ้น bucket marketing-images → ตั้งงานเป็น done ให้หน้าเว็บดึงภาพไปใช้
 // + คิว "คิดคอนเทนต์ใหม่ด้วย AI" (ตาราง marketing_content_jobs · 9 พ.ย. 2569) เป็นลูปที่สอง: Codex คิดมุมเล่าใหม่ + ร่างเต็ม (server/research/fresh.js) → มุมใหม่ไปอยู่ช่องแรกของไอเดีย
+// + โปสเตอร์โหมดพรีเมียม (9 พ.ย. 2569): Codex วางบรีฟ 6 ส่วน + ข้อความบนภาพก่อน (server/poster-premium-plan.js) แล้วจึงเจนภาพ (src/lib/posterPremium.js)
 //
 // npm run image-worker              รับงานไปเรื่อย ๆ (ปิดด้วย Ctrl+C) · ส่งสัญญาณ "เปิดอยู่" ทุก 30 วินาที
 // npm run image-worker -- --once    ทำงานในคิวงานเดียวแล้วจบ (ไว้ทดสอบ)
@@ -15,7 +16,7 @@ import { config } from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -32,9 +33,12 @@ import { claimNextContentJob, CONTENT_JOB_TABLE, isMissingTable, processContentJ
 import { generateFreshContent } from '../server/research/fresh.js'
 import { loadKnowledgeBase } from '../server/research/knowledge.js'
 import { loadHookLessons, loadHookPatterns } from '../server/research/hooks.js'
+import { buildPremiumImagePrompt, disclaimerLines, parsePremiumRequest, premiumFrame, premiumRefIndex } from '../src/lib/posterPremium.js'
+import { planPremiumPoster } from '../server/poster-premium-plan.js'
 
 // 2 = รับงานคิดคอนเทนต์ใหม่ได้ (หน้าเว็บดู info.content_jobs ว่าตัวรับงานที่เปิดอยู่เป็นรุ่นนี้หรือยัง)
-const VERSION = '2'
+// 3 = รับโปสเตอร์โหมดพรีเมียมได้ (info.premium_posters · 9 พ.ย. 2569)
+const VERSION = '3'
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 config({ path: path.join(repo, '.env.local'), quiet: true })
 config({ path: path.join(repo, '.env'), quiet: true })
@@ -66,6 +70,13 @@ const FOOTER_CONTACT = path.join(repo, 'public', 'contact-block-stacked.png')
 const FOOTER_CONTACT_INLINE = path.join(repo, 'public', 'contact-block-inline.png')
 const REFS_ROOT = path.join(LOCAL_DIR, 'poster-refs')
 const PRESENTER = path.join(REFS_ROOT, 'presenter', 'presenter-cut.jpg')
+// โหมดพรีเมียม: ภาพต้นแบบที่เจ้าของชอบจากแชต Codex (9 พ.ย. 2569) — แนบ 1 ภาพต่องาน หมุนตาม seed · เพิ่มภาพที่ชอบลงโฟลเดอร์นี้ได้ (นอก git)
+const PREMIUM_REFS = path.join(REFS_ROOT, 'premium')
+
+function premiumRefs() {
+  if (!existsSync(PREMIUM_REFS)) return []
+  return readdirSync(PREMIUM_REFS).filter((f) => /\.(png|jpe?g|webp)$/i.test(f)).sort().map((f) => path.join(PREMIUM_REFS, f))
+}
 const MAX_IMAGES = 5
 const PLUGIN_SERVER = process.env.GPT_IMAGE_SERVER || path.join('C:', 'tools', 'gpt-image-marketplace', 'gpt-image', 'server', 'index.mjs')
 
@@ -254,14 +265,15 @@ const TO_JPEG_PS = [
 ].join('\n')
 
 // วางแถบท้ายแบรนด์ลงภาพที่ครอปแล้ว · คืนข้อความสรุปจากสคริปต์ · ล้ม = throw (ให้งานล้ม ไม่ส่งภาพที่ไม่มีช่องทางติดต่อ)
-function addBrandFooter(src, dst) {
+// append = ต่อแถบทึบใต้ภาพแทนการวางทับ (โหมดพรีเมียม) · ratio = สัดส่วนโพสต์สุดท้าย (แถบสูงพอดีให้ได้สัดส่วนนั้น)
+function addBrandFooter(src, dst, { append = false, ratio = 0 } = {}) {
   const [phone, line] = footerContactLines()
   return new Promise((resolve, reject) => {
     let out = ''
     let err = ''
     const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', FOOTER_SCRIPT,
       '-Src', src, '-Dst', dst, '-Logo', FOOTER_LOGO, '-Contact', FOOTER_CONTACT, '-ContactInline', FOOTER_CONTACT_INLINE,
-      '-FontFile', FOOTER_FONT, '-Phone', phone, '-Line', line], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      '-FontFile', FOOTER_FONT, '-Phone', phone, '-Line', line, ...(append ? ['-Append', ...(ratio ? ['-Ratio', String(ratio)] : [])] : [])], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     child.stdout.on('data', (d) => { out += String(d) })
     child.stderr.on('data', (d) => { err += String(d) })
     child.on('error', reject)
@@ -297,7 +309,7 @@ async function heartbeat(db, busyJob = null, busyContentJob = null) {
   const { error } = await db.from('marketing_image_worker').upsert({
     id: WORKER_ID,
     last_seen_at: new Date().toISOString(),
-    info: { version: VERSION, host: os.hostname(), busy_job: busyJob, content_jobs: true, busy_content_job: busyContentJob },
+    info: { version: VERSION, host: os.hostname(), busy_job: busyJob, content_jobs: true, premium_posters: true, busy_content_job: busyContentJob },
   }, { onConflict: 'id' })
   if (error) throw error
 }
@@ -332,7 +344,30 @@ async function processJob(db, plugin, job) {
     let prompt = job.prompt
     let images = existsSync(LOGO) ? [LOGO] : []
     let brandFooter = false
-    if (String(job.prompt || '').includes(PLACEHOLDER_FREE_IMAGES)) {
+    // โหมดพรีเมียม: กรอบงาน (แคนวาส · สัดส่วนที่ตัด · ต่อแถบท้ายใต้ภาพ) จาก premiumFrame
+    let premiumBox = null
+    const premium = parsePremiumRequest(job.prompt)
+    if (premium) {
+      // โหมดพรีเมียม (9 พ.ย. 2569): AI วางบรีฟ 6 ส่วน + ข้อความบนภาพก่อน (ตรวจตัวเลข/คำเกินจริง/มุมคนปล่อยเงิน) → คำสั่งภาพแบบเดียวกับพรอมต์ของ Codex
+      // + ภาพต้นแบบที่เจ้าของชอบ 1 ภาพ · โลโก้/เบอร์/LINE = แถบท้ายทึบที่ "ต่อใต้ภาพ" หลังเจน (วางทับแล้ว CTA ของ Codex หาย — งาน 22)
+      const missing = [FOOTER_SCRIPT, FOOTER_LOGO, FOOTER_FONT, FOOTER_CONTACT, FOOTER_CONTACT_INLINE].filter((f) => !existsSync(f))
+      if (missing.length) throw new Error(`ไม่พบไฟล์แถบท้ายแบรนด์: ${missing.map((f) => path.relative(repo, f)).join(', ')}`)
+      const say = (s) => log(`${label}: ${s}`)
+      const ask = createAsk({ log: say })
+      if (!ask.providers.length) throw new Error(NO_PROVIDER_MESSAGE)
+      const t0 = Date.now()
+      const planned = await planPremiumPoster({ title: premium.title, caption: premium.caption, ask, log: say })
+      if (!planned.ok) throw new Error(`AI วางข้อความโปสเตอร์ไม่สำเร็จ — ${planned.error}`)
+      const refs = premiumRefs()
+      const ref = refs.length ? refs[premiumRefIndex(premium.seed, refs.length)] : null
+      images = ref ? [ref] : []
+      prompt = buildPremiumImagePrompt({ plan: planned.plan, size: premium.size, seed: premium.seed, refName: ref ? path.basename(ref) : '', disclaimer: disclaimerLines(premium) })
+      brandFooter = true
+      premiumBox = premiumFrame(premium.size)
+      // เก็บแผน + คำสั่งภาพไว้ดูย้อนหลังในเครื่อง (.local อยู่นอก git) · log ไม่พิมพ์เนื้อหาโพสต์
+      await fs.writeFile(path.join(OUTPUT_DIR, `job-${job.id}-premium.json`), JSON.stringify({ provider: planned.provider, attempts: planned.attempts, warnings: planned.warnings, ref: ref ? path.basename(ref) : null, plan: planned.plan, prompt }, null, 2))
+      log(`${label}: พรีเมียม · วางข้อความเสร็จใน ${Math.round((Date.now() - t0) / 1000)} วินาที (${planned.provider} รอบ ${planned.attempts}${planned.warnings.length ? ` · ยาวเกิน ${planned.warnings.length} จุด` : ''}) · ข้อหลัก ${planned.plan.points.length} ข้อ · แถบกลาง ${planned.plan.middle.type} · เรฟ ${ref ? path.basename(ref) : 'ไม่มี'}`)
+    } else if (String(job.prompt || '').includes(PLACEHOLDER_FREE_IMAGES)) {
       // โหมดอิสระ: Codex ออกแบบเอง — ไม่แนบเรฟคู่แข่ง ไม่ให้ลอกโครงเดิม
       // presenter=use ในบรรทัด MODE = ทิศที่มีคนเป็นจุดเด่น → บังคับใส่รูปเจ้าของ (8 พ.ย. 2569)
       // footer=brand = Codex ไม่วาดโลโก้/เบอร์ → ไม่แนบโลโก้ แล้ววางแถบท้ายของจริงหลังเจน (งานเก่าไม่มี footer= ยังแนบโลโก้เต็มแบบเดิม)
@@ -368,7 +403,7 @@ async function processJob(db, plugin, job) {
     }
     const text = await plugin.callTool('generate_image', {
       prompt,
-      aspect: job.aspect || 'portrait',
+      aspect: premiumBox?.aspect || job.aspect || 'portrait',
       images,
       output_dir: OUTPUT_DIR,
     }, GENERATE_TIMEOUT_MS)
@@ -376,14 +411,20 @@ async function processJob(db, plugin, job) {
     if (!saved || !existsSync(saved)) throw new Error('ปลั๊กอินไม่ได้บอกตำแหน่งไฟล์ภาพ')
     // คำสั่งภาพของขนาดที่ต้องครอปมีแถบทึบ (v3.2 "LETTERBOX BARS" น้ำเงิน · v4 แถบดำ) → ตัดแถบที่เห็นจริงทิ้งก่อนส่งขึ้นเว็บ
     const target = POSTER_SIZES[job.size] || null
-    const { file: jpg, note } = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`), { trim: /LETTERBOX BARS|BLACK #000000 bars/.test(String(job.prompt || '')), bars: /BLACK #000000 bars/.test(String(job.prompt || '')) ? 'black' : '', ratio: target ? target.width / target.height : 0 })
+    // ดูทั้งคำสั่งในคิวและคำสั่งที่ส่งจริง (โหมดพรีเมียม: คำสั่งในคิวเป็นแค่คำขอ แถบดำอยู่ในคำสั่งที่ประกอบบนเครื่องนี้)
+    const sent = `${job.prompt || ''}\n${prompt || ''}`
+    // โหมดพรีเมียม: ไม่ครอปเนื้อหา (โมเดลวาดเต็มขอบ — งาน 23 ตัดข้างแล้วตัวหนังสือขาด) ตัดแค่แถวดำล้วนถ้ามี · สัดส่วนแพลตฟอร์มได้จากความสูงแถบท้ายที่ต่อใต้ภาพ
+    const fitOptions = premiumBox
+      ? { trim: true, bars: 'black', ratio: 0 }
+      : { trim: /LETTERBOX BARS|BLACK #000000 bars/.test(sent), bars: /BLACK #000000 bars/.test(sent) ? 'black' : '', ratio: target ? target.width / target.height : 0 }
+    const { file: jpg, note } = await toJpeg(saved, path.join(OUTPUT_DIR, `job-${job.id}.jpg`), fitOptions)
     if (note) log(`${label}: ${note}`)
     let finalFile = jpg
     if (brandFooter) {
       // แถบท้ายแบรนด์: โลโก้จริงพื้นโปร่งใส + เบอร์/LINE ตัวพิมพ์ Kanit (เจ้าของ 8 พ.ย. 2569) · ล้ม = งานล้ม (ห้ามส่งโปสเตอร์ที่ไม่มีช่องทางติดต่อ)
       if (jpg === saved) throw new Error('ตัดแถบ/แปลง JPEG ไม่สำเร็จ จึงวางแถบท้ายแบรนด์ไม่ได้')
       finalFile = path.join(OUTPUT_DIR, `job-${job.id}-final.jpg`)
-      log(`${label}: ${await addBrandFooter(jpg, finalFile)}`)
+      log(`${label}: ${await addBrandFooter(jpg, finalFile, premiumBox ? { append: true, ratio: premiumBox.targetRatio } : {})}`)
     }
     const isJpeg = /\.jpe?g$/i.test(finalFile)
     const objectPath = `jobs/${job.id}.${isJpeg ? 'jpg' : 'png'}`
@@ -454,7 +495,7 @@ async function main() {
       const queued = await db.from(CONTENT_JOB_TABLE).select('id').eq('status', 'queued').limit(50)
       if (!queued.error) content = `งานคิดคอนเทนต์ใหม่รอคิว ${queued.data?.length ?? 0} งาน`
     } catch { /* ยังไม่ได้รัน supabase_marketing_content_jobs.sql */ }
-    log(`ตั้งค่าพร้อม · ปลั๊กอิน ${PLUGIN_SERVER} · งานรอคิว ${count ?? 0} งาน · ${refs} · ${content}`)
+    log(`ตั้งค่าพร้อม · ปลั๊กอิน ${PLUGIN_SERVER} · งานรอคิว ${count ?? 0} งาน · ${refs} · ${content} · ภาพต้นแบบโหมดพรีเมียม ${premiumRefs().length} ภาพ`)
     return
   }
 

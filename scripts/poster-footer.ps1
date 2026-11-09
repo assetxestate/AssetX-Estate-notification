@@ -16,7 +16,13 @@ param(
   [string]$ContactInline = '',
   [string]$FontFile = '',
   [string]$Phone = '',
-  [string]$Line = ''
+  [string]$Line = '',
+  # -Append = ต่อแถบทึบใต้ภาพ ไม่วางทับ ไม่มีม่านไล่สี (โหมดพรีเมียม 9 พ.ย. 2569: Codex วาดแถบ CTA ชิดขอบล่างเสมอ วางทับแล้ว CTA หาย)
+  #   ภาพที่ส่งมาต้องตัดเป็นสัดส่วน "โพสต์ลบแถบท้าย" แล้ว (premiumFrame ใน src/lib/posterPremium.js) · F = min(16.5% ของกว้าง, 14% ของโพสต์สุดท้าย)
+  [switch]$Append,
+  # -Ratio (กับ -Append) = สัดส่วนกว้าง/สูงของโพสต์สุดท้าย · แถบที่ต่อจะสูง (กว้าง/Ratio − สูงของภาพ) ให้ได้สัดส่วนพอดีแม้โมเดลเจนขนาดคลาดจากที่สั่ง
+  #   โลโก้/เบอร์ยังขนาดมาตรฐาน วางกลางแถบ · แถบไม่ต่ำกว่า 70% ของมาตรฐาน (ภาพสูงเกิน = สัดส่วนเพี้ยนเล็กน้อย ดีกว่าตัดเนื้อหา)
+  [double]$Ratio = 0
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -25,15 +31,37 @@ $img = [System.Drawing.Image]::FromFile($Src)
 $logoImg = [System.Drawing.Image]::FromFile($Logo)
 $fonts = New-Object System.Drawing.Text.PrivateFontCollection
 $contactImg = $null
-# ภาพแนวนอน (กว้าง/สูง > 1.3) แถบท้ายเตี้ย → แบบแถวเดียว ไอคอนจะได้สูงพอ (LINE กำหนดขั้นต่ำ 40 px บนมือถือ)
-$wide = ($img.Width / $img.Height) -gt 1.3
+$imgW = $img.Width; $imgH = $img.Height
+$W = $imgW; $H = $imgH; $padX = 0; $slim = $false
+if ($Append) {
+  # แถบมาตรฐาน F = min(16.5% ของกว้าง, 14% ของโพสต์สุดท้าย) · -Ratio: แถบสูงเท่าที่ทำให้ได้สัดส่วนโพสต์พอดี
+  # เครื่องมือภาพให้สัดส่วนมาตรฐานบางชุด (2:3 · 1:1 · 6:7 · 4:5 — ทดสอบ 9 พ.ย. 2569) จึงต้องรับได้ทั้งแถบสูงและเตี้ย:
+  #   แถบเตี้ยกว่า 85% ของมาตรฐาน → บล็อกติดต่อแบบแถวเดียว · ต่ำกว่า 46% (ไอคอน LINE จะเล็กกว่า 40 px) → แถบ 46% แล้วเติมขอบซ้าย-ขวาด้วยสีขอบภาพ
+  $Fstd = [int][math]::Round([math]::Min($W * 0.165, $H * 0.14 / 0.86))
+  $Fband = $Fstd
+  if ($Ratio -gt 0) {
+    $Fband = [int][math]::Round($W / $Ratio) - $H
+    $minBand = [int][math]::Ceiling($Fstd * 0.46)
+    if ($Fband -lt $minBand) {
+      $Fband = $minBand
+      $W = [int][math]::Round(($H + $Fband) * $Ratio)
+      $padX = [int][math]::Floor(($W - $imgW) / 2)
+    }
+  }
+  $slim = $Fband -lt ($Fstd * 0.85)
+  $F = if ($slim) { $Fband } else { [math]::Min($Fstd, $Fband) }
+  $H = $H + $Fband
+} else {
+  $F = [int][math]::Round([math]::Min($W * 0.165, $H * 0.14))
+  $Fband = $F
+}
+# ภาพแนวนอน (กว้าง/สูง > 1.3) หรือแถบเตี้ย → แบบแถวเดียว ไอคอนจะได้สูงพอ (LINE กำหนดขั้นต่ำ 40 px บนมือถือ)
+$wide = (($W / $H) -gt 1.3) -or $slim
 $contactFile = if ($wide -and $ContactInline -and (Test-Path $ContactInline)) { $ContactInline } elseif ($Contact -and (Test-Path $Contact)) { $Contact } else { '' }
 if ($contactFile) { $contactImg = [System.Drawing.Image]::FromFile($contactFile) }
 elseif (-not ($FontFile -and $Phone -and $Line)) { throw 'ต้องส่ง -Contact (ภาพบล็อกติดต่อ) หรือ -FontFile -Phone -Line อย่างใดอย่างหนึ่ง' }
 if (-not $contactImg) { $fonts.AddFontFile($FontFile) }
 try {
-  $W = $img.Width; $H = $img.Height
-  $F = [int][math]::Round([math]::Min($W * 0.165, $H * 0.14))
   $pad = [int][math]::Round($W * 0.055)
 
   $bmp = New-Object System.Drawing.Bitmap $W, $H
@@ -42,7 +70,17 @@ try {
   $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
   $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
   $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
-  $g.DrawImage($img, 0, 0, $W, $H)
+  $g.DrawImage($img, $padX, 0, $imgW, $imgH)
+  if ($padX -gt 0) {
+    # เติมขอบ: ยืดคอลัมน์ริมสุดของภาพ (พื้นขาวอุ่น/แถบน้ำเงินต่อเนียน) · ไม่ผสมสีข้ามขอบ
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+    $g.DrawImage($img, (New-Object System.Drawing.Rectangle 0, 0, $padX, $imgH), (New-Object System.Drawing.Rectangle 0, 0, 1, $imgH), [System.Drawing.GraphicsUnit]::Pixel)
+    $rightX = $padX + $imgW
+    $g.DrawImage($img, (New-Object System.Drawing.Rectangle $rightX, 0, ($W - $rightX), $imgH), (New-Object System.Drawing.Rectangle ($imgW - 1), 0, 1, $imgH), [System.Drawing.GraphicsUnit]::Pixel)
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  }
 
   # ม่านไล่สี: เริ่มที่ 1.9F จากขอบล่าง ใส → ทึบเกือบเต็มในแถบ F ล่างสุด (น้ำเงินแบรนด์ #08213f)
   $scrimTop = $H - [int][math]::Round($F * 1.9)
@@ -60,10 +98,15 @@ try {
   # ล่างสุดเกือบทึบ (250/255) — ไอคอน LINE ต้องอยู่บนพื้นเรียบ ไม่ใช่บนภาพ (กติกา "Use on a background" ของ LINE)
   $blend.Positions = [single[]]@(0.0, 0.32, 0.5, 1.0)
   $brush.InterpolationColors = $blend
-  $g.FillRectangle($brush, (New-Object System.Drawing.Rectangle 0, $scrimTop, $W, ($H - $scrimTop)))
+  $bandTop = $H - $Fband
+  if ($Append) {
+    $solidBrush = New-Object System.Drawing.SolidBrush $navy
+    $g.FillRectangle($solidBrush, (New-Object System.Drawing.Rectangle 0, $bandTop, $W, $Fband))
+    $solidBrush.Dispose()
+  } else {
+    $g.FillRectangle($brush, (New-Object System.Drawing.Rectangle 0, $scrimTop, $W, ($H - $scrimTop)))
+  }
   $brush.Dispose()
-
-  $bandTop = $H - $F
 
   # เส้นบางสีไซยานคั่นเหนือแถบ (โปร่ง 35%)
   $hair = [math]::Max(1, [int][math]::Round($W / 1024))
@@ -82,13 +125,13 @@ try {
     $logoW = [int][math]::Round($logoImg.Width * $logoH / $logoImg.Height)
     $maxLogoW = $W - 2 * $pad - $blockW - [int]($W * 0.06)
     if ($logoW -gt $maxLogoW) { $logoW = [math]::Max(40, $maxLogoW); $logoH = [int][math]::Round($logoImg.Height * $logoW / $logoImg.Width) }
-    $logoY = $bandTop + [int](($F - $logoH) / 2)
+    $logoY = $bandTop + [int](($Fband - $logoH) / 2)
     $g.DrawImage($logoImg, (New-Object System.Drawing.Rectangle $pad, $logoY, $logoW, $logoH))
     # ย่อภาพบล็อก (×3) ลงทีเดียวด้วย HighQualityBicubic + ขอบแบบ TileFlipXY กันขอบโปร่งใสมีเส้นจาง
     $attr = New-Object System.Drawing.Imaging.ImageAttributes
     $attr.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
     $blockX = $W - $pad - $blockW
-    $blockY = $bandTop + [int](($F - $blockH) / 2)
+    $blockY = $bandTop + [int](($Fband - $blockH) / 2)
     $g.DrawImage($contactImg, (New-Object System.Drawing.Rectangle $blockX, $blockY, $blockW, $blockH), 0, 0, $contactImg.Width, $contactImg.Height, [System.Drawing.GraphicsUnit]::Pixel, $attr)
     $attr.Dispose()
   } else {
@@ -110,11 +153,11 @@ try {
   $logoW = [int][math]::Round($logoImg.Width * $logoH / $logoImg.Height)
   $maxLogoW = $W - 2 * $pad - $blockW - [int]($W * 0.06)
   if ($logoW -gt $maxLogoW) { $logoW = [math]::Max(40, $maxLogoW); $logoH = [int][math]::Round($logoImg.Height * $logoW / $logoImg.Width) }
-  $logoY = $bandTop + [int](($F - $logoH) / 2)
+  $logoY = $bandTop + [int](($Fband - $logoH) / 2)
   $g.DrawImage($logoImg, (New-Object System.Drawing.Rectangle $pad, $logoY, $logoW, $logoH))
 
   $blockX = $W - $pad - $blockW
-  $blockY = $bandTop + [int](($F - $blockH) / 2)
+  $blockY = $bandTop + [int](($Fband - $blockH) / 2)
   $white = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 255, 255, 255))
   $cyan = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 66, 199, 216))
   # วาดด้วยรูปแบบเดียวกับที่วัด (GenericTypographic) และห้ามตัด/ห้ามขึ้นบรรทัดใหม่ — กรอบที่วัดได้แคบกว่าตัวอักษรจริงเล็กน้อย (เลขท้ายเบอร์เคยหาย)
@@ -139,7 +182,7 @@ try {
   $bmp.Save($Dst, $codec, $params)
   $bmp.Dispose()
   $mode = if ($contactImg) { if ($contactFile -eq $ContactInline) { 'inline' } else { 'stacked' } } else { 'text' }
-  Write-Output "footer F=$F logo=${logoW}x${logoH} contact=${blockW}x${blockH} mode=$mode size=${W}x${H}"
+  Write-Output "footer F=$F band=$Fband logo=${logoW}x${logoH} contact=${blockW}x${blockH} mode=$mode$(if ($Append) { ' append' }) size=${W}x${H}"
 } finally {
   if ($img) { $img.Dispose() }
   if ($contactImg) { $contactImg.Dispose() }

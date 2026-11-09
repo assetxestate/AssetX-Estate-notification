@@ -4,7 +4,7 @@
 // GET  /api/marketing-image-jobs                         → { worker }                สถานะตัวรับงานบนคอม
 // GET  /api/marketing-image-jobs?id=N[&image=1]          → { job, worker, image? }   image = data URL เมื่อ done และขอ image=1
 // GET  /api/marketing-image-jobs?post_key=K[&image=1]    → { job|null, worker, image? } งานล่าสุดของโพสต์ใน 24 ชม. (เปิดหน้าต่างใหม่แล้วตามงานต่อ)
-// POST { action: "create", post_key, content_no, title, caption, size, mode } → { job, reused }   size = คีย์ใน src/lib/posterSizes.js · mode = free (ค่าเริ่มต้น ตั้งแต่ 8 พ.ย. 2569) | ref
+// POST { action: "create", post_key, content_no, title, caption, size, mode } → { job, reused }   size = คีย์ใน src/lib/posterSizes.js · mode = free (ค่าเริ่มต้น ตั้งแต่ 8 พ.ย. 2569) | ref | premium (9 พ.ย. 2569)
 // POST { action: "cancel", id }                          → { job }                   ยกเลิกได้เฉพาะงานที่ยังไม่มีใครหยิบ
 //
 // ข้อความโพสต์ผ่านตัวลบข้อมูลบุคคลก่อนเก็บและก่อนส่งให้ Codex · ไม่มีการลบแถว (ยกเลิก = cancelled)
@@ -17,6 +17,7 @@ import { posterBriefFor } from '../src/lib/posterBrief.js'
 import { buildCompactPosterPrompt } from '../src/lib/posterV4.js'
 import { posterSeed } from '../src/lib/posterVariants.js'
 import { buildFreePosterPrompt } from '../src/lib/posterFree.js'
+import { buildPremiumJobPrompt } from '../src/lib/posterPremium.js'
 
 export const IMAGE_BUCKET = 'marketing-images'
 export const WORKER_ID = 'office-pc'
@@ -59,12 +60,15 @@ export function canvasMap(plan) {
 // seed = ชุดสไตล์ (src/lib/posterVariants.js posterSeed จากเลขโพสต์ + ลำดับงานของโพสต์) · ไม่ส่ง = ชุดแรก (หน้าตา v4 เดิม)
 // mode = 'free' → โหมดอิสระ (src/lib/posterFree.js): Codex เป็นอาร์ตไดเรกเตอร์ ออกแบบเองจากหัวข้อ ข้อความจากโพสต์ และบรีฟมู้ดแอนด์โทน (เจ้าของ 7 พ.ย. 2569 ดึก)
 // ค่าเริ่มต้นของ API create = โหมดอิสระ (เจ้าของ 8 พ.ย. 2569: "ให้โหมดอิสระเป็นค่าเริ่มต้นแทนตามเรฟ") · ตัวสร้างคำสั่งข้างล่างยังตั้งต้นที่ ref เพื่อให้เรียกตรงได้แบบเดิม
-export const POSTER_MODES = ['ref', 'free']
+// mode = 'premium' → โหมดพรีเมียม (src/lib/posterPremium.js · เจ้าของ 9 พ.ย. 2569 "อยากให้ระบบทำได้แบบที่ Codex ทำ เป็นอีกสไตล์"):
+//   งานในคิวเก็บแค่ "คำขอ" (หัวข้อ + โพสต์) — ตัวรับงานให้ AI วางบรีฟ 6 ส่วน + ข้อความบนภาพ แล้วประกอบคำสั่งภาพเองบนคอมสำนักงาน
+export const POSTER_MODES = ['ref', 'free', 'premium']
 export const DEFAULT_POSTER_MODE = 'free'
 export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE, seed = null, mode = 'ref' } = {}) {
   const headline = oneLine(title).slice(0, 120) || 'รับจำนอง · ขายฝาก'
   const body = multiLine(caption).slice(0, CAPTION_LIMIT)
   if (mode === 'free') return buildFreePosterPrompt({ title: headline, caption: body, size, seed })
+  if (mode === 'premium') return buildPremiumJobPrompt({ title: headline, caption: body, size, seed })
   // v4 "ตามเรฟ" (7 พ.ย. 2569 ค่ำ): โพสต์ที่มีเนื้อหาใช้คำสั่งแบบบีบสั้นตามสคีมาของสกิล Codex + ภาพแนบที่ตัวรับงานเติม (ดู src/lib/posterV4.js)
   // ไม่มีเนื้อหา (ป้าย 3 ป้าย) ยังใช้คำสั่ง v3.2 แบบเดิม
   if (body) return buildCompactPosterPrompt({ title: headline, caption: body, size, layout: pickPosterLayout(body), seed })
