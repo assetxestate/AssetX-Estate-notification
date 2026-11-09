@@ -12,6 +12,7 @@
 //     ยกเว้น: เรื่องมิจฉาชีพ (subtype scam) และไอเดียที่คลังความรู้ AssetX (research/knowledge_base.json) จับคู่ได้ ≥ 2 ข้อ — ร่างจากข้อกฎหมาย/ค่าธรรมเนียมที่ตรวจแล้วแทนการเดา (7 พ.ย. 2569)
 // node scripts/research-ideas.mjs hooks [--force]           เลนบทเรียน hook: ถอดสูตรประโยคเปิดของคลิป/โพสต์/แอดที่แรงกว่าปกติ → น้ำหนักสูตรของตัวร่าง (.local/research/hooks/) · ใน run ทำเองทุก 7 วัน · ดู docs/hook-system.md
 //     ร่างทุกชิ้นได้ hook 3 แบบตามสูตรใน research/hook_patterns.json (server/research/hooks.js) · --no-hooks ปิด (พรอมต์แบบเดิม)
+// node scripts/research-ideas.mjs library [--no-snapshot]  คลังรีเสิร์ช AssetX (Obsidian vault บนเครื่องนี้ นอกรีโป · ไม่ขึ้นเซิร์ฟเวอร์): สารบัญ · หน้าอัตโนมัติ (คลังความรู้ · สูตร hook) · สรุปรายสัปดาห์ · สำเนาข้อมูลดิบในเครื่อง · ใน run ทำพร้อมบทเรียน hook ทุก 7 วัน · ดู docs/research-library.md
 // node scripts/research-ideas.mjs expire                    ตั้ง status=expired ให้ไอเดียเก่า (ไม่ลบแถว)
 // node scripts/research-ideas.mjs probe                     ทดสอบทุกแหล่งแบบเบามือ (ยิง 1 ครั้ง/แหล่ง · สถานะ · จำนวน · วันล่าสุด · บล็อกไหม)
 // node scripts/research-ideas.mjs stats                     จำนวนในคิวตามสถานะ/แหล่ง และ % ที่มีมุมเล่า
@@ -32,6 +33,9 @@ import { generateDrafts, hasResearchFacts, isInternalSourceLabel } from '../serv
 import { loadKnowledgeBase, knowledgeForIdea, KB_MIN_MATCHES } from '../server/research/knowledge.js'
 import { loadHookPatterns, loadHookLessons, DEFAULT_LESSONS_FILE } from '../server/research/hooks.js'
 import { collectHookSamples, summarizeHookLessons, mergeSamples, lessonsHeadline, LESSONS_MAX_AGE_DAYS } from '../server/research/hook-lessons.js'
+import { DEFAULT_LIBRARY_DIR, AREAS, AUTO_PREFIX, knowledgePage, hookPage, weeklyDigest, indexPage, listNotes, writeIfChanged, collectFiles, makeBundle, writeLocalSnapshot, isoWeek } from '../server/research/library.js'
+import { readdirSync } from 'node:fs'
+import { createClient } from '@supabase/supabase-js'
 import { enrichIdeas } from '../server/research/enrich.js'
 import { calendarWatchItems, inMpcWindow } from '../server/research/calendar.js'
 import { sendTelegramReport, telegramConfigured } from '../server/research/notify.js'
@@ -247,6 +251,54 @@ async function doHookLessons({ cfg }) {
   for (const n of notes.slice(0, 8)) out(`[hooks] ⚠️ ${n}`)
   return { fresh: samples.length, total: merged.length, hot: lessons.samples.hot, headline, notes }
 }
+// ── คลังรีเสิร์ช AssetX (server/research/library.js) — เจ้าของสั่ง 9 พ.ย. 2569 · เก็บบนเครื่องนี้เท่านั้น ──
+async function ideasStats(days = 7) {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) return null
+  const db = createClient(url, key, { auth: { persistSession: false } })
+  const since = new Date(Date.now() - days * 864e5).toISOString()
+  const { data, error } = await db.from('marketing_ideas').select('id,created_at,angles').gte('created_at', since).limit(2000)
+  if (error) throw new Error(error.message)
+  const drafts = (data || []).flatMap((r) => (r.angles || []).map((a) => a?.draft).filter((d) => d?.caption))
+  const hookPatterns = {}
+  for (const d of drafts) if (d.hook_pattern) hookPatterns[d.hook_pattern] = (hookPatterns[d.hook_pattern] || 0) + 1
+  return { newIdeas: (data || []).length, drafted: drafts.length, withHooks: drafts.filter((d) => Array.isArray(d.hooks) && d.hooks.length).length, hookPatterns: Object.keys(hookPatterns).length ? hookPatterns : null }
+}
+
+async function doLibrary({ snapshot = true } = {}) {
+  const dir = DEFAULT_LIBRARY_DIR
+  const day = today()
+  const changed = []
+  const put = (rel, text) => { if (writeIfChanged(path.join(dir, rel), text)) changed.push(rel) }
+  const kb = readJson(path.join(RESEARCH_DIR, 'knowledge_base.json'))
+  if (kb) put(path.join(AREAS.academic, `${AUTO_PREFIX}คลังความรู้กฎหมายและค่าธรรมเนียม ขายฝาก-จำนอง.md`), knowledgePage(kb, { today: day }))
+  put(path.join(AREAS.marketing, `${AUTO_PREFIX}สูตร hook และบทเรียนจากของไวรัล.md`), hookPage(loadHookPatterns(), loadHookLessons(), { today: day }))
+  const fbDir = path.join(LOCAL_DIR, 'social', 'facebook')
+  const fb = existsSync(fbDir) ? readdirSync(fbDir).filter((x) => x.endsWith('.json')).map((x) => { const j = readJson(path.join(fbDir, x), {}); return { page: j.target || x.replace(/\.json$/, ''), posts: j.posts || {}, reels: j.reels || {} } }) : []
+  let ideas = null
+  try { ideas = await ideasStats() } catch (error) { out(`[library] ⚠️ อ่านสถิติคิวไอเดียไม่ได้: ${error.message} — สรุปโดยไม่มีส่วนนี้`) }
+  put(path.join(AREAS.marketing, 'สรุปรายสัปดาห์', `${AUTO_PREFIX}${isoWeek(day)}.md`), weeklyDigest({ today: day, fb, ads: readJson(path.join(LOCAL_DIR, 'ads', 'ads.json'), null), lessons: loadHookLessons(), ideas }))
+  put('00 สารบัญ.md', indexPage({ today: day, notes: listNotes(dir) }))
+  out(`[library] คลังรีเสิร์ช: ${dir}`)
+  out(`[library] เขียน/ปรับ ${changed.length} หน้า${changed.length ? `: ${changed.join(' · ')}` : ' (ไม่มีอะไรเปลี่ยน)'}`)
+  let snap = null
+  if (snapshot) {
+    const files = collectFiles([
+      { dir: path.join(LOCAL_DIR, 'social'), as: 'social' },
+      { dir: path.join(LOCAL_DIR, 'ads'), as: 'ads' },
+      { dir: path.join(LOCAL_DIR, 'hooks'), as: 'hooks' },
+      { dir, as: 'library' },
+    ])
+    snap = writeLocalSnapshot(dir, makeBundle(files), { day })
+    out(`[library] สำเนาข้อมูลดิบ ${Object.keys(files).length} ไฟล์ → ${path.basename(snap.file)} (${Math.round(snap.bytes / 1024)} KB)${snap.removed ? ` · ลบชุดเก่า ${snap.removed}` : ''}`)
+  }
+  return { dir, changed, snapshot: snap }
+}
+async function cmdLibrary() {
+  await doLibrary({ snapshot: !flags.has('--no-snapshot') })
+}
+
 async function cmdHooks() {
   const { cfg } = loadConfig()
   const age = lessonsAgeDays()
@@ -317,6 +369,8 @@ async function cmdRun() {
     // บทเรียน hook ทุก 7 วัน ก่อนร่าง — ร่างรอบนี้ได้น้ำหนักสูตรล่าสุด · ล้ม = เตือน ร่างต่อด้วยบทเรียนเดิม
     if (!dryRun && !flags.has('--no-hooks') && lessonsAgeDays() >= LESSONS_MAX_AGE_DAYS) {
       try { hookLessons = await doHookLessons({ cfg }) } catch (error) { warnings.push(`⚠️ บทเรียน hook ล้ม: ${error.message}`); out(warnings.at(-1)) }
+      // คลังรีเสิร์ชรายสัปดาห์ (หน้าอัตโนมัติ + สรุปรายสัปดาห์ + สำเนาข้อมูลดิบ ในเครื่อง) — รอบเดียวกับบทเรียน hook
+      try { await doLibrary() } catch (error) { warnings.push(`⚠️ คลังรีเสิร์ชล้ม: ${error.message}`); out(warnings.at(-1)) }
     }
     if (!flags.has('--no-ai')) {
       // ถอดข้อเท็จจริงก่อนคิดมุม/ร่าง — มุมเล่าและร่างจะได้ยึดเนื้อจริง ไม่ใช่หัวข้อข่าว
@@ -445,7 +499,7 @@ function help() {
   out(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).slice(1).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'))
 }
 
-const commands = { run: cmdRun, collect: cmdCollect, enrich: cmdEnrich, angles: cmdAngles, drafts: cmdDrafts, hooks: cmdHooks, expire: cmdExpire, stats: cmdStats, report: cmdReport, probe: cmdProbe, help }
+const commands = { run: cmdRun, collect: cmdCollect, enrich: cmdEnrich, angles: cmdAngles, drafts: cmdDrafts, hooks: cmdHooks, library: cmdLibrary, expire: cmdExpire, stats: cmdStats, report: cmdReport, probe: cmdProbe, help }
 const fn = commands[command]
 if (!fn) { out(`ไม่รู้จักคำสั่ง "${command}"`); help(); process.exit(2) }
 Promise.resolve(fn()).catch((error) => {
