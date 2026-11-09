@@ -29,7 +29,7 @@ import { collectIdeas, formatCollectReport, cadenceDue } from '../server/researc
 import { createSupabaseStore, createDryRunStore, missingTable } from '../server/research/store.js'
 import { createAsk, NO_PROVIDER_MESSAGE } from '../server/research/llm.js'
 import { generateAngles } from '../server/research/angles.js'
-import { generateDrafts, hasResearchFacts, isInternalSourceLabel } from '../server/research/drafts.js'
+import { generateDrafts, hasResearchFacts, isInternalSourceLabel, NO_FACTS_DRAFT_SUBTYPES } from '../server/research/drafts.js'
 import { loadKnowledgeBase, knowledgeForIdea, KB_MIN_MATCHES } from '../server/research/knowledge.js'
 import { loadHookPatterns, loadHookLessons, DEFAULT_LESSONS_FILE } from '../server/research/hooks.js'
 import { collectHookSamples, summarizeHookLessons, mergeSamples, lessonsHeadline, LESSONS_MAX_AGE_DAYS } from '../server/research/hook-lessons.js'
@@ -171,7 +171,7 @@ async function doEnrich({ cfg, brand, store, limit, retry = false }) {
 // ร่างโพสต์เต็มให้ทุกมุมเล่าที่ยังไม่มีร่าง — เก็บใน angles[i].draft (คอลัมน์เดิม) · ทีละมุม บันทึกทีละมุม
 // บน Ollama 14b เครื่องนี้ ~1–2 นาที/มุม → จำกัดไอเดียต่อรอบ ที่เหลือรอรอบถัดไป (หรือสั่ง drafts --limit N เอง)
 // เฉพาะไอเดียที่มีข้อเท็จจริง (📌/manual) — ไม่มีข้อเท็จจริง = AI เดา (ผู้ตรวจอิสระ 6 พ.ย. 2569) · --include-no-facts เปิดได้เอง
-const NO_FACTS_DRAFT_SUBTYPES = ['scam']
+// NO_FACTS_DRAFT_SUBTYPES (เรื่องเตือนภัยร่างได้แม้ไม่มีข้อเท็จจริง) อยู่ใน server/research/drafts.js — ใช้ร่วมกับปุ่ม คิดคอนเทนต์ใหม่ (fresh.js)
 
 // คลังความรู้ AssetX (research/knowledge_base.json) — ไอเดียที่ไม่มีข้อเท็จจริงแต่คลังจับคู่ได้ ≥ KB_MIN_MATCHES ข้อ ร่างจากคลังได้ (เจ้าของ 7 พ.ย. 2569: "สร้างคลังของเราเองเลย")
 // โหลดไม่ได้ (ไฟล์เพี้ยน) = เตือนแล้วร่างแบบไม่มีคลัง ไม่ล้มทั้งรอบ

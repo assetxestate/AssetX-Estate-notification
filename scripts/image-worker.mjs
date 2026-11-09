@@ -2,6 +2,7 @@
 // scripts/image-worker.mjs — ตัวรับงานสร้างภาพบนคอมสำนักงาน
 // หยิบงานจากตาราง marketing_image_jobs (หน้า /marketing สั่ง) → สร้างภาพผ่านปลั๊กอิน gpt-image (Codex CLI ที่ล็อกอิน ChatGPT Plus)
 // → แปลงเป็น JPG → อัปโหลดขึ้น bucket marketing-images → ตั้งงานเป็น done ให้หน้าเว็บดึงภาพไปใช้
+// + คิว "คิดคอนเทนต์ใหม่ด้วย AI" (ตาราง marketing_content_jobs · 9 พ.ย. 2569) เป็นลูปที่สอง: Codex คิดมุมเล่าใหม่ + ร่างเต็ม (server/research/fresh.js) → มุมใหม่ไปอยู่ช่องแรกของไอเดีย
 //
 // npm run image-worker              รับงานไปเรื่อย ๆ (ปิดด้วย Ctrl+C) · ส่งสัญญาณ "เปิดอยู่" ทุก 30 วินาที
 // npm run image-worker -- --once    ทำงานในคิวงานเดียวแล้วจบ (ไว้ทดสอบ)
@@ -14,21 +15,26 @@ import { config } from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { IMAGE_BUCKET, WORKER_ID } from '../server/marketing-image-jobs.js'
 import { POSTER_SIZES } from '../src/lib/posterSizes.js'
-import { createAsk, ollamaConfigured } from '../server/research/llm.js'
+import { createAsk, NO_PROVIDER_MESSAGE, ollamaConfigured } from '../server/research/llm.js'
 import { enhanceBriefWithAi } from '../server/poster-brief-ai.js'
 import { pickStyleRefs, syncPosterRefs } from '../server/poster-refs.js'
 import { fillImagePlaceholders, PLACEHOLDER_IMAGES } from '../src/lib/posterV4.js'
 import { parseVariantLine } from '../src/lib/posterVariants.js'
 import { fillFreeImages, footerContactLines, parseFreeModeLine, PLACEHOLDER_FREE_IMAGES } from '../src/lib/posterFree.js'
 import { scrub } from '../server/research/pii.js'
+import { claimNextContentJob, CONTENT_JOB_TABLE, isMissingTable, processContentJob, releaseStaleContentJobs } from '../server/content-jobs-worker.js'
+import { generateFreshContent } from '../server/research/fresh.js'
+import { loadKnowledgeBase } from '../server/research/knowledge.js'
+import { loadHookLessons, loadHookPatterns } from '../server/research/hooks.js'
 
-const VERSION = '1'
+// 2 = รับงานคิดคอนเทนต์ใหม่ได้ (หน้าเว็บดู info.content_jobs ว่าตัวรับงานที่เปิดอยู่เป็นรุ่นนี้หรือยัง)
+const VERSION = '2'
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 config({ path: path.join(repo, '.env.local'), quiet: true })
 config({ path: path.join(repo, '.env'), quiet: true })
@@ -287,11 +293,11 @@ function database() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
-async function heartbeat(db, busyJob = null) {
+async function heartbeat(db, busyJob = null, busyContentJob = null) {
   const { error } = await db.from('marketing_image_worker').upsert({
     id: WORKER_ID,
     last_seen_at: new Date().toISOString(),
-    info: { version: VERSION, host: os.hostname(), busy_job: busyJob },
+    info: { version: VERSION, host: os.hostname(), busy_job: busyJob, content_jobs: true, busy_content_job: busyContentJob },
   }, { onConflict: 'id' })
   if (error) throw error
 }
@@ -398,6 +404,34 @@ async function processJob(db, plugin, job) {
   }
 }
 
+// ---------------------------------------------------------------- คิดคอนเทนต์ใหม่ด้วย AI (คิว marketing_content_jobs · เจ้าของขอ 9 พ.ย. 2569)
+// ลูปที่สองคู่กับคิวภาพ: งานภาพยาว 1–9 นาทีไม่ทำให้งานคิดคอนเทนต์ต้องรอ (Codex คนละ process กัน)
+
+const CONTENT_POLL_MS = 5 * 1000
+// ตารางยังไม่มี → เช็กซ้ำทุก 1 นาที (select แถวเดียว ถูกมาก) ให้เริ่มรับงานได้เร็วหลังเจ้าของรัน SQL · เตือนใน log ครั้งเดียว
+const CONTENT_RETRY_MS = 60 * 1000
+const readJsonFile = (file, fallback) => { try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return fallback } }
+
+// ความจริงของแบรนด์ชุดเดียวกับรอบรีเสิร์ช (research/brand_facts.json + ไฟล์ทับในเครื่อง .local/research/brand_facts.local.json)
+function loadBrand() {
+  return { ...readJsonFile(path.join(repo, 'research', 'brand_facts.json'), {}), ...readJsonFile(path.join(LOCAL_DIR, 'research', 'brand_facts.local.json'), {}) }
+}
+
+// โหลดใหม่ทุกงาน: แก้คลังความรู้/สูตร hook/แบรนด์แล้วไม่ต้องรีสตาร์ตตัวรับงาน · โหลดไม่ได้ = ร่างโดยไม่ใช้ส่วนนั้น (เหมือนรอบรีเสิร์ช)
+function contentGenerator(label) {
+  const say = (s) => log(`${label}: ${s}`)
+  return async ({ idea, avoid, note }) => {
+    const ask = createAsk({ log: say })
+    if (!ask.providers.length) return { ok: false, error: NO_PROVIDER_MESSAGE }
+    let kb = null
+    try { kb = loadKnowledgeBase() } catch (err) { say(`โหลดคลังความรู้ไม่ได้ (${shortError(err)}) — ร่างโดยไม่ใช้คลัง`) }
+    let hookLibrary = null
+    let hookLessons = null
+    try { hookLibrary = loadHookPatterns(); hookLessons = loadHookLessons() } catch (err) { say(`โหลดคลังสูตร hook ไม่ได้ (${shortError(err)}) — ร่างแบบเดิม`) }
+    return generateFreshContent({ idea, brand: loadBrand(), ask, kb, hookLibrary, hookLessons, avoid, note, log: say })
+  }
+}
+
 // ---------------------------------------------------------------- main
 
 async function main() {
@@ -415,15 +449,21 @@ async function main() {
       const pending = await db.from('poster_refs').select('id').eq('status', 'new').limit(50)
       if (!pending.error) refs = `รูปตัวอย่างรอดึง ${pending.data?.length ?? 0} ภาพ`
     } catch { /* ยังไม่ได้รัน supabase_poster_refs.sql */ }
-    log(`ตั้งค่าพร้อม · ปลั๊กอิน ${PLUGIN_SERVER} · งานรอคิว ${count ?? 0} งาน · ${refs}`)
+    let content = 'ตาราง marketing_content_jobs ยังไม่มี (รัน supabase_marketing_content_jobs.sql ก่อน)'
+    try {
+      const queued = await db.from(CONTENT_JOB_TABLE).select('id').eq('status', 'queued').limit(50)
+      if (!queued.error) content = `งานคิดคอนเทนต์ใหม่รอคิว ${queued.data?.length ?? 0} งาน`
+    } catch { /* ยังไม่ได้รัน supabase_marketing_content_jobs.sql */ }
+    log(`ตั้งค่าพร้อม · ปลั๊กอิน ${PLUGIN_SERVER} · งานรอคิว ${count ?? 0} งาน · ${refs} · ${content}`)
     return
   }
 
   await acquireLock()
   const plugin = new PluginClient(PLUGIN_SERVER)
   let busyJob = null
+  let busyContentJob = null
   let stopping = false
-  const beat = () => heartbeat(db, busyJob).catch((err) => log('ส่งสัญญาณไม่สำเร็จ:', shortError(err)))
+  const beat = () => heartbeat(db, busyJob, busyContentJob).catch((err) => log('ส่งสัญญาณไม่สำเร็จ:', shortError(err)))
   const timer = setInterval(beat, HEARTBEAT_MS)
   const shutdown = async () => {
     if (stopping) return
@@ -432,6 +472,9 @@ async function main() {
     plugin.stop()
     if (busyJob) {
       await db.from('marketing_image_jobs').update({ status: 'failed', error: 'ปิดตัวรับงานระหว่างสร้างภาพ กดสร้างใหม่ได้', finished_at: new Date().toISOString() }).eq('id', busyJob)
+    }
+    if (busyContentJob) {
+      await db.from(CONTENT_JOB_TABLE).update({ status: 'failed', error: 'ปิดตัวรับงานระหว่างคิดคอนเทนต์ กดคิดใหม่ได้', finished_at: new Date().toISOString() }).eq('id', busyContentJob)
     }
     await releaseLock()
     process.exit(0)
@@ -455,6 +498,39 @@ async function main() {
         nextRefSync = Date.now() + REF_SYNC_RETRY_MS
       }
     }
+    // คิดคอนเทนต์ใหม่: ลูปแยก ไม่รอกัน · ตารางยังไม่มี = พัก 10 นาทีแล้วลองใหม่ (ไม่กระทบคิวภาพ) · --once ทดสอบคิวภาพอย่างเดียว
+    const contentLoop = async () => {
+      let nextTry = 0
+      let staleChecked = false
+      let warnedMissing = false
+      while (!stopping) {
+        if (Date.now() < nextTry) { await sleep(CONTENT_POLL_MS); continue }
+        let job = null
+        try {
+          if (!staleChecked) {
+            const stale = await releaseStaleContentJobs(db, WORKER_ID)
+            if (stale) log(`ปิดงานคิดคอนเทนต์ที่ค้างจากรอบก่อน ${stale} งาน`)
+            staleChecked = true
+          }
+          job = await claimNextContentJob(db, WORKER_ID)
+        } catch (err) {
+          const missing = isMissingTable(err)
+          if (!missing) log(`อ่านคิวคิดคอนเทนต์ไม่สำเร็จ: ${shortError(err)}`)
+          else if (!warnedMissing) log('คิวคิดคอนเทนต์ใหม่ยังไม่มีตาราง (รัน supabase_marketing_content_jobs.sql ใน Supabase) — เช็กซ้ำทุก 1 นาที')
+          if (missing) warnedMissing = true
+          nextTry = Date.now() + (missing ? CONTENT_RETRY_MS : CONTENT_POLL_MS)
+          continue
+        }
+        if (warnedMissing) { log('คิวคิดคอนเทนต์ใหม่พร้อมแล้ว (พบตาราง)'); warnedMissing = false }
+        if (!job) { await sleep(CONTENT_POLL_MS); continue }
+        busyContentJob = job.id
+        await beat()
+        await processContentJob(db, job, { generate: contentGenerator(`คิดคอนเทนต์ใหม่ งาน ${job.id}`), log })
+        busyContentJob = null
+        await beat()
+      }
+    }
+    if (!ONCE) contentLoop().catch((err) => log('ลูปคิดคอนเทนต์ใหม่หยุด:', shortError(err)))
     while (!stopping) {
       await syncRefs()
       let job = null

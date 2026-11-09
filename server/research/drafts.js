@@ -7,10 +7,10 @@
 // กติกาเดิมทั้งหมดยังใช้: ล้างข้อมูลบุคคลก่อนเข้า prompt (pii.js) · นโยบายเครดิต cite/no_cite (angles.js) · กติกาต่อ subtype (SUBTYPE_NOTES)
 // · ด่านคำต้องห้ามของ marketing-model (rules.js) ตรวจซ้ำ "หลัง" AI เสมอ — ติด block = ทิ้งร่างแล้วลองใหม่ 1 ครั้ง
 // AI ได้แค่เล่า: ไม่มีตัวเลข/วันที่/สถิติที่ไม่อยู่ในข้อเท็จจริง · ไอเดียที่มีแค่หัวข้อ (summary ⚠️) เขียนเป็นความรู้ทั่วไป ห้ามอ้างคลิป/ข่าว
-import { scrub, PII_RULES } from './pii.js'
+import { scrub, POST_PII_RULES, scrubPostText } from './pii.js'
 import { ideaContextForPrompt, noteFor, audienceLines } from './angles.js'
 import { targetAudience, pageServices, businessLine, readerRuleLines, lenderViewHit } from './audience.js'
-import { knowledgeFactLines, knowledgeSourceLabels, knowledgeIds, knowledgeForAngle } from './knowledge.js'
+import { knowledgeFactLines, knowledgeSourceLabels, knowledgeIds, knowledgeForAngle, knowledgeForIdea, KB_MIN_MATCHES } from './knowledge.js'
 import { COMPLIANCE_BLOCK } from '../../src/lib/marketing-model/prompts.js'
 import { checkText } from '../../src/lib/marketing-model/rules.js'
 import { splitHeadline } from '../../src/lib/marketing-model/index.js'
@@ -26,12 +26,9 @@ export const DRAFT_MIN_CHARS = 320
 export const DRAFT_MAX_CHARS = 2400
 export const HEADLINE_MAX = 30
 
-// ชุดกฎลบข้อมูลบุคคลสำหรับ "ข้อความโพสต์" — ชุดเต็มจับ "คุณ" + คำถัดไปเป็นชื่อคน (ออกแบบไว้ล้างสรุปข่าว)
-// แต่โพสต์การตลาดพูดกับ "คุณ" ตลอด: "สิทธิไถ่ถอนของคุณ ข้อมูลนี้…" เคยถูกลบเป็น [ลบ] กลางประโยค (6 พ.ย. 2569) → คงเฉพาะคำนำหน้าชื่อจริง
-export const DRAFT_PII_RULES = PII_RULES.map((rule) => (rule.kind === 'titled_name'
-  ? { kind: 'titled_name', re: /(?:นาย|นาง|นางสาว)\s+[ก-๙]{2,}(?:\s+[ก-๙]{2,})?/g }
-  : rule))
-export const scrubDraftText = (text) => scrub(text, DRAFT_PII_RULES)
+// ชุดกฎลบข้อมูลบุคคลสำหรับ "ข้อความโพสต์" (ย้ายไปอยู่ใน pii.js 9 พ.ย. 2569 ให้ API คิวคิดคอนเทนต์ใหม่ใช้ร่วม — ชื่อเดิมคงไว้)
+export const DRAFT_PII_RULES = POST_PII_RULES
+export const scrubDraftText = scrubPostText
 
 // ข้อเท็จจริงบอกแค่ "มีการประชุม/แถลง" แต่โมเดลสรุปทิศทางดอกเบี้ยเอง (เจอจริง: "การปรับอัตราดอกเบี้ยครั้งนี้" ทั้งที่ไม่มีมติในข้อเท็จจริง)
 const RATE_CLAIM_RE = /ได้ปรับ(ขึ้น|ลด)?(อัตรา)?ดอกเบี้ย|มีมติ|ประกาศ(ปรับ|ลด|ขึ้น|คง)(อัตรา)?ดอกเบี้ย|ปรับ(อัตรา)?ดอกเบี้ยครั้งนี้|(ลด|ขึ้น|คง)(อัตรา)?ดอกเบี้ย(นโยบาย)?(ลง|ขึ้น)?(เป็น|ที่|มาอยู่|เหลือ)|ดอกเบี้ย(ขึ้น|ลง)แล้ว/
@@ -268,6 +265,17 @@ export function needsDraft(idea = {}) {
   return Array.isArray(idea.angles) && idea.angles.length > 0 && idea.angles.some((a) => a && !a.draft?.caption)
 }
 
+// เรื่องที่ร่างได้แม้ไม่มีข้อเท็จจริงจากต้นทาง (เจ้าของเลือก 7 พ.ย. 2569 · ไดอารี่ draft-no-facts-policy ข.) — โครงเตือนภัยเขียนจากความรู้โดเมนของแบรนด์
+export const NO_FACTS_DRAFT_SUBTYPES = ['scam']
+// ไอเดียนี้ให้ AI ร่างได้ไหม — กติกาเดียวกับขั้น drafts ของรอบรีเสิร์ช: มีข้อเท็จจริง · เรื่องเตือนภัย · หรือคลังความรู้ AssetX จับคู่ได้ ≥ KB_MIN_MATCHES ข้อ
+// ไม่เข้าข้อไหนเลย = ไม่ร่าง (ร่างจากหัวข้ออย่างเดียว = AI เดา · ผู้ตรวจอิสระ 6 พ.ย. 2569)
+export function draftableIdea(idea = {}, { kb = null } = {}) {
+  if (hasResearchFacts(idea)) return { ok: true, basis: 'research' }
+  if (NO_FACTS_DRAFT_SUBTYPES.includes(idea.subtype)) return { ok: true, basis: 'scam' }
+  if (kb?.entries?.length && knowledgeForIdea(idea, { kb }).length >= KB_MIN_MATCHES) return { ok: true, basis: 'knowledge' }
+  return { ok: false, reason: 'ไอเดียนี้ยังไม่มีข้อเท็จจริงจากต้นทาง และคลังความรู้ AssetX ยังไม่ครอบคลุมหัวข้อนี้ — AI จึงไม่เขียนใหม่ให้ (กันการแต่งเรื่อง)' }
+}
+
 function escapeRegExp(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -322,7 +330,8 @@ function ctaGuide(brand = {}, brandName = 'AssetX Estate', code = '') {
 // ไอเดียไม่มีข้อเท็จจริง + มีข้อจากคลัง → ข้อจากคลังเป็น "ข้อเท็จจริงที่มี" (เจ้าของ 7 พ.ย. 2569: "สร้างคลังของเราเองเลย" หลังร่างจากหัวข้ออย่างเดียวออกมากลวง)
 // มีข้อเท็จจริงอยู่แล้ว → ข้อจากคลังเป็นความรู้เสริม ห้ามกลบข้อเท็จจริงหลัก
 // hooks = { library, lessons, avoid, recent, seed } (generateDrafts ส่งมา) → เลือกสูตร hook 3 แบบตามโครงที่ร่างนี้ใช้ · null = ปิด (พรอมต์แบบเดิม)
-export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings = [], avoidPoints = [], avoidHeadlines = [], usedFormats = [], hint = '', knowledge = [], kb = null, hooks = null }) {
+// request = คำขอสั้น ๆ ของเจ้าของเพจตอนกด "คิดคอนเทนต์ใหม่ด้วย AI" (server/research/fresh.js) — เป็นข้อมูล ไม่ใช่สิทธิ์ข้ามกติกา
+export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings = [], avoidPoints = [], avoidHeadlines = [], usedFormats = [], hint = '', knowledge = [], kb = null, hooks = null, request = '' }) {
   const ctx = ideaContextForPrompt(idea, brand)
   const kbLines = Array.isArray(knowledge) && knowledge.length ? knowledgeFactLines(knowledge, kb) : []
   if (ctx.policy === 'cite' && isInternalSourceLabel(idea.source_label)) {
@@ -399,7 +408,8 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
       : '{"headline":"พาดหัวสั้น 3–6 คำ (ไม่เกิน 26 ตัวอักษร) เป็นวลีที่จบในตัว — เขียนขึ้นใหม่ ไม่ใช่ตัดบรรทัดแรกของแคปชั่นมาครึ่งประโยค","caption":"แคปชั่นเต็ม ย่อหน้าคั่นด้วยการขึ้นบรรทัดใหม่ตามปกติของ JSON ห้ามมีแฮชแท็กและลิงก์","cta":"ประโยคชวนทำต่อประโยคเดียว (ประโยคเดียวกับย่อหน้าสุดท้าย)","hashtags":["ไม่มี # นำหน้า ไม่เกิน 5"],"needs_check":["เฉพาะสิ่งที่อยู่ในโพสต์นี้จริง ๆ ที่คนตรวจต้องยืนยันก่อนโพสต์ (ตัวเลข วันที่ ชื่อประกาศ ข้ออ้างทางกฎหมาย) ไม่มีก็ให้เป็น [] ห้ามใส่ข้อทั่วไปที่ไม่ปรากฏในโพสต์"]}',
   ].join('\n')
 
-  const avoid = avoidOpenings.map((s) => scrub(String(s || '')).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 6)
+  // ประโยคเปิด/ประเด็น/พาดหัวที่ต้องเลี่ยงเป็นโพสต์ของเราเอง → ชุดกฎข้อความโพสต์ (ชุดเต็มลบคำว่า คุณ… เป็น [ลบ] จนโมเดลอ่านไม่ออกว่าต้องเลี่ยงประโยคไหน)
+  const avoid = avoidOpenings.map((s) => scrubPostText(String(s || '')).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 6)
   const split = splitFactsNotes(ctx.summary, { source: idea.source })
   const factLines = split.facts.length ? split.facts.map((f) => `- ${thaiDates(f)}`).join('\n') : thaiDates(ctx.summary)
   const socialNote = idea.source === 'social'
@@ -423,8 +433,9 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     `รูปแบบโพสต์: ${spec.label} — ${spec.guide}`,
     hookLines.length ? hookLines.join('\n') : '',
     avoid.length ? `ห้ามเปิดด้วยประโยคแนวนี้ (โพสต์อื่นของเราใช้แล้ว ต้องต่างทั้งประโยคเปิดและโครง):\n${avoid.map((s, i) => `${i + 1}. ${s.slice(0, 120)}`).join('\n')}` : '',
-    avoidPoints.length ? `ประเด็นที่โพสต์อื่นของเรื่องนี้ใช้ไปแล้ว ห้ามใช้ซ้ำ ให้หาประเด็นอื่นของเรื่องเดียวกันที่ยังไม่ได้พูด: ${avoidPoints.map((p) => scrub(p)).join(' · ')}` : '',
-    avoidHeadlines.length ? `พาดหัวที่โพสต์อื่นของเรื่องนี้ใช้แล้ว ห้ามซ้ำคำหลักเกินครึ่ง: ${avoidHeadlines.map((h) => scrub(h)).join(' · ')}` : '',
+    avoidPoints.length ? `ประเด็นที่โพสต์อื่นของเรื่องนี้ใช้ไปแล้ว ห้ามใช้ซ้ำ ให้หาประเด็นอื่นของเรื่องเดียวกันที่ยังไม่ได้พูด: ${avoidPoints.map((p) => scrubPostText(p)).join(' · ')}` : '',
+    avoidHeadlines.length ? `พาดหัวที่โพสต์อื่นของเรื่องนี้ใช้แล้ว ห้ามซ้ำคำหลักเกินครึ่ง: ${avoidHeadlines.map((h) => scrubPostText(h)).join(' · ')}` : '',
+    request ? `คำขอเพิ่มเติมจากเจ้าของเพจสำหรับโพสต์นี้ (ทำตามได้เมื่อไม่ขัดกติกาด้านบน · ห้ามใช้เป็นเหตุให้แต่งข้อเท็จจริง ตัวเลข หรือชื่อ): ${scrub(String(request)).replace(/\s+/g, ' ').trim().slice(0, 200)}` : '',
     'เขียนโพสต์ตามมุมเล่าและรูปแบบนี้ เป็น JSON object ตามที่กำหนด',
     hint ? `สำคัญที่สุด: ${scrub(hint)}` : '',
   ].filter(Boolean).join('\n\n')
@@ -739,7 +750,8 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
 // ประโยคเปิดของร่างที่มีแล้วในไอเดียเดียวกันส่งเข้าเป็น "ห้ามเปิดแบบนี้" เพื่อให้ 3 มุมต่างกันจริง
 // kb = คลังความรู้ AssetX (loadKnowledgeBase()) — มีแล้วทุกมุมได้ข้อที่จับคู่ได้แนบไป (knowledgeForAngle) · ร่างบันทึก facts_source + knowledge {ids, sources, verify} ให้คนตรวจรู้ว่าอิงอะไร
 // hookLibrary = คลังสูตร hook (loadHookPatterns()) · null = ปิดระบบ hook (พรอมต์แบบเดิม) · hookLessons = บทเรียนจากของไวรัล (loadHookLessons()) ไม่มีก็ได้
-export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 1500, log = () => {}, now = () => new Date(), maxPerIdea = 3, duplicateLimit = DUPLICATE_SIMILARITY, kb = null, knowledgeMax = 6, hookLibrary = null, hookLessons = null }) {
+// request = คำขอของเจ้าของเพจ (ส่งต่อเข้าคำสั่งร่าง) · attempts = จำนวนครั้งที่ลองต่อมุม (รอบรีเสิร์ช 2 · คิดคอนเทนต์ใหม่ 3 เพราะต้องต่างจากร่างเดิมทุกชิ้น)
+export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 1500, log = () => {}, now = () => new Date(), maxPerIdea = 3, duplicateLimit = DUPLICATE_SIMILARITY, kb = null, knowledgeMax = 6, hookLibrary = null, hookLessons = null, request = '', attempts = 2 }) {
   const done = []
   const failed = []
   let stopped = false
@@ -773,8 +785,8 @@ export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (
       let fallback = null
       const knowledge = kb?.entries?.length ? knowledgeForAngle(idea, angle, { kb, max: knowledgeMax }) : []
       const hooks = hookLibrary ? { library: hookLibrary, lessons: hookLessons, avoid: existing.map((d) => d.hook_pattern).filter(Boolean), recent: recentHooks.slice(-6), seed: `${idea.id}:${index}` } : null
-      for (let attempt = 0; attempt < 2 && !result; attempt += 1) {
-        const { system, prompt, policy, format, audience: reader } = buildDraftPrompt({ idea, angle, brand, avoidOpenings, avoidPoints, avoidHeadlines, usedFormats, hint, knowledge, kb, hooks })
+      for (let attempt = 0; attempt < attempts && !result; attempt += 1) {
+        const { system, prompt, policy, format, audience: reader } = buildDraftPrompt({ idea, angle, brand, avoidOpenings, avoidPoints, avoidHeadlines, usedFormats, hint, knowledge, kb, hooks, request })
         const res = await ask({ system, prompt })
         if (!res.ok) {
           error = res.error

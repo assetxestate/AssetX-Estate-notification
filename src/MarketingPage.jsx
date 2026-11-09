@@ -14,6 +14,7 @@ import { marketingChannelSetup, validateManualPublicationReference } from './lib
 import { organizeMarketingQueue } from './lib/marketingQueuePlan.js'
 import { SESSION_EXPIRED_MESSAGE, errorMessage, friendlyApiError } from './lib/marketingErrors.js'
 import { contentNoOf, contentReference, ensureContentNumbers, findContentByNo, formatContentNo, parseContentNo } from './lib/marketingContentNumbers.js'
+import { freshJobStatus, isActiveJob as isActiveFreshJob, latestJobBy, shouldResumeJob } from './lib/freshContentJob.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -37,6 +38,7 @@ function researchIdeaToCard(row) {
     kind: 'research',
     source: cite ? `${researchSourceLabels[row.source] || row.source} · ${row.source_label}` : (researchSourceLabels[row.source] || 'ตลาด'),
     type: researchSubtypeLabels[row.subtype] || 'ตลาด',
+    subtype: row.subtype || null,
     // คะแนนเรดาร์อยู่ช่วง ~1–9 ส่วนไอเดียเดิมในหน้าใช้ 0–100 → ยืดสเกลให้เรียงรวมกันได้ (ใช้เรียงเท่านั้น ไม่โชว์)
     score: Math.round(Math.min(99, 40 + Number(row.score || 0) * 7)),
     radarScore: Number(row.score || 0),
@@ -1072,6 +1074,14 @@ export default function MarketingPage({ onBack }) {
   const [focusNo, setFocusNo] = useState(null)
   // ไอเดียที่เพิ่งย้อนกลับจากแท็บร่าง → แท็บไอเดียยกขึ้นบนสุดและไฮไลต์ (สถานะหน้าจอ ไม่บันทึก)
   const [returnedIdea, setReturnedIdea] = useState(null)
+  // คิดคอนเทนต์ใหม่ด้วย AI: งานในคิวบนคอมสำนักงาน { [jobId]: job } + สถานะตัวรับงาน (สถานะหน้าจอ · งานจริงอยู่ในตาราง marketing_content_jobs)
+  const [contentJobs, setContentJobs] = useState({})
+  const [contentWorker, setContentWorker] = useState(null)
+  // ไอเดียที่เพิ่งได้มุมใหม่จาก AI { id, at } → การ์ดเลือกมุมใหม่ (ช่องแรก) และไฮไลต์ (สถานะหน้าจอ ไม่บันทึก)
+  const [freshIdea, setFreshIdea] = useState(null)
+  // งานที่จัดการผลแล้วในหน้านี้ (กันสร้างร่างซ้ำระหว่างรอ) และงานล้มที่แจ้งไปแล้ว · ตามงานเก่าตอนเปิดหน้าครั้งเดียว
+  const freshHandledRef = useRef(new Set())
+  const freshResumedRef = useRef(false)
   // ข้อความใต้ช่องค้น { text, at } — ส่งข้อความเดิมซ้ำก็นับเวลาใหม่และอ่านออกเสียงใหม่
   const [findMsg, setFindMsg] = useState(null)
   // คลังผลงาน: ชิ้นที่เพิ่งค้นด้วยเลข → ช่องตัวอย่างช่องทางแสดงชิ้นนี้ (สถานะหน้าจอ ไม่บันทึก)
@@ -1621,7 +1631,8 @@ export default function MarketingPage({ onBack }) {
     notify('ร่างโพสต์แล้ว · ตรวจแล้วกด ส่งเข้ารอตรวจ')
   }
 
-  const createApprovalContentFromIdea = (prompt, sourceIdea) => {
+  // replaces = ร่างเดิมที่เจ้าของกด "คิดคอนเทนต์ใหม่ (AI)" — ร่างใหม่บอกว่าแทนเลขไหน ร่างเดิมพักไว้ในคลังผลงาน (ไม่ลบ) และไม่พาไปแท็บอื่นเอง (ผลมาถึงทีหลัง เจ้าของอาจทำอย่างอื่นอยู่)
+  const createApprovalContentFromIdea = (prompt, sourceIdea, { replaces = null } = {}) => {
     const ws = workspaceRef.current
     const inferredIntent = inferStudioIntentFromIdea(sourceIdea, ws.studio)
     const sourceIdeaId = sourceIdea?.dbId || null
@@ -1661,12 +1672,20 @@ export default function MarketingPage({ onBack }) {
       source: sourceIdea?.source || 'ไอเดียวันนี้',
       // ไอเดียรีเสิร์ชที่เป็นต้นเรื่อง (เลขเดียวกับ "ไอเดีย N" บนการ์ด) — ตามกลับไปหาแหล่งข้อเท็จจริงได้ตอนแก้
       ...(sourceIdea?.dbId ? { ideaId: sourceIdea.dbId } : {}),
+      ...(replaces ? { replacesId: replaces.id, replacesNo: replaces.contentNo || null } : {}),
       createdAt: new Date().toISOString(),
     }
-    const next = save((current) => ({ ...current, studio: input, generated, posts: [post, ...(current.posts || [])] }))
+    const next = save((current) => ({
+      ...current,
+      studio: input,
+      generated,
+      posts: [post, ...(current.posts || []).map((item) => (replaces && item.id === replaces.id ? { ...item, status: 'archived', replacedBy: post.id } : item))],
+    }))
     setSelectedId(post.id)
-    goTo('approvals')
-    notify(withContentNo(contentNoOf(next, post.id), 'ร่างโพสต์แล้ว อยู่ในแท็บ ร่าง รอตรวจ'))
+    if (!replaces) goTo('approvals')
+    notify(withContentNo(contentNoOf(next, post.id), replaces
+      ? `คอนเทนต์ใหม่จาก AI แทน${formatContentNo(replaces.contentNo) ? ` ${formatContentNo(replaces.contentNo)}` : 'ร่างเดิม'} อยู่บนสุดของแท็บ ร่าง · ร่างเดิมพักไว้ในคลังผลงาน`
+      : 'ร่างโพสต์แล้ว อยู่ในแท็บ ร่าง รอตรวจ'))
   }
 
   const addGeneratedToQueue = (status = 'pending') => {
@@ -1782,6 +1801,154 @@ export default function MarketingPage({ onBack }) {
       notify(errorMessage(err, 'ย้อนกลับเป็นไอเดียไม่สำเร็จ ลองใหม่อีกครั้ง'), 'error')
     }
   }
+
+  // ---- คิดคอนเทนต์ใหม่ด้วย AI (เจ้าของขอ 9 พ.ย. 2569: ไม่ชอบคอนเทนต์ที่ออกแบบไว้ → กดให้ AI คิดใหม่สด ๆ) ----
+  // การ์ดไอเดีย → มุมเล่าใหม่ + ร่างเต็มไปอยู่ช่องแรกของการ์ด · การ์ดร่าง → ร่างใหม่แทนร่างนี้ (ร่างเดิมพักไว้ในคลังผลงาน)
+  // ทำบนคอมสำนักงาน (Codex · ด่านตรวจชุดเดียวกับรอบรีเสิร์ช · server/research/fresh.js) ราว 1–3 นาที · ปิดหน้าได้ เปิดใหม่แล้วตามงานต่อ
+  const contentJobsRequest = async (body) => {
+    const res = await fetch('/api/marketing-content-jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const error = new Error(friendlyApiError(res.status, data, 'ส่งงานคิดคอนเทนต์ใหม่ไม่สำเร็จ ลองใหม่อีกครั้ง'))
+      error.status = res.status
+      throw error
+    }
+    return data
+  }
+  const putContentJob = (job) => { if (job?.id) setContentJobs((prev) => ({ ...prev, [job.id]: job })) }
+  const dropContentJob = (id) => setContentJobs((prev) => {
+    if (!prev[id]) return prev
+    const next = { ...prev }
+    delete next[id]
+    return next
+  })
+
+  const startFreshContent = async ({ idea = null, post = null } = {}) => {
+    if (post && blockedWhileLoading()) return
+    const ideaId = post ? post.ideaId : idea?.dbId
+    if (!ideaId) return
+    const where = post
+      ? 'แล้วสร้างเป็นร่างใหม่แทนร่างนี้ (ร่างเดิมพักไว้ในคลังผลงาน กู้คืนได้)'
+      : 'แล้ววางเป็นมุมเล่าใหม่ช่องแรกของการ์ดนี้ (มุมเดิมยังอยู่ครบ)'
+    const note = window.prompt(`AI จะคิดมุมเล่าใหม่และเขียนร่างใหม่ทั้งชิ้น ${where}\nใช้เวลาราว 1–3 นาทีบนคอมสำนักงาน ระหว่างนี้ทำอย่างอื่นหรือปิดหน้าได้\n\nอยากให้เน้นอะไรเป็นพิเศษ พิมพ์ได้ เช่น "ภาษาเป็นกันเองขึ้น" "สั้นลง" "เล่าเป็นเคสสมมุติ" (เว้นว่างได้)`, '')
+    if (note === null) return
+    try {
+      const data = await contentJobsRequest({
+        action: 'create',
+        idea_id: ideaId,
+        note,
+        ...(post ? { post_key: String(post.id), content_no: post.contentNo || null, avoid_headline: post.title || '', avoid_caption: post.caption || '' } : {}),
+      })
+      putContentJob(data.job)
+      if (data.worker) setContentWorker(data.worker)
+      const offline = data.worker && !data.worker.online
+      notify(
+        data.reused ? 'AI กำลังคิดคอนเทนต์ใหม่ของไอเดียนี้อยู่แล้ว รอผลได้เลย'
+          : offline ? 'ส่งงานแล้ว แต่คอมสำนักงานปิดอยู่ — AI จะเริ่มคิดเมื่อเปิดเครื่อง'
+            : 'ส่งให้ AI คิดคอนเทนต์ใหม่แล้ว · ราว 1–3 นาที',
+        offline ? 'warn' : 'success',
+      )
+    } catch (err) {
+      notify(errorMessage(err, 'ส่งงานคิดคอนเทนต์ใหม่ไม่สำเร็จ ลองใหม่อีกครั้ง'), 'error')
+    }
+  }
+
+  // งานเสร็จ: จากการ์ดไอเดีย = โหลดคิวใหม่ให้การ์ดเลือกมุมใหม่ · จากการ์ดร่าง = จองผล (ครั้งเดียว · เปิดสองแท็บก็ไม่สร้างซ้ำ) แล้วสร้างร่างใหม่แทนร่างเดิม
+  const handleFreshDone = async (job) => {
+    if (freshHandledRef.current.has(job.id)) return
+    freshHandledRef.current.add(job.id)
+    const angle = job.result?.angle
+    if (!job.post_key) {
+      dropContentJob(job.id)
+      await loadResearchIdeas()
+      setFreshIdea({ id: job.idea_id, at: Date.now() })
+      notify(`ไอเดีย ${job.idea_id} ได้มุมเล่าใหม่จาก AI แล้ว${angle?.label ? ` "${angle.label}"` : ''} · อยู่ช่องแรกของการ์ด พร้อมกด ร่างโพสต์`)
+      return
+    }
+    try {
+      await contentJobsRequest({ action: 'apply', id: job.id })
+    } catch (err) {
+      // 409 = แท็บอื่นสร้างร่างจากผลนี้ไปแล้ว → ไม่ต้องทำอะไร · อย่างอื่น (เน็ตสะดุด) = ลองใหม่รอบหน้า
+      if (err.status === 409) { dropContentJob(job.id); return }
+      freshHandledRef.current.delete(job.id)
+      notify(errorMessage(err, 'รับผลคอนเทนต์ใหม่ไม่สำเร็จ จะลองอีกครั้ง'), 'error')
+      return
+    }
+    dropContentJob(job.id)
+    const old = (workspaceRef.current.posts || []).find((post) => String(post.id) === String(job.post_key))
+    if (!angle?.draft?.caption) { notify('งานคิดคอนเทนต์ใหม่เสร็จ แต่ไม่มีร่างกลับมา ลองกดใหม่อีกครั้ง', 'warn'); return }
+    if (!old || ['archived', 'posted'].includes(old.status) || old.facebookPostId) {
+      notify(`AI คิดคอนเทนต์ใหม่ของไอเดีย ${job.idea_id} เสร็จแล้ว แต่ร่างเดิมถูกพักหรือโพสต์ไปแล้ว — มุมใหม่ "${angle.label}" เก็บไว้ที่ไอเดีย ${job.idea_id}`, 'warn')
+      return
+    }
+    createApprovalContentFromIdea(old.topic || old.title, {
+      kind: 'research',
+      dbId: old.ideaId,
+      title: old.topic || old.title,
+      audience: RESEARCH_READER_LABEL,
+      angle: angle.brief,
+      angleLabel: angle.label,
+      draft: angle.draft,
+      channel: /line/i.test(old.channel || '') ? 'LINE OA' : 'Facebook',
+      source: old.source,
+    }, { replaces: old })
+    postResearchIdea({ action: 'pick', id: old.ideaId, chosen_angle: angle.label }).catch(() => {})
+  }
+
+  // ตามงานที่ยังไม่จบทุก 4 วินาที (เฉพาะตอนมีงาน) · งานหาย (404) = เลิกตาม
+  const activeFreshIds = Object.values(contentJobs).filter(isActiveFreshJob).map((job) => job.id).sort().join(',')
+  useEffect(() => {
+    if (!activeFreshIds) return undefined
+    let stopped = false
+    const tick = async () => {
+      for (const id of activeFreshIds.split(',')) {
+        try {
+          const res = await fetch(`/api/marketing-content-jobs?id=${id}`)
+          const data = await res.json().catch(() => ({}))
+          if (stopped) return
+          if (res.ok && data.job) {
+            setContentJobs((prev) => (prev[id] ? { ...prev, [id]: data.job } : prev))
+            if (data.worker) setContentWorker(data.worker)
+          } else if (res.status === 404) dropContentJob(id)
+        } catch { /* เน็ตสะดุด — รอบหน้าลองใหม่ */ }
+      }
+    }
+    const timer = window.setInterval(tick, 4000)
+    tick()
+    return () => { stopped = true; window.clearInterval(timer) }
+  }, [activeFreshIds])
+
+  // เปิดหน้าใหม่: ตามงานที่ยังไม่จบ และรับผลจากการ์ดร่างที่เสร็จระหว่างปิดหน้า (หลังโหลดเวิร์กสเปซเสร็จ) · ยังไม่ได้รัน SQL/ยังไม่ล็อกอิน = เงียบ
+  useEffect(() => {
+    if (syncState.state === 'loading' || freshResumedRef.current) return
+    freshResumedRef.current = true
+    fetch('/api/marketing-content-jobs?recent=1')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return
+        if (data.worker) setContentWorker(data.worker)
+        const resume = (data.jobs || []).filter(shouldResumeJob)
+        if (resume.length) setContentJobs((prev) => ({ ...Object.fromEntries(resume.map((job) => [job.id, job])), ...prev }))
+      })
+      .catch(() => {})
+  }, [syncState.state])
+
+  // งานเสร็จ → รับผล (รอเวิร์กสเปซโหลดเสร็จก่อน — ร่างใหม่ต้องลงบนข้อมูลจากระบบ) · งานล้ม → แจ้งครั้งเดียว (ข้อความค้างบนการ์ดจนกดใหม่)
+  useEffect(() => {
+    if (syncState.state === 'loading') return
+    for (const job of Object.values(contentJobs)) {
+      if (job.status === 'done') handleFreshDone(job)
+      else if (job.status === 'failed' && !freshHandledRef.current.has(job.id)) {
+        freshHandledRef.current.add(job.id)
+        notify(`คิดคอนเทนต์ใหม่ไม่สำเร็จ: ${job.error || 'ไม่ทราบสาเหตุ'}`, 'error')
+      }
+    }
+  }, [contentJobs, syncState.state])
+
+  // สถานะบนการ์ด: งานล่าสุดต่อไอเดีย (สั่งจากการ์ดไอเดีย) และต่อร่าง (สั่งจากการ์ดร่าง)
+  const freshJobList = Object.values(contentJobs).filter((job) => job.status !== 'done')
+  const freshByIdea = latestJobBy(freshJobList.filter((job) => !job.post_key), (job) => job.idea_id)
+  const freshByPost = latestJobBy(freshJobList.filter((job) => job.post_key), (job) => job.post_key)
 
   const updateReferenceForm = (patch) => {
     save((ws) => ({ ...ws, referenceForm: { ...ws.referenceForm, ...patch } }))
@@ -2262,6 +2429,10 @@ export default function MarketingPage({ onBack }) {
             onLoadRadar={loadTrendRadar}
             onReload={loadResearchIdeas}
             highlight={returnedIdea}
+            freshJobs={freshByIdea}
+            freshWorker={contentWorker}
+            onFreshContent={startFreshContent}
+            freshIdea={freshIdea}
           />
         )}
         {view === 'studio' && (
@@ -2296,6 +2467,9 @@ export default function MarketingPage({ onBack }) {
             onDelete={deletePost}
             onArchive={archivePost}
             onReturnToIdea={returnDraftToIdea}
+            freshJobs={freshByPost}
+            freshWorker={contentWorker}
+            onFreshContent={startFreshContent}
             onNewDraft={() => goTo('studio')}
             focusNo={focusNo}
             loading={syncState.state === 'loading'}
@@ -2623,12 +2797,20 @@ function IdeasView({
   onLoadRadar,
   onReload,
   highlight = null,
+  freshJobs = {},
+  freshWorker = null,
+  onFreshContent = null,
+  freshIdea = null,
 }) {
   const PAGE_SIZE = 6
   const [sort, setSort] = useState('newest')
   const [showAll, setShowAll] = useState(false)
   const [angleChoice, setAngleChoice] = useState({})
   const [expanded, setExpanded] = useState({})
+  // ไอเดียที่เพิ่งได้มุมใหม่จาก AI → เลือกช่องแรก (มุมใหม่) ให้เลย
+  useEffect(() => {
+    if (freshIdea?.id) setAngleChoice((prev) => ({ ...prev, [`research-${freshIdea.id}`]: 0 }))
+  }, [freshIdea])
   const syncState = feed.syncState || { state: 'saved' }
   const ordered = useMemo(() => {
     const byDate = (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
@@ -2651,8 +2833,14 @@ function IdeasView({
     const angleIndex = angleChoice[idea.id] ?? 0
     const angleText = angles[angleIndex]?.brief || idea.angle
     const isReturned = Boolean(highlight && isResearch && idea.dbId === highlight.id)
+    const isFresh = Boolean(freshIdea && isResearch && idea.dbId === freshIdea.id)
+    const freshJob = isResearch && idea.dbId ? freshJobs[idea.dbId] || null : null
+    const freshBusy = isActiveFreshJob(freshJob)
+    const freshNote = freshJobStatus(freshJob, freshWorker)
+    // คิดใหม่ได้เมื่อ AI ร่างไอเดียนี้ได้ (มีข้อเท็จจริง · เตือนภัย · หรือเคยร่างจากคลังความรู้แล้ว) — กติกาเดียวกับรอบรีเสิร์ช ตัวรับงานตรวจซ้ำอีกชั้น
+    const canFresh = Boolean(isResearch && idea.dbId && onFreshContent && (idea.hasFacts || idea.subtype === 'scam' || angles.some((item) => item?.draft?.caption)))
     return (
-      <article className={`mx-idea-card ${isExample ? 'example' : ''} ${isReturned ? 'mx-focus' : ''}`} key={isReturned ? `${idea.id}-${highlight.at}` : idea.id}>
+      <article className={`mx-idea-card ${isExample ? 'example' : ''} ${isReturned || isFresh ? 'mx-focus' : ''}`} key={isReturned ? `${idea.id}-${highlight.at}` : isFresh ? `${idea.id}-f${freshIdea.at}` : idea.id}>
         <div className="mx-idea-top">
           <span>{isExample ? 'ตัวอย่าง' : idea.kind === 'radar' ? 'สำรวจตลาด' : idea.type}</span>
           <strong>{isResearch ? [idea.dbId ? `ไอเดีย ${idea.dbId}` : '', idea.createdAt ? thaiDate(idea.createdAt) : 'ใหม่'].filter(Boolean).join(' · ') : isExample ? 'จากแม่แบบ' : 'จากการสำรวจตลาด'}</strong>
@@ -2668,7 +2856,7 @@ function IdeasView({
             {angles.map((item, index) => (
               <label key={`${idea.id}-${index}`} className={angleIndex === index ? 'active' : ''}>
                 <input type="radio" name={`angle-${idea.id}`} checked={angleIndex === index} onChange={() => setAngleChoice((prev) => ({ ...prev, [idea.id]: index }))} />
-                <span>{item.label}{item.draft?.caption ? ' · ร่างพร้อม' : ''}{idea.chosenAngle && item.label === idea.chosenAngle ? ' · เคยร่างแล้ว' : ''}</span>
+                <span>{item.label}{item.fresh ? ' · ✨ ใหม่' : ''}{item.draft?.caption ? ' · ร่างพร้อม' : ''}{idea.chosenAngle && item.label === idea.chosenAngle ? ' · เคยร่างแล้ว' : ''}</span>
               </label>
             ))}
           </fieldset>
@@ -2693,9 +2881,13 @@ function IdeasView({
         </div>
         <div className="mx-card-actions">
           <button className="mx-primary" onClick={() => onCreate(idea.title, idea, angleIndex)}>ร่างโพสต์</button>
+          {canFresh && (
+            <button className="mx-ghost" disabled={freshBusy} title="ไม่ชอบมุมเล่าที่มี? ให้ AI คิดมุมใหม่และเขียนร่างใหม่ทั้งชิ้นสด ๆ บนคอมสำนักงาน (ราว 1–3 นาที) · มุมเดิมยังอยู่ครบ" onClick={() => onFreshContent({ idea })}>{freshBusy ? 'AI กำลังคิด…' : '✨ คิดคอนเทนต์ใหม่ (AI)'}</button>
+          )}
           <button className="mx-ghost" onClick={() => onSaveIdea(idea)}>เก็บไว้ก่อน</button>
           {idea.dbId && onDismiss && <button className="mx-ghost" onClick={() => onDismiss(idea)}>ทิ้ง</button>}
         </div>
+        {freshNote && <div className={`mx-fresh-status ${freshNote.tone}`} role="status">{freshNote.text}</div>}
       </article>
     )
   }
@@ -2813,6 +3005,9 @@ function ApprovalsView({
   focusNo,
   loading = false,
   onWaitNotice,
+  freshJobs = {},
+  freshWorker = null,
+  onFreshContent = null,
 }) {
   return (
     <section className="mx-content">
@@ -2835,6 +3030,9 @@ function ApprovalsView({
               title: post.title,
               imagePrompt: post.imagePrompt,
             }, posterCopy)
+            const freshJob = freshJobs[String(post.id)] || null
+            const freshBusy = isActiveFreshJob(freshJob)
+            const freshNote = freshJobStatus(freshJob, freshWorker)
             return (
               <article className={`mx-approval-card ${selected?.id === post.id ? 'active' : ''} ${isFocused(post, focusNo) ? 'mx-focus' : ''}`} data-content-no={post.contentNo || undefined} key={post.sampleOf || post.id} onClick={() => onSelect(post.id)}>
                 <div className="mx-approval-media-column">
@@ -2872,7 +3070,7 @@ function ApprovalsView({
                 <div className="mx-approval-copy-column">
                   <div className="mx-review-head">
                     <div>
-                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{post.draftSource === 'ai' ? ` · ร่าง AI${post.angleLabel ? ` (${post.angleLabel})` : ''}` : ''}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
+                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{post.draftSource === 'ai' ? ` · ร่าง AI${post.angleLabel ? ` (${post.angleLabel})` : ''}` : ''}{post.replacesNo ? ` · คิดใหม่แทน ${formatContentNo(post.replacesNo)}` : ''}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
                       <h2><ContentNo post={post} onCopy={onCopy} />{post.title}</h2>
                     </div>
                     <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{reviewLabel(post)}</span>
@@ -2925,6 +3123,9 @@ function ApprovalsView({
                   <div className="mx-card-actions">
                     <button className="mx-primary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: post.scheduledAt ? 'scheduled' : 'approved', reviewStatus: 'passed', mediaAssetId: postMedia?.id || post.mediaAssetId || null }, post.scheduledAt ? 'อนุมัติแล้ว · ตั้งเวลาตามวันที่กำหนด' : 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์') }}>อนุมัติ</button>
                     <button className="mx-ghost" onClick={(event) => { event.stopPropagation(); onArchive(post.id) }}>พักไว้</button>
+                    {post.ideaId && onFreshContent && !post.facebookPostId && !isSamplePost(post) && (
+                      <button className="mx-ghost" disabled={loading || freshBusy} title="ไม่ชอบคอนเทนต์นี้? ให้ AI คิดมุมใหม่และเขียนร่างใหม่ทั้งชิ้นสด ๆ (ราว 1–3 นาที) · ได้ร่างใหม่แทนร่างนี้ ร่างเดิมพักไว้ในคลังผลงาน" onClick={(event) => { event.stopPropagation(); onFreshContent({ post }) }}>{freshBusy ? 'AI กำลังคิด…' : '✨ คิดคอนเทนต์ใหม่ (AI)'}</button>
+                    )}
                     {post.ideaId && onReturnToIdea && !post.facebookPostId && !isSamplePost(post) && (
                       <button className="mx-ghost" title={`ส่งไอเดีย ${post.ideaId} กลับไปแท็บ ไอเดีย ให้เลือกมุมเล่าใหม่ · ร่างนี้พักไว้ในคลังผลงาน`} onClick={(event) => { event.stopPropagation(); onReturnToIdea(post) }}>↩ ย้อนกลับเป็นไอเดีย</button>
                     )}
@@ -2941,6 +3142,7 @@ function ApprovalsView({
                       </div>
                     </details>
                   </div>
+                  {freshNote && <div className={`mx-fresh-status ${freshNote.tone}`} role="status" onClick={(event) => event.stopPropagation()}>{freshNote.text}</div>}
                 </div>
               </article>
             )
@@ -4069,6 +4271,10 @@ const styles = `
   .mx-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
   .mx-tags span, .mx-tags a { border: 1px solid var(--mx-line); background: rgba(66,199,216,.06); color: #bfe9f0; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 500; text-decoration: none; }
   .mx-tags .mx-tag-ai { border-color: rgba(66,199,216,.6); background: rgba(66,199,216,.18); color: #eafdff; }
+  .mx-fresh-status { font-size: 13px; line-height: 1.5; border-radius: 10px; padding: 8px 12px; border: 1px solid var(--mx-line-2); background: rgba(66,199,216,.08); color: #bfe9f0; }
+  .mx-fresh-status.info::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--mx-sky); margin-right: 8px; vertical-align: middle; animation: mx-pulse 1.4s ease-out infinite; }
+  .mx-fresh-status.warn { border-color: rgba(251,191,36,.45); background: rgba(251,191,36,.10); color: #fde68a; }
+  .mx-fresh-status.error { border-color: rgba(251,113,133,.5); background: rgba(251,113,133,.08); color: var(--mx-err-soft); }
   .mx-tags a { color: var(--mx-sky); border-color: var(--mx-line-2); }
   .mx-tags a:hover { background: rgba(66,199,216,.16); }
   .mx-card-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

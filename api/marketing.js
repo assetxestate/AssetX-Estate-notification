@@ -9,6 +9,7 @@ import noticesHandler from '../server/notices.js'
 import diaryHandler from '../server/diary.js'
 import paymentAdditionsHandler from '../server/paymentAdditions.js'
 import imageJobsHandler from '../server/marketing-image-jobs.js'
+import contentJobsHandler from '../server/marketing-content-jobs.js'
 
 const handlers = {
   notices: noticesHandler,
@@ -19,6 +20,8 @@ const handlers = {
   image: imageHandler,
   // คิวสร้างภาพผ่าน ChatGPT บนคอมสำนักงาน (scripts/image-worker.mjs) — ตาราง marketing_image_jobs
   'image-jobs': imageJobsHandler,
+  // คิว "คิดคอนเทนต์ใหม่ด้วย AI" บนคอมสำนักงาน (ตัวรับงานเดียวกับภาพ) — ตาราง marketing_content_jobs
+  'content-jobs': contentJobsHandler,
   video: videoHandler,
   references: referencesHandler,
   radar: radarHandler,
@@ -39,6 +42,7 @@ function inferFeature(req) {
   if (path.endsWith('/payment-additions')) return 'payment-additions'
   if (path.endsWith('/marketing-image')) return 'image'
   if (path.endsWith('/marketing-image-jobs')) return 'image-jobs'
+  if (path.endsWith('/marketing-content-jobs')) return 'content-jobs'
   if (path.endsWith('/marketing-video')) return 'video'
   if (path.endsWith('/marketing-references')) return 'references'
   if (path.endsWith('/marketing-radar')) return 'radar'

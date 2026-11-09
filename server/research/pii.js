@@ -61,4 +61,12 @@ export function hasPersonalData(input) {
   return scrubPersonalData(input).hits.length > 0
 }
 
+// ชุดกฎสำหรับ "ข้อความโพสต์ของเราเอง" — ชุดเต็มจับ "คุณ" + คำถัดไปเป็นชื่อคน (ออกแบบไว้ล้างสรุปข่าว)
+// แต่โพสต์การตลาดพูดกับ "คุณ" ตลอด: "สิทธิไถ่ถอนของคุณ ข้อมูลนี้…" เคยถูกลบเป็น [ลบ] กลางประโยค (6 พ.ย. 2569) → คงเฉพาะคำนำหน้าชื่อจริง
+// ใช้กับร่างโพสต์ (drafts.js) และร่างเดิมที่ส่งให้ AI เลี่ยงตอน "คิดคอนเทนต์ใหม่" (server/marketing-content-jobs.js · fresh.js) · ข้อความที่คนพิมพ์เองยังใช้ชุดเต็ม
+export const POST_PII_RULES = PII_RULES.map((rule) => (rule.kind === 'titled_name'
+  ? { kind: 'titled_name', re: /(?:นาย|นาง|นางสาว)\s+[ก-๙]{2,}(?:\s+[ก-๙]{2,})?/g }
+  : rule))
+export const scrubPostText = (text) => scrub(text, POST_PII_RULES)
+
 export { REPLACEMENT as PII_REPLACEMENT }
