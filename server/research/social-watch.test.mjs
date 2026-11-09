@@ -30,7 +30,7 @@ function domPost(i, reactions, caption = `โพสต์ ${i} เรื่อ�
 const fixturePosts = () => [domPost(1, 12), domPost(2, 9), domPost(3, 11), domPost(4, 60, 'ขายฝากที่ดินโทร 081-234-5678 ไลน์ @landdeal')]
 
 // OpenCLI ปลอม: เรียก lock.require() ก่อนทุกคำสั่งเหมือนตัวจริง (ยกเว้น beat:false) · บันทึกทุกคำสั่งไว้ตรวจ
-function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = null, posts = fixturePosts, onOpen = null, vis = null, aliases = ['research'] } = {}) {
+function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = null, posts = fixturePosts, onOpen = null, vis = null, aliases = ['research'], reelTiles = null } = {}) {
   const calls = []
   const oc = async (args, opts = {}) => {
     if (opts.beat !== false && lockRef.lock) lockRef.lock.require()
@@ -42,6 +42,7 @@ function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = nul
     }
     if (a === 'daemon' && b === 'restart') return { ok: true, data: { restarted: true } }
     if (a === 'browser' && b === 'open') { oc.lastUrl = args[2]; if (onOpen) await onOpen(args[2], calls); return { ok: true, data: {} } }
+    if (a === 'browser' && b === 'eval' && reelTiles && oc.lastUrl.endsWith('/reels/')) return { ok: true, data: { result: { vis: 'visible', blocked: null, tiles: reelTiles } } }
     if (a === 'browser' && b === 'eval') {
       const v = typeof vis === 'function' ? vis(calls) : vis
       return { ok: true, data: { result: blocked ? { blocked, posts: [] } : { blocked: null, posts: posts(oc.lastUrl), ...(v ? { vis: v } : {}) } } }
@@ -639,9 +640,12 @@ test('DEFAULTS ตรงกับข้อตกลง: เพดานรวม
   const acct = accountSettings(cfg)
   const cap = acct.capOwn
   const minEvery = acct.mode === 'own' ? 2 : 3
-  if (acct.mode === 'own') assert.ok(cap <= 8, 'เริ่มบัญชีใหม่ไม่เกิน 8 เพจ/วัน (ขยับหลัง 2 สัปดาห์ไม่โดนพัก)')
-  assert.ok(pages.length >= 15 && pages.length <= 26, `คัดเพจหลัก 15–26 (มี ${pages.length})`)
-  const perDay = pages.reduce((n, t) => n + 1 / Number(t.every_days), 0)
+  if (acct.mode === 'own') {
+    assert.ok(cap <= 12, 'เพดานเริ่มต้นของบัญชีใหม่ไม่เกิน 12 เพจ/วัน (ขั้นบันไดเพิ่มเองเมื่อไม่โดนพัก)')
+    assert.ok(!acct.ramp || (acct.ramp.max <= 24 && acct.ramp.every_days >= 7 && acct.ramp.step <= 4), 'ขั้นบันได: เพิ่มไม่เกิน 4 ทุก ≥ 7 วัน เพดานสุด 24')
+  }
+  assert.ok(pages.length >= 15 && pages.length <= 40, `คัดเพจหลัก 15–40 (มี ${pages.length})`)
+  const perDay = pages.reduce((n, t) => n + (t.reels ? 2 : 1) / Number(t.every_days), 0) // เพจที่อ่านแท็บ Reels ด้วย = เปิด 2 เพจต่อครั้ง
   assert.ok(perDay <= cap, `ภาระต่อวัน ${perDay.toFixed(2)} ต้องไม่เกินโควตา ${cap}`)
   const perDayAll = cfg.facebook.reduce((n, t) => n + 1 / Number(t.every_days), 0)
   assert.ok(perDayAll <= cap, `ภาระต่อวันเมื่อเปิดครบทุกเพจ ${perDayAll.toFixed(2)} ต้องไม่เกินโควตา ${cap}`)
@@ -774,4 +778,53 @@ test('บัญชีแยก: รอบลอง (--limit) ไม่ทำใ�
   assert.equal(nightly.opened.facebook, 7, 'เพดาน 8 − ที่ลองเปิดไป 1')
   const backup = await h.run({ cfg: OWN_CFG, targets: SIX })
   assert.equal(backup.status, 'already_today')
+})
+
+test('rampCap: เริ่ม 12 · +4 ทุก 7 วันที่ไม่โดนพัก · สูงสุด 24 · โดนพักนับใหม่จากวันนั้น · ไม่มี ramp = เพดานเดิม', async () => {
+  const { rampCap } = await import('./social-watch.js')
+  const acct = accountSettings({ account: 'own', own_account: { daily_cap: { facebook: 12 }, ramp: { step: 4, every_days: 7, max: 24 }, since: '2026-11-09' } })
+  assert.equal(rampCap(acct, { today: '2026-11-09' }), 12)
+  assert.equal(rampCap(acct, { today: '2026-11-15' }), 12)
+  assert.equal(rampCap(acct, { today: '2026-11-16' }), 16)
+  assert.equal(rampCap(acct, { today: '2026-12-31' }), 24)
+  assert.equal(rampCap(acct, { today: '2026-12-31', lastBlocked: '2026-12-28' }), 12, 'โดนพักแล้วนับใหม่')
+  assert.equal(rampCap(accountSettings(OWN_CFG), { today: '2027-01-01' }), 8, 'ไม่มี ramp = daily_cap ตายตัว')
+})
+
+test('บัญชีแยก วันละ 2 รอบ: แบ่งเพดานคนละครึ่ง (12 → รอบละ 6) · รอบที่ 3 ของวันข้าม · โดนพักแล้วสมุดจำ last_blocked', async () => {
+  const cfg = { ...OWN_CFG, own_account: { ...OWN_CFG.own_account, daily_cap: { facebook: 12 }, max_targets_per_run: { facebook: 12 }, rounds_per_day: 2 } }
+  const many = Array.from({ length: 14 }, (_, i) => ({ name: `เพจ ${i}`, url: `https://www.facebook.com/RoundPage${i}`, group: 'competitor', every_days: 2 }))
+  const h = harness({ aliases: ['research', 'assetx'] }, { deps: { resolveChromeDir: () => 'Profile 12' } })
+  const r1 = await h.run({ cfg, targets: many })
+  assert.equal(r1.status, 'ok'); assert.equal(r1.opened.facebook, 6, 'รอบแรก = ครึ่งเพดาน')
+  h.clock.t += 2 * 3600e3
+  const r2 = await h.run({ cfg, targets: many })
+  assert.equal(r2.status, 'ok'); assert.equal(r2.opened.facebook, 6, 'รอบที่สอง (23:00) อ่านอีกครึ่ง')
+  h.clock.t += 600e3
+  const r3 = await h.run({ cfg, targets: many })
+  assert.equal(r3.status, 'already_today', 'ครบ 2 รอบแล้ว')
+  const b = harness({ aliases: ['research', 'assetx'], blocked: 'checkpoint' }, { deps: { resolveChromeDir: () => 'Profile 12' } })
+  await b.run({ cfg, targets: many })
+  assert.equal(readState(accountDir(b.storeDir)).last_blocked, TODAY)
+})
+
+test('แท็บ Reels (เพจ reels: true · บัญชี AssetX): เปิดเพิ่ม 1 เพจ นับเพดาน · เก็บยอดวิวต่อคลิป · คลิปแรง ≥ 2 เท่าของค่ากลาง + ≥ 1,000 วิว รายงานครั้งเดียว', async () => {
+  const { parseCount } = await import('./social-watch.js')
+  assert.equal(parseCount('642'), 642); assert.equal(parseCount('1.2K'), 1200); assert.equal(parseCount('3,456'), 3456); assert.equal(parseCount('1.5M'), 1500000); assert.equal(parseCount(''), null)
+  const tiles = [['1', '642'], ['2', '729'], ['3', '564'], ['4', '592'], ['5', '570'], ['6', '477'], ['7', '4.8K'], ['8', '610']].map(([id, text]) => ({ id: `90${id}`, text }))
+  const h = harness({ aliases: ['research', 'assetx'], reelTiles: tiles }, { deps: { resolveChromeDir: () => 'Profile 12' } })
+  const target = [{ name: 'เพจคลิป', url: 'https://www.facebook.com/ReelsPage', group: 'competitor', every_days: 2, reels: true }]
+  const out = await h.run({ cfg: OWN_CFG, targets: target })
+  assert.equal(out.status, 'ok')
+  assert.equal(out.opened.facebook, 2, 'หน้าเพจ + แท็บ Reels')
+  assert.ok(openCalls(h.oc).some((c) => c.args[2] === 'https://www.facebook.com/ReelsPage/reels/'))
+  assert.equal(out.reels.length, 1); assert.equal(out.reels[0].id, '907'); assert.equal(out.reels[0].views, 4800)
+  const store = JSON.parse(fs.readFileSync(pageStorePath(h.storeDir, targetId(target[0])), 'utf8'))
+  assert.equal(Object.keys(store.reels).length, 8)
+  assert.equal(store.reels['907'].reported, TODAY)
+  assert.equal(usageRows(accountDir(h.storeDir)).filter((r) => r.result === 'open').length, 2)
+  // บัญชีร่วม: ไม่อ่านแท็บ Reels (ไม่เพิ่มภาระให้บัญชีของ DVX)
+  const sh = harness({ reelTiles: tiles })
+  const o2 = await sh.run({ targets: target })
+  assert.equal(o2.opened.facebook, 1)
 })

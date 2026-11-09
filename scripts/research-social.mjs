@@ -27,7 +27,7 @@ import { createSupabaseStore, missingTable } from '../server/research/store.js'
 import { withAreaWords } from '../server/research/collector.js'
 import { sendTelegramReport, telegramConfigured } from '../server/research/notify.js'
 import { Lock, blockedFor, usageRows, todayIso, defaultDir } from '../server/research/shared-browser.mjs'
-import { runFacebookWatch, dueTargets, quotaLeft, targetId, loadJson, saveJson, pageStorePath, DEFAULTS, PROJECT, accountSettings, accountDir, chromeProfiles, resolveChromeProfileDir, hasOpenCliExtension, linkAccountAlias, createOc } from '../server/research/social-watch.js'
+import { runFacebookWatch, dueTargets, quotaLeft, targetId, loadJson, saveJson, pageStorePath, DEFAULTS, PROJECT, accountSettings, accountDir, chromeProfiles, resolveChromeProfileDir, hasOpenCliExtension, linkAccountAlias, createOc, ownDailyCap } from '../server/research/social-watch.js'
 import os from 'node:os'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -85,6 +85,8 @@ function buildTelegramText(result, queued, cfg) {
     else if (result.rows.length) lines.push(`[social] เข้าคิวไอเดีย ${queued.inserted} ชิ้น (เจอ ${result.rows.length}${queued.known ? ` · ลิงก์มีในคิวแล้ว ${queued.known}` : ''}${queued.duplicates ? ` · กุญแจซ้ำ ${queued.duplicates}` : ''})`)
   }
   for (const r of result.rows.slice().sort((a, b) => b.ratio - a.ratio).slice(0, 5)) lines.push(`  ▲ ${r.ratio.toFixed(1)} เท่า · ${r.name} · ${headline(r.row)}`)
+  // คลิป Reels ที่วิวแรงกว่าปกติของเพจ (แท็บ Reels ไม่มีคำบรรยาย — ส่งลิงก์ให้เจ้าของเปิดดูเอง)
+  for (const r of (result.reels || []).slice(0, 5)) lines.push(`  🎬 คลิปแรง ${r.views.toLocaleString('en-US')} วิว (${r.ratio} เท่าของค่ากลาง ${Math.round(r.median).toLocaleString('en-US')}) · ${r.name} · ${r.link}`)
   for (const w of result.warnings.slice(0, 5)) if (!lines.includes(w)) lines.push(w)
   if (result.status === 'ok' && result.rows.length) lines.push('เลือกไอเดียที่หน้า /marketing → แท็บ ไอเดีย')
   return lines.join('\n')
@@ -99,7 +101,7 @@ async function cmdRun() {
   const limit = flagValue('--limit')
   const targetFilter = flagValue('--target')
   const acct = accountSettings(cfg)
-  out(`[social] ${dryRun ? 'DRY RUN · ' : ''}เพจในรายชื่อ ${(cfg.facebook || []).filter((t) => t.enabled !== false).length} · ${acct.mode === 'own' ? `บัญชี AssetX เอง (${acct.label} · alias ${acct.bridge_profile}) โควตา ${acct.capOwn}/วัน ชุดละ ${acct.batch}` : `บัญชีร่วม DVX · โควตา AssetX ${acct.capOwn}/วัน · รวมบัญชี ${acct.capDay}`}${limit ? ` · --limit ${limit}` : ''}${targetFilter ? ` · --target "${targetFilter}"` : ''}`)
+  out(`[social] ${dryRun ? 'DRY RUN · ' : ''}เพจในรายชื่อ ${(cfg.facebook || []).filter((t) => t.enabled !== false).length} · ${acct.mode === 'own' ? `บัญชี AssetX เอง (${acct.label} · alias ${acct.bridge_profile}) เพดานวันนี้ ${ownDailyCap({ cfg, storeDir: SOCIAL_DIR, today: todayIso() })} เพจ · วันละ ${acct.roundsPerDay} รอบ · ชุดละ ${acct.batch}` : `บัญชีร่วม DVX · โควตา AssetX ${acct.capOwn}/วัน · รวมบัญชี ${acct.capDay}`}${limit ? ` · --limit ${limit}` : ''}${targetFilter ? ` · --target "${targetFilter}"` : ''}`)
 
   const result = await runFacebookWatch({ cfg, targets: cfg.facebook || [], scoring, storeDir: SOCIAL_DIR, dryRun, limit, targetFilter, audience, deps: { log } })
 
@@ -134,12 +136,13 @@ async function cmdRun() {
     }
   }
   for (const r of result.rows.slice().sort((a, b) => b.ratio - a.ratio).slice(0, 6)) out(`[social]   ▲ ${r.ratio.toFixed(1)} เท่า · ${r.name} · ${headline(r.row)}`)
+  for (const r of (result.reels || []).slice(0, 6)) out(`[social]   🎬 คลิปแรง ${r.views} วิว (${r.ratio} เท่า) · ${r.name} · ${r.link}`)
   if (dryRun && result.touched) out(`[social] DRY RUN — เจอแรงกว่าปกติ ${result.rows.length} ชิ้น ไม่ได้เขียนคลัง/สถานะ/คิวของเรา (usage.jsonl ของร่วมจดแล้ว)`)
 
   appendRun({
     status: result.status, account: result.account, day: result.day, dry_run: dryRun, ms: Date.now() - started, waited_ms: result.waited_ms,
     opened: result.opened.facebook, pages: result.pages.length, posts: result.pages.reduce((n, p) => n + p.posts, 0), new_posts: result.pages.reduce((n, p) => n + p.new, 0),
-    low: result.pages.filter((p) => p.low).length, failed: result.pages.filter((p) => p.fail).length, hits: result.rows.length, inserted: queued.inserted,
+    low: result.pages.filter((p) => p.low).length, failed: result.pages.filter((p) => p.fail).length, hits: result.rows.length, hot_reels: (result.reels || []).length, inserted: queued.inserted,
     result: result.result, holder: result.holder?.project || null, stolen_from: result.stolen_from?.project || null, warnings: result.warnings.length,
   })
 
@@ -159,7 +162,8 @@ function cmdStatus() {
   const today = todayIso()
   const holder = new Lock(PROJECT, { base }).holder()
   const acct = accountSettings(cfg)
-  out(`บัญชีที่ใช้อ่าน: ${acct.mode === 'own' ? `บัญชี Facebook ของ AssetX เอง · ${acct.label} · alias ${acct.bridge_profile} · เพดาน ${acct.capOwn}/วัน ชุดละ ${acct.batch}` : 'บัญชีสำรองร่วมกับ DivisionX (Chrome profile Research)'}`)
+  const ownCap = acct.mode === 'own' ? ownDailyCap({ cfg, storeDir: SOCIAL_DIR, today }) : null
+  out(`บัญชีที่ใช้อ่าน: ${acct.mode === 'own' ? `บัญชี Facebook ของ AssetX เอง · ${acct.label} · alias ${acct.bridge_profile} · เพดานวันนี้ ${ownCap} เพจ${acct.ramp ? ` (ขั้นบันได +${acct.ramp.step} ทุก ${acct.ramp.every_days} วันที่ไม่โดนพัก สูงสุด ${acct.ramp.max})` : ''} · วันละ ${acct.roundsPerDay} รอบ · ชุดละ ${acct.batch}` : 'บัญชีสำรองร่วมกับ DivisionX (Chrome profile Research)'}`)
   out(`โฟลเดอร์ร่วม: ${base}`)
   out(`กุญแจ browser: ${holder ? `${holder.project} ถืออยู่ (${holder.purpose || '-'} · เริ่ม ${String(holder.started_at || '').slice(11, 19)} · เงียบ ${holder.idle_sec} วิ${holder.idle_sec >= 600 ? ' · ค้าง ยึดได้' : ''})` : 'ว่าง'}`)
   const b = blockedFor('facebook', today, base)
@@ -169,15 +173,16 @@ function cmdStatus() {
     const mine = blockedFor('facebook', today, acctBase)
     out(`แถวพักบัญชี AssetX: ${mine ? `⚠️ พักตั้งแต่ ${mine.at} — ${mine.why}` : 'ไม่มี'}`)
   }
-  const q = quotaLeft({ rows: usageRows(acctBase), today, capDay: acct.capDay, capOwn: acct.capOwn })
+  const capNow = acct.mode === 'own' ? ownCap : acct.capOwn
+  const q = quotaLeft({ rows: usageRows(acctBase), today, capDay: acct.mode === 'own' ? ownCap : acct.capDay, capOwn: capNow })
   out(acct.mode === 'own'
-    ? `เพจที่บัญชี AssetX เปิดวันนี้ (${today}): ${q.own}/${acct.capOwn} · เหลือ ${Math.max(q.left, 0)}${usageRows(acctBase).some((r) => r.date === today && r.round === 'scheduled') ? ' · รอบตามเวลาของวันนี้อ่านแล้ว (รอบสำรองข้าม)' : ''}`
+    ? `เพจที่บัญชี AssetX เปิดวันนี้ (${today}): ${q.own}/${capNow} · เหลือ ${Math.max(q.left, 0)} · รอบตามเวลาที่จบแล้ววันนี้ ${new Set(usageRows(acctBase).filter((r) => r.date === today && r.round === 'scheduled').map((r) => r.run || r.start)).size}/${acct.roundsPerDay}`
     : `เพจที่เปิดวันนี้ (${today}): รวมทุกโปรเจกต์ ${q.total}/${acct.capDay} · AssetX ${q.own}/${acct.capOwn} · เหลือให้ AssetX ${Math.max(q.left, 0)}${q.own > 0 ? ' · วันนี้อ่านแล้ว (รอบถัดไปข้าม)' : ''}`)
   const state = loadJson(path.join(SOCIAL_DIR, 'state.json'), { visits: {} })
   if (state.last_round) out(`รอบล่าสุดของเรา: ${state.last_round.day} · ${state.last_round.status} · เปิด ${state.last_round.opened} เพจ`)
   const pages = (cfg.facebook || []).filter((t) => t.enabled !== false)
   const due = dueTargets(pages, state.visits || {}, today, 999)
-  const perRun = acct.perRun
+  const perRun = acct.mode === 'own' ? Math.min(acct.perRun, Math.ceil(capNow / acct.roundsPerDay)) : acct.perRun
   out(`เพจถึงรอบ ${due.length}/${pages.length} (รอบหน้าอ่าน ${Math.min(perRun, due.length)}): ${due.slice(0, perRun).map((t) => t.name).join(' · ') || '-'}`)
   out('')
   out(`${'เพจ'.padEnd(44)} กลุ่ม        ทุก  เยี่ยมล่าสุด  โพสต์ในคลัง`)

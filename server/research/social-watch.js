@@ -54,7 +54,7 @@ export const DEFAULTS = {
   shared_browser: { daily_cap: { facebook: 12 }, own_daily_cap: { facebook: 4 }, wait_minutes: 20, no_new_page_sec: 300, no_reread_sec: 360 },
   // shared = บัญชีสำรองร่วมกับ DVX (Chrome profile Research) · own = บัญชี Facebook ของ AssetX เอง (เจ้าของสั่ง 9 พ.ย. 2569 — ข้อตกลงข้อ 9)
   account: 'shared',
-  own_account: { chrome_profile_name: 'AssetX Research', chrome_profile_dir: '', bridge_profile: 'assetx', daily_cap: { facebook: 8 }, max_targets_per_run: { facebook: 8 }, batch_pages: 4, batch_gap_sec: 45 },
+  own_account: { chrome_profile_name: 'AssetX Research', chrome_profile_dir: '', bridge_profile: 'assetx', daily_cap: { facebook: 8 }, max_targets_per_run: { facebook: 8 }, batch_pages: 4, batch_gap_sec: 45, rounds_per_day: 1, ramp: null, since: '' },
 }
 
 // ── บัญชีที่ใช้อ่าน (ข้อตกลงข้อ 9 "แยกบัญชี") ─────────────────────────────────
@@ -80,6 +80,7 @@ export function accountSettings(cfg = {}) {
     bridge_profile: o.bridge_profile || 'assetx', chrome_profile_dir: o.chrome_profile_dir || '',
     capDay: cap, capOwn: cap, perRun: Math.min(Number(o.max_targets_per_run?.facebook ?? cap), cap),
     batch: Math.max(1, Number(o.batch_pages ?? 4)), gapMs: Number(o.batch_gap_sec ?? 45) * 1000,
+    roundsPerDay: Math.max(1, Number(o.rounds_per_day ?? 1)), ramp: o.ramp && typeof o.ramp === 'object' ? o.ramp : null, since: o.since || '',
   }
 }
 
@@ -100,6 +101,23 @@ export function resolveChromeProfileDir(name, opts = {}) {
 }
 
 export const accountDir = (storeDir) => path.join(storeDir, 'account')
+
+// เพดานขั้นบันไดของบัญชี AssetX (เจ้าของ 9 พ.ย. 2569: "เพิ่มโควตาได้มั้ย มันน้อยไปสำหรับหาข้อมูล")
+// เริ่มที่ daily_cap แล้วเพิ่ม ramp.step ทุก ramp.every_days วันที่ไม่โดนพัก จนถึง ramp.max · โดนพักเมื่อไร (last_blocked ในสมุดของเรา) นับใหม่จากวันนั้น
+// เหตุผล: บัญชีที่เพิ่งเริ่มให้ระบบอ่านแล้วถูกเร่งเยอะทันทีมักโดน Facebook ขอยืนยันตัวตน — ค่อย ๆ ขยับปลอดภัยกว่า
+export function rampCap(acct = {}, { today = todayIso(), lastBlocked = '' } = {}) {
+  const base = Number(acct.capOwn ?? 8)
+  const r = acct.ramp
+  if (!r) return base
+  const from = [acct.since, lastBlocked].filter(Boolean).sort().at(-1)
+  const clean = from ? Math.max(0, dayDiff(from, today)) : 0
+  return Math.min(Number(r.max ?? base), base + Number(r.step ?? 0) * Math.floor(clean / Math.max(1, Number(r.every_days ?? 7))))
+}
+// เพดานวันนี้ของบัญชี AssetX จากคอนฟิก + สมุดของเรา (ใช้ทั้งตัวรอบและคำสั่ง status)
+export function ownDailyCap({ cfg = {}, storeDir, today = todayIso() } = {}) {
+  const acct = accountSettings({ ...cfg, account: 'own' })
+  return rampCap(acct, { today, lastBlocked: storeDir ? readState(accountDir(storeDir)).last_blocked || '' : '' })
+}
 
 // รหัสส่วนเสริม OpenCLI ใน Chrome Web Store (README ของ OpenCLI) — ใช้ดูว่า profile ไหนลงส่วนเสริมแล้ว (อ่านโฟลเดอร์อย่างเดียว)
 export const OPENCLI_EXTENSION_ID = 'ildkmabpimmkaediidaifkhjpohdnifk'
@@ -129,6 +147,7 @@ export class AccountBook {
   setBlocked(platform, why, day = todayIso()) {
     const st = readState(this.dir)
     st.blocked[platform] = { at: day, why: String(why).slice(0, 300), by: this.project, time: nowIso() }
+    st.last_blocked = day // ไม่ลบตอนล้างแถวพัก — เพดานขั้นบันไดนับใหม่จากวันนี้
     st.updated_at = nowIso()
     saveJson(path.join(this.dir, 'state.json'), st)
   }
@@ -141,10 +160,11 @@ export class AccountBook {
     return true
   }
   // round = 'scheduled' (รอบตามเวลา) | 'manual' (ลองอ่าน --limit / เจ้าของสั่ง --target) — ใส่เฉพาะแถวสรุป ใช้ตัดสิน "วันนี้อ่านรอบแล้วหรือยัง"
-  logUsage(pages, result = 'ok', { day = todayIso(), opened = null, round = null } = {}) {
+  logUsage(pages, result = 'ok', { day = todayIso(), opened = null, round = null, run = null } = {}) {
     const ints = (o) => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => v).map(([k, v]) => [k, Math.trunc(v)]))
     const row = { project: this.project, date: day, start: this.started, end: nowIso(), pages: ints(pages), result }
     if (round) row.round = round
+    if (run) row.run = run
     if (opened && Object.keys(ints(opened)).length) row.opened = ints(opened)
     fs.mkdirSync(this.dir, { recursive: true })
     fs.appendFileSync(path.join(this.dir, 'usage.jsonl'), `${JSON.stringify(row)}\n`, 'utf8')
@@ -543,6 +563,94 @@ export async function readFacebookPage({ target, cfg = {}, oc, sleep, random = M
 
 export const pageStorePath = (storeDir, tid) => path.join(storeDir, 'facebook', `${tid}.json`)
 
+// ── แท็บ Reels ของเพจ (เจ้าของ 9 พ.ย. 2569 ส่งลิงก์ /reels/ ของ Land For Loan Thailand มาให้ติดตาม) ──────────────
+// หน้ารวมคลิปมีแค่ไทล์ + ยอดวิว (ไม่มีคำบรรยาย · สำรวจจริง 9 พ.ย.: <a href="/reel/<id>"> aria-label "Reel tile preview" innerText = ยอดวิว "642")
+// เปิดเฉพาะเพจที่ตั้ง reels: true · เฉพาะบัญชี AssetX เอง (ไม่เพิ่มภาระให้บัญชีร่วม) · นับเพดาน 1 เพจต่อการเปิด
+// คลิปแรง = วิว ≥ 2 เท่าของค่ากลางคลิปบนแท็บเดียวกัน และ ≥ reels_min_views · ต้องมีคลิปมียอด ≥ 6 คลิป · รายงานพร้อมลิงก์ให้เจ้าของเปิดดูเอง
+export const REELS_JS = `(() => {
+  const tiles = new Map()
+  for (const a of document.querySelectorAll('a[href*="/reel/"]')) {
+    const m = a.href.match(/\\/reel\\/(\\d+)/)
+    if (!m) continue
+    const t = tiles.get(m[1]) || { id: m[1], text: '' }
+    const txt = (a.innerText || '').trim().replace(/\\s+/g, ' ')
+    if (txt && !t.text) t.text = txt.slice(0, 60)
+    tiles.set(m[1], t)
+  }
+  const pass = document.querySelector('input[name=pass]')
+  const blocked = /\\/(login|checkpoint)\\b/.test(location.pathname) || (pass && !tiles.size) ? (location.pathname.includes('checkpoint') ? 'checkpoint' : 'login') : null
+  return { vis: document.visibilityState, blocked, tiles: [...tiles.values()] }
+})()`
+
+// ยอดวิวบนไทล์ (หน้าภาษาอังกฤษ): "642" · "1.2K" · "3,456" · "1.5M" → ตัวเลข · อ่านไม่ออก = null
+export function parseCount(text = '') {
+  const m = String(text || '').replace(/,/g, '').match(/(\d+(?:\.\d+)?)\s*([KkMm])?/)
+  if (!m) return null
+  const n = Number(m[1]) * (m[2] ? (/k/i.test(m[2]) ? 1e3 : 1e6) : 1)
+  return Number.isFinite(n) ? Math.round(n) : null
+}
+
+export async function readFacebookReels({ target, cfg = {}, oc, sleep, random = Math.random }) {
+  const W = ['--session', cfg.session || SESSION, '--window', 'background', '--profile', cfg.bridge_profile || DEFAULTS.bridge_profile]
+  const url = `${String(target.url).replace(/\/+$/, '')}/reels/`
+  await oc(['browser', 'open', url, ...W])
+  await sleep(5500 + random() * 2000)
+  const got = new Map()
+  const steps = Number(cfg.reels_scroll_steps ?? 3)
+  for (let i = 0; i < steps; i++) {
+    const res = unwrap(await oc(['browser', 'eval', REELS_JS, ...W])) || {}
+    if (res.blocked) throw new Blocked(`Facebook ขอ ${res.blocked} (บัญชีอาจหลุดล็อกอิน/ถูกขอยืนยันตัวตน)`)
+    for (const t of res.tiles || []) if (t && t.id && !got.has(t.id)) got.set(t.id, { id: t.id, views: parseCount(t.text) })
+    if (res.vis === 'hidden' && got.size < 3) throw new Hidden(`หน้าต่าง browser ถูกซ่อน — แท็บ Reels ไม่โหลด (เห็น ${got.size} คลิป)`)
+    if (i < steps - 1) {
+      await oc(['browser', 'scroll', 'down', '--amount', '1200', ...W])
+      await sleep(1800 + random() * 1400)
+    }
+  }
+  return [...got.values()]
+}
+
+// รวมคลิปเข้าคลังของเพจ (store.reels) — เก็บยอดวิวล่าสุด + ประวัติ ≤ 30 จุด (ดูว่าคลิปไหนยังโตอยู่)
+export function mergeReels(store, reels = [], today) {
+  if (!store.reels || typeof store.reels !== 'object') store.reels = {}
+  const ids = []
+  for (const r of reels) {
+    if (!r || !r.id) continue
+    ids.push(r.id)
+    const rec = store.reels[r.id] || (store.reels[r.id] = { first_seen: today, views: null, hist: [] })
+    rec.last_seen = today
+    rec.link = `https://www.facebook.com/reel/${r.id}`
+    if (Number.isFinite(r.views)) {
+      rec.views = r.views
+      const last = rec.hist.at(-1)
+      if (last && last[0] === today) last[1] = r.views
+      else rec.hist.push([today, r.views])
+      if (rec.hist.length > 30) rec.hist = rec.hist.slice(-30)
+    }
+  }
+  return ids
+}
+
+export function pruneReels(store, today, keepDays = 120) {
+  const old = Object.entries(store.reels || {}).filter(([, r]) => dayDiff(r.last_seen || r.first_seen, today) > keepDays).map(([k]) => k)
+  for (const k of old) delete store.reels[k]
+  return old.length
+}
+
+// คลิปแรงกว่าปกติ (เทียบคลิปบนแท็บเดียวกันรอบนี้) · ยังไม่เคยรายงาน · เรียงแรงสุดก่อน
+export function hotReels(store, ids = [], cfg = {}) {
+  const rows = ids.map((id) => ({ id, ...(store.reels?.[id] || {}) })).filter((r) => Number.isFinite(r.views) && r.views > 0)
+  if (rows.length < Number(cfg.reels_min_base ?? 6)) return []
+  const med = median(rows.map((r) => r.views))
+  const minViews = Number(cfg.reels_min_views ?? 1000)
+  const ratioMin = Number(cfg.outlier_ratio ?? DEFAULTS.outlier_ratio)
+  return rows
+    .filter((r) => !r.reported && r.views >= minViews && med && r.views / med >= ratioMin)
+    .map((r) => ({ id: r.id, views: r.views, ratio: round1(r.views / med), median: med, link: r.link }))
+    .sort((a, b) => b.ratio - a.ratio)
+    .slice(0, Number(cfg.reels_max_hot ?? 3))
+}
+
 // ── รอบของ AssetX (ลำดับตามข้อตกลงข้อ 4.6 ทุกบรรทัด) ─────────────────────────
 // คืน { status, result[], opened, pages[], rows[], visited[], warnings[], lines[] } · ไม่เขียนฐานข้อมูล (ตัวรันเอา rows ไปใส่คิวหลังปล่อยกุญแจ)
 // status: ok · blocked_shared (แถวพักบัญชีร่วม) · blocked_account (แถวพักบัญชี AssetX เอง — โหมด own) · already_today · no_due · quota_full · browser_busy · bridge_down · blocked · hidden · lost_lock
@@ -565,12 +673,15 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
   const acct = accountSettings(cfg)
   const own = acct.mode === 'own'
   const sb = { ...DEFAULTS.shared_browser, ...(cfg.shared_browser || {}) }
-  const CAP_DAY = acct.capDay
-  const CAP_OWN = acct.capOwn
+  // บัญชี AssetX: เพดานขั้นบันได (rampCap) · บัญชีร่วม: 12/4 ตามข้อตกลง
+  const ownCap = own && storeDir ? rampCap(acct, { today, lastBlocked: readState(accountDir(storeDir)).last_blocked || '' }) : acct.capOwn
+  const CAP_DAY = own ? ownCap : acct.capDay
+  const CAP_OWN = own ? ownCap : acct.capOwn
   const NO_NEW_PAGE_MS = Number(sb.no_new_page_sec ?? 300) * 1000
   const NO_REREAD_MS = Number(sb.no_reread_sec ?? 360) * 1000
   const WAIT_MS = Number(sb.wait_minutes ?? 20) * 60e3
-  const perRun = acct.perRun
+  // วันละหลายรอบ (บัญชี AssetX): แบ่งเพดานเท่า ๆ กันต่อรอบ — 21:00 กับ 23:00 อ่านคนละครึ่ง บัญชีได้พักระหว่างรอบ ไม่อ่านรวดเดียว
+  const perRun = own ? Math.min(Number(cfg.own_account?.max_targets_per_run?.facebook ?? acct.perRun), Math.ceil(CAP_OWN / acct.roundsPerDay)) : acct.perRun
   const session = cfg.session || SESSION
   const profile = acct.bridge_profile
   if (!storeDir) throw new Error('runFacebookWatch ต้องการ storeDir (.local/research/social)')
@@ -585,7 +696,7 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
 
   const state = loadJson(path.join(storeDir, 'state.json'), { visits: {} })
   if (!state.visits || typeof state.visits !== 'object') state.visits = {}
-  const out = { day: today, dry_run: dryRun, status: 'ok', account: acct.mode, result: [], opened: { facebook: 0 }, pages: [], rows: [], visited: [], warnings: [], lines: [], holder: null, stolen_from: null, waited_ms: 0, touched: false, picked: 0, batches: 0, chrome_flags_active: null }
+  const out = { day: today, dry_run: dryRun, status: 'ok', account: acct.mode, result: [], opened: { facebook: 0 }, pages: [], rows: [], reels: [], visited: [], warnings: [], lines: [], holder: null, stolen_from: null, waited_ms: 0, touched: false, picked: 0, batches: 0, chrome_flags_active: null }
   const say = (s) => { out.lines.push(s); log(s) }
   const quota = () => quotaLeft({ rows: usageRows(acctBase), today, capDay: CAP_DAY, capOwn: CAP_OWN })
   const quotaText = (q) => (own ? `บัญชี AssetX เปิด ${q.own}/${CAP_OWN}` : `บัญชีร่วมเปิด ${q.total}/${CAP_DAY} · AssetX ${q.own}/${CAP_OWN}`)
@@ -604,7 +715,10 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
   // บัญชีแยก: นับเฉพาะ "รอบตามเวลา" ที่จบแล้ววันนี้ — รอบลอง (--limit) / เจ้าของสั่ง (--target) ไม่ทำให้รอบ 21:00 ถูกข้าม (เพจที่เปิดยังนับเข้าเพดาน 8)
   //   (9 พ.ย. 2569: ลองอ่าน 1 เพจตอนสลับบัญชีกลางวัน แล้วรอบคืนนั้นหายทั้งรอบ ไม่ใช่สิ่งที่เจ้าของต้องการ)
   const manual = Boolean(limit || targetFilter)
-  const roundDoneToday = () => (own ? usageRows(acctBase).some((r) => r.date === today && r.round === 'scheduled') : q.own > 0)
+  // บัญชี AssetX: นับรอบตามเวลาที่จบแล้ววันนี้ (แถวสรุป round=scheduled · หนึ่งรอบมีได้หลายชุด จึงนับตาม run) เทียบกับ rounds_per_day
+  const runId = `${today}-${Math.round(now())}`
+  const roundsDone = () => new Set(usageRows(acctBase).filter((r) => r.date === today && r.round === 'scheduled').map((r) => r.run || r.start)).size
+  const roundDoneToday = () => (own ? roundsDone() >= acct.roundsPerDay : q.own > 0)
   if (roundDoneToday() && !targetFilter) {
     out.status = 'already_today'
     say(`[social] วันนี้ AssetX อ่าน Facebook แล้ว ${q.own} เพจ — ข้าม (วันละ 1 รอบ)`)
@@ -769,6 +883,33 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
           const hits = outliers(store, seen, today, cfg, scoring)
           page.hits = hits.length
           for (const h of hits) out.rows.push({ name: t.name, tid, file, key: h.key, ratio: h.ratio, row: ideaRow(t, store.posts[h.key], h, today, { audience }) })
+          // แท็บ Reels (เฉพาะเพจ reels: true · บัญชี AssetX เอง · ยังมีโควตาและงบเวลา) — เปิดเพิ่ม 1 เพจ
+          if (own && t.reels && posts.length && quota().left > 0 && now() - t0 < NO_NEW_PAGE_MS) {
+            lock.require()
+            await sleep(4000 + random() * 4000)
+            rec.usage({ facebook: 1 }, 'open', usageDay)
+            out.opened.facebook += 1
+            try {
+              const reels = await readFacebookReels({ target: t, cfg: rcfg, oc, sleep, random })
+              const ids = mergeReels(store, reels, today)
+              pruneReels(store, today, Number(cfg.keep_days ?? DEFAULTS.keep_days))
+              const hot = hotReels(store, ids, cfg)
+              page.reels = ids.length
+              for (const h of hot) { out.reels.push({ name: t.name, tid, ...h }); if (!dryRun) store.reels[h.id].reported = today }
+              say(`[social] ${t.name} · Reels: ${ids.length} คลิป · วิวค่ากลาง ${median(ids.map((id) => store.reels[id]?.views).filter((v) => v > 0)) ?? '-'} · แรงกว่าปกติ ${hot.length}`)
+            } catch (e) {
+              if (e.name === 'LostLock') throw e
+              if (e.name === 'Blocked') {
+                rec.block(e.message)
+                out.result.push('blocked:facebook'); out.status = 'blocked'; page.fail = 'blocked'; stop = true
+                say(`⚠️ [social] ${e.message} (ตอนเปิดแท็บ Reels) — หยุดเลน Facebook ทันที · พักบัญชี AssetX 3 วัน`)
+                if (!dryRun) saveJson(file, store)
+                break
+              }
+              out.warnings.push(`⚠️ [social] อ่านแท็บ Reels ของ ${t.name} ไม่สำเร็จ: ${String(e.message || e).slice(0, 160)}`)
+              say(out.warnings.at(-1))
+            }
+          }
           if (!posts.length) say(`⚠️ [social] ${t.name}: ไม่เจอโพสต์เลย (เพจย้าย/ปิด/โหลดไม่ขึ้น?)`)
           else if (page.low) say(`⚠️ [social] ${t.name}: อ่านได้แค่ ${posts.length} โพสต์ — ยังไม่นับว่าเยี่ยมเพจนี้ รอบหน้าอ่านก่อน`)
           else say(`[social] ${t.name}: ${seen.length} โพสต์ (ใหม่ ${page.new}) · แรงกว่าปกติ ${hits.length}`)
@@ -791,7 +932,7 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
     } finally {
       try {
         // แถวสรุปของชุดนี้ (pages ว่าง ไม่นับโควตา) · บัญชีร่วมต้องยังถือกุญแจ
-        if (touched && (own || lock.held)) rec.usage({}, [...new Set(out.result.slice(result0))].join(',') || 'ok', { opened: { facebook: out.opened.facebook - opened0 }, ...usageDay, ...(own ? { round: manual ? 'manual' : 'scheduled' } : {}) })
+        if (touched && (own || lock.held)) rec.usage({}, [...new Set(out.result.slice(result0))].join(',') || 'ok', { opened: { facebook: out.opened.facebook - opened0 }, ...usageDay, ...(own ? { round: manual ? 'manual' : 'scheduled', run: runId } : {}) })
       } catch { /* กุญแจหลุดแล้ว — ข้ามแถวสรุป ห้ามโยนออกจาก finally */ }
       lock.release() // ปล่อยเสมอ
     }
