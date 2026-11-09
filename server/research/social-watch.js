@@ -11,7 +11,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { Lock, blockedFor, pagesOn, usageRows, todayIso, defaultDir } from './shared-browser.mjs'
+import { Lock, blockedFor, pagesOn, usageRows, todayIso, nowIso, readState, defaultDir } from './shared-browser.mjs'
 import { scrub, plainQuotes } from './pii.js'
 import { scoreText, DEFAULT_SCORING, round1 } from './classify.js'
 
@@ -52,6 +52,101 @@ export const DEFAULTS = {
   max_social_in_queue: 20,
   max_targets_per_run: { facebook: 4 },
   shared_browser: { daily_cap: { facebook: 12 }, own_daily_cap: { facebook: 4 }, wait_minutes: 20, no_new_page_sec: 300, no_reread_sec: 360 },
+  // shared = บัญชีสำรองร่วมกับ DVX (Chrome profile Research) · own = บัญชี Facebook ของ AssetX เอง (เจ้าของสั่ง 9 พ.ย. 2569 — ข้อตกลงข้อ 9)
+  account: 'shared',
+  own_account: { chrome_profile_name: 'AssetX Research', chrome_profile_dir: '', bridge_profile: 'assetx', daily_cap: { facebook: 8 }, max_targets_per_run: { facebook: 8 }, batch_pages: 4, batch_gap_sec: 45 },
+}
+
+// ── บัญชีที่ใช้อ่าน (ข้อตกลงข้อ 9 "แยกบัญชี") ─────────────────────────────────
+// shared: ทุกอย่างตามข้อ 4 (แถวพักร่วม · เพดานรวม 12 / AssetX 4 · จด usage.jsonl ของร่วม)
+// own: บัญชี/Chrome profile ของ AssetX เอง → แถวพักและบันทึกการใช้อยู่ในเครื่องเรา (.local/research/social/account/) ไม่แตะของร่วมเลย
+//   (บัญชีร่วมของ DVX โดนพักก็ไม่เกี่ยวกับเรา · เราโดนพักก็ไม่ทำให้ DVX หยุด · เพดานรวม 12 ไม่นับเรา) · เพดานของบัญชีเราเอง (ค่าเริ่ม 8 เพจ/วัน)
+//   · กุญแจ lock.json ยังใช้ของร่วม (OpenCLI ตัวเดียวทั้งเครื่อง ยังไม่ได้ทดสอบสอง profile พร้อมกัน — ข้อ 9) และอ่านเป็นชุดละ batch_pages เพจ
+//     ถือกุญแจต่อชุดไม่เกินงบเดิม (~7 นาที) ปล่อยกุญแจพักระหว่างชุด → DVX ที่กดรอบเองระหว่างนั้นไม่ต้องรอนานเกิน 8 นาที
+export function accountSettings(cfg = {}) {
+  if (cfg.account !== 'own') {
+    const sb = { ...DEFAULTS.shared_browser, ...(cfg.shared_browser || {}) }
+    return {
+      mode: 'shared', label: 'Chrome profile Research',
+      bridge_profile: cfg.bridge_profile || DEFAULTS.bridge_profile, chrome_profile_dir: cfg.chrome_profile_dir || DEFAULTS.chrome_profile_dir,
+      capDay: Number(sb.daily_cap?.facebook ?? 12), capOwn: Number(sb.own_daily_cap?.facebook ?? 4),
+      perRun: Number(cfg.max_targets_per_run?.facebook ?? DEFAULTS.max_targets_per_run.facebook), batch: Infinity, gapMs: 0,
+    }
+  }
+  const o = { ...DEFAULTS.own_account, ...(cfg.own_account || {}) }
+  const cap = Number(o.daily_cap?.facebook ?? 8)
+  return {
+    mode: 'own', label: `Chrome profile ${o.chrome_profile_name || 'AssetX'}`, chrome_profile_name: o.chrome_profile_name || '',
+    bridge_profile: o.bridge_profile || 'assetx', chrome_profile_dir: o.chrome_profile_dir || '',
+    capDay: cap, capOwn: cap, perRun: Math.min(Number(o.max_targets_per_run?.facebook ?? cap), cap),
+    batch: Math.max(1, Number(o.batch_pages ?? 4)), gapMs: Number(o.batch_gap_sec ?? 45) * 1000,
+  }
+}
+
+// โฟลเดอร์ Chrome profile จากชื่อที่เห็นในหน้าเลือกโปรไฟล์ ("AssetX Research" → "Profile 10") — อ่าน Local State ของ Chrome อย่างเดียว ไม่แตะ browser
+export function chromeUserDataDir() {
+  return path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Google', 'Chrome', 'User Data')
+}
+export function chromeProfiles({ userDataDir = chromeUserDataDir(), readFile = (f) => fs.readFileSync(f, 'utf8') } = {}) {
+  try {
+    const cache = JSON.parse(readFile(path.join(userDataDir, 'Local State')))?.profile?.info_cache || {}
+    return Object.entries(cache).map(([dir, v]) => ({ dir, name: String(v?.name || '') }))
+  } catch { return [] }
+}
+export function resolveChromeProfileDir(name, opts = {}) {
+  const want = String(name || '').trim().toLowerCase()
+  if (!want) return ''
+  return chromeProfiles(opts).find((p) => p.name.trim().toLowerCase() === want)?.dir || ''
+}
+
+export const accountDir = (storeDir) => path.join(storeDir, 'account')
+
+// รหัสส่วนเสริม OpenCLI ใน Chrome Web Store (README ของ OpenCLI) — ใช้ดูว่า profile ไหนลงส่วนเสริมแล้ว (อ่านโฟลเดอร์อย่างเดียว)
+export const OPENCLI_EXTENSION_ID = 'ildkmabpimmkaediidaifkhjpohdnifk'
+export function hasOpenCliExtension(dir, { userDataDir = chromeUserDataDir(), exists = fs.existsSync } = {}) {
+  return Boolean(dir) && exists(path.join(userDataDir, dir, 'Extensions', OPENCLI_EXTENSION_ID))
+}
+
+// ตั้งชื่อเรียก (alias) ให้ Chrome profile ใหม่ของบัญชี AssetX ใน OpenCLI — เรียกใต้กุญแจร่วมเท่านั้น (ตัวรัน account link)
+// เลือกเฉพาะ profile ที่ต่ออยู่และยังไม่มีชื่อเรียก · ต้องมีตัวเดียว ไม่งั้นไม่เดา · ห้ามแตะ alias ของคนอื่น (research) และห้ามสั่ง `profile use` (ค่าเริ่มต้นของเครื่องเป็นของ DVX)
+export async function linkAccountAlias({ oc, alias = 'assetx' }) {
+  const list = async () => (unwrap(await oc(['profile', 'list'], { timeoutMs: 60e3 })) || {}).profiles || []
+  const profiles = await list()
+  const mine = profiles.find((p) => p && p.alias === alias)
+  if (mine && mine.connected) return { status: 'ready', contextId: mine.contextId, profiles }
+  const fresh = profiles.filter((p) => p && p.connected && !p.alias && p.contextId)
+  if (!fresh.length) return { status: mine ? 'alias_offline' : 'none', profiles }
+  if (fresh.length > 1) return { status: 'ambiguous', profiles }
+  await oc(['profile', 'rename', fresh[0].contextId, alias], { timeoutMs: 30e3 })
+  const after = await list()
+  const ok = after.some((p) => p && p.alias === alias && p.connected && p.contextId === fresh[0].contextId)
+  return { status: ok ? 'linked' : 'rename_failed', contextId: fresh[0].contextId, profiles: after }
+}
+
+// สมุดบันทึกของบัญชีเราเอง — รูปไฟล์เดียวกับของร่วม (state.json · usage.jsonl) เพื่อใช้ blockedFor/usageRows/pagesOn ตัวเดิมได้ · ไม่ต้องถือกุญแจ (ไม่มีใครอื่นเขียน)
+export class AccountBook {
+  constructor(dir, project = PROJECT) { this.dir = dir; this.project = project; this.started = nowIso() }
+  setBlocked(platform, why, day = todayIso()) {
+    const st = readState(this.dir)
+    st.blocked[platform] = { at: day, why: String(why).slice(0, 300), by: this.project, time: nowIso() }
+    st.updated_at = nowIso()
+    saveJson(path.join(this.dir, 'state.json'), st)
+  }
+  clearBlocked(platform) {
+    const st = readState(this.dir)
+    if (!(platform in st.blocked)) return false
+    delete st.blocked[platform]
+    st.updated_at = nowIso()
+    saveJson(path.join(this.dir, 'state.json'), st)
+    return true
+  }
+  logUsage(pages, result = 'ok', { day = todayIso(), opened = null } = {}) {
+    const ints = (o) => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => v).map(([k, v]) => [k, Math.trunc(v)]))
+    const row = { project: this.project, date: day, start: this.started, end: nowIso(), pages: ints(pages), result }
+    if (opened && Object.keys(ints(opened)).length) row.opened = ints(opened)
+    fs.mkdirSync(this.dir, { recursive: true })
+    fs.appendFileSync(path.join(this.dir, 'usage.jsonl'), `${JSON.stringify(row)}\n`, 'utf8')
+  }
 }
 
 export class WatchError extends Error {
@@ -396,7 +491,9 @@ export async function ensureBridge({ oc, cfg = {}, sleep, spawnChrome = defaultS
       if ((await info()).ok) return { ...out, ready: true }
     }
   }
-  if (!spawnChrome(cfg.chrome_profile_dir || DEFAULTS.chrome_profile_dir)) return out
+  // ไม่รู้โฟลเดอร์ profile (โหมดบัญชีแยกที่ยังหา profile ไม่เจอ) = ไม่เปิด Chrome เอง — ห้ามถอยไปเปิด Profile 9 ของบัญชีร่วม
+  const dir = 'chrome_profile_dir' in cfg ? cfg.chrome_profile_dir : DEFAULTS.chrome_profile_dir
+  if (!dir || !spawnChrome(dir)) return out
   out.launched = true
   const end = now() + deadlineMs
   while (now() < end) {
@@ -446,7 +543,8 @@ export const pageStorePath = (storeDir, tid) => path.join(storeDir, 'facebook', 
 
 // ── รอบของ AssetX (ลำดับตามข้อตกลงข้อ 4.6 ทุกบรรทัด) ─────────────────────────
 // คืน { status, result[], opened, pages[], rows[], visited[], warnings[], lines[] } · ไม่เขียนฐานข้อมูล (ตัวรันเอา rows ไปใส่คิวหลังปล่อยกุญแจ)
-// status: ok · blocked_shared · already_today · no_due · quota_full · browser_busy · bridge_down · blocked · hidden · lost_lock
+// status: ok · blocked_shared (แถวพักบัญชีร่วม) · blocked_account (แถวพักบัญชี AssetX เอง — โหมด own) · already_today · no_due · quota_full · browser_busy · bridge_down · blocked · hidden · lost_lock
+// โหมด own (บัญชี AssetX เอง ข้อตกลงข้อ 9): อ่านเป็นชุด batch_pages เพจ ถือ/ปล่อยกุญแจร่วมต่อชุด · บันทึกการใช้/แถวพักลงสมุดของเรา (accountDir) ไม่แตะของร่วม
 export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAULT_SCORING, storeDir, base = defaultDir(), dryRun = false, limit = null, targetFilter = null, audience = null, deps = {} }) {
   const {
     oc: ocImpl = null,
@@ -457,36 +555,50 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
     spawnChrome = defaultSpawnChrome,
     chromeFlagsActive: flagsActive = chromeFlagsActive,
     lockFactory = (opts) => new Lock(PROJECT, opts),
+    resolveChromeDir: resolveDir = resolveChromeProfileDir,
     today = todayIso(),
   } = deps
   // แถว usage.jsonl ลงวันตามเวลาที่จดจริง (เหมือนฝั่ง DVX และโค้ดอ้างอิงในข้อตกลงข้อ 4.6) · ระบุวันเองเฉพาะเมื่อเทสต์ฉีด today มา
   const usageDay = deps?.today ? { day: today } : {}
+  const acct = accountSettings(cfg)
+  const own = acct.mode === 'own'
   const sb = { ...DEFAULTS.shared_browser, ...(cfg.shared_browser || {}) }
-  const CAP_DAY = Number(sb.daily_cap?.facebook ?? 12)
-  const CAP_OWN = Number(sb.own_daily_cap?.facebook ?? 4)
+  const CAP_DAY = acct.capDay
+  const CAP_OWN = acct.capOwn
   const NO_NEW_PAGE_MS = Number(sb.no_new_page_sec ?? 300) * 1000
   const NO_REREAD_MS = Number(sb.no_reread_sec ?? 360) * 1000
   const WAIT_MS = Number(sb.wait_minutes ?? 20) * 60e3
-  const perRun = Number(cfg.max_targets_per_run?.facebook ?? DEFAULTS.max_targets_per_run.facebook)
+  const perRun = acct.perRun
   const session = cfg.session || SESSION
-  const profile = cfg.bridge_profile || DEFAULTS.bridge_profile
+  const profile = acct.bridge_profile
   if (!storeDir) throw new Error('runFacebookWatch ต้องการ storeDir (.local/research/social)')
+  // โหมดบัญชีแยก: หาโฟลเดอร์ Chrome profile จากชื่อ (ตัวต่อ bridge ใช้เปิด Chrome เองเมื่อส่วนเสริมยังไม่ต่อ) · ตัวอ่าน/ตัวต่อใช้ alias ของบัญชีเรา
+  const chromeDir = own ? (acct.chrome_profile_dir || resolveDir(acct.chrome_profile_name)) : acct.chrome_profile_dir
+  const rcfg = { ...cfg, bridge_profile: profile, chrome_profile_dir: chromeDir }
+  // แถวพัก + บันทึกการใช้: shared = ของร่วม (~/.research-browser) · own = สมุดของเราเอง (.local/research/social/account) · กุญแจใช้ของร่วมทั้งสองโหมด
+  const acctBase = own ? accountDir(storeDir) : base
+  const book = own ? new AccountBook(acctBase) : null
+  const LABEL = acct.label
+  const BLOCKED_STATUS = own ? 'blocked_account' : 'blocked_shared'
 
   const state = loadJson(path.join(storeDir, 'state.json'), { visits: {} })
   if (!state.visits || typeof state.visits !== 'object') state.visits = {}
-  const out = { day: today, dry_run: dryRun, status: 'ok', result: [], opened: { facebook: 0 }, pages: [], rows: [], visited: [], warnings: [], lines: [], holder: null, stolen_from: null, waited_ms: 0, touched: false, picked: 0, chrome_flags_active: null }
+  const out = { day: today, dry_run: dryRun, status: 'ok', account: acct.mode, result: [], opened: { facebook: 0 }, pages: [], rows: [], visited: [], warnings: [], lines: [], holder: null, stolen_from: null, waited_ms: 0, touched: false, picked: 0, batches: 0, chrome_flags_active: null }
   const say = (s) => { out.lines.push(s); log(s) }
-  const quota = () => quotaLeft({ rows: usageRows(base), today, capDay: CAP_DAY, capOwn: CAP_OWN })
+  const quota = () => quotaLeft({ rows: usageRows(acctBase), today, capDay: CAP_DAY, capOwn: CAP_OWN })
+  const quotaText = (q) => (own ? `บัญชี AssetX เปิด ${q.own}/${CAP_OWN}` : `บัญชีร่วมเปิด ${q.total}/${CAP_DAY} · AssetX ${q.own}/${CAP_OWN}`)
 
   // ── ก่อนรอกุญแจ: ไม่มีอะไรให้อ่านแน่ ๆ = ไม่ต้องรอ 20 นาที และไม่ต้องจดอะไรของร่วม
-  const b0 = blockedFor(PLATFORM, today, base)
+  const b0 = blockedFor(PLATFORM, today, acctBase)
   if (b0) {
-    out.status = 'blocked_shared'
-    say(`⚠️ [social] Facebook พักอยู่ตั้งแต่ ${thaiDay(b0.at)} (${b0.by || '?'} เจอ: ${String(b0.why || '').slice(0, 160)}) — เจ้าของเปิด Chrome profile Research เช็กบัญชีก่อน · ระบบลองใหม่เองหลัง 3 วัน`)
+    out.status = BLOCKED_STATUS
+    say(own
+      ? `⚠️ [social] บัญชี Facebook ของ AssetX พักอยู่ตั้งแต่ ${thaiDay(b0.at)} (เจอ: ${String(b0.why || '').slice(0, 160)}) — เจ้าของเปิด ${LABEL} เช็กบัญชีก่อน · ระบบลองใหม่เองหลัง 3 วัน`
+      : `⚠️ [social] Facebook พักอยู่ตั้งแต่ ${thaiDay(b0.at)} (${b0.by || '?'} เจอ: ${String(b0.why || '').slice(0, 160)}) — เจ้าของเปิด Chrome profile Research เช็กบัญชีก่อน · ระบบลองใหม่เองหลัง 3 วัน`)
     return out
   }
   let q = quota()
-  // วันละ 1 รอบ (รอบสำรองข้ามเอง) — ยกเว้นเจ้าของสั่งอ่านเพจเฉพาะ (--target) ซึ่งยังต้องอยู่ในเพดาน 12/4 และเคารพแถวพักร่วม (ข้อตกลง 4.7: AssetX ไม่มีข้อยกเว้นอื่น เว้นแต่เจ้าของสั่ง)
+  // วันละ 1 รอบ (รอบสำรองข้ามเอง) — ยกเว้นเจ้าของสั่งอ่านเพจเฉพาะ (--target) ซึ่งยังต้องอยู่ในเพดานและเคารพแถวพัก (ข้อตกลง 4.7: AssetX ไม่มีข้อยกเว้นอื่น เว้นแต่เจ้าของสั่ง)
   if (q.own > 0 && !targetFilter) {
     out.status = 'already_today'
     say(`[social] วันนี้ AssetX อ่าน Facebook แล้ว ${q.own} เพจ — ข้าม (วันละ 1 รอบ)`)
@@ -506,143 +618,188 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
   if (!picks.length) { out.status = 'no_due'; say('[social] ยังไม่มีเพจถึงรอบ'); return out }
   if (q.left <= 0) {
     out.status = 'quota_full'
-    say(`[social] โควตา Facebook วันนี้เต็มแล้ว (บัญชีร่วมเปิด ${q.total}/${CAP_DAY} · AssetX ${q.own}/${CAP_OWN}) — รอบนี้ไม่อ่าน`)
+    say(`[social] โควตา Facebook วันนี้เต็มแล้ว (${quotaText(q)}) — รอบนี้ไม่อ่าน`)
     return out
   }
 
-  // ── ถือกุญแจ (รอได้ถึง 20 นาที ครอบรอบเต็มของ DVX)
-  const lock = lockFactory({ purpose: dryRun ? 'facebook_watch --dry-run' : 'facebook_watch', base })
-  const h0 = lock.holder()
-  const tWait = now()
-  if (!(await lock.acquire({ waitMs: WAIT_MS }))) {
-    const h = lock.holder() || h0 || {}
-    out.status = 'browser_busy'
-    out.holder = h
-    say(`⚠️ [social] browser ไม่ว่าง (${h.project || '?'} ${h.purpose || ''} · เริ่ม ${String(h.started_at || '?').slice(11, 16)} · เงียบ ${h.idle_sec ?? '?'} วิ) — รอ ${Math.round(WAIT_MS / 60000)} นาทีแล้วยังไม่ว่าง · ข้ามรอบ (เพจที่ถึงรอบได้อ่านรอบหน้า)`)
-    return out
-  }
-  out.waited_ms = now() - tWait
-  if (lock.stolenFrom) { out.stolen_from = lock.stolenFrom; say(`[social] ยึดกุญแจค้างจาก ${lock.stolenFrom.project || '?'} (เงียบเกิน 10 นาที) — ถือต่อ`) }
-  else if (h0 && out.waited_ms >= 30e3) say(`[social] รอ ${h0.project || '?'} ใช้ browser เสร็จ ${Math.round(out.waited_ms / 60000)} นาที`)
+  // ── อ่านเป็นชุด (บัญชีร่วม = ชุดเดียวทั้งรอบ ตามข้อ 4.6 · บัญชีแยก = ชุดละ batch_pages เพจ ถือกุญแจต่อชุด ปล่อยพักระหว่างชุด)
+  const batches = []
+  for (let i = 0; i < picks.length; i += Math.min(acct.batch, picks.length)) batches.push(picks.slice(i, i + acct.batch))
+  let stop = false
 
-  const oc = ocImpl || createOc({ lock })
-  const t0 = now()
-  try {
-    // ตรวจซ้ำหลังได้กุญแจ — ระหว่างรอ อีกฝั่งอาจเพิ่งใช้โควตาหรือเพิ่งเจอบล็อก
-    const b1 = blockedFor(PLATFORM, today, base)
-    if (b1) { out.status = 'blocked_shared'; say(`⚠️ [social] Facebook พักอยู่ (${b1.by || '?'} เจอระหว่างที่เรารอกุญแจ) — ข้ามรอบ`); return out }
-    q = quota()
-    if (q.own > 0 && !targetFilter) { out.status = 'already_today'; say('[social] AssetX อีกตัวอ่านไปแล้วระหว่างรอ — ข้าม'); return out }
-    picks = picks.slice(0, Math.max(0, q.left))
-    if (!picks.length) { out.status = 'quota_full'; say(`[social] โควตา Facebook วันนี้เต็มแล้ว (ระหว่างรอ อีกฝั่งใช้ไป · บัญชีร่วม ${q.total}/${CAP_DAY})`); return out }
-    out.picked = picks.length
-    out.touched = true // dry-run ก็จดของร่วม (ข้อ 4.7)
-
-    const bridge = await ensureBridge({ oc, cfg, sleep, spawnChrome, now, log: say })
-    if (bridge.daemonStarted && bridge.ready) say('[social] OpenCLI daemon กลับมาแล้ว ส่วนเสริมต่อเอง')
-    if (bridge.launched) say('[social] เปิด Chrome profile Research ให้เอง (ไม่มีหน้าต่าง)')
-    if (!bridge.ready) {
-      out.result.push('bridge_down')
-      out.status = 'bridge_down'
-      say('⚠️ [social] ต่อ Chrome profile Research ไม่ได้ — เจ้าของเปิด Chrome profile นั้นค้างไว้ แล้วเช็กว่าส่วนเสริม OpenCLI เปิดอยู่ (DVX อ่านเพจไม่ได้เหมือนกัน) · รอบนี้ข้าม')
-      return out
-    }
-    try {
-      for (let n = 0; n < picks.length; n++) {
-        const t = picks[n]
-        if (n) await sleep(6000 + random() * 8000) // เว้นจังหวะระหว่างเพจ ไม่รัว
-        if (now() - t0 > NO_NEW_PAGE_MS) {
-          out.result.push('budget')
-          say(`[social] หมดงบเวลาถือกุญแจ (${Math.round(NO_NEW_PAGE_MS / 1000)} วิ) — ที่เหลือ ${picks.length - n} เพจอ่านรอบหน้า (ยังไม่นับว่าเยี่ยม)`)
-          break
-        }
-        const tid = targetId(t)
-        const file = pageStorePath(storeDir, tid)
-        const store = loadJson(file, { target: t.name, posts: {} })
-        const page = { name: t.name, tid, posts: 0, new: 0, hits: 0, low: false, fail: null }
-        out.pages.push(page)
-        lock.logUsage({ facebook: 1 }, 'open', usageDay) // จดก่อนเปิด (ใต้กุญแจ) — โดนฆ่า/กุญแจหลุดกลางทางก็ยังนับ
-        out.opened.facebook += 1
-        let posts
-        try {
-          posts = await readFacebookPage({ target: t, cfg, oc, sleep, random })
-          const few = Number(cfg.fb_low_posts ?? DEFAULTS.fb_low_posts)
-          if (posts.length < few) {
-            if (now() - t0 < NO_REREAD_MS) {
-              say(`[social] ${t.name}: อ่านได้ ${posts.length} โพสต์ — เปิดใหม่ลองอีกรอบ`)
-              await sleep(8000 + random() * 4000)
-              const again = await readFacebookPage({ target: t, cfg, oc, sleep, random })
-              if (again.length > posts.length) posts = again
-            } else {
-              out.result.push('budget')
-            }
-            page.low = posts.length < few
-          }
-        } catch (e) {
-          if (e.name === 'Blocked') {
-            lock.setBlocked(PLATFORM, e.message, today) // ให้ DVX พักด้วย (บัญชีเดียวกัน)
-            out.result.push('blocked:facebook')
-            out.status = 'blocked'
-            page.fail = 'blocked'
-            say(`⚠️ [social] ${e.message} — หยุดเลน Facebook ทันที (แจ้ง DVX ให้พักด้วยแล้ว 3 วัน)`)
-            break
-          }
-          if (e.name === 'Hidden') {
-            // หน้าต่างถูกซ่อน = เปิดเพจต่อก็ได้เพจละ 1 โพสต์ → หยุดเลนรอบนี้ ไม่เปิดซ้ำ ไม่นับว่าเยี่ยม · ไม่ใช่บล็อก ไม่เขียนแถวพักร่วม
-            out.result.push('hidden:facebook')
-            out.status = 'hidden'
-            page.fail = 'hidden'
-            let flags = null
-            try { flags = await flagsActive() } catch { flags = null }
-            out.chrome_flags_active = flags
-            const hint = flags === false
-              ? ' · Chrome ที่รันอยู่เปิดโดยไม่มีค่ากันหยุดวาด — ปิด Chrome ทุกหน้าต่างแล้วเปิดใหม่จากไอคอนบนเดสก์ท็อป (ไอคอนใส่ค่าไว้แล้ว)'
-              : flags ? ' · Chrome มีค่ากันหยุดวาดแล้วแต่ยังถูกซ่อน (หน้าต่างถูกย่อเล็กสุด/จอดับ?)' : ''
-            say(`⚠️ [social] ${e.message} — หยุดเลน Facebook รอบนี้ · เพจที่ถึงรอบยังไม่นับว่าอ่าน (รอบหน้าอ่านก่อน) · ไม่ใช่บัญชีโดนบล็อก ไม่พัก 3 วัน${hint}`)
-            break
-          }
-          if (e.name === 'LostLock') throw e
-          page.fail = String(e.message || e).slice(0, 160)
-          out.warnings.push(`⚠️ [social] อ่าน ${t.name} ไม่สำเร็จ: ${page.fail}`)
-          say(out.warnings.at(-1))
-          continue
-        }
-        lock.clearBlocked(PLATFORM) // อ่านสำเร็จ = บัญชีกลับมาใช้ได้ (เขียนเฉพาะตอนมีแถว)
-        const before = Object.keys(store.posts || {}).length
-        const seen = mergePosts(store, posts, today)
-        page.posts = seen.length
-        page.new = Object.keys(store.posts).length - before
-        prunePosts(store, today, Number(cfg.keep_days ?? DEFAULTS.keep_days))
-        const hits = outliers(store, seen, today, cfg, scoring)
-        page.hits = hits.length
-        for (const h of hits) out.rows.push({ name: t.name, tid, file, key: h.key, ratio: h.ratio, row: ideaRow(t, store.posts[h.key], h, today, { audience }) })
-        if (!posts.length) say(`⚠️ [social] ${t.name}: ไม่เจอโพสต์เลย (เพจย้าย/ปิด/โหลดไม่ขึ้น?)`)
-        else if (page.low) say(`⚠️ [social] ${t.name}: อ่านได้แค่ ${posts.length} โพสต์ — ยังไม่นับว่าเยี่ยมเพจนี้ รอบหน้าอ่านก่อน`)
-        else say(`[social] ${t.name}: ${seen.length} โพสต์ (ใหม่ ${page.new}) · แรงกว่าปกติ ${hits.length}`)
-        if (!dryRun) {
-          if (!page.low) { state.visits[tid] = today; out.visited.push(tid) }
-          store.target = t.name
-          saveJson(file, store)
-        }
+  const holdBatch = async (batch, bi) => {
+    const first = bi === 0
+    const lock = lockFactory({ purpose: dryRun ? 'facebook_watch --dry-run' : 'facebook_watch', base })
+    const h0 = lock.holder()
+    const tWait = now()
+    if (!(await lock.acquire({ waitMs: WAIT_MS }))) {
+      const h = lock.holder() || h0 || {}
+      out.holder = h
+      stop = true
+      if (first) {
+        out.status = 'browser_busy'
+        say(`⚠️ [social] browser ไม่ว่าง (${h.project || '?'} ${h.purpose || ''} · เริ่ม ${String(h.started_at || '?').slice(11, 16)} · เงียบ ${h.idle_sec ?? '?'} วิ) — รอ ${Math.round(WAIT_MS / 60000)} นาทีแล้วยังไม่ว่าง · ข้ามรอบ (เพจที่ถึงรอบได้อ่านรอบหน้า)`)
+        return 'return'
+      } else {
+        out.result.push('browser_busy')
+        say(`⚠️ [social] ชุดที่ ${bi + 1}: browser ไม่ว่าง (${h.project || '?'}) รอ ${Math.round(WAIT_MS / 60000)} นาทีแล้ว — ที่เหลือ ${picks.length - out.pages.length} เพจอ่านรอบหน้า`)
       }
-    } finally {
-      // ปิดเฉพาะ session ของเรา · ไม่แตะสัญญาณชีพ (กุญแจอาจหลุดมือไปแล้ว) · ห้ามปิด dvxwatch / ห้ามฆ่า Chrome
-      await oc(['browser', 'close', '--session', session, '--profile', profile], { beat: false, timeoutMs: 40e3 }).catch(() => {})
+      return
     }
-  } catch (e) {
-    if (e.name !== 'LostLock') throw e
-    out.result.push('lost_lock')
-    out.status = 'lost_lock'
-    say(`⚠️ [social] ${e.message} — หยุดอ่านทันที · เพจที่อ่านแล้วยังเก็บ/เข้าคิวตามปกติ`)
-  } finally {
+    if (first) out.waited_ms = now() - tWait
+    if (lock.stolenFrom) { out.stolen_from = lock.stolenFrom; say(`[social] ยึดกุญแจค้างจาก ${lock.stolenFrom.project || '?'} (เงียบเกิน 10 นาที) — ถือต่อ`) }
+    else if (h0 && now() - tWait >= 30e3) say(`[social] รอ ${h0.project || '?'} ใช้ browser เสร็จ ${Math.round((now() - tWait) / 60000)} นาที`)
+
+    // บันทึกการใช้/แถวพัก: บัญชีร่วม = ผ่านกุญแจลงของร่วม (ต้องถือกุญแจ) · บัญชีแยก = สมุดของเรา
+    const rec = own
+      ? { usage: (pages, result, opts) => book.logUsage(pages, result, opts), block: (why) => book.setBlocked(PLATFORM, why, today), clear: () => book.clearBlocked(PLATFORM) }
+      : { usage: (pages, result, opts) => lock.logUsage(pages, result, opts), block: (why) => lock.setBlocked(PLATFORM, why, today), clear: () => lock.clearBlocked(PLATFORM) }
+    const oc = ocImpl || createOc({ lock })
+    const t0 = now()
+    let touched = false
+    const opened0 = out.opened.facebook
+    const result0 = out.result.length
     try {
-      if (out.touched && lock.held) lock.logUsage({}, [...new Set(out.result)].join(',') || 'ok', { opened: out.opened, ...usageDay })
-    } catch { /* กุญแจหลุดแล้ว — ข้ามแถวสรุป ห้ามโยนออกจาก finally */ }
-    lock.release() // ปล่อยเสมอ
+      // ตรวจซ้ำหลังได้กุญแจ — ระหว่างรอ อีกฝั่งอาจเพิ่งใช้โควตาหรือเพิ่งเจอบล็อก
+      const b1 = blockedFor(PLATFORM, today, acctBase)
+      if (b1) { out.status = BLOCKED_STATUS; stop = true; say(own ? '⚠️ [social] บัญชี Facebook ของ AssetX พักอยู่ — ข้ามรอบ' : `⚠️ [social] Facebook พักอยู่ (${b1.by || '?'} เจอระหว่างที่เรารอกุญแจ) — ข้ามรอบ`); return 'return' }
+      q = quota()
+      if (first && q.own > 0 && !targetFilter) { out.status = 'already_today'; stop = true; say('[social] AssetX อีกตัวอ่านไปแล้วระหว่างรอ — ข้าม'); return 'return' }
+      const todo = batch.slice(0, Math.max(0, q.left))
+      if (!todo.length) {
+        stop = true
+        if (first) { out.status = 'quota_full'; say(`[social] โควตา Facebook วันนี้เต็มแล้ว (ระหว่างรอ อีกฝั่งใช้ไป · ${quotaText(q)})`) } else out.result.push('quota')
+        return 'return'
+      }
+      out.picked += todo.length
+      out.batches += 1
+      out.touched = true // dry-run ก็จดการใช้ (ข้อ 4.7)
+      touched = true
+      if (batches.length > 1) say(`[social] ชุดที่ ${bi + 1}/${batches.length} (${todo.length} เพจ · ปล่อยกุญแจพักระหว่างชุด)`)
+
+      const bridge = await ensureBridge({ oc, cfg: rcfg, sleep, spawnChrome, now, log: say })
+      if (bridge.daemonStarted && bridge.ready) say('[social] OpenCLI daemon กลับมาแล้ว ส่วนเสริมต่อเอง')
+      if (bridge.launched) say(`[social] เปิด ${LABEL} ให้เอง (ไม่มีหน้าต่าง)`)
+      if (!bridge.ready) {
+        out.result.push('bridge_down')
+        out.status = 'bridge_down'
+        stop = true
+        say(own
+          ? `⚠️ [social] ต่อ ${LABEL} ไม่ได้ (OpenCLI ไม่เห็น alias "${profile}")${chromeDir ? '' : ` · ไม่พบ Chrome profile ชื่อ "${acct.chrome_profile_name}"`} — เจ้าของเปิด Chrome profile นั้นค้างไว้และเช็กว่าส่วนเสริม OpenCLI เปิดอยู่ (ยังไม่ได้ตั้งชื่อ = node scripts/research-social.mjs account link) · รอบนี้ข้าม`
+          : '⚠️ [social] ต่อ Chrome profile Research ไม่ได้ — เจ้าของเปิด Chrome profile นั้นค้างไว้ แล้วเช็กว่าส่วนเสริม OpenCLI เปิดอยู่ (DVX อ่านเพจไม่ได้เหมือนกัน) · รอบนี้ข้าม')
+        return 'return'
+      }
+      try {
+        for (let n = 0; n < todo.length; n++) {
+          const t = todo[n]
+          if (n) await sleep(6000 + random() * 8000) // เว้นจังหวะระหว่างเพจ ไม่รัว
+          if (now() - t0 > NO_NEW_PAGE_MS) {
+            out.result.push('budget')
+            say(`[social] หมดงบเวลาถือกุญแจ (${Math.round(NO_NEW_PAGE_MS / 1000)} วิ) — ที่เหลือ ${todo.length - n} เพจอ่านรอบหน้า (ยังไม่นับว่าเยี่ยม)`)
+            break
+          }
+          const tid = targetId(t)
+          const file = pageStorePath(storeDir, tid)
+          const store = loadJson(file, { target: t.name, posts: {} })
+          const page = { name: t.name, tid, posts: 0, new: 0, hits: 0, low: false, fail: null }
+          out.pages.push(page)
+          if (own) lock.require() // ยังถือกุญแจอยู่ก่อนจด (บัญชีร่วมเช็กในตัว logUsage)
+          rec.usage({ facebook: 1 }, 'open', usageDay) // จดก่อนเปิด (ใต้กุญแจ) — โดนฆ่า/กุญแจหลุดกลางทางก็ยังนับ
+          out.opened.facebook += 1
+          let posts
+          try {
+            posts = await readFacebookPage({ target: t, cfg: rcfg, oc, sleep, random })
+            const few = Number(cfg.fb_low_posts ?? DEFAULTS.fb_low_posts)
+            if (posts.length < few) {
+              if (now() - t0 < NO_REREAD_MS) {
+                say(`[social] ${t.name}: อ่านได้ ${posts.length} โพสต์ — เปิดใหม่ลองอีกรอบ`)
+                await sleep(8000 + random() * 4000)
+                const again = await readFacebookPage({ target: t, cfg: rcfg, oc, sleep, random })
+                if (again.length > posts.length) posts = again
+              } else {
+                out.result.push('budget')
+              }
+              page.low = posts.length < few
+            }
+          } catch (e) {
+            if (e.name === 'Blocked') {
+              rec.block(e.message) // บัญชีร่วม = ให้ DVX พักด้วย · บัญชีแยก = พักเฉพาะของเรา
+              out.result.push('blocked:facebook')
+              out.status = 'blocked'
+              page.fail = 'blocked'
+              stop = true
+              say(own
+                ? `⚠️ [social] ${e.message} — หยุดเลน Facebook ทันที · พักบัญชี AssetX 3 วัน (DVX ไม่เกี่ยว คนละบัญชี) · เจ้าของเปิด ${LABEL} ดูว่าโดนขอยืนยันตัวตนไหม`
+                : `⚠️ [social] ${e.message} — หยุดเลน Facebook ทันที (แจ้ง DVX ให้พักด้วยแล้ว 3 วัน)`)
+              break
+            }
+            if (e.name === 'Hidden') {
+              // หน้าต่างถูกซ่อน = เปิดเพจต่อก็ได้เพจละ 1 โพสต์ → หยุดเลนรอบนี้ ไม่เปิดซ้ำ ไม่นับว่าเยี่ยม · ไม่ใช่บล็อก ไม่เขียนแถวพัก
+              out.result.push('hidden:facebook')
+              out.status = 'hidden'
+              page.fail = 'hidden'
+              stop = true
+              let flags = null
+              try { flags = await flagsActive() } catch { flags = null }
+              out.chrome_flags_active = flags
+              const hint = flags === false
+                ? ' · Chrome ที่รันอยู่เปิดโดยไม่มีค่ากันหยุดวาด — ปิด Chrome ทุกหน้าต่างแล้วเปิดใหม่จากไอคอนบนเดสก์ท็อป (ไอคอนใส่ค่าไว้แล้ว)'
+                : flags ? ' · Chrome มีค่ากันหยุดวาดแล้วแต่ยังถูกซ่อน (หน้าต่างถูกย่อเล็กสุด/จอดับ?)' : ''
+              say(`⚠️ [social] ${e.message} — หยุดเลน Facebook รอบนี้ · เพจที่ถึงรอบยังไม่นับว่าอ่าน (รอบหน้าอ่านก่อน) · ไม่ใช่บัญชีโดนบล็อก ไม่พัก 3 วัน${hint}`)
+              break
+            }
+            if (e.name === 'LostLock') throw e
+            page.fail = String(e.message || e).slice(0, 160)
+            out.warnings.push(`⚠️ [social] อ่าน ${t.name} ไม่สำเร็จ: ${page.fail}`)
+            say(out.warnings.at(-1))
+            continue
+          }
+          rec.clear() // อ่านสำเร็จ = บัญชีกลับมาใช้ได้ (เขียนเฉพาะตอนมีแถว)
+          const before = Object.keys(store.posts || {}).length
+          const seen = mergePosts(store, posts, today)
+          page.posts = seen.length
+          page.new = Object.keys(store.posts).length - before
+          prunePosts(store, today, Number(cfg.keep_days ?? DEFAULTS.keep_days))
+          const hits = outliers(store, seen, today, cfg, scoring)
+          page.hits = hits.length
+          for (const h of hits) out.rows.push({ name: t.name, tid, file, key: h.key, ratio: h.ratio, row: ideaRow(t, store.posts[h.key], h, today, { audience }) })
+          if (!posts.length) say(`⚠️ [social] ${t.name}: ไม่เจอโพสต์เลย (เพจย้าย/ปิด/โหลดไม่ขึ้น?)`)
+          else if (page.low) say(`⚠️ [social] ${t.name}: อ่านได้แค่ ${posts.length} โพสต์ — ยังไม่นับว่าเยี่ยมเพจนี้ รอบหน้าอ่านก่อน`)
+          else say(`[social] ${t.name}: ${seen.length} โพสต์ (ใหม่ ${page.new}) · แรงกว่าปกติ ${hits.length}`)
+          if (!dryRun) {
+            if (!page.low) { state.visits[tid] = today; out.visited.push(tid) }
+            store.target = t.name
+            saveJson(file, store)
+          }
+        }
+      } finally {
+        // ปิดเฉพาะ session ของเรา · ไม่แตะสัญญาณชีพ (กุญแจอาจหลุดมือไปแล้ว) · ห้ามปิด dvxwatch / ห้ามฆ่า Chrome
+        await oc(['browser', 'close', '--session', session, '--profile', profile], { beat: false, timeoutMs: 40e3 }).catch(() => {})
+      }
+    } catch (e) {
+      if (e.name !== 'LostLock') throw e
+      out.result.push('lost_lock')
+      out.status = 'lost_lock'
+      stop = true
+      say(`⚠️ [social] ${e.message} — หยุดอ่านทันที · เพจที่อ่านแล้วยังเก็บ/เข้าคิวตามปกติ`)
+    } finally {
+      try {
+        // แถวสรุปของชุดนี้ (pages ว่าง ไม่นับโควตา) · บัญชีร่วมต้องยังถือกุญแจ
+        if (touched && (own || lock.held)) rec.usage({}, [...new Set(out.result.slice(result0))].join(',') || 'ok', { opened: { facebook: out.opened.facebook - opened0 }, ...usageDay })
+      } catch { /* กุญแจหลุดแล้ว — ข้ามแถวสรุป ห้ามโยนออกจาก finally */ }
+      lock.release() // ปล่อยเสมอ
+    }
   }
-  if (!dryRun && out.touched) saveJson(path.join(storeDir, 'state.json'), { ...state, last_round: { day: today, status: out.status, opened: out.opened.facebook } })
+
+  for (let bi = 0; bi < batches.length && !stop; bi++) {
+    if (bi) await sleep(acct.gapMs + random() * 15000) // พักระหว่างชุด — กุญแจว่างให้ DVX แทรกได้
+    // ชุดแรกออกก่อนเวลา (ไม่ว่าง/พัก/อ่านแล้ว/โควตา/bridge) = จบรอบแบบเดิมทันที · ชุดหลัง ๆ หยุดแล้วบันทึกเพจที่อ่านไปแล้ว
+    if ((await holdBatch(batches[bi], bi)) === 'return' && bi === 0) return out
+  }
+
+  if (!dryRun && out.touched) saveJson(path.join(storeDir, 'state.json'), { ...state, last_round: { day: today, status: out.status, opened: out.opened.facebook, account: acct.mode } })
   const fails = out.pages.filter((p) => p.fail).length
   const low = out.pages.filter((p) => p.low).length
-  say(`[social] Facebook: เปิด ${out.opened.facebook} เพจ · โพสต์ ${out.pages.reduce((n, p) => n + p.posts, 0)} (ใหม่ ${out.pages.reduce((n, p) => n + p.new, 0)}) · แรงกว่าปกติ ${out.rows.length}${fails ? ` · ล้ม ${fails}` : ''}${low ? ` · ได้น้อยผิดปกติ ${low}` : ''}${dryRun ? ' · DRY RUN (ไม่เขียนคลัง/สถานะของเรา)' : ''}`)
+  say(`[social] Facebook${own ? ' (บัญชี AssetX)' : ''}: เปิด ${out.opened.facebook} เพจ · โพสต์ ${out.pages.reduce((n, p) => n + p.posts, 0)} (ใหม่ ${out.pages.reduce((n, p) => n + p.new, 0)}) · แรงกว่าปกติ ${out.rows.length}${fails ? ` · ล้ม ${fails}` : ''}${low ? ` · ได้น้อยผิดปกติ ${low}` : ''}${dryRun ? ' · DRY RUN (ไม่เขียนคลัง/สถานะของเรา)' : ''}`)
   return out
 }

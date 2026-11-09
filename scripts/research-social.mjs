@@ -12,6 +12,9 @@
 //     --target คำ  เจ้าของสั่งอ่านเพจเฉพาะ (ชื่อ/ลิงก์มีคำนี้): ไม่สนรอบ และไม่สนว่าวันนี้อ่านแล้ว แต่ยังเคารพแถวพักร่วมและเพดาน 12/4 เสมอ (ข้อตกลง 4.7)
 // node scripts/research-social.mjs status     ใครถือกุญแจ · แถวพักร่วม · เพจที่เปิดวันนี้ (รวม/ของเรา) · เพจถึงรอบ · เยี่ยมล่าสุด — อ่านอย่างเดียว ไม่แตะ browser
 // node scripts/research-social.mjs report     รอบล่าสุดจาก runs.jsonl
+// node scripts/research-social.mjs account check   ตรวจการตั้งบัญชี Facebook ของ AssetX เอง (อ่านอย่างเดียว ไม่แตะ browser): Chrome profile ตามชื่อ · ลงส่วนเสริม OpenCLI แล้วไหม · ชื่อเรียกใน OpenCLI · โหมดในคอนฟิก
+// node scripts/research-social.mjs account link    ตั้งชื่อเรียก "assetx" ให้ Chrome profile ใหม่ใน OpenCLI (ใต้กุญแจร่วม · ไม่แตะ research/ค่าเริ่มต้นของเครื่อง)
+//     บัญชีแยก (เจ้าของสั่ง 9 พ.ย. 2569 · ข้อตกลงข้อ 9): research/social_watch.json → "account": "own" · แถวพัก/บันทึกการใช้อยู่ใน .local/research/social/account/ · เพดานของเราเอง · กุญแจยังใช้ของร่วม
 //
 // คอนฟิก: research/social_watch.json (รายชื่อเพจ · เพดาน · งบเวลา) · research/idea_sources.json (scoring = topic gate แคปชั่น · subtypes.social_fb) · research/brand_facts.json (service_area)
 // สถานะ/คลัง (ไม่เข้า git): .local/research/social/state.json (visits) · facebook/<tid>.json (โพสต์ที่ผ่านตัวลบข้อมูลบุคคลแล้ว) · runs.jsonl
@@ -24,7 +27,8 @@ import { createSupabaseStore, missingTable } from '../server/research/store.js'
 import { withAreaWords } from '../server/research/collector.js'
 import { sendTelegramReport, telegramConfigured } from '../server/research/notify.js'
 import { Lock, blockedFor, usageRows, todayIso, defaultDir } from '../server/research/shared-browser.mjs'
-import { runFacebookWatch, dueTargets, quotaLeft, targetId, loadJson, saveJson, pageStorePath, DEFAULTS, PROJECT } from '../server/research/social-watch.js'
+import { runFacebookWatch, dueTargets, quotaLeft, targetId, loadJson, saveJson, pageStorePath, DEFAULTS, PROJECT, accountSettings, accountDir, chromeProfiles, resolveChromeProfileDir, hasOpenCliExtension, linkAccountAlias, createOc } from '../server/research/social-watch.js'
+import os from 'node:os'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 config({ path: path.join(repo, '.env.local'), quiet: true })
@@ -94,7 +98,8 @@ async function cmdRun() {
   const started = Date.now()
   const limit = flagValue('--limit')
   const targetFilter = flagValue('--target')
-  out(`[social] ${dryRun ? 'DRY RUN · ' : ''}เพจในรายชื่อ ${(cfg.facebook || []).filter((t) => t.enabled !== false).length} · โควตา AssetX ${cfg.shared_browser?.own_daily_cap?.facebook ?? 4}/วัน · รวมบัญชี ${cfg.shared_browser?.daily_cap?.facebook ?? 12}${limit ? ` · --limit ${limit}` : ''}${targetFilter ? ` · --target "${targetFilter}"` : ''}`)
+  const acct = accountSettings(cfg)
+  out(`[social] ${dryRun ? 'DRY RUN · ' : ''}เพจในรายชื่อ ${(cfg.facebook || []).filter((t) => t.enabled !== false).length} · ${acct.mode === 'own' ? `บัญชี AssetX เอง (${acct.label} · alias ${acct.bridge_profile}) โควตา ${acct.capOwn}/วัน ชุดละ ${acct.batch}` : `บัญชีร่วม DVX · โควตา AssetX ${acct.capOwn}/วัน · รวมบัญชี ${acct.capDay}`}${limit ? ` · --limit ${limit}` : ''}${targetFilter ? ` · --target "${targetFilter}"` : ''}`)
 
   const result = await runFacebookWatch({ cfg, targets: cfg.facebook || [], scoring, storeDir: SOCIAL_DIR, dryRun, limit, targetFilter, audience, deps: { log } })
 
@@ -132,14 +137,14 @@ async function cmdRun() {
   if (dryRun && result.touched) out(`[social] DRY RUN — เจอแรงกว่าปกติ ${result.rows.length} ชิ้น ไม่ได้เขียนคลัง/สถานะ/คิวของเรา (usage.jsonl ของร่วมจดแล้ว)`)
 
   appendRun({
-    status: result.status, day: result.day, dry_run: dryRun, ms: Date.now() - started, waited_ms: result.waited_ms,
+    status: result.status, account: result.account, day: result.day, dry_run: dryRun, ms: Date.now() - started, waited_ms: result.waited_ms,
     opened: result.opened.facebook, pages: result.pages.length, posts: result.pages.reduce((n, p) => n + p.posts, 0), new_posts: result.pages.reduce((n, p) => n + p.new, 0),
     low: result.pages.filter((p) => p.low).length, failed: result.pages.filter((p) => p.fail).length, hits: result.rows.length, inserted: queued.inserted,
     result: result.result, holder: result.holder?.project || null, stolen_from: result.stolen_from?.project || null, warnings: result.warnings.length,
   })
 
   // รายงานเทเลแกรม: รอบที่แตะ browser หรือมีเรื่องต้องบอก · รอบที่ข้ามเงียบ ๆ (วันนี้อ่านแล้ว / ไม่มีเพจถึงรอบ) ไม่ส่ง
-  const notable = result.touched || ['browser_busy', 'blocked_shared', 'quota_full'].includes(result.status)
+  const notable = result.touched || ['browser_busy', 'blocked_shared', 'blocked_account', 'quota_full'].includes(result.status)
   if (!dryRun && !flags.has('--no-report') && notable) {
     const sent = await sendTelegramReport(buildTelegramText(result, queued, cfg))
     out(sent.ok ? '[report] ส่งเทเลแกรมแล้ว' : `[report] ไม่ได้ส่งเทเลแกรม: ${sent.reason}`)
@@ -153,18 +158,26 @@ function cmdStatus() {
   const base = defaultDir()
   const today = todayIso()
   const holder = new Lock(PROJECT, { base }).holder()
+  const acct = accountSettings(cfg)
+  out(`บัญชีที่ใช้อ่าน: ${acct.mode === 'own' ? `บัญชี Facebook ของ AssetX เอง · ${acct.label} · alias ${acct.bridge_profile} · เพดาน ${acct.capOwn}/วัน ชุดละ ${acct.batch}` : 'บัญชีสำรองร่วมกับ DivisionX (Chrome profile Research)'}`)
   out(`โฟลเดอร์ร่วม: ${base}`)
   out(`กุญแจ browser: ${holder ? `${holder.project} ถืออยู่ (${holder.purpose || '-'} · เริ่ม ${String(holder.started_at || '').slice(11, 19)} · เงียบ ${holder.idle_sec} วิ${holder.idle_sec >= 600 ? ' · ค้าง ยึดได้' : ''})` : 'ว่าง'}`)
   const b = blockedFor('facebook', today, base)
-  out(`แถวพักร่วม Facebook: ${b ? `⚠️ พักตั้งแต่ ${b.at} โดย ${b.by} — ${b.why}` : 'ไม่มี'}`)
-  const sb = { ...DEFAULTS.shared_browser, ...(cfg.shared_browser || {}) }
-  const q = quotaLeft({ rows: usageRows(base), today, capDay: Number(sb.daily_cap?.facebook ?? 12), capOwn: Number(sb.own_daily_cap?.facebook ?? 4) })
-  out(`เพจที่เปิดวันนี้ (${today}): รวมทุกโปรเจกต์ ${q.total}/${sb.daily_cap?.facebook ?? 12} · AssetX ${q.own}/${sb.own_daily_cap?.facebook ?? 4} · เหลือให้ AssetX ${Math.max(q.left, 0)}${q.own > 0 ? ' · วันนี้อ่านแล้ว (รอบถัดไปข้าม)' : ''}`)
+  out(`แถวพักร่วม Facebook (บัญชีร่วม): ${b ? `⚠️ พักตั้งแต่ ${b.at} โดย ${b.by} — ${b.why}` : 'ไม่มี'}${acct.mode === 'own' ? ' · ไม่กระทบบัญชี AssetX' : ''}`)
+  const acctBase = acct.mode === 'own' ? accountDir(SOCIAL_DIR) : base
+  if (acct.mode === 'own') {
+    const mine = blockedFor('facebook', today, acctBase)
+    out(`แถวพักบัญชี AssetX: ${mine ? `⚠️ พักตั้งแต่ ${mine.at} — ${mine.why}` : 'ไม่มี'}`)
+  }
+  const q = quotaLeft({ rows: usageRows(acctBase), today, capDay: acct.capDay, capOwn: acct.capOwn })
+  out(acct.mode === 'own'
+    ? `เพจที่บัญชี AssetX เปิดวันนี้ (${today}): ${q.own}/${acct.capOwn} · เหลือ ${Math.max(q.left, 0)}${q.own > 0 ? ' · วันนี้อ่านแล้ว (รอบถัดไปข้าม)' : ''}`
+    : `เพจที่เปิดวันนี้ (${today}): รวมทุกโปรเจกต์ ${q.total}/${acct.capDay} · AssetX ${q.own}/${acct.capOwn} · เหลือให้ AssetX ${Math.max(q.left, 0)}${q.own > 0 ? ' · วันนี้อ่านแล้ว (รอบถัดไปข้าม)' : ''}`)
   const state = loadJson(path.join(SOCIAL_DIR, 'state.json'), { visits: {} })
   if (state.last_round) out(`รอบล่าสุดของเรา: ${state.last_round.day} · ${state.last_round.status} · เปิด ${state.last_round.opened} เพจ`)
   const pages = (cfg.facebook || []).filter((t) => t.enabled !== false)
   const due = dueTargets(pages, state.visits || {}, today, 999)
-  const perRun = Number(cfg.max_targets_per_run?.facebook ?? 4)
+  const perRun = acct.perRun
   out(`เพจถึงรอบ ${due.length}/${pages.length} (รอบหน้าอ่าน ${Math.min(perRun, due.length)}): ${due.slice(0, perRun).map((t) => t.name).join(' · ') || '-'}`)
   out('')
   out(`${'เพจ'.padEnd(44)} กลุ่ม        ทุก  เยี่ยมล่าสุด  โพสต์ในคลัง`)
@@ -188,11 +201,81 @@ function cmdReport() {
   }
 }
 
+// ── บัญชี Facebook ของ AssetX เอง (ข้อตกลงข้อ 9 · เจ้าของสั่ง 9 พ.ย. 2569) ──
+function opencliAliases() {
+  const cfgFile = path.join(process.env.OPENCLI_CONFIG_DIR || path.join(os.homedir(), '.opencli'), 'browser-profiles.json')
+  return readJson(cfgFile, { aliases: {} }) || { aliases: {} }
+}
+
+// อ่านอย่างเดียว: Local State ของ Chrome · โฟลเดอร์ส่วนเสริม · ~/.opencli/browser-profiles.json — ไม่เรียก OpenCLI ไม่แตะ browser
+function cmdAccountCheck() {
+  const { cfg } = loadConfig()
+  const acct = accountSettings({ ...cfg, account: 'own' })
+  const mode = accountSettings(cfg).mode
+  out(`โหมดในคอนฟิก: ${mode === 'own' ? 'บัญชี AssetX เอง (own)' : 'บัญชีร่วมกับ DivisionX (shared)'} — research/social_watch.json → "account"`)
+  const profiles = chromeProfiles()
+  const dir = acct.chrome_profile_dir || resolveChromeProfileDir(acct.chrome_profile_name)
+  out(`1. Chrome profile ชื่อ "${acct.chrome_profile_name}": ${dir ? `เจอแล้ว (${dir})` : '❌ ยังไม่เจอ — สร้าง profile ใหม่ชื่อนี้ใน Chrome'}`)
+  const ext = dir ? hasOpenCliExtension(dir) : false
+  out(`2. ส่วนเสริม OpenCLI ใน profile นี้: ${!dir ? '-' : ext ? 'ลงแล้ว' : '❌ ยังไม่ลง — ลงจาก Chrome Web Store ใน profile นี้'}`)
+  const oc = opencliAliases()
+  const mine = oc.aliases?.[acct.bridge_profile]
+  out(`3. ชื่อเรียกใน OpenCLI "${acct.bridge_profile}": ${mine ? `ตั้งแล้ว (${mine})` : '❌ ยังไม่ตั้ง — เปิด profile ค้างไว้แล้วรัน node scripts/research-social.mjs account link'}`)
+  const def = oc.defaultContextId ? (Object.entries(oc.aliases || {}).find(([, v]) => v === oc.defaultContextId)?.[0] || oc.defaultContextId) : '-'
+  out(`ค่าเริ่มต้นของเครื่อง (OpenCLI): ${def}${def === 'research' ? ' (ถูกต้อง — เป็นของ DivisionX ห้ามเปลี่ยน)' : ' ⚠️ ควรเป็น research ของ DivisionX'}`)
+  out('')
+  out('Chrome profile ทั้งหมดในเครื่อง:')
+  for (const p of profiles) out(`  ${p.dir.padEnd(12)} ${p.name}${hasOpenCliExtension(p.dir) ? ' · มีส่วนเสริม OpenCLI' : ''}`)
+  out('')
+  const ready = Boolean(dir && ext && mine)
+  out(ready
+    ? (mode === 'own' ? '✅ ตั้งครบ และคอนฟิกใช้บัญชี AssetX แล้ว' : '✅ ตั้งครบแล้ว — ขั้นต่อไป: ลองอ่าน 1 เพจด้วยบัญชีใหม่ แล้วเปลี่ยน "account" เป็น "own" ใน research/social_watch.json')
+    : 'ยังตั้งไม่ครบ — ขั้นตอนอยู่ใน docs/social-research.md หัวข้อ "บัญชี Facebook ของ AssetX เอง"')
+}
+
+// ตั้งชื่อเรียกใน OpenCLI ใต้กุญแจร่วม (OpenCLI ตัวเดียวทั้งเครื่อง) · เลือกเฉพาะ profile ที่ต่ออยู่และยังไม่มีชื่อ ตัวเดียว · ไม่สั่ง profile use
+async function cmdAccountLink() {
+  const { cfg } = loadConfig()
+  const acct = accountSettings({ ...cfg, account: 'own' })
+  const lock = new Lock(PROJECT, { purpose: 'account link', base: defaultDir() })
+  out('[account] รอกุญแจ browser ร่วม (ไม่เกิน 3 นาที)…')
+  if (!(await lock.acquire({ waitMs: 180e3 }))) {
+    const h = lock.holder() || {}
+    out(`⚠️ [account] browser ไม่ว่าง (${h.project || '?'} ${h.purpose || ''}) — ลองใหม่ภายหลัง`)
+    process.exitCode = 1
+    return
+  }
+  try {
+    const r = await linkAccountAlias({ oc: createOc({ lock }), alias: acct.bridge_profile })
+    const msg = {
+      ready: `✅ ชื่อเรียก "${acct.bridge_profile}" ต่ออยู่แล้ว (${r.contextId})`,
+      linked: `✅ ตั้งชื่อเรียก "${acct.bridge_profile}" ให้ profile ใหม่แล้ว (${r.contextId})`,
+      none: '❌ OpenCLI ไม่เห็น Chrome profile ใหม่ที่ต่ออยู่ — เปิด Chrome profile ของบัญชี AssetX ค้างไว้ และเช็กว่าส่วนเสริม OpenCLI เปิดอยู่ แล้วรันใหม่',
+      alias_offline: `❌ ชื่อเรียก "${acct.bridge_profile}" มีแล้วแต่ไม่ได้ต่ออยู่ — เปิด Chrome profile ของบัญชี AssetX ค้างไว้แล้วรันใหม่`,
+      ambiguous: '❌ มี profile ที่ต่ออยู่และยังไม่มีชื่อเรียกมากกว่า 1 ตัว — ปิด profile อื่นที่ลงส่วนเสริม OpenCLI ไว้ ให้เหลือ profile ของบัญชี AssetX แล้วรันใหม่ (ระบบไม่เดา)',
+      rename_failed: '❌ ตั้งชื่อเรียกไม่สำเร็จ — ดูรายการด้านล่าง',
+    }[r.status]
+    out(`[account] ${msg}`)
+    for (const p of r.profiles || []) out(`  ${p.contextId} · ${p.alias || '(ไม่มีชื่อ)'} · ${p.connected ? 'ต่ออยู่' : 'ไม่ต่อ'}${p.default ? ' · ค่าเริ่มต้น' : ''}`)
+    if (!['ready', 'linked'].includes(r.status)) process.exitCode = 1
+  } finally {
+    lock.release()
+  }
+}
+
+async function cmdAccount() {
+  const sub = rest.find((a) => !a.startsWith('--')) || 'check'
+  if (sub === 'check') return cmdAccountCheck()
+  if (sub === 'link') return cmdAccountLink()
+  out(`ไม่รู้จัก account ${sub} (ใช้ check หรือ link)`)
+  process.exitCode = 2
+}
+
 function help() {
   out(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).slice(1).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'))
 }
 
-const commands = { run: cmdRun, status: cmdStatus, report: cmdReport, help }
+const commands = { run: cmdRun, status: cmdStatus, report: cmdReport, account: cmdAccount, help }
 const fn = commands[command]
 if (!fn) { out(`ไม่รู้จักคำสั่ง "${command}"`); help(); process.exit(2) }
 Promise.resolve(fn()).catch((error) => {

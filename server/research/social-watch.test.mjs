@@ -11,6 +11,7 @@ import {
   FB_JS, SESSION, DEFAULTS, WatchError, Blocked, Hidden, CHROME_FLAGS, chromeArgs, chromeFlagsActive,
   targetId, fbKey, fbLink, richness, cleanCaption, tagsOf, mergePosts, prunePosts, eng, median, outliers, ideaRow, dueTargets, quotaLeft,
   createOc, unwrap, readFacebookPage, runFacebookWatch, pageStorePath,
+  accountSettings, accountDir, resolveChromeProfileDir, chromeProfiles,
 } from './social-watch.js'
 
 const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
@@ -29,7 +30,7 @@ function domPost(i, reactions, caption = `โพสต์ ${i} เรื่อ�
 const fixturePosts = () => [domPost(1, 12), domPost(2, 9), domPost(3, 11), domPost(4, 60, 'ขายฝากที่ดินโทร 081-234-5678 ไลน์ @landdeal')]
 
 // OpenCLI ปลอม: เรียก lock.require() ก่อนทุกคำสั่งเหมือนตัวจริง (ยกเว้น beat:false) · บันทึกทุกคำสั่งไว้ตรวจ
-function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = null, posts = fixturePosts, onOpen = null, vis = null } = {}) {
+function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = null, posts = fixturePosts, onOpen = null, vis = null, aliases = ['research'] } = {}) {
   const calls = []
   const oc = async (args, opts = {}) => {
     if (opts.beat !== false && lockRef.lock) lockRef.lock.require()
@@ -37,7 +38,7 @@ function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = nul
     const [a, b] = args
     if (a === 'profile' && b === 'list') {
       const up = typeof connected === 'function' ? connected(calls) : connected
-      return { ok: true, data: { daemonRunning: typeof daemonRunning === 'function' ? daemonRunning(calls) : daemonRunning, profiles: [{ alias: 'research', connected: up }] } }
+      return { ok: true, data: { daemonRunning: typeof daemonRunning === 'function' ? daemonRunning(calls) : daemonRunning, profiles: aliases.map((alias) => ({ alias, connected: up })) } }
     }
     if (a === 'daemon' && b === 'restart') return { ok: true, data: { restarted: true } }
     if (a === 'browser' && b === 'open') { oc.lastUrl = args[2]; if (onOpen) await onOpen(args[2], calls); return { ok: true, data: {} } }
@@ -648,4 +649,112 @@ test('DEFAULTS ตรงกับข้อตกลง: เพดานรวม
   const ids = pages.map(targetId)
   assert.equal(new Set(ids).size, ids.length, 'รหัสเพจต้องไม่ซ้ำกัน')
   assert.ok(!JSON.stringify(cfg).includes('@gmail') && !/password|รหัสผ่าน:/i.test(JSON.stringify(cfg)), 'ห้ามมีอีเมล/รหัสบัญชีสำรอง')
+})
+
+// ── บัญชี Facebook ของ AssetX เอง (เจ้าของสั่ง 9 พ.ย. 2569 · ข้อตกลงข้อ 9) ─────────────────────────────
+const OWN_CFG = { ...CFG, account: 'own', own_account: { chrome_profile_name: 'AssetX Research', bridge_profile: 'assetx', daily_cap: { facebook: 8 }, max_targets_per_run: { facebook: 8 }, batch_pages: 4, batch_gap_sec: 45 } }
+const SIX = Array.from({ length: 6 }, (_, i) => ({ name: `เพจทดสอบ ${i + 1}`, url: `https://www.facebook.com/OwnPage${i + 1}`, group: 'competitor', every_days: 4 }))
+
+test('accountSettings: shared = ค่าเดิม (Profile 9 · research · 12/4 · ชุดเดียว) · own = alias assetx · เพดานของเราเอง 8 · ชุดละ 4', () => {
+  const sh = accountSettings({})
+  assert.equal(sh.mode, 'shared'); assert.equal(sh.bridge_profile, 'research'); assert.equal(sh.chrome_profile_dir, 'Profile 9'); assert.equal(sh.capDay, 12); assert.equal(sh.capOwn, 4); assert.equal(sh.batch, Infinity)
+  const own = accountSettings(OWN_CFG)
+  assert.equal(own.mode, 'own'); assert.equal(own.bridge_profile, 'assetx'); assert.equal(own.capOwn, 8); assert.equal(own.perRun, 8); assert.equal(own.batch, 4); assert.equal(own.chrome_profile_dir, '', 'ไม่ถอยไปใช้ Profile 9 ของบัญชีร่วม')
+})
+
+test('resolveChromeProfileDir: หาโฟลเดอร์จากชื่อใน Local State (ไม่สนตัวพิมพ์) · ไม่มีไฟล์/ไม่เจอ = ว่าง', () => {
+  const localState = JSON.stringify({ profile: { info_cache: { 'Profile 9': { name: 'Research' }, 'Profile 12': { name: 'AssetX Research' }, Default: { name: 'Your Chrome' } } } })
+  const opts = { userDataDir: 'X', readFile: () => localState }
+  assert.equal(resolveChromeProfileDir('assetx research', opts), 'Profile 12')
+  assert.equal(resolveChromeProfileDir('ไม่มี', opts), '')
+  assert.equal(resolveChromeProfileDir('', opts), '')
+  assert.deepEqual(chromeProfiles({ userDataDir: 'X', readFile: () => { throw new Error('ENOENT') } }), [])
+})
+
+test('บัญชีแยก: อ่านด้วย --profile assetx · จดการใช้/สรุปลงสมุดของเรา (.local/.../account) · ไม่เขียน usage.jsonl/state.json ของร่วมเลย · กุญแจของร่วมยังถือ-ปล่อย', async () => {
+  const h = harness({ aliases: ['research', 'assetx'] }, { deps: { resolveChromeDir: () => 'Profile 12' } })
+  const out = await h.run({ cfg: OWN_CFG, targets: TARGETS })
+  assert.equal(out.status, 'ok'); assert.equal(out.account, 'own')
+  assert.equal(out.opened.facebook, 2)
+  const opens = openCalls(h.oc)
+  assert.equal(opens.length, 2)
+  for (const c of h.oc.calls.filter((c) => c.args[0] === 'browser')) assert.equal(c.args[c.args.indexOf('--profile') + 1], 'assetx', `${c.args.slice(0, 2).join(' ')} ต้องใช้ profile assetx`)
+  const own = usageRows(accountDir(h.storeDir))
+  assert.equal(own.filter((r) => r.result === 'open').length, 2)
+  assert.ok(own.some((r) => r.opened?.facebook === 2), 'แถวสรุปของชุด')
+  assert.equal(fs.existsSync(path.join(h.base, 'usage.jsonl')), false, 'ไม่จดลง usage.jsonl ของร่วม (เพดานรวม 12 ของ DVX ไม่นับเรา)')
+  assert.equal(fs.existsSync(path.join(h.base, 'state.json')), false)
+  assert.equal(fs.existsSync(path.join(h.base, 'lock.json')), false, 'ปล่อยกุญแจแล้ว')
+  assert.equal(JSON.parse(fs.readFileSync(path.join(h.storeDir, 'state.json'), 'utf8')).last_round.account, 'own')
+})
+
+test('บัญชีแยก: แถวพักของบัญชีร่วม (DVX) ไม่หยุดเรา · เราโดน checkpoint = พักเฉพาะสมุดของเรา (ไม่เขียนแถวพักร่วม) · รอบถัดไป blocked_account ไม่รอกุญแจ', async () => {
+  const h = harness({ aliases: ['research', 'assetx'] }, { deps: { resolveChromeDir: () => 'Profile 12' } })
+  // DVX เขียนแถวพักของบัญชีร่วมไว้
+  const dvx = new Lock('dvx', { base: h.base }); assert.equal(dvx.tryAcquire(), true); dvx.setBlocked('facebook', 'checkpoint', TODAY); dvx.release()
+  const ok = await h.run({ cfg: OWN_CFG, targets: TARGETS.slice(0, 1) })
+  assert.equal(ok.status, 'ok', 'บัญชีเราไม่เกี่ยวกับแถวพักของบัญชีร่วม')
+  assert.ok(readState(h.base).blocked.facebook, 'แถวพักของ DVX ยังอยู่ (เราไม่ล้างให้)')
+  // ครั้งนี้บัญชีเราโดน checkpoint (วันถัดไป ไม่ติดกติกาวันละรอบ)
+  const h2 = harness({ aliases: ['research', 'assetx'], blocked: 'checkpoint' }, { deps: { resolveChromeDir: () => 'Profile 12' } })
+  const bad = await h2.run({ cfg: OWN_CFG, targets: TARGETS })
+  assert.equal(bad.status, 'blocked')
+  assert.equal(readState(accountDir(h2.storeDir)).blocked.facebook.by, 'assetx')
+  assert.equal(fs.existsSync(path.join(h2.base, 'state.json')), false, 'ไม่ทำให้ DVX พักไปด้วย')
+  const again = await runFacebookWatch({ cfg: OWN_CFG, targets: TARGETS, storeDir: h2.storeDir, base: h2.base, deps: { ...h2.deps, today: '2026-11-04' } })
+  assert.equal(again.status, 'blocked_account')
+  assert.equal(again.touched, false)
+})
+
+test('บัญชีแยก: 6 เพจถึงรอบ = 2 ชุด (4 + 2) ถือกุญแจแยกชุด พักระหว่างชุด · เพดานของเรา 8 · รอบสำรองวันเดียวกันข้าม', async () => {
+  let locks = 0
+  const lockRef = {}
+  const h = harness({ aliases: ['research', 'assetx'] }, { deps: { resolveChromeDir: () => 'Profile 12', lockFactory: (opts) => { locks += 1; return (lockRef.lock = new Lock('assetx', opts)) } } })
+  h.oc.calls.length = 0
+  const fake = fakeOc({ lockRef, aliases: ['research', 'assetx'] })
+  const out = await runFacebookWatch({ cfg: OWN_CFG, targets: SIX, storeDir: h.storeDir, base: h.base, deps: { ...h.deps, oc: fake } })
+  assert.equal(out.status, 'ok')
+  assert.equal(out.opened.facebook, 6)
+  assert.equal(out.batches, 2)
+  assert.equal(locks, 2, 'ถือกุญแจใหม่ทุกชุด')
+  assert.equal(closeCalls(fake).length, 2, 'ปิด session ของเราท้ายทุกชุด')
+  assert.equal(out.visited.length, 6)
+  const skip = await runFacebookWatch({ cfg: OWN_CFG, targets: SIX, storeDir: h.storeDir, base: h.base, deps: { ...h.deps, oc: fake } })
+  assert.equal(skip.status, 'already_today')
+})
+
+test('บัญชีแยก: OpenCLI ไม่เห็น alias assetx และหา Chrome profile ไม่เจอ = bridge_down · ไม่เปิด Chrome เอง (ห้ามถอยไป Profile 9) · ไม่เปิดเพจ', async () => {
+  const spawned = []
+  const h = harness({ aliases: ['research'] }, { deps: { resolveChromeDir: () => '', spawnChrome: (dir) => { spawned.push(dir); return true } } })
+  const out = await h.run({ cfg: OWN_CFG, targets: TARGETS })
+  assert.equal(out.status, 'bridge_down')
+  assert.deepEqual(spawned, [])
+  assert.equal(openCalls(h.oc).length, 0)
+  assert.match(out.lines.join('\n'), /alias "assetx".*ไม่พบ Chrome profile ชื่อ "AssetX Research".*account link/)
+})
+
+test('linkAccountAlias: ตั้งชื่อ assetx ให้ profile ที่ต่ออยู่และยังไม่มีชื่อ (ตัวเดียวเท่านั้น) · ไม่แตะ research · ไม่สั่ง profile use · มีอยู่แล้ว = ready', async () => {
+  const { linkAccountAlias, hasOpenCliExtension, OPENCLI_EXTENSION_ID } = await import('./social-watch.js')
+  const make = (profiles) => {
+    const calls = []
+    const oc = async (args) => {
+      calls.push(args)
+      if (args[0] === 'profile' && args[1] === 'list') return { ok: true, data: { daemonRunning: true, profiles } }
+      if (args[0] === 'profile' && args[1] === 'rename') { const p = profiles.find((x) => x.contextId === args[2]); p.alias = args[3]; return { ok: true, data: { contextId: args[2], alias: args[3] } } }
+      throw new Error(`คำสั่งที่ไม่คาดคิด ${args.join(' ')}`)
+    }
+    return { oc, calls }
+  }
+  const a = make([{ contextId: 'r1', alias: 'research', connected: true, default: true }, { contextId: 'n2', alias: undefined, connected: true }])
+  const linked = await linkAccountAlias({ oc: a.oc })
+  assert.equal(linked.status, 'linked'); assert.equal(linked.contextId, 'n2')
+  assert.deepEqual(a.calls.find((c) => c[1] === 'rename'), ['profile', 'rename', 'n2', 'assetx'])
+  assert.ok(!a.calls.some((c) => c[1] === 'use'), 'ห้ามเปลี่ยนค่าเริ่มต้นของเครื่อง')
+  assert.equal((await linkAccountAlias({ oc: a.oc })).status, 'ready')
+  assert.equal((await linkAccountAlias({ oc: make([{ contextId: 'r1', alias: 'research', connected: true }]).oc })).status, 'none')
+  const amb = make([{ contextId: 'r1', alias: 'research', connected: true }, { contextId: 'x', connected: true }, { contextId: 'y', connected: true }])
+  assert.equal((await linkAccountAlias({ oc: amb.oc })).status, 'ambiguous')
+  assert.ok(!amb.calls.some((c) => c[1] === 'rename'), 'สองตัวไม่มีชื่อ = ไม่เดา')
+  assert.equal(hasOpenCliExtension('Profile 12', { userDataDir: 'U', exists: (p) => p.endsWith(path.join('Profile 12', 'Extensions', OPENCLI_EXTENSION_ID)) }), true)
+  assert.equal(hasOpenCliExtension('', { userDataDir: 'U', exists: () => true }), false)
 })

@@ -3,6 +3,18 @@
   "_rules": "ห้ามใส่คำสั่ง [write] ของ OpenCLI (follow/like/comment/join) · ห้ามกลุ่มส่วนตัว · เพจใหม่ตรวจด้วยตาว่าเป็นเพจจริงก่อน (เพจปลอมชื่อคล้ายเยอะ) · ห้ามใส่อีเมล/รหัสของบัญชีสำรองในไฟล์นี้ (รีโปสาธารณะ) · ใช้ร่วมได้เฉพาะ Facebook — Instagram/Reddit/TikTok ของ AssetX ห้ามผ่าน browser นี้",
   "_agreement": "ข้อตกลง 2 ระบบ: ~/.claude/skills/social-research/profiles/shared-browser-dvx-assetx.md — ค่าในหมวด shared_browser ต้องตรงกับฝั่ง DVX (deploy/tasks/social_watch.json → shared_browser.daily_cap 12 · AssetX ได้ 4) · เปลี่ยนเพดาน/งบเวลา/ชื่อ session ต้องแก้ทั้งสองฝั่งพร้อมกัน (ข้อ 10)",
 
+  "account": "shared",
+  "_account_note": "เจ้าของสั่ง 9 พ.ย. 2569: แยกบัญชี Facebook ของ AssetX ออกจาก DivisionX (ข้อตกลงข้อ 9) · shared = บัญชีสำรองร่วม (Chrome profile Research · ค่าด้านล่าง chrome_profile_dir/bridge_profile/shared_browser) · own = บัญชีของ AssetX เอง (หมวด own_account) — แถวพัก/บันทึกการใช้อยู่ใน .local/research/social/account/ ไม่แตะของร่วม · เพดานรวม 12 ไม่นับเรา · กุญแจ lock.json ยังใช้ของร่วม · เปลี่ยนเป็น own หลังเจ้าของตั้ง profile เสร็จ (node scripts/research-social.mjs account check ขึ้น ✅) และลองอ่าน 1 เพจผ่าน",
+  "own_account": {
+    "chrome_profile_name": "AssetX Research",
+    "bridge_profile": "assetx",
+    "daily_cap": { "facebook": 8 },
+    "max_targets_per_run": { "facebook": 8 },
+    "batch_pages": 4,
+    "batch_gap_sec": 45,
+    "_note": "chrome_profile_name = ชื่อ Chrome profile ที่เจ้าของสร้าง (หาโฟลเดอร์จาก Local State เอง · ใส่ chrome_profile_dir ทับได้) · bridge_profile = ชื่อเรียกใน OpenCLI (account link ตั้งให้) · เริ่มที่ 8 เพจ/วัน วันละ 1 รอบ อ่านชุดละ 4 เพจ ถือกุญแจต่อชุด ≤ ~7 นาที พักระหว่างชุด 45–60 วิ (DVX ที่กดรอบเองระหว่างนั้นรอไม่เกิน 8 นาที) · ผ่าน 2 สัปดาห์ไม่โดนพักค่อยขยับ"
+  },
+
   "chrome_profile_dir": "Profile 9",
   "bridge_profile": "research",
   "session": "assetxwatch",
