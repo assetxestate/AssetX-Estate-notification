@@ -634,15 +634,20 @@ test('DEFAULTS ตรงกับข้อตกลง: เพดานรวม
   assert.deepEqual(cfg.shared_browser.own_daily_cap, { facebook: 4 })
   assert.ok(cfg.shared_browser.no_new_page_sec <= 300 && cfg.shared_browser.no_reread_sec <= 360)
   const pages = cfg.facebook.filter((t) => t.enabled !== false)
-  // 7 พ.ย. 2569 เจ้าของเลือกทำทั้งชุดตามรายงานรีเสิร์ชเพจ: ยืดสื่อ/หน่วยงาน 9 เพจเป็น 14 วัน + เพิ่ม 8 เพจ (2 เพจปิดไว้จนตรวจด้วยตา) → เพจเปิด ≤ 26 · ภาระรวมเมื่อเปิดครบทุกเพจต้อง ≤ 4
+  // 7 พ.ย. 2569 เจ้าของเลือกทำทั้งชุดตามรายงานรีเสิร์ชเพจ: ยืดสื่อ/หน่วยงาน 9 เพจเป็น 14 วัน + เพิ่ม 8 เพจ (2 เพจปิดไว้จนตรวจด้วยตา) → เพจเปิด ≤ 26
+  // 9 พ.ย. 2569 สลับเป็นบัญชี AssetX เอง (own) → เพดานของบัญชีเรา 8 เพจ/วัน และอ่านถี่ได้ถึงทุก 2 วัน · บัญชีร่วม (shared) ยังเป็นเพดาน 4 / ถี่สุดทุก 3 วันตามข้อตกลง
+  const acct = accountSettings(cfg)
+  const cap = acct.capOwn
+  const minEvery = acct.mode === 'own' ? 2 : 3
+  if (acct.mode === 'own') assert.ok(cap <= 8, 'เริ่มบัญชีใหม่ไม่เกิน 8 เพจ/วัน (ขยับหลัง 2 สัปดาห์ไม่โดนพัก)')
   assert.ok(pages.length >= 15 && pages.length <= 26, `คัดเพจหลัก 15–26 (มี ${pages.length})`)
   const perDay = pages.reduce((n, t) => n + 1 / Number(t.every_days), 0)
-  assert.ok(perDay <= 4, `ภาระต่อวัน ${perDay.toFixed(2)} ต้องไม่เกินโควตา 4`)
+  assert.ok(perDay <= cap, `ภาระต่อวัน ${perDay.toFixed(2)} ต้องไม่เกินโควตา ${cap}`)
   const perDayAll = cfg.facebook.reduce((n, t) => n + 1 / Number(t.every_days), 0)
-  assert.ok(perDayAll <= 4, `ภาระต่อวันเมื่อเปิดครบทุกเพจ ${perDayAll.toFixed(2)} ต้องไม่เกินโควตา 4`)
+  assert.ok(perDayAll <= cap, `ภาระต่อวันเมื่อเปิดครบทุกเพจ ${perDayAll.toFixed(2)} ต้องไม่เกินโควตา ${cap}`)
   for (const t of pages) {
     assert.ok(['competitor', 'media', 'official', 'community'].includes(t.group), `${t.name}: group ${t.group} ไม่รู้จัก`)
-    assert.ok(Number(t.every_days) >= 3 && Number(t.every_days) <= 14, `${t.name}: every_days ${t.every_days}`)
+    assert.ok(Number(t.every_days) >= minEvery && Number(t.every_days) <= 14, `${t.name}: every_days ${t.every_days}`)
     assert.match(t.url, /^https:\/\/www\.facebook\.com\//)
     assert.ok(!/\d{9,10}/.test(t.url.split('/p/')[0].replace(/\d{12,}/g, '')), `${t.name}: URL ไม่ควรมีเบอร์โทร`)
   }
