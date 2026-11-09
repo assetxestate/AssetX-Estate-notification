@@ -848,6 +848,8 @@ function inferStudioIntentFromIdea(sourceIdea = {}, currentStudio = {}) {
   if (/ความรู้|เช็กลิสต์|ข้อควรระวัง|เข้าใจผิด|ก่อนเซ็น|ก่อนทำสัญญา|สินไถ่|ไถ่ถอน|ดอกเบี้ย|กฎหมาย|ขายฝากกับจำนอง|จำนอง.*ขายฝาก|ขายฝาก.*จำนอง/.test(text)) {
     return { contentType: 'educate', objective: 'education', tone: 'simple' }
   }
+  // ไอเดียรีเสิร์ชพูดกับเจ้าของทรัพย์ที่ต้องการเงินเท่านั้น (เจ้าของเลือก 9 พ.ย. 2569) — ร่างจากแม่แบบห้ามเดาเป้าหมายเป็นหานักลงทุน/หาคนขายจากคำในหัวข้อ
+  if (sourceIdea.kind === 'research') return { objective: 'lead_owner' }
   if (/นักลงทุน|ลงทุน|ราคาดี|ทรัพย์ราคา|ผลตอบแทน|investor/.test(text)) {
     return { contentType: currentStudio.contentType || 'property-highlight', objective: 'lead_investor' }
   }
@@ -879,19 +881,8 @@ function inferPosterCopyFromBrief(brief = {}, previous = {}) {
       ...keepContact,
     }
   }
-  if (/นักลงทุน|ลงทุน|ราคาดี|ทรัพย์ราคา|ผลตอบแทน|investor/.test(text)) {
-    return {
-      headline: 'ทรัพย์ราคาดี สำหรับนักลงทุน',
-      subheadline: 'คัดข้อมูลก่อนตัดสินใจลงทุน',
-      badge1: 'เช็กทำเล',
-      badge2: 'ดูเอกสาร',
-      badge3: 'เทียบราคาตลาด',
-      trustLine: 'ตรวจข้อมูลก่อนเสนอทรัพย์',
-      areaLine: 'รับรายการตามพื้นที่ที่สนใจ',
-      cta: 'รับข้อมูลจาก AssetX Estate',
-      ...keepContact,
-    }
-  }
+  // เดิมมีชุด "ทรัพย์ราคาดี สำหรับนักลงทุน" เมื่อเจอคำว่า ลงทุน/ราคาดี/ผลตอบแทน — ตัดออก 9 พ.ย. 2569: เพจพูดกับเจ้าของทรัพย์ที่ต้องการเงินอย่างเดียว
+  // (คำว่า "ผลตอบแทน" ในประโยคเพดานกฎหมายเคยพาโปสเตอร์ไปพูดกับนักลงทุนได้)
   if (/ขายฝาก|ไม่อยากขายขาด|เงินก้อน|สภาพคล่อง|โฉนด/.test(text)) {
     return {
       headline: 'มีโฉนด แต่ไม่อยากขายขาด',
