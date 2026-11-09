@@ -10,6 +10,8 @@
 // node scripts/research-ideas.mjs drafts [--limit N] [--include-no-facts] [--id 32,33]  ร่างโพสต์เต็มให้ทุกมุมเล่าของไอเดียที่ "มีข้อเท็จจริง" (📌) · ค่าเริ่มต้น 8 ไอเดีย/รอบ ~1.5–2 นาที/มุมบน Ollama 14b · ใน run ใช้ --drafts-limit · --id = ไอเดียที่ระบุเอง ไม่สนสถานะ (ร่างใหม่ให้ไอเดียที่เจ้าของเลือกไปแล้วได้ หลังลบร่างเดิมด้วย .local/reset-drafts.mjs)
 //     ไอเดียที่ไม่มีข้อเท็จจริง (คลิปยังไม่ถอดคำบรรยาย · ดึงเนื้อข่าวไม่ได้) ไม่ร่างให้ — ผู้ตรวจอิสระ 6 พ.ย. 2569 พบว่า AI เดาเอกสาร/ขั้นตอนผิดบริบทไทย · --include-no-facts เปิดได้ถ้าเจ้าของยอมรับ
 //     ยกเว้น: เรื่องมิจฉาชีพ (subtype scam) และไอเดียที่คลังความรู้ AssetX (research/knowledge_base.json) จับคู่ได้ ≥ 2 ข้อ — ร่างจากข้อกฎหมาย/ค่าธรรมเนียมที่ตรวจแล้วแทนการเดา (7 พ.ย. 2569)
+// node scripts/research-ideas.mjs hooks [--force]           เลนบทเรียน hook: ถอดสูตรประโยคเปิดของคลิป/โพสต์/แอดที่แรงกว่าปกติ → น้ำหนักสูตรของตัวร่าง (.local/research/hooks/) · ใน run ทำเองทุก 7 วัน · ดู docs/hook-system.md
+//     ร่างทุกชิ้นได้ hook 3 แบบตามสูตรใน research/hook_patterns.json (server/research/hooks.js) · --no-hooks ปิด (พรอมต์แบบเดิม)
 // node scripts/research-ideas.mjs expire                    ตั้ง status=expired ให้ไอเดียเก่า (ไม่ลบแถว)
 // node scripts/research-ideas.mjs probe                     ทดสอบทุกแหล่งแบบเบามือ (ยิง 1 ครั้ง/แหล่ง · สถานะ · จำนวน · วันล่าสุด · บล็อกไหม)
 // node scripts/research-ideas.mjs stats                     จำนวนในคิวตามสถานะ/แหล่ง และ % ที่มีมุมเล่า
@@ -28,6 +30,8 @@ import { createAsk, NO_PROVIDER_MESSAGE } from '../server/research/llm.js'
 import { generateAngles } from '../server/research/angles.js'
 import { generateDrafts, hasResearchFacts, isInternalSourceLabel } from '../server/research/drafts.js'
 import { loadKnowledgeBase, knowledgeForIdea, KB_MIN_MATCHES } from '../server/research/knowledge.js'
+import { loadHookPatterns, loadHookLessons, DEFAULT_LESSONS_FILE } from '../server/research/hooks.js'
+import { collectHookSamples, summarizeHookLessons, mergeSamples, lessonsHeadline, LESSONS_MAX_AGE_DAYS } from '../server/research/hook-lessons.js'
 import { enrichIdeas } from '../server/research/enrich.js'
 import { calendarWatchItems, inMpcWindow } from '../server/research/calendar.js'
 import { sendTelegramReport, telegramConfigured } from '../server/research/notify.js'
@@ -201,12 +205,59 @@ async function doDrafts({ brand, store, limit, includeNoFacts = false, ids = nul
   if (!ideas.length) { out('[drafts] ไม่มีไอเดียที่มีข้อเท็จจริงและยังขาดร่าง'); return { done: [], failed: [], skippedNoFacts: noFacts } }
   const pendingAngles = ideas.reduce((n, idea) => n + idea.angles.filter((a) => a && !a.draft?.caption).length, 0)
   out(`[drafts] ${ideas.length} ไอเดีย · ${pendingAngles} มุมรอร่าง · ผู้ให้บริการ: ${ask.providers.join(' → ')}`)
-  const result = await generateDrafts({ ideas, brand, ask, onSave: (id, angles) => store.saveAngles(id, angles), delayMs: 1500, log, kb })
+  const hooks = flags.has('--no-hooks') ? null : loadHooks()
+  if (hooks) out(`[drafts] hook ${hooks.library.patterns.length} สูตร${hooks.lessons ? ` · บทเรียนจาก ${hooks.lessons.samples?.total || 0} ตัวอย่าง (${String(hooks.lessons.updated || '').slice(0, 10)})` : ' · ยังไม่มีบทเรียน (น้ำหนักเท่ากัน)'}`)
+  const result = await generateDrafts({ ideas, brand, ask, onSave: (id, angles) => store.saveAngles(id, angles), delayMs: 1500, log, kb, hookLibrary: hooks?.library || null, hookLessons: hooks?.lessons || null })
   out(`[drafts] ร่างแล้ว ${draftCount(result)} มุม (${result.done.length} ไอเดีย) · ไม่ได้ ${result.failed.length}`)
   return { ...result, skippedNoFacts: noFacts }
 }
 
-function buildTelegramText({ collect, enrich, angles, drafts, expire, calendar, warnings }) {
+// คลังสูตร hook (research/hook_patterns.json) + บทเรียนจากของไวรัล (ถ้ามี) — โหลดไม่ได้ = เตือนแล้วร่างแบบเดิม ไม่ล้มทั้งรอบ
+function loadHooks() {
+  try { return { library: loadHookPatterns(), lessons: loadHookLessons() } } catch (error) { out(`[drafts] ⚠️ โหลดคลังสูตร hook ไม่ได้: ${error.message} — ร่างแบบเดิม`); return null }
+}
+
+// ── เลนบทเรียน hook (server/research/hook-lessons.js) ──
+// ใช้ของที่ระบบเก็บอยู่แล้ว: RSS ช่อง YouTube ที่เฝ้า · คลังโพสต์ของตัวเฝ้าเพจ · คลังแอด Meta — ไม่เปิดเบราว์เซอร์ ไม่ใช้โควตา Facebook
+const HOOKS_DIR = path.dirname(DEFAULT_LESSONS_FILE)
+const HOOK_SAMPLES_FILE = path.join(HOOKS_DIR, 'samples.json')
+function lessonsAgeDays() {
+  const lessons = loadHookLessons()
+  if (!lessons?.updated) return Infinity
+  return (Date.now() - new Date(lessons.updated).getTime()) / 864e5
+}
+async function doHookLessons({ cfg }) {
+  const fetch = createFetcher({ userAgent: cfg.user_agent, hostDelaySec: cfg.host_delay_sec || {}, timeoutMs: cfg.timeout_ms || 30000, log })
+  const { samples, notes } = await collectHookSamples({
+    fetch,
+    channels: cfg.youtube?.channels || [],
+    fbDir: path.join(LOCAL_DIR, 'social', 'facebook'),
+    adsFile: path.join(LOCAL_DIR, 'ads', 'ads.json'),
+    log,
+  })
+  const merged = mergeSamples(readJson(HOOK_SAMPLES_FILE, []), samples, { today: today() })
+  writeJson(HOOK_SAMPLES_FILE, merged)
+  const lessons = summarizeHookLessons(merged)
+  writeJson(DEFAULT_LESSONS_FILE, lessons)
+  const lib = loadHookPatterns()
+  const nameOf = (id) => lib.patterns.find((p) => p.id === id)?.name || id
+  const headline = lessonsHeadline(lessons, nameOf)
+  out(`[hooks] ตัวอย่างรอบนี้ ${samples.length} · สะสม ${merged.length} · แรงกว่าปกติ ${lessons.samples.hot} · ไม่เข้าสูตรใด ${lessons.samples.unlabeled}`)
+  if (headline) out(`[hooks] สูตรที่แรงกว่าค่าเฉลี่ย: ${headline}`)
+  for (const n of notes.slice(0, 8)) out(`[hooks] ⚠️ ${n}`)
+  return { fresh: samples.length, total: merged.length, hot: lessons.samples.hot, headline, notes }
+}
+async function cmdHooks() {
+  const { cfg } = loadConfig()
+  const age = lessonsAgeDays()
+  if (!flags.has('--force') && age < LESSONS_MAX_AGE_DAYS) {
+    out(`[hooks] บทเรียนอายุ ${age.toFixed(1)} วัน (ทำใหม่ทุก ${LESSONS_MAX_AGE_DAYS} วัน) — ข้าม · --force เพื่อทำเลย`)
+    return
+  }
+  await doHookLessons({ cfg })
+}
+
+function buildTelegramText({ collect, enrich, angles, drafts, expire, calendar, warnings, hookLessons = null }) {
   const lines = [`📡 รีเสิร์ช AssetX ${today()}`]
   if (expire) lines.push(`[purge] expired ${expire.expired}`)
   if (collect) lines.push(collect.text)
@@ -214,6 +265,7 @@ function buildTelegramText({ collect, enrich, angles, drafts, expire, calendar, 
   if (angles && !angles.skipped) lines.push(`[angles] ได้มุม ${angles.done.length} · ไม่ได้ ${angles.failed.length}`)
   if (angles?.skipped) lines.push('[angles] ⚠️ ไม่มีผู้ให้บริการ AI — ไอเดียยังไม่มีมุมเล่า')
   if (drafts && !drafts.skipped) lines.push(`[drafts] ร่างโพสต์แล้ว ${draftCount(drafts)} มุม (${drafts.done.length} ไอเดีย) · ไม่ได้ ${drafts.failed.length}${drafts.skippedNoFacts ? ` · ข้าม ${drafts.skippedNoFacts} ไอเดียที่ไม่มีข้อเท็จจริง` : ''}`)
+  if (hookLessons) lines.push(`[hooks] บทเรียนประจำสัปดาห์ ${hookLessons.total} ตัวอย่าง${hookLessons.headline ? ` · แรงกว่าค่าเฉลี่ย: ${hookLessons.headline}` : ''}`)
   const watch = calendarWatchItems(calendar)
   if (watch.length) lines.push(`👀 เช็กลิสต์คนดูเอง: ${watch.join(' · ')}`)
   for (const w of warnings || []) lines.push(w)
@@ -261,6 +313,11 @@ async function cmdRun() {
     let enrich = null
     let angles = null
     let drafts = null
+    let hookLessons = null
+    // บทเรียน hook ทุก 7 วัน ก่อนร่าง — ร่างรอบนี้ได้น้ำหนักสูตรล่าสุด · ล้ม = เตือน ร่างต่อด้วยบทเรียนเดิม
+    if (!dryRun && !flags.has('--no-hooks') && lessonsAgeDays() >= LESSONS_MAX_AGE_DAYS) {
+      try { hookLessons = await doHookLessons({ cfg }) } catch (error) { warnings.push(`⚠️ บทเรียน hook ล้ม: ${error.message}`); out(warnings.at(-1)) }
+    }
     if (!flags.has('--no-ai')) {
       // ถอดข้อเท็จจริงก่อนคิดมุม/ร่าง — มุมเล่าและร่างจะได้ยึดเนื้อจริง ไม่ใช่หัวข้อข่าว
       if (!flags.has('--no-enrich')) {
@@ -272,7 +329,7 @@ async function cmdRun() {
     }
 
     warnings.push(...collect.report.warnings.filter((w) => !collect.text.includes(w)))
-    const text = buildTelegramText({ collect, enrich, angles, drafts, expire, calendar, warnings })
+    const text = buildTelegramText({ collect, enrich, angles, drafts, expire, calendar, warnings, hookLessons })
     let sent = { skipped: true }
     if (!flags.has('--no-report') && !dryRun) {
       sent = await sendTelegramReport(text)
@@ -388,7 +445,7 @@ function help() {
   out(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).slice(1).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'))
 }
 
-const commands = { run: cmdRun, collect: cmdCollect, enrich: cmdEnrich, angles: cmdAngles, drafts: cmdDrafts, expire: cmdExpire, stats: cmdStats, report: cmdReport, probe: cmdProbe, help }
+const commands = { run: cmdRun, collect: cmdCollect, enrich: cmdEnrich, angles: cmdAngles, drafts: cmdDrafts, hooks: cmdHooks, expire: cmdExpire, stats: cmdStats, report: cmdReport, probe: cmdProbe, help }
 const fn = commands[command]
 if (!fn) { out(`ไม่รู้จักคำสั่ง "${command}"`); help(); process.exit(2) }
 Promise.resolve(fn()).catch((error) => {

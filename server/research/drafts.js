@@ -14,6 +14,7 @@ import { COMPLIANCE_BLOCK } from '../../src/lib/marketing-model/prompts.js'
 import { checkText } from '../../src/lib/marketing-model/rules.js'
 import { splitHeadline } from '../../src/lib/marketing-model/index.js'
 import { similarity } from '../../src/lib/marketing-model/scoring.js'
+import { loadHookPatterns, pickHookPatterns, hookPromptLines, parseHooks, hookIssue, headlineIsLabel, HOOK_WEAK, HOOK_MAX } from './hooks.js'
 
 // ร่างสองมุมของเรื่องเดียวกันคล้ายกันเกินนี้ = เขียนซ้ำ (เจอจริง 6 พ.ย. 2569: 3 มุมของไอเดียคอนโดได้ "1. ทำเล 2. ราคา 3. สภาพตลาด" เหมือนกันหมด)
 export const DUPLICATE_SIMILARITY = 0.55
@@ -189,34 +190,34 @@ export const DRAFT_FORMATS = {
   checklist: {
     label: 'เช็กลิสต์',
     test: /เช็กลิสต์|เช็คลิสต์|รายการตรวจ|checklist/i,
-    guide: 'เปิดด้วยประโยคเดียวที่บอกสถานการณ์ของคนอ่านและว่ามีกี่ข้อต้องเช็ก (N = 4–6 · เขียนประโยคเปิดด้วยคำของตัวเอง ไม่ต้องเป็นแม่แบบ "ก่อน… มี N ข้อต้องเช็ก" ทุกครั้ง) แล้วไล่เป็น "1. ชื่อข้อ: คำอธิบาย" แต่ละข้อบอกว่าเช็กอะไร เช็กที่ไหน/จากเอกสารใด และผลถ้าไม่เช็ก (เขียนเป็นประโยคของตัวเอง ต่างกันทุกข้อ ห้ามใช้ประโยคแม่แบบเดิมซ้ำ เช่น "ถ้าข้ามข้อนี้ อาจทำให้ขายไม่ได้") ทุกข้อต้องเป็นสิ่งที่คนอ่านตรวจได้จริง ไม่ใช่ข้อเท็จจริงมหภาคยกมาเป็นหัวข้อ อย่างน้อย 2 ข้อต้องใช้ได้เฉพาะหัวเรื่องนี้ บรรทัดสรุปท้าย (ถ้ามี) ชี้ข้อเดียวพร้อมเหตุผลที่จับต้องได้ ห้ามอ้างว่า "คนมักข้าม" ถ้าไม่มีข้อเท็จจริง',
+    guide: 'บรรทัดแรกเป็น hook ตามที่กำหนด (ไม่ใช่แม่แบบ "ถ้าคุณกำลัง… มี N ข้อให้เช็ก") ถัดมาเป็นประโยคสั้นที่บอกว่ามีกี่ข้อ (N = 3–6 ตรงกับที่ hook บอก ถ้า hook บอกจำนวน) แล้วไล่เป็น "1. ชื่อข้อ: คำอธิบาย" แต่ละข้อบอกว่าเช็กอะไร เช็กที่ไหน/จากเอกสารใด และผลถ้าไม่เช็ก (เขียนเป็นประโยคของตัวเอง ต่างกันทุกข้อ ห้ามใช้ประโยคแม่แบบเดิมซ้ำ เช่น "ถ้าข้ามข้อนี้ อาจทำให้ขายไม่ได้") ทุกข้อต้องเป็นสิ่งที่คนอ่านตรวจได้จริง ไม่ใช่ข้อเท็จจริงมหภาคยกมาเป็นหัวข้อ อย่างน้อย 2 ข้อต้องใช้ได้เฉพาะหัวเรื่องนี้ บรรทัดสรุปท้าย (ถ้ามี) ชี้ข้อเดียวพร้อมเหตุผลที่จับต้องได้ ห้ามอ้างว่า "คนมักข้าม" ถ้าไม่มีข้อเท็จจริง',
   },
   qa: {
     label: 'ถามตอบ',
     test: /ถามตอบ|ถาม-ตอบ|คำถาม|q&a|faq/i,
-    guide: 'เขียนเป็นคู่ "ถาม:" / "ตอบ:" 3–4 คู่ คำถามต้องเป็นประโยคที่คนกลุ่มนี้พิมพ์ถามจริงในแชต ตอบสั้น ตรง ไม่อ้อม ถ้าคำตอบขึ้นกับเคสให้บอกว่าขึ้นกับอะไร',
+    guide: 'บรรทัดแรกเป็น hook ตามที่กำหนด (ไม่ขึ้นต้นด้วย "ถาม:") แล้วเขียนเป็นคู่ "ถาม:" / "ตอบ:" 3–4 คู่ คำถามต้องเป็นประโยคที่คนกลุ่มนี้พิมพ์ถามจริงในแชต ตอบสั้น ตรง ไม่อ้อม ถ้าคำตอบขึ้นกับเคสให้บอกว่าขึ้นกับอะไร',
   },
   case: {
     label: 'เคสสมมุติ',
     test: /เคสสมม|เคสตัวอย่าง|สมมุติ|สมมติ/i,
-    guide: 'เล่าเคสสมมุติ 1 เคสเป็นร้อยแก้วต่อเนื่อง 3–4 ย่อหน้า บรรทัดแรกต้องมีคำว่า "เคสสมมุติ" ชัด ๆ ตัวละครเรียกตามบทบาท เช่น "เจ้าของห้อง" "เขา" (ห้ามเรียก "คุณผู้ใช้บริการ" "ท่านลูกค้า" "ลูกค้าของเรา") ไม่มีชื่อ ไม่มีทำเลเจาะจง ไม่มีตัวเลขเงิน แสดง "กลไก" ว่าอะไรทำให้ผลออกมาแบบนั้น และเล่าทั้งกรณีที่ได้และกรณีที่ไม่ได้ (เช่น ถ้าราคาขายต่ำกว่ายอดหนี้ก็ต้องหาเงินส่วนต่าง) ลำดับเรื่อง: สถานการณ์ตั้งต้น → จุดที่เกือบพลาด → สิ่งที่ตัวละครตรวจหรือทำเองแล้วรอด → บทเรียน 1 บรรทัด (ลำดับนี้คือโครงในใจ ห้ามเขียนคำว่า "สถานการณ์:" "จุดที่เกือบพลาด:" เป็นหัวข้อในโพสต์) ห้ามเล่าว่า "ทีมงานของเรา/เรา ทำให้หรือช่วยให้…ได้" ห้ามเล่าเป็นเคสสำเร็จของแบรนด์ ปิดท้ายด้วยประโยค "เคสสมมุติเพื่ออธิบายหลักการ ไม่ใช่ลูกค้าจริง ผลลัพธ์ต่างกันทุกกรณี"',
+    guide: 'เล่าเคสสมมุติ 1 เคสเป็นร้อยแก้วต่อเนื่อง 3–4 ย่อหน้า บรรทัดแรกเป็น hook ตามที่กำหนด (เล่าสถานการณ์ของตัวละครให้อยากรู้ต่อ ห้ามอ้างว่าเป็นเรื่องจริง) บรรทัดที่สองต้องขึ้นต้นด้วย "เคสสมมุติ:" ให้รู้ทันทีว่าไม่ใช่ลูกค้าจริง ตัวละครเรียกตามบทบาท เช่น "เจ้าของห้อง" "เขา" (ห้ามเรียก "คุณผู้ใช้บริการ" "ท่านลูกค้า" "ลูกค้าของเรา") ไม่มีชื่อ ไม่มีทำเลเจาะจง ไม่มีตัวเลขเงิน แสดง "กลไก" ว่าอะไรทำให้ผลออกมาแบบนั้น และเล่าทั้งกรณีที่ได้และกรณีที่ไม่ได้ (เช่น ถ้าราคาขายต่ำกว่ายอดหนี้ก็ต้องหาเงินส่วนต่าง) ลำดับเรื่อง: สถานการณ์ตั้งต้น → จุดที่เกือบพลาด → สิ่งที่ตัวละครตรวจหรือทำเองแล้วรอด → บทเรียน 1 บรรทัด (ลำดับนี้คือโครงในใจ ห้ามเขียนคำว่า "สถานการณ์:" "จุดที่เกือบพลาด:" เป็นหัวข้อในโพสต์) ห้ามเล่าว่า "ทีมงานของเรา/เรา ทำให้หรือช่วยให้…ได้" ห้ามเล่าเป็นเคสสำเร็จของแบรนด์ ปิดท้ายด้วยประโยค "เคสสมมุติเพื่ออธิบายหลักการ ไม่ใช่ลูกค้าจริง ผลลัพธ์ต่างกันทุกกรณี"',
   },
   warning: {
     label: 'เตือนภัย/วิธีป้องกัน',
     // เฉพาะเรื่องโกง/หลอก — คำกว้างอย่าง "ความเสี่ยง" "ระวัง" เคยพามุม "ประเมินความเสี่ยงวงเงิน" มาเข้าโครงเตือนมิจฉาชีพผิดเรื่อง (6 พ.ย. 2569)
     test: /เตือนภัย|มิจฉาชีพ|หลอก|โกง|ปลอม|สัญญาณเตือน|แก๊ง/i,
-    guide: 'เปิดด้วยสัญญาณเตือน 1 อย่างที่เห็นได้จริงในเรื่องนี้ → ทำไมอันตราย (สั้น) → วิธีป้องกัน 3–4 ขั้นที่ทำได้เองและเกี่ยวกับเรื่องนี้โดยตรง (เขียนเป็นประโยคของตัวเอง ไม่คัดลอกรายการจากที่ใด) → สิ่งที่ควรทำทันทีถ้าเจอ ห้ามเอ่ยชื่อผู้ต้องหา ผู้เสียหาย หรือเพจใด',
+    guide: 'บรรทัดแรกเป็น hook ตามที่กำหนด (มักเป็นสัญญาณเตือน 1 อย่างที่เห็นได้จริงในเรื่องนี้) → ทำไมอันตราย (สั้น) → วิธีป้องกัน 3–4 ขั้นที่ทำได้เองและเกี่ยวกับเรื่องนี้โดยตรง (เขียนเป็นประโยคของตัวเอง ไม่คัดลอกรายการจากที่ใด) → สิ่งที่ควรทำทันทีถ้าเจอ ห้ามเอ่ยชื่อผู้ต้องหา ผู้เสียหาย หรือเพจใด',
   },
   news: {
     label: 'อัปเดตพร้อมที่มา',
     test: /อัปเดต|ข่าว|มาตรการ|ประกาศ|มีผล|ปรับ(ใหม่|ขึ้น|ลด)|เปลี่ยนแปลง|ข้อมูลใหม่/i,
     needsFacts: true,
-    guide: 'เปิดด้วย "อะไรเปลี่ยน" + วันที่มีผลตามข้อเท็จจริง → ใครกระทบและกระทบอย่างไร (แยกเป็นกลุ่ม) → สิ่งที่ควรเตรียม → ปิดด้วยบรรทัด "ที่มา: …" ตามที่กำหนด ห้ามเติมตัวเลขหรือเงื่อนไขที่ไม่อยู่ในข้อเท็จจริง',
+    guide: 'บรรทัดแรกเป็น hook ตามที่กำหนด (ผลต่อคนอ่าน ไม่ใช่ชื่อหน่วยงาน) → ย่อหน้าถัดไปบอก "อะไรเปลี่ยน" + วันที่มีผลตามข้อเท็จจริง → ใครกระทบและกระทบอย่างไร (แยกเป็นกลุ่ม) → สิ่งที่ควรเตรียม → ปิดด้วยบรรทัด "ที่มา: …" ตามที่กำหนด ห้ามเติมตัวเลขหรือเงื่อนไขที่ไม่อยู่ในข้อเท็จจริง',
   },
   explain: {
     label: 'ให้ความรู้',
     test: /./,
-    guide: '3 ประเด็นที่เจาะจงกับเรื่องนี้โดยเฉพาะ (ไม่ใช่ประเด็นทั่วไปที่ใช้กับทุกเรื่องได้) และต้องสอดคล้องกับคำอธิบายมุมเล่า (มุม "วางแผนการเงิน" ประเด็นต้องเป็นเรื่องเงิน) แต่ละประเด็นเขียนเป็น "1. ชื่อประเด็น: คำอธิบาย" บอกว่าคืออะไร · สำคัญกับคนอ่านอย่างไร · ตรวจหรือเตรียมอะไรได้จริง ห้ามสลับบทบาทผู้ซื้อ/ผู้ขายกลางโพสต์ ห้ามบรรทัดย่อยที่ทวนชื่อประเด็นซ้ำ',
+    guide: 'บรรทัดแรกเป็น hook ตามที่กำหนด แล้วตามด้วย 3 ประเด็นที่เจาะจงกับเรื่องนี้โดยเฉพาะ (ไม่ใช่ประเด็นทั่วไปที่ใช้กับทุกเรื่องได้) และต้องสอดคล้องกับคำอธิบายมุมเล่า (มุม "วางแผนการเงิน" ประเด็นต้องเป็นเรื่องเงิน) แต่ละประเด็นเขียนเป็น "1. ชื่อประเด็น: คำอธิบาย" บอกว่าคืออะไร · สำคัญกับคนอ่านอย่างไร · ตรวจหรือเตรียมอะไรได้จริง ห้ามสลับบทบาทผู้ซื้อ/ผู้ขายกลางโพสต์ ห้ามบรรทัดย่อยที่ทวนชื่อประเด็นซ้ำ',
   },
 }
 
@@ -314,7 +315,8 @@ function ctaGuide(brand = {}, brandName = 'AssetX Estate') {
 // knowledge = ข้อจากคลังความรู้ AssetX (research/knowledge_base.json ผ่าน knowledge.js) ที่จับคู่กับไอเดีย/มุมนี้แล้ว · kb = คลังทั้งก้อน (เอาชื่อแหล่งมาอ้าง)
 // ไอเดียไม่มีข้อเท็จจริง + มีข้อจากคลัง → ข้อจากคลังเป็น "ข้อเท็จจริงที่มี" (เจ้าของ 7 พ.ย. 2569: "สร้างคลังของเราเองเลย" หลังร่างจากหัวข้ออย่างเดียวออกมากลวง)
 // มีข้อเท็จจริงอยู่แล้ว → ข้อจากคลังเป็นความรู้เสริม ห้ามกลบข้อเท็จจริงหลัก
-export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings = [], avoidPoints = [], avoidHeadlines = [], usedFormats = [], hint = '', knowledge = [], kb = null }) {
+// hooks = { library, lessons, avoid, recent, seed } (generateDrafts ส่งมา) → เลือกสูตร hook 3 แบบตามโครงที่ร่างนี้ใช้ · null = ปิด (พรอมต์แบบเดิม)
+export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings = [], avoidPoints = [], avoidHeadlines = [], usedFormats = [], hint = '', knowledge = [], kb = null, hooks = null }) {
   const ctx = ideaContextForPrompt(idea, brand)
   const kbLines = Array.isArray(knowledge) && knowledge.length ? knowledgeFactLines(knowledge, kb) : []
   if (ctx.policy === 'cite' && isInternalSourceLabel(idea.source_label)) {
@@ -324,6 +326,12 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
   // โครง "อัปเดตพร้อมที่มา" ต้องปิดด้วย "ที่มา: …" — ใช้ได้เฉพาะแหล่งที่อ้างได้ (cite) · แหล่งที่ห้ามอ้าง (เพจ/คลิป/กระทู้) แม้มีข้อเท็จจริงก็ถอยเป็นให้ความรู้
   const format = pickDraftFormat(angle, { hasFacts: facts && ctx.policy === 'cite', usedFormats })
   const spec = DRAFT_FORMATS[format]
+  const hookLibrary = hooks ? (hooks.library || loadHookPatterns()) : null
+  // สูตร "ความเข้าใจผิด" ต้องมีข้อเท็จจริงไว้หักความเชื่อ — ข้อจากคลังความรู้นับด้วย
+  const hookPatterns = hookLibrary
+    ? pickHookPatterns({ format, hasFacts: facts || kbLines.length > 0, avoid: hooks.avoid || [], recent: hooks.recent || [], seed: hooks.seed ?? `${idea.id}:${angle.label || ''}`, lessons: hooks.lessons || null, library: hookLibrary })
+    : []
+  const hookLines = hookPromptLines(hookPatterns, { rules: hookLibrary?.rules || [] })
   const brandName = brand.brand || 'AssetX Estate'
   const forbidden = (brand.forbidden_phrases || []).join(' · ')
   const audienceCodes = Array.isArray(idea.audience) && idea.audience.length ? idea.audience : []
@@ -367,14 +375,18 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     COMPLIANCE_BLOCK,
     '',
     'วิธีเขียน:',
-    '- บรรทัดแรกต้องอ่านเดี่ยว ๆ แล้วรู้ว่าเรื่องนี้เกี่ยวกับอะไรและทำไมควรอ่านต่อ ไม่เกิน 125 ตัวอักษร ห้ามเป็นประโยคเปิดแบบ "หลายคนสงสัยว่า…" หรือ "วันนี้มาคุยเรื่อง…"',
+    hookPatterns.length
+      ? '- บรรทัดแรกคือ hook ตามส่วน "Hook" ในคำสั่งของโพสต์นี้ — อ่านเดี่ยว ๆ แล้วต้องรู้ว่าเรื่องนี้เกี่ยวกับอะไรและทำไมต้องอ่านต่อ ห้ามเป็นประโยคเปิดแบบ "หลายคนสงสัยว่า…" หรือ "วันนี้มาคุยเรื่อง…"'
+      : '- บรรทัดแรกต้องอ่านเดี่ยว ๆ แล้วรู้ว่าเรื่องนี้เกี่ยวกับอะไรและทำไมควรอ่านต่อ ไม่เกิน 125 ตัวอักษร ห้ามเป็นประโยคเปิดแบบ "หลายคนสงสัยว่า…" หรือ "วันนี้มาคุยเรื่อง…"',
     '- ความยาวรวม 700–1,400 ตัวอักษร ย่อหน้าสั้น เว้นบรรทัดระหว่างย่อหน้า หนึ่งโพสต์หนึ่งความคิด เขียนถึงคนคนเดียว',
     '- รูปธรรมชนะนามธรรม: บอกสิ่งที่ผู้อ่านเห็น ตรวจ หรือทำได้จริง แทนคำขยาย',
     '- ถ้าเนื้อหาเป็นความรู้หรือแตะกฎหมาย ต้องมีบรรทัดกำกับว่า "ข้อมูลนี้เป็นความรู้ทั่วไป ต้องดูเอกสารและข้อเท็จจริงของแต่ละกรณี"',
     `- ปิดท้ายด้วยการชวนทำต่อ 1 อย่างเท่านั้น (ย่อหน้าสุดท้ายของแคปชั่น) เลือกให้ตรงคนอ่านแล้วเขียนใหม่ด้วยคำของตัวเอง เป็นภาษาที่ลูกค้าเข้าใจ ห้ามลงท้าย "ได้ … ได้" ซ้อนกัน · ${ctaGuide(brand, brandName)}`,
     '',
     'ตอบเป็น JSON object เท่านั้น ไม่มีข้อความอื่น:',
-    '{"headline":"พาดหัวสั้น 3–6 คำ (ไม่เกิน 26 ตัวอักษร) เป็นวลีที่จบในตัว — เขียนขึ้นใหม่ ไม่ใช่ตัดบรรทัดแรกของแคปชั่นมาครึ่งประโยค","caption":"แคปชั่นเต็ม ย่อหน้าคั่นด้วยการขึ้นบรรทัดใหม่ตามปกติของ JSON ห้ามมีแฮชแท็กและลิงก์","cta":"ประโยคชวนทำต่อประโยคเดียว (ประโยคเดียวกับย่อหน้าสุดท้าย)","hashtags":["ไม่มี # นำหน้า ไม่เกิน 5"],"needs_check":["เฉพาะสิ่งที่อยู่ในโพสต์นี้จริง ๆ ที่คนตรวจต้องยืนยันก่อนโพสต์ (ตัวเลข วันที่ ชื่อประกาศ ข้ออ้างทางกฎหมาย) ไม่มีก็ให้เป็น [] ห้ามใส่ข้อทั่วไปที่ไม่ปรากฏในโพสต์"]}',
+    hookPatterns.length
+      ? `{"hooks":[{"pattern":"รหัสสูตรตามที่กำหนด","line":"ประโยคเปิดของแบบนี้","headline":"พาดหัวคู่ของแบบนี้"} … ครบ ${hookPatterns.length} แบบ เรียงตามสูตรที่กำหนด],"headline":"พาดหัวของแบบที่เลือก (ไม่เกิน 26 ตัวอักษร) เป็นวลีที่จบในตัวและเป็น hook ในตัว ไม่ใช่ป้ายชื่อเรื่อง — ห้ามตัดบรรทัดแรกของแคปชั่นมาครึ่งประโยค","caption":"แคปชั่นเต็ม บรรทัดแรก = line ของแบบที่เลือกคำต่อคำ ย่อหน้าคั่นด้วยการขึ้นบรรทัดใหม่ตามปกติของ JSON ห้ามมีแฮชแท็กและลิงก์","cta":"ประโยคชวนทำต่อประโยคเดียว (ประโยคเดียวกับย่อหน้าสุดท้าย)","hashtags":["ไม่มี # นำหน้า ไม่เกิน 5"],"needs_check":["เฉพาะสิ่งที่อยู่ในโพสต์นี้จริง ๆ ที่คนตรวจต้องยืนยันก่อนโพสต์ (ตัวเลข วันที่ ชื่อประกาศ ข้ออ้างทางกฎหมาย) ไม่มีก็ให้เป็น [] ห้ามใส่ข้อทั่วไปที่ไม่ปรากฏในโพสต์"]}`
+      : '{"headline":"พาดหัวสั้น 3–6 คำ (ไม่เกิน 26 ตัวอักษร) เป็นวลีที่จบในตัว — เขียนขึ้นใหม่ ไม่ใช่ตัดบรรทัดแรกของแคปชั่นมาครึ่งประโยค","caption":"แคปชั่นเต็ม ย่อหน้าคั่นด้วยการขึ้นบรรทัดใหม่ตามปกติของ JSON ห้ามมีแฮชแท็กและลิงก์","cta":"ประโยคชวนทำต่อประโยคเดียว (ประโยคเดียวกับย่อหน้าสุดท้าย)","hashtags":["ไม่มี # นำหน้า ไม่เกิน 5"],"needs_check":["เฉพาะสิ่งที่อยู่ในโพสต์นี้จริง ๆ ที่คนตรวจต้องยืนยันก่อนโพสต์ (ตัวเลข วันที่ ชื่อประกาศ ข้ออ้างทางกฎหมาย) ไม่มีก็ให้เป็น [] ห้ามใส่ข้อทั่วไปที่ไม่ปรากฏในโพสต์"]}',
   ].join('\n')
 
   const avoid = avoidOpenings.map((s) => scrub(String(s || '')).replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 6)
@@ -399,6 +411,7 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     idea.event_date ? `วันที่ของเหตุการณ์: ${idea.event_date} (ค.ศ.)` : '',
     `มุมเล่าที่ต้องใช้: ${scrub(angle.label || '')} — ${scrub(angle.brief || '')}`,
     `รูปแบบโพสต์: ${spec.label} — ${spec.guide}`,
+    hookLines.length ? hookLines.join('\n') : '',
     avoid.length ? `ห้ามเปิดด้วยประโยคแนวนี้ (โพสต์อื่นของเราใช้แล้ว ต้องต่างทั้งประโยคเปิดและโครง):\n${avoid.map((s, i) => `${i + 1}. ${s.slice(0, 120)}`).join('\n')}` : '',
     avoidPoints.length ? `ประเด็นที่โพสต์อื่นของเรื่องนี้ใช้ไปแล้ว ห้ามใช้ซ้ำ ให้หาประเด็นอื่นของเรื่องเดียวกันที่ยังไม่ได้พูด: ${avoidPoints.map((p) => scrub(p)).join(' · ')}` : '',
     avoidHeadlines.length ? `พาดหัวที่โพสต์อื่นของเรื่องนี้ใช้แล้ว ห้ามซ้ำคำหลักเกินครึ่ง: ${avoidHeadlines.map((h) => scrub(h)).join(' · ')}` : '',
@@ -406,7 +419,7 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     hint ? `สำคัญที่สุด: ${scrub(hint)}` : '',
   ].filter(Boolean).join('\n\n')
 
-  return { system, prompt, policy: ctx.policy, format }
+  return { system, prompt, policy: ctx.policy, format, hookPatterns: hookPatterns.map((p) => p.id), hookLibrary }
 }
 
 // โมเดลเล็กบางครั้งเรียงข้อ "1. … 2. … 3. …" ไว้ในบรรทัดเดียว (เจอจริง #8 6 พ.ย. 2569) → แยกเป็นย่อหน้าเมื่อบรรทัดนั้นมีเลขข้อ ≥ 2 ตัวกลางบรรทัด
@@ -501,7 +514,8 @@ export function ensureClosing(caption, cta, { caveat = CAVEAT_LINE, caveatRe = C
 // ตรวจ/ทำความสะอาดคำตอบ AI → { ok, draft } หรือ { ok:false, error }
 // ล้าง PII · ตัดแฮชแท็กและลิงก์ออกจากแคปชั่น · บังคับนโยบายเครดิต · ด่านคำต้องห้าม (block = ไม่ผ่าน · warn = เก็บไว้ให้คนตรวจ)
 // · จับของที่โมเดลเล็กทำบ่อย: \n ตัวอักษรดิบ · markdown · คัดลอกรายการความจริงของแบรนด์/ชื่อหัวข้อจากคำแนะนำโครงมาวางทั้งบรรทัด
-export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChars = DRAFT_MAX_CHARS, brand = {}, subtype = '', facts = '', format = '', eventDate = '', today = '', audience = [] } = {}) {
+// hookLibrary = คลังสูตร hook (มี = อ่าน obj.hooks แล้วเก็บประโยคเปิดทางเลือกพร้อมคะแนนไว้ในร่าง) · recentOpeners = ประโยคเปิดของร่างอื่น (ซ้ำ = หักคะแนน)
+export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChars = DRAFT_MAX_CHARS, brand = {}, subtype = '', facts = '', format = '', eventDate = '', today = '', audience = [], hookLibrary = null, recentOpeners = [] } = {}) {
   const obj = data && typeof data === 'object' && !Array.isArray(data)
     ? (data.draft && typeof data.draft === 'object' ? data.draft : data)
     : null
@@ -512,8 +526,13 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
   // "\n" เป็นตัวอักษรสองตัว (โมเดล escape ซ้อน) → ขึ้นบรรทัดจริง · markdown ไม่แสดงบน Facebook
   caption = caption.replace(/\\n/g, '\n').replace(/\\t/g, ' ')
   caption = caption.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*\*/g, '').replace(/^#{1,6}\s+/gm, '')
-  // เครื่องหมายคำพูดเกินที่โมเดลทิ้งไว้หัว/ท้ายบรรทัด (เจอจริง: `**ข้อที่ 4 คือ…"`)
-  caption = caption.split('\n').map((l) => l.replace(/^["“”]\s*/, '').replace(/\s*["“”]$/, '')).join('\n')
+  // เครื่องหมายคำพูดเกินที่โมเดลทิ้งไว้หัว/ท้ายบรรทัด (เจอจริง: `**ข้อที่ 4 คือ…"`) — ลบเฉพาะตัวที่ไม่มีคู่ หรือคู่ที่ครอบทั้งบรรทัด
+  // คำพูดกลางบรรทัด/ต้นบรรทัดที่มีคู่ปิด (hook สูตร "ประโยคที่ได้ยินแล้วต้องหยุดคิด": “…” ประโยคนี้…) ต้องอยู่ครบ
+  caption = caption.split('\n').map((l) => {
+    const quotes = (l.match(/["“”]/g) || []).length
+    const wraps = quotes === 2 && /^\s*["“”]/.test(l) && /["“”]\s*$/.test(l)
+    return quotes === 1 || wraps ? l.replace(/^(\s*)["“”]\s*/, '$1').replace(/\s*["“”]$/, '') : l
+  }).join('\n')
   // เครื่องหมายคำพูดหลังป้าย ถาม:/ตอบ: (เจอจริง #33 6 พ.ย. 2569: `ถาม:"ขายฝากคืออะไร?`)
   caption = caption.replace(/^((?:ถาม|ตอบ|Q|A)\s*[:：])\s*["“”]+\s*/gmi, '$1 ')
   caption = caption.replace(/https?:\/\/\S+/gi, '').replace(/(^|\s)#[\p{L}\p{M}\p{N}_]+/gu, '$1')
@@ -593,6 +612,10 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
   if (caption.length < DRAFT_MIN_CHARS) return { ok: false, error: `แคปชั่นสั้นเกิน (${caption.length} ตัวอักษร) — ขยายแต่ละประเด็นให้มีสิ่งที่ผู้อ่านตรวจหรือเตรียมได้จริง` }
   if (caption.length > maxChars) caption = cutAtParagraph(caption, maxChars)
   const firstLine = caption.split('\n').map((l) => l.trim()).find(Boolean) || ''
+  // บรรทัดแรก = hook ที่ใช้จริง: คลิกเบต ขอยอด ระบุสถานะการเงินคนอ่าน ความเร่งปลอม อ้างเคสจริง → ร่างใหม่ (ความยาวเกินแค่เตือน — ตัดเองแล้วประโยคพัง)
+  const openerIssue = hookIssue(firstLine, { maxLen: Infinity })
+  if (openerIssue) return { ok: false, error: `ประโยคเปิดใช้ไม่ได้: ${openerIssue}` }
+  if (firstLine.length > HOOK_MAX) warningsExtra.push(`ประโยคเปิดยาว ${firstLine.length} ตัวอักษร เกิน ${HOOK_MAX} — Facebook จะตัดเป็น "ดูเพิ่มเติม" ก่อนจบใจความ`)
   headline = tidyHeadline(headline, firstLine, `${caption}\n${facts || ''}`)
   if (OUTCOME_RE.test(headline)) return { ok: false, error: `พาดหัวสัญญาผลลัพธ์ทางการเงิน ("${headline}") — ให้เป็นคำถามหรือวิธีเช็ก ไม่ใช่ผลที่จะได้` }
   // "ดอกเบี้ยคงที่ 1%" บนเพจรับจำนองอ่านเป็นข้อเสนอของแบรนด์ — ตัวเลข % ในพาดหัวต้องบอกว่าเป็นดอกเบี้ยนโยบาย และ "คงอัตรา" ≠ "อัตราคงที่"
@@ -619,6 +642,15 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
     if (cta.length >= 12) caption = caption.split('\n').filter((line) => line.trim() !== cta).join('\n').replace(/\n{3,}/g, '\n\n').trim()
     cta = defaultCta(brand, audience)
     warningsExtra.push('CTA ที่ AI เขียนไม่ใช่การชวนทำที่เกี่ยวกับบริการ จึงใช้ CTA ตามกลุ่มของแบรนด์แทน — ตรวจว่าเข้ากับโพสต์')
+  }
+  // เคสสมมุติ: บรรทัดแรกเป็น hook ได้ แต่คนอ่านต้องรู้ภายในบรรทัดที่สองว่าไม่ใช่เรื่องจริง (บรรทัดท้ายมีคำกำกับอีกชั้น)
+  if (format === 'case') {
+    const lines = caption.split('\n')
+    const filled = lines.map((l, i) => [l.trim(), i]).filter(([l]) => l)
+    if (filled.length && !filled.slice(0, 2).some(([l]) => /สมมุติ|สมมติ/.test(l))) {
+      lines.splice(filled[0][1] + 1, 0, '(เคสสมมุติ)')
+      caption = lines.join('\n')
+    }
   }
   caption = format === 'case'
     ? ensureClosing(caption, cta, { caveat: CASE_CAVEAT_LINE, caveatRe: CASE_CAVEAT_RE })
@@ -647,18 +679,59 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
   const findings = [...checkText(headline, 'พาดหัว'), ...checkText(caption, 'แคปชั่น')]
   const blocking = findings.filter((f) => f.severity === 'block')
   if (blocking.length) return { ok: false, error: `ติดด่านคำต้องห้าม: ${blocking.map((f) => f.message).join(' · ')}`, blocking: blocking.map((f) => f.id) }
+  // ── ประโยคเปิดทางเลือก (hooks) ── ผ่านด่านเดียวกับแคปชั่นทุกตัว (ตัวที่ไม่ผ่านไม่โชว์ ไม่ให้คนกดเลือกของที่ผิดกติกาได้)
+  let hookFields = {}
+  if (hookLibrary) {
+    const labelParts = policy === 'no_cite' && label ? [label, ...label.split(/\s*·\s*/).map((p) => p.trim()).filter((p) => p.length >= 3 && !/^(facebook|meta ad library)$/i.test(p))] : []
+    const brandToks = policy === 'no_cite' ? pageBrandTokens(label, facts, brand) : []
+    const foreign = policy === 'no_cite' ? foreignNamesIn(facts) : []
+    const quoted = COMPETITOR_COPY_SUBTYPES.includes(subtype) ? socialCaption(facts) : ''
+    const guard = (text) => {
+      const t = String(text || '')
+      const blockHit = checkText(t, 'hook').find((f) => f.severity === 'block')
+      if (blockHit) return `ติดด่านคำต้องห้าม: ${blockHit.message}`
+      if (OUTCOME_RE.test(t)) return 'สัญญาผลลัพธ์ทางการเงิน'
+      if (FALSE_COMFORT_RE.test(t) || WRONG_FACT_RE.test(t)) return 'คำปลอบ/นิยามที่ผิดจริง'
+      if (FILLER_OPENER_RE.test(t) || PRONOUN_RE.test(t) || HERO_RE.test(t)) return 'ประโยคเปิดแบบใบปลิว/แบรนด์เป็นพระเอก'
+      if (/กลุ่ม\s*[A-D](?![A-Za-z])/.test(t) || /\[(?:เรต|ลิงก์)\]|ปฏิทินเหตุการณ์/.test(t)) return 'ข้อความภายในหลุด'
+      // % ใน hook อ่านเป็นข้อเสนอของแบรนด์ได้ ("ดอกเบี้ยคงที่ 1%") — ผ่านเฉพาะดอกเบี้ยนโยบาย หรือ 15% ที่บอกว่าเป็นเพดานตามกฎหมาย
+      if (/\d+(\.\d+)?\s*%/.test(t) && !/นโยบาย/.test(t) && !(/15\s*%/.test(t) && /เพดาน|กฎหมาย|ไม่เกิน|ห้ามเกิน/.test(t))) return 'มีตัวเลข % โดยไม่บอกว่าเป็นดอกเบี้ยนโยบายหรือเพดานตามกฎหมาย'
+      const leak = [...labelParts, ...brandToks, ...foreign].find((p) => p && t.toLowerCase().includes(String(p).toLowerCase()))
+      if (leak) return `เอ่ยชื่อเพจ/บริษัทต้นทาง ("${leak}")`
+      if (quoted && copiedCompetitorSpan(quoted, t, { span: 20, step: 5 })) return 'ลอกข้อความแอด/โพสต์ของเพจอื่น'
+      return ''
+    }
+    const clean = (s) => thaiDates(scrubDraftText(String(s ?? '')))
+    const parsedHooks = parseHooks(obj.hooks, { caption, headline, clean, check: guard, recent: recentOpeners, library: hookLibrary })
+    const usedHook = parsedHooks.used >= 0 ? parsedHooks.hooks[parsedHooks.used] : null
+    if (usedHook) {
+      const best = parsedHooks.hooks.reduce((a, h) => (h.score > a.score ? h : a), usedHook)
+      if (usedHook.score < HOOK_WEAK) warningsExtra.push(`ประโยคเปิดยังอ่อน (คะแนน ${usedHook.score}/100): ${usedHook.bad.join(' · ') || 'ไม่ชวนอ่านต่อ'}`)
+      if (best !== usedHook && best.score >= usedHook.score + 15) warningsExtra.push(`มีประโยคเปิดทางเลือกที่คะแนนสูงกว่า (${best.score} เทียบ ${usedHook.score}) — ดูในช่อง "ประโยคเปิดทางเลือก"`)
+    }
+    if (headlineIsLabel(headline)) warningsExtra.push(`พาดหัว "${headline}" ยังเป็นป้ายชื่อเรื่อง — ลองใช้พาดหัวของประโยคเปิดทางเลือก หรือเขียนเป็นคำถาม/ความขัดแย้ง`)
+    hookFields = {
+      hooks: parsedHooks.hooks.map(({ pattern, name, line, headline: h, score, good, bad, used, from }) => ({ pattern, name, line, headline: h, score, good: good.slice(0, 3), bad: bad.slice(0, 3), used, ...(from ? { from } : {}) })),
+      hook_pattern: usedHook?.pattern || null,
+      hook_score: usedHook?.score ?? null,
+      ...(parsedHooks.dropped.length ? { hooks_dropped: parsedHooks.dropped.length } : {}),
+    }
+  }
   const warnings = [...new Set([...findings.filter((f) => f.severity === 'warn').map((f) => f.message), ...warningsExtra])]
 
-  return { ok: true, draft: { headline, caption, cta, hashtags: hashtags.slice(0, 5), needs_check, warnings } }
+  return { ok: true, draft: { headline, caption, cta, hashtags: hashtags.slice(0, 5), needs_check, warnings, ...hookFields } }
 }
 
 // ร่างทีละมุม บันทึกทีละมุมผ่าน onSave (timeout กลางทางไม่ทิ้งงานที่ได้แล้ว) · มุมที่มีร่างแล้วไม่ทำซ้ำ
 // ประโยคเปิดของร่างที่มีแล้วในไอเดียเดียวกันส่งเข้าเป็น "ห้ามเปิดแบบนี้" เพื่อให้ 3 มุมต่างกันจริง
 // kb = คลังความรู้ AssetX (loadKnowledgeBase()) — มีแล้วทุกมุมได้ข้อที่จับคู่ได้แนบไป (knowledgeForAngle) · ร่างบันทึก facts_source + knowledge {ids, sources, verify} ให้คนตรวจรู้ว่าอิงอะไร
-export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 1500, log = () => {}, now = () => new Date(), maxPerIdea = 3, duplicateLimit = DUPLICATE_SIMILARITY, kb = null, knowledgeMax = 6 }) {
+// hookLibrary = คลังสูตร hook (loadHookPatterns()) · null = ปิดระบบ hook (พรอมต์แบบเดิม) · hookLessons = บทเรียนจากของไวรัล (loadHookLessons()) ไม่มีก็ได้
+export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 1500, log = () => {}, now = () => new Date(), maxPerIdea = 3, duplicateLimit = DUPLICATE_SIMILARITY, kb = null, knowledgeMax = 6, hookLibrary = null, hookLessons = null }) {
   const done = []
   const failed = []
   let stopped = false
+  // สูตร hook ที่ร่างก่อนหน้าในรอบนี้ใช้ — ร่างถัดไปลดน้ำหนักสูตรเดิม ไม่ให้ทั้งรอบเปิดด้วยสูตรเดียว
+  const recentHooks = []
   // บันทึกล้มชั่วคราว (เน็ต/Supabase สะดุด) → ลองซ้ำ 1 ครั้ง · ร่างยังอยู่ใน angles ของรอบนี้ การบันทึกครั้งถัดไปของไอเดียเดียวกันจะพาไปด้วย
   const persist = async (id, angles) => {
     if (!onSave) return { ok: true }
@@ -684,9 +757,11 @@ export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (
       let error = null
       let provider = null
       let hint = ''
+      let fallback = null
       const knowledge = kb?.entries?.length ? knowledgeForAngle(idea, angle, { kb, max: knowledgeMax }) : []
+      const hooks = hookLibrary ? { library: hookLibrary, lessons: hookLessons, avoid: existing.map((d) => d.hook_pattern).filter(Boolean), recent: recentHooks.slice(-6), seed: `${idea.id}:${index}` } : null
       for (let attempt = 0; attempt < 2 && !result; attempt += 1) {
-        const { system, prompt, policy, format } = buildDraftPrompt({ idea, angle, brand, avoidOpenings, avoidPoints, avoidHeadlines, usedFormats, hint, knowledge, kb })
+        const { system, prompt, policy, format } = buildDraftPrompt({ idea, angle, brand, avoidOpenings, avoidPoints, avoidHeadlines, usedFormats, hint, knowledge, kb, hooks })
         const res = await ask({ system, prompt })
         if (!res.ok) {
           error = res.error
@@ -696,7 +771,7 @@ export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (
           continue
         }
         provider = res.provider
-        const parsed = parseDraft(res.data, { policy, sourceLabel: idea.source_label, brand, subtype: idea.subtype, facts: `${idea.title || ''}\n${idea.summary || ''}`, format, eventDate: idea.event_date || '', today: now().toISOString().slice(0, 10), audience: idea.audience || [] })
+        const parsed = parseDraft(res.data, { policy, sourceLabel: idea.source_label, brand, subtype: idea.subtype, facts: `${idea.title || ''}\n${idea.summary || ''}`, format, eventDate: idea.event_date || '', today: now().toISOString().slice(0, 10), audience: idea.audience || [], hookLibrary, recentOpeners: avoidOpenings })
         if (!parsed.ok) { error = parsed.error; hint = `คำตอบก่อนหน้าใช้ไม่ได้ (${parsed.error}) — เขียนใหม่ให้ผ่านเงื่อนไขนี้`; continue }
         // พาดหัวเดียวกับมุมอื่นของเรื่องนี้ (เจอจริง #4: "ธปท. 57/2569 ประกาศแล้ว" สองมุม) → ลองใหม่
         const sameHeadline = avoidHeadlines.find((h) => h.replace(/\s+/g, ' ').trim() === parsed.draft.headline.replace(/\s+/g, ' ').trim())
@@ -712,18 +787,29 @@ export async function generateDrafts({ ideas, brand = {}, ask, onSave, sleep = (
           hint = `ร่างก่อนหน้าซ้ำกับมุมอื่นของเรื่องนี้ — เปลี่ยนทั้งประเด็นและโครง ห้ามพูดถึง: ${avoidPoints.join(' · ') || 'ประเด็นเดิม'}`
           continue
         }
-        result = {
+        const built = {
           ...parsed.draft,
           format,
           facts_source: hasResearchFacts(idea) ? 'research' : knowledge.length ? 'knowledge' : 'none',
           ...(knowledge.length ? { knowledge: { ids: knowledgeIds(knowledge), sources: knowledgeSourceLabels(knowledge, kb), verify: knowledge.some((e) => e.confidence !== 'official') } } : {}),
         }
+        // hook อ่อน (บอกเล่าเฉย ๆ / กว้าง / เนื้อหาไม่ตอบ) → ร่างใหม่ 1 ครั้งพร้อมเหตุผล · ร่างนี้เก็บไว้เป็นสำรอง: ครั้งที่สองล้มหรือยังอ่อน = ใช้ร่างนี้ (มีคำเตือนในร่าง) ไม่ทิ้งงาน
+        if (hookLibrary && attempt === 0 && built.hook_score !== null && built.hook_score !== undefined && built.hook_score < HOOK_WEAK) {
+          const weak = (built.hooks || []).find((h) => h.used)
+          fallback = built
+          error = `ประโยคเปิดอ่อน (คะแนน ${built.hook_score})`
+          hint = `ประโยคเปิดก่อนหน้า ("${weak?.line?.slice(0, 80) || ''}") ยังไม่ชวนอ่านต่อ: ${(weak?.bad || []).join(' · ')} — เขียน hook ทั้ง 3 แบบใหม่ตามสูตรที่ให้ ให้เจาะจง มีคำถามหรือความขัดแย้ง และเนื้อหาตอบได้จริง`
+          continue
+        }
+        result = fallback && (fallback.hook_score ?? 0) > (built.hook_score ?? 0) ? fallback : built
       }
+      if (!result && fallback) result = fallback
       if (result) {
         angles[index] = { ...angle, draft: { ...result, provider, at: now().toISOString() } }
+        if (result.hook_pattern) recentHooks.push(result.hook_pattern)
         made += 1
         const saved = await persist(idea.id, angles)
-        if (saved.ok) log(`[drafts] #${idea.id} "${angle.label}" ${result.caption.length} ตัวอักษร · ${result.format} (${provider})`)
+        if (saved.ok) log(`[drafts] #${idea.id} "${angle.label}" ${result.caption.length} ตัวอักษร · ${result.format}${result.hook_pattern ? ` · hook ${result.hook_pattern} ${result.hook_score}` : ''} (${provider})`)
         else {
           failed.push({ id: idea.id, angle: angle.label, error: `บันทึกไม่สำเร็จ: ${saved.error}` })
           log(`[drafts] #${idea.id} "${angle.label}" ร่างได้แต่บันทึกไม่สำเร็จ: ${saved.error}`)

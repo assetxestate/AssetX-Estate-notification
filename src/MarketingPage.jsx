@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { aiDraftReviewNotes, appendMarketingHashtags, applyAiDraft, assetxChannels, canPublishAssetxPost, isAiDraft, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
+import { aiDraftReviewNotes, appendMarketingHashtags, applyAiDraft, applyHookChoice, assetxChannels, canPublishAssetxPost, isAiDraft, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
+import { hookOptionsFor, isCurrentHook, swapOpeningLine, videoScriptFromDraft } from './lib/hookOptions.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
@@ -1658,6 +1659,8 @@ export default function MarketingPage({ onBack }) {
           : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
       // ป้ายว่าแคปชั่นมาจากร่าง AI (ด่านตรวจไม่เทียบกับแม่แบบหัวข้อ · การ์ดโชว์ป้าย) + มุมเล่าที่เลือก
       ...(aiDraft ? { draftSource: 'ai', angleLabel: sourceIdea?.angleLabel || null } : {}),
+      // ประโยคเปิดทางเลือกของร่าง AI (ระบบ hook) — ช่องรอตรวจโชว์ให้กดสลับได้ · hookPattern เก็บไว้เทียบยอดต่อสูตรภายหลัง
+      ...(generated.meta?.hooks?.length ? { hooks: generated.meta.hooks, hookPattern: generated.meta.hookPattern || null } : {}),
       source: sourceIdea?.source || 'ไอเดียวันนี้',
       // ไอเดียรีเสิร์ชที่เป็นต้นเรื่อง (เลขเดียวกับ "ไอเดีย N" บนการ์ด) — ตามกลับไปหาแหล่งข้อเท็จจริงได้ตอนแก้
       ...(sourceIdea?.dbId ? { ideaId: sourceIdea.dbId } : {}),
@@ -1695,6 +1698,7 @@ export default function MarketingPage({ onBack }) {
           ? ['ผ่านเงื่อนไขเบื้องต้น', 'ควรตรวจรายละเอียดจริงก่อนโพสต์']
           : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
       ...(isAiDraft(ws.generated) ? { draftSource: 'ai' } : {}),
+      ...(ws.generated.meta?.hooks?.length ? { hooks: ws.generated.meta.hooks, hookPattern: ws.generated.meta.hookPattern || null } : {}),
       source: 'AssetX Studio',
       ...(ws.generated.sourceIdeaId ? { ideaId: ws.generated.sourceIdeaId } : {}),
       createdAt: new Date().toISOString(),
@@ -2250,6 +2254,7 @@ export default function MarketingPage({ onBack }) {
             artwork={(workspace.mediaAssets || []).find((asset) => asset.id === workspace.generated?.mediaAssetId)}
             onDesignImage={() => setArtworkBrief({ ...workspace.generated, id: 'generated', title: workspace.generated?.headline })}
             onGenerate={() => generateContent(workspaceRef.current.studio.prompt)}
+            onPickHook={(hook) => { save((ws) => ({ ...ws, generated: applyHookChoice(ws.generated, hook) })); notify('เปลี่ยนประโยคเปิดและพาดหัวแล้ว · อ่านต่อทั้งโพสต์ว่ายังลื่น') }}
             onQueue={addGeneratedToQueue}
             onCopy={copyText}
             onBack={() => goTo('approvals')}
@@ -2710,7 +2715,7 @@ function IdeasView({
   )
 }
 
-function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onChannelChange, onPromptChange, onGenerate, onQueue, onCopy, onBack }) {
+function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onChannelChange, onPromptChange, onGenerate, onQueue, onCopy, onBack, onPickHook }) {
   const posterPrompt = generated ? buildSocialPosterPrompt({
     title: generated.headline || studio.prompt,
     imagePrompt: generated.imagePrompt,
@@ -2743,6 +2748,7 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
               <span className="mx-pass">โครงสร้าง {generated.meta?.captionQuality?.score ?? '-'}/100</span>
             </div>
             <ContentBlock title="แคปชั่น" value={generated.caption} onCopy={() => onCopy(generated.caption)} />
+            <HookPicker hooks={generated.meta?.hooks} caption={generated.caption} onPick={onPickHook} />
             <ContentBlock title="บรีฟรูป (ภาษาอังกฤษ สำหรับโปรแกรมสร้างภาพ)" value={posterPrompt} onCopy={() => onCopy(posterPrompt)} collapsed />
             <ContentBlock title="สคริปต์วิดีโอ" value={generated.videoScript} onCopy={() => onCopy(generated.videoScript)} collapsed />
             <div className="mx-card-actions end">
@@ -2851,6 +2857,21 @@ function ApprovalsView({
                     onClick={(event) => { event.stopPropagation(); if (loading) onWaitNotice?.() }}
                     onKeyDown={loading ? () => onWaitNotice?.() : undefined}
                     onChange={(event) => onUpdate(post.id, { caption: event.target.value })}
+                  />
+                  <HookPicker
+                    hooks={post.hooks}
+                    caption={post.caption}
+                    disabled={loading || post.status === 'posted' || Boolean(post.facebookPostId)}
+                    onPick={(hook) => {
+                      const caption = swapOpeningLine(post.caption, hook.line)
+                      onUpdate(post.id, {
+                        caption,
+                        ...(hook.headline ? { title: hook.headline } : {}),
+                        ...(post.draftSource === 'ai' ? { videoScript: videoScriptFromDraft({ caption, cta: '' }) } : {}),
+                        hookPattern: hook.pattern || null,
+                        reviewStatus: 'needs_edit',
+                      }, 'เปลี่ยนประโยคเปิดและพาดหัวแล้ว · อ่านทั้งโพสต์อีกรอบก่อนอนุมัติ')
+                    }}
                   />
                   <label className="mx-schedule-row" onClick={(event) => event.stopPropagation()}>ช่องทาง
                     <select value={/facebook/i.test(post.channel) ? 'facebook' : post.channel} disabled={loading} onChange={(event) => onUpdate(post.id, { channel: event.target.value, reviewStatus: 'needs_edit' })}>
@@ -3818,6 +3839,37 @@ function MetricCard({ label, value, delta }) {
   return <div className="mx-metric-card"><span>{label}</span><strong>{value}</strong><em>{delta}</em></div>
 }
 
+// ประโยคเปิดทางเลือก (hook) ของร่าง AI — รอบรีเสิร์ชเขียนไว้ 2–4 แบบต่างสูตรพร้อมคะแนน (server/research/hooks.js)
+// กด "ใช้ประโยคนี้" = แทนบรรทัดแรกของแคปชั่น + พาดหัวคู่ (พาดหัวไปถึงโปสเตอร์ด้วย) · ไม่มีอย่างน้อย 2 แบบ = ไม่โชว์
+function HookPicker({ hooks, caption, onPick, disabled = false }) {
+  const options = hookOptionsFor(hooks)
+  if (!options.length || !onPick) return null
+  return (
+    <details className="mx-hook-picker" onClick={(event) => event.stopPropagation()}>
+      <summary><span>ประโยคเปิดทางเลือก ({options.length} แบบ)</span><small>บรรทัดแรกคือสิ่งที่ทำให้คนหยุดอ่าน · เลือกแบบที่ชอบได้</small></summary>
+      <div className="mx-hook-list">
+        {options.map((hook, index) => {
+          const current = isCurrentHook(hook, caption)
+          return (
+            <div key={`${hook.pattern}-${index}`} className={`mx-hook-option${current ? ' current' : ''}`}>
+              <div className="mx-hook-meta">
+                <span className="mx-hook-name">{hook.name || hook.pattern}</span>
+                {hook.score !== null && <span className={`mx-hook-score${hook.score >= 70 ? ' high' : hook.score < 45 ? ' low' : ''}`}>{hook.score}/100</span>}
+              </div>
+              <p>{hook.line}</p>
+              {hook.headline && <small>พาดหัว: {hook.headline}</small>}
+              {(hook.bad || []).length > 0 && <small className="mx-hook-why">ควรปรับ: {hook.bad.join(' · ')}</small>}
+              {current
+                ? <em className="mx-hook-current">ใช้อยู่</em>
+                : <button type="button" className="mx-mini-button" disabled={disabled} onClick={() => onPick(hook)}>ใช้ประโยคนี้</button>}
+            </div>
+          )
+        })}
+      </div>
+    </details>
+  )
+}
+
 function ContentBlock({ title, value, onCopy, collapsed }) {
   if (collapsed) {
     return (
@@ -4045,6 +4097,24 @@ const styles = `
   .mx-poster-placeholder.compact strong { font-size: 15px; }
   .mx-review-notes { margin-top: 12px; display: grid; gap: 6px; border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 10px; padding: 12px; }
   .mx-review-notes.compact { margin-top: 0; }
+  .mx-hook-picker { margin: 10px 0; border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 10px; padding: 10px 12px; }
+  .mx-hook-picker > summary { cursor: pointer; display: grid; gap: 2px; list-style: none; }
+  .mx-hook-picker > summary span { color: var(--mx-sky); font-size: 15px; font-weight: 700; }
+  .mx-hook-picker > summary small { color: var(--mx-ink-2); font-size: 14px; }
+  .mx-hook-picker > summary::-webkit-details-marker { display: none; }
+  .mx-hook-list { display: grid; gap: 8px; margin-top: 10px; }
+  .mx-hook-option { display: grid; gap: 6px; border: 1px solid var(--mx-line); border-radius: 10px; padding: 10px 12px; background: rgba(255,255,255,.02); }
+  .mx-hook-option.current { border-color: var(--mx-sky); background: rgba(66,199,216,.08); }
+  .mx-hook-option p { margin: 0; color: var(--mx-ink); font-size: 16px; line-height: 1.55; overflow-wrap: anywhere; }
+  .mx-hook-option small { color: var(--mx-ink-2); font-size: 14px; line-height: 1.5; }
+  .mx-hook-option .mx-hook-why { color: #f3c27a; }
+  .mx-hook-option .mx-mini-button { justify-self: start; }
+  .mx-hook-meta { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .mx-hook-name { color: #bfeef5; font-size: 14px; font-weight: 700; }
+  .mx-hook-score { font-size: 13px; font-weight: 700; border-radius: 999px; padding: 2px 9px; border: 1px solid var(--mx-line); color: var(--mx-ink-2); }
+  .mx-hook-score.high { color: #7ee0a1; border-color: rgba(126,224,161,.5); }
+  .mx-hook-score.low { color: #f3c27a; border-color: rgba(243,194,122,.5); }
+  .mx-hook-current { color: var(--mx-sky); font-style: normal; font-size: 14px; font-weight: 700; }
   .mx-review-notes strong { color: var(--mx-sky); font-size: 13px; }
   .mx-review-notes span { color: var(--mx-ink-2); font-size: 15px; line-height: 1.5; }
   .mx-schedule-row { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-top: 10px; border: 1px solid var(--mx-line); background: rgba(5,11,24,.35); border-radius: 10px; padding: 12px; }

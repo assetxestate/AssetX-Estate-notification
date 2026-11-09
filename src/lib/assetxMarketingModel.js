@@ -6,6 +6,7 @@ import {
 import { checkText, formatWarnings } from './marketing-model/rules.js'
 import { scoreCaption } from './marketing-model/scoring.js'
 import { checkTopicContent, resolveTopic } from './marketing-model/topics.js'
+import { swapOpeningLine, videoScriptFromDraft } from './hookOptions.js'
 
 export const assetxContentTypes = [
   { value: 'educate', label: 'ให้ความรู้' },
@@ -126,12 +127,15 @@ export function applyAiDraft(generated, draft, { channel = 'facebook' } = {}) {
   if (!generated || !draft?.caption) return generated
   const hashtags = Array.isArray(draft.hashtags) && draft.hashtags.length ? draft.hashtags : (generated.hashtags || [])
   const caption = appendMarketingHashtags(draft.caption, hashtags)
+  // ร่างที่มีระบบ hook (9 พ.ย. 2569): สคริปต์วิดีโอเปิดด้วย hook เดียวกับแคปชั่น แทนแม่แบบหัวข้อที่ไม่ตรงกับร่าง AI
+  const hooks = Array.isArray(draft.hooks) ? draft.hooks : []
   return {
     ...generated,
     headline: draft.headline || generated.headline,
     caption,
     cta: draft.cta || generated.cta,
     hashtags,
+    ...(hooks.length ? { videoScript: videoScriptFromDraft({ caption: draft.caption, cta: draft.cta || generated.cta }) } : {}),
     automationPayload: { ...(generated.automationPayload || {}), postText: caption },
     meta: {
       ...(generated.meta || {}),
@@ -145,7 +149,26 @@ export function applyAiDraft(generated, draft, { channel = 'facebook' } = {}) {
       knowledgeSources: Array.isArray(draft.knowledge?.sources) ? draft.knowledge.sources : [],
       knowledgeVerify: Boolean(draft.knowledge?.verify),
       captionQuality: scoreCaption(draft.caption, channel),
+      // ประโยคเปิดทางเลือก (server/research/hooks.js) — หน้าเว็บโชว์ให้กดสลับ · hookPattern = สูตรที่ใช้อยู่ (เก็บไว้เทียบยอดต่อสูตรภายหลัง)
+      hooks,
+      hookPattern: draft.hook_pattern || null,
+      hookScore: Number.isFinite(draft.hook_score) ? draft.hook_score : null,
     },
+  }
+}
+
+// เปลี่ยนประโยคเปิด (+ พาดหัวคู่) ของผลร่างใน Studio — สคริปต์วิดีโอเปิดด้วย hook ใหม่ด้วย
+export function applyHookChoice(generated, hook) {
+  if (!generated || !hook?.line) return generated
+  const caption = swapOpeningLine(generated.caption, hook.line)
+  const headline = hook.headline || generated.headline
+  return {
+    ...generated,
+    headline,
+    caption,
+    videoScript: generated.meta?.hooks?.length ? videoScriptFromDraft({ caption, cta: generated.cta }) : generated.videoScript,
+    automationPayload: { ...(generated.automationPayload || {}), postText: caption },
+    meta: { ...(generated.meta || {}), hookPattern: hook.pattern || null, hookScore: Number.isFinite(hook.score) ? hook.score : null },
   }
 }
 
@@ -166,7 +189,16 @@ export function aiDraftReviewNotes(generated = {}) {
     ...(meta.knowledgeVerify ? ['ตัวเลขค่าธรรมเนียม/อากรในคลังมาจากแหล่งรอง — ถ้าโพสต์ใช้ตัวเลขนั้น ยืนยันกับสำนักงานที่ดินก่อนโพสต์'] : []),
     ...(meta.needsCheck || []).map((item) => `ต้องตรวจ: ${item}`),
     ...(meta.draftWarnings || []),
+    ...(hookNote(meta) ? [hookNote(meta)] : []),
   ]
+}
+
+function hookNote(meta = {}) {
+  const hooks = Array.isArray(meta.hooks) ? meta.hooks : []
+  const used = hooks.find((h) => h.used) || hooks.find((h) => h.pattern === meta.hookPattern)
+  if (!used) return ''
+  const others = hooks.length - 1
+  return `ประโยคเปิดสูตร "${used.name || used.pattern}"${Number.isFinite(meta.hookScore) ? ` คะแนน ${meta.hookScore}/100` : ''}${others > 0 ? ` · มีทางเลือกอีก ${others} แบบในช่อง "ประโยคเปิดทางเลือก"` : ''}`
 }
 
 export function canPublishAssetxPost(post, opts = {}) {
