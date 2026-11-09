@@ -157,4 +157,7 @@ test('planExpiry: อายุต่อ subtype · event_date ยังไม่
   ]
   assert.deepEqual(planExpiry(rows, { subtypes, purgeDays: 14, now, referenced: new Set([6]) }), [1])
   assert.deepEqual(planExpiry(rows, { subtypes, purgeDays: 14, now }), [1, 6])
+  // ไอเดียที่เจ้าของย้อนร่างกลับมาเอง (unpick คง chosen_angle) ไม่หมดอายุเอง แม้อายุเกินเกณฑ์
+  const returned = [...rows, { id: 7, status: 'new', subtype: 'market', created_at: '2026-09-01T00:00:00Z', chosen_angle: 'เช็กลิสต์' }]
+  assert.deepEqual(planExpiry(returned, { subtypes, purgeDays: 14, now }), [1, 6])
 })

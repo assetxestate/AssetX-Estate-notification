@@ -47,6 +47,8 @@ function researchIdeaToCard(row) {
     channel: 'Facebook',
     url: row.url || '',
     angles: Array.isArray(row.angles) ? row.angles : [],
+    // มุมที่เคยกด ร่างโพสต์ ไปแล้ว — มีค่าเมื่อเจ้าของย้อนร่างกลับมาเป็นไอเดีย (การ์ดบอกว่าเคยร่างมุมไหน)
+    chosenAngle: row.chosen_angle || null,
     eventDate: row.event_date || null,
     createdAt: row.created_at || null,
   }
@@ -1075,6 +1077,8 @@ export default function MarketingPage({ onBack }) {
   const [findText, setFindText] = useState('')
   // คอนเทนต์ที่เพิ่งค้นด้วยเลข { no, at } → เลื่อนไปที่การ์ดและไฮไลต์ชั่วครู่ (สถานะหน้าจอ ไม่บันทึกลงเวิร์กสเปซ)
   const [focusNo, setFocusNo] = useState(null)
+  // ไอเดียที่เพิ่งย้อนกลับจากแท็บร่าง → แท็บไอเดียยกขึ้นบนสุดและไฮไลต์ (สถานะหน้าจอ ไม่บันทึก)
+  const [returnedIdea, setReturnedIdea] = useState(null)
   // ข้อความใต้ช่องค้น { text, at } — ส่งข้อความเดิมซ้ำก็นับเวลาใหม่และอ่านออกเสียงใหม่
   const [findMsg, setFindMsg] = useState(null)
   // คลังผลงาน: ชิ้นที่เพิ่งค้นด้วยเลข → ช่องตัวอย่างช่องทางแสดงชิ้นนี้ (สถานะหน้าจอ ไม่บันทึก)
@@ -1764,6 +1768,28 @@ export default function MarketingPage({ onBack }) {
     }
   }
 
+  // ย้อนร่างกลับเป็นไอเดีย: ไอเดียต้นเรื่องกลับเข้าแท็บ ไอเดีย (status new · มุมเล่าและร่าง AI ทุกมุมยังอยู่) ให้เลือกมุมใหม่ได้
+  // ร่างเดิมไม่ลบ — พักไว้ในคลังผลงาน (กู้คืนได้) · ฝั่งระบบบอกไม่ได้ (ทิ้ง/หมดอายุแล้ว) = ร่างอยู่ที่เดิม
+  const returnDraftToIdea = async (post) => {
+    if (!post?.ideaId || blockedWhileLoading()) return
+    const ok = window.confirm(`ย้อนกลับเป็นไอเดีย ${post.ideaId}?\n\nไอเดียจะกลับไปอยู่ในแท็บ ไอเดีย ให้เลือกมุมเล่าใหม่ได้\nร่างนี้จะถูกพักไว้ในคลังผลงาน (กู้คืนได้ ไม่ลบ)`)
+    if (!ok) return
+    try {
+      const data = await postResearchIdea({ action: 'unpick', id: post.ideaId })
+      updatePost(post.id, { status: 'archived' })
+      if (selectedId === post.id) setSelectedId(null)
+      await loadResearchIdeas()
+      // คิวบนหน้าแสดงไม่เกิน 60 ใบ — ไอเดียเก่าอาจหลุดรอบโหลด → วางการ์ดจากแถวที่ระบบคืนมาให้แน่ใจว่าเห็น
+      const row = data?.idea
+      if (row?.id && row.title) setResearchIdeas((items) => (items.some((item) => item.dbId === row.id) ? items : [researchIdeaToCard(row), ...items]))
+      setReturnedIdea({ id: post.ideaId, at: Date.now() })
+      goTo('ideas')
+      notify(`ไอเดีย ${post.ideaId} กลับมาที่แท็บ ไอเดีย แล้ว · เลือกมุมเล่าใหม่ได้ · ร่างเดิมพักไว้ในคลังผลงาน`)
+    } catch (err) {
+      notify(errorMessage(err, 'ย้อนกลับเป็นไอเดียไม่สำเร็จ ลองใหม่อีกครั้ง'), 'error')
+    }
+  }
+
   const updateReferenceForm = (patch) => {
     save((ws) => ({ ...ws, referenceForm: { ...ws.referenceForm, ...patch } }))
   }
@@ -2242,6 +2268,7 @@ export default function MarketingPage({ onBack }) {
             onDismiss={dismissResearchIdea}
             onLoadRadar={loadTrendRadar}
             onReload={loadResearchIdeas}
+            highlight={returnedIdea}
           />
         )}
         {view === 'studio' && (
@@ -2275,6 +2302,7 @@ export default function MarketingPage({ onBack }) {
             onDeleteMediaAsset={deleteMediaAsset}
             onDelete={deletePost}
             onArchive={archivePost}
+            onReturnToIdea={returnDraftToIdea}
             onNewDraft={() => goTo('studio')}
             focusNo={focusNo}
             loading={syncState.state === 'loading'}
@@ -2601,6 +2629,7 @@ function IdeasView({
   onDismiss,
   onLoadRadar,
   onReload,
+  highlight = null,
 }) {
   const PAGE_SIZE = 6
   const [sort, setSort] = useState('newest')
@@ -2611,8 +2640,11 @@ function IdeasView({
   const ordered = useMemo(() => {
     const byDate = (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
     const byScore = (a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)
-    return [...research].sort(sort === 'score' ? byScore : byDate)
-  }, [research, sort])
+    const sorted = [...research].sort(sort === 'score' ? byScore : byDate)
+    // ไอเดียที่เพิ่งย้อนกลับจากแท็บร่าง ขึ้นบนสุด (ไม่งั้นไอเดียเก่าจะจมอยู่หน้าหลัง ๆ)
+    const back = highlight ? sorted.findIndex((idea) => idea.dbId === highlight.id) : -1
+    return back > 0 ? [sorted[back], ...sorted.slice(0, back), ...sorted.slice(back + 1)] : sorted
+  }, [research, sort, highlight])
   const live = [...ordered, ...radar]
   const visible = showAll ? live : live.slice(0, PAGE_SIZE)
   const hidden = Math.max(0, live.length - visible.length)
@@ -2625,8 +2657,9 @@ function IdeasView({
     const angles = Array.isArray(idea.angles) ? idea.angles : []
     const angleIndex = angleChoice[idea.id] ?? 0
     const angleText = angles[angleIndex]?.brief || idea.angle
+    const isReturned = Boolean(highlight && isResearch && idea.dbId === highlight.id)
     return (
-      <article className={`mx-idea-card ${isExample ? 'example' : ''}`} key={idea.id}>
+      <article className={`mx-idea-card ${isExample ? 'example' : ''} ${isReturned ? 'mx-focus' : ''}`} key={isReturned ? `${idea.id}-${highlight.at}` : idea.id}>
         <div className="mx-idea-top">
           <span>{isExample ? 'ตัวอย่าง' : idea.kind === 'radar' ? 'สำรวจตลาด' : idea.type}</span>
           <strong>{isResearch ? [idea.dbId ? `ไอเดีย ${idea.dbId}` : '', idea.createdAt ? thaiDate(idea.createdAt) : 'ใหม่'].filter(Boolean).join(' · ') : isExample ? 'จากแม่แบบ' : 'จากการสำรวจตลาด'}</strong>
@@ -2642,7 +2675,7 @@ function IdeasView({
             {angles.map((item, index) => (
               <label key={`${idea.id}-${index}`} className={angleIndex === index ? 'active' : ''}>
                 <input type="radio" name={`angle-${idea.id}`} checked={angleIndex === index} onChange={() => setAngleChoice((prev) => ({ ...prev, [idea.id]: index }))} />
-                <span>{item.label}{item.draft?.caption ? ' · ร่างพร้อม' : ''}</span>
+                <span>{item.label}{item.draft?.caption ? ' · ร่างพร้อม' : ''}{idea.chosenAngle && item.label === idea.chosenAngle ? ' · เคยร่างแล้ว' : ''}</span>
               </label>
             ))}
           </fieldset>
@@ -2659,6 +2692,7 @@ function IdeasView({
             : idea.hasFacts
               ? <span title="มีข้อเท็จจริงแล้ว รอ AI ร่างในรอบรีเสิร์ชถัดไป — กด ร่างโพสต์ ตอนนี้จะได้ร่างจากแม่แบบ">รอร่าง AI</span>
               : <span title="AI ไม่ร่างให้ไอเดียที่ยังไม่มีข้อเท็จจริงจากต้นทาง (คลิปที่ยังไม่ถอดคำบรรยาย · ข่าวที่ดึงเนื้อไม่ได้) เพราะจะเดารายละเอียด — ยกเว้นเรื่องมิจฉาชีพ/เตือนภัย ที่ AI ร่างจากความรู้ทั่วไปให้ในรอบถัดไป · กด ร่างโพสต์ ตอนนี้จะได้ร่างจากแม่แบบ">ไม่มีข้อเท็จจริง · ใช้แม่แบบ</span>)}
+          {isResearch && idea.chosenAngle && <span title="เคยกด ร่างโพสต์ แล้วย้อนกลับมาเป็นไอเดีย — ร่างเดิมพักไว้ในคลังผลงาน · ไอเดียนี้ไม่หมดอายุเอง กด ทิ้ง ถ้าไม่ใช้แล้ว">{isReturned ? 'เพิ่งย้อนกลับจากร่าง' : 'เคยร่างแล้ว'}{idea.chosenAngle !== 'มุมหลัก' && !angles.some((item) => item.label === idea.chosenAngle) ? ` (${idea.chosenAngle})` : ''}</span>}
           {!isExample && <span>{displaySource(idea.source)}</span>}
           {idea.audience && <span>{idea.audience}</span>}
           {idea.eventDate && <span>วันที่ {thaiDate(idea.eventDate) || idea.eventDate}</span>}
@@ -2781,6 +2815,7 @@ function ApprovalsView({
   onDeleteMediaAsset,
   onDelete,
   onArchive,
+  onReturnToIdea,
   onNewDraft,
   focusNo,
   loading = false,
@@ -2897,6 +2932,9 @@ function ApprovalsView({
                   <div className="mx-card-actions">
                     <button className="mx-primary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: post.scheduledAt ? 'scheduled' : 'approved', reviewStatus: 'passed', mediaAssetId: postMedia?.id || post.mediaAssetId || null }, post.scheduledAt ? 'อนุมัติแล้ว · ตั้งเวลาตามวันที่กำหนด' : 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์') }}>อนุมัติ</button>
                     <button className="mx-ghost" onClick={(event) => { event.stopPropagation(); onArchive(post.id) }}>พักไว้</button>
+                    {post.ideaId && onReturnToIdea && !post.facebookPostId && !isSamplePost(post) && (
+                      <button className="mx-ghost" title={`ส่งไอเดีย ${post.ideaId} กลับไปแท็บ ไอเดีย ให้เลือกมุมเล่าใหม่ · ร่างนี้พักไว้ในคลังผลงาน`} onClick={(event) => { event.stopPropagation(); onReturnToIdea(post) }}>↩ ย้อนกลับเป็นไอเดีย</button>
+                    )}
                     <details className="mx-more" onClick={(event) => event.stopPropagation()}>
                       <summary>เพิ่มเติม ▾</summary>
                       <div className="mx-more-menu">

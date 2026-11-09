@@ -3,6 +3,7 @@
 // GET  /api/marketing-ideas?status=new&per_subtype=3&limit=30   → { ideas, total, meta } วนรอบต่อ subtype ไม่ให้ท็อปเป็นประเภทเดียวกันหมด
 //      meta = สถานะรอบรีเสิร์ช (แถวล่าสุดทุกสถานะ · มาใหม่ใน 24 ชม. · มีมุมเล่าแล้ว · แยกตามแหล่ง · เวลาที่อ่าน) อ่านอย่างเดียว ไม่มีตารางใหม่
 // POST /api/marketing-ideas { action: "pick", id, chosen_angle }  → status picked (คนเลือกมุม → ระบบสร้างร่าง)
+// POST /api/marketing-ideas { action: "unpick", id }              → status new อีกครั้ง (ย้อนร่างกลับเป็นไอเดีย) · คง chosen_angle ไว้เป็นประวัติ ไอเดียจึงไม่หมดอายุเอง · คืนแถวเต็มให้หน้าเว็บวางการ์ดกลับ
 // POST /api/marketing-ideas { action: "dismiss", id, reason }     → status dismissed + เหตุผล (ใช้ปรับเกณฑ์)
 // POST /api/marketing-ideas { action: "manual", title, url, note } → ไอเดียที่คนวางเอง (source manual · คะแนน 6)
 // POST /api/marketing-ideas { action: "lead", ... }               → บันทึกลีดแบบไม่มีข้อมูลบุคคล (วงวัดผล "โพสต์ไหนได้ลีด")
@@ -17,6 +18,8 @@ const LEAD_CHANNELS = ['messenger', 'line', 'phone', 'web_form', 'walk_in', 'oth
 const LEAD_SERVICES = ['ขายฝาก', 'จำนอง', 'ฝากขาย', 'หาซื้อ', 'อื่น']
 const LEAD_BANDS = ['<500k', '500k-1m', '1-3m', '3-10m', '>10m']
 const AUDIENCES = ['A', 'B', 'C', 'D']
+// คอลัมน์ของการ์ดไอเดียบนหน้าเว็บ (GET และ unpick คืนรูปเดียวกัน)
+const CARD_COLUMNS = 'id,status,source,source_label,subtype,title,summary,url,angles,chosen_angle,score,audience,event_date,created_at'
 
 function defaultDatabase() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
@@ -78,7 +81,7 @@ export function createIdeasHandler({ authorized = verifySession, database = defa
         const perSubtype = Math.min(10, Math.max(1, Number(url.searchParams.get('per_subtype')) || 3))
         const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 30))
         const { data, error } = await db.from('marketing_ideas')
-          .select('id,status,source,source_label,subtype,title,summary,url,angles,chosen_angle,score,audience,event_date,created_at')
+          .select(CARD_COLUMNS)
           .eq('status', status).order('score', { ascending: false }).order('created_at', { ascending: false }).limit(200)
         if (error) throw error
         const rows = data || []
@@ -123,6 +126,21 @@ export function createIdeasHandler({ authorized = verifySession, database = defa
         const { data, error } = await db.from('marketing_ideas').update(patch).eq('id', id).in('status', ['new', 'picked']).select('id,status').maybeSingle()
         if (error) throw error
         if (!data) return res.status(404).json({ error: 'ไม่พบไอเดียนี้ หรือสถานะเปลี่ยนไปแล้ว' })
+        return res.status(200).json({ idea: data })
+      }
+
+      // ย้อนร่างกลับเป็นไอเดีย — เฉพาะไอเดียที่เลือกไปแล้ว (หรือยัง new อยู่ เช่น ร่างผ่าน Studio) · ทิ้ง/หมดอายุแล้วไม่ดึงกลับ
+      // chosen_angle ไม่ล้าง: เป็นประวัติว่าเคยร่างมุมไหน และกันตัวล้างคิวตั้ง expired ให้ไอเดียที่เจ้าของดึงกลับมาเอง (planExpiry)
+      // ไอเดียที่ไม่มีมุมเล่า AI (ร่างจากแม่แบบ) ไม่มี label → ใส่ "มุมหลัก" ให้มีประวัติเหมือนกัน
+      if (body.action === 'unpick') {
+        if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'รหัสไอเดียไม่ถูกต้อง' })
+        const found = await db.from('marketing_ideas').select('id,status,chosen_angle').eq('id', id).maybeSingle()
+        if (found.error) throw found.error
+        if (!found.data || !['picked', 'new'].includes(found.data.status)) return res.status(404).json({ error: 'ไอเดียนี้ถูกทิ้งหรือหมดอายุไปแล้ว ย้อนกลับไม่ได้' })
+        const patch = { status: 'new', ...(found.data.chosen_angle ? {} : { chosen_angle: 'มุมหลัก' }) }
+        const { data, error } = await db.from('marketing_ideas').update(patch).eq('id', id).in('status', ['picked', 'new']).select(CARD_COLUMNS).maybeSingle()
+        if (error) throw error
+        if (!data) return res.status(404).json({ error: 'ไอเดียนี้ถูกทิ้งหรือหมดอายุไปแล้ว ย้อนกลับไม่ได้' })
         return res.status(200).json({ idea: data })
       }
 

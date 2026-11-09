@@ -88,6 +88,38 @@ test('pick/dismiss: ล้าง PII ในเหตุผล · ไอเดี
   assert.equal(res.code, 400)
 })
 
+test('unpick: ย้อนร่างกลับเป็นไอเดีย → new · คง chosen_angle (ไม่มี = มุมหลัก) · ทิ้งแล้ว = 404', async () => {
+  const db = fakeDb([
+    { id: 4, status: 'picked', chosen_angle: 'เช็กลิสต์', title: 'ไอเดียสี่' },
+    { id: 5, status: 'picked', chosen_angle: null, title: 'ไอเดียห้า' },
+    { id: 6, status: 'dismissed', chosen_angle: null, title: 'ไอเดียหก' },
+  ])
+  const run = async (body) => {
+    const res = response()
+    await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'POST', body }, res)
+    return res
+  }
+  let res = await run({ action: 'unpick', id: 4 })
+  assert.equal(res.code, 200)
+  let update = db.calls.filter((c) => c.op === 'update').at(-1)
+  assert.deepEqual(update.patch, { status: 'new' })
+  // อัปเดตเฉพาะไอเดียที่ยังเลือกอยู่/ยังใหม่ — ไม่ดึงไอเดียที่ทิ้ง/หมดอายุกลับ · คืนคอลัมน์ของการ์ดเต็ม
+  assert.deepEqual(update.filters.find(([op]) => op === 'in'), ['in', 'status', ['picked', 'new']])
+  assert.match(update.columns, /angles/)
+  res = await run({ action: 'unpick', id: 5 })
+  assert.equal(res.code, 200)
+  update = db.calls.filter((c) => c.op === 'update').at(-1)
+  assert.deepEqual(update.patch, { status: 'new', chosen_angle: 'มุมหลัก' })
+  const updates = db.calls.filter((c) => c.op === 'update').length
+  res = await run({ action: 'unpick', id: 6 })
+  assert.equal(res.code, 404)
+  res = await run({ action: 'unpick', id: 99 })
+  assert.equal(res.code, 404)
+  res = await run({ action: 'unpick', id: 'x' })
+  assert.equal(res.code, 400)
+  assert.equal(db.calls.filter((c) => c.op === 'update').length, updates)
+})
+
 test('manual: กุญแจจาก URL หรือหัวข้อ · ต้องมีอย่างน้อยหนึ่งอย่าง', async () => {
   const db = fakeDb([])
   let res = response()

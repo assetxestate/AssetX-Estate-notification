@@ -22,12 +22,14 @@ function cutoffFor(subtypes, subtype, purgeDays) {
 }
 
 // แถวที่ควรตั้ง expired: อายุเกินเกณฑ์ของ subtype · event_date ยังไม่ถึง = ยังไม่หมดอายุ · มีคอนเทนต์อ้างถึง = ไม่แตะ
+// · มี chosen_angle = เจ้าของเคยเลือกแล้วย้อนร่างกลับมาเป็นไอเดียเอง (unpick) → ไม่แตะ ให้เจ้าของตัดสินเอง (ร่างใหม่ หรือกด ทิ้ง)
 export function planExpiry(rows, { subtypes = {}, purgeDays = 14, now = new Date(), referenced = new Set() } = {}) {
   const today = now.toISOString().slice(0, 10)
   const out = []
   for (const row of rows) {
     if (row.status !== 'new') continue
     if (row.content_id || referenced.has(row.id)) continue
+    if (row.chosen_angle) continue
     if (row.event_date && row.event_date >= today) continue
     const ageDays = (now.getTime() - new Date(row.created_at).getTime()) / DAY_MS
     if (ageDays > cutoffFor(subtypes, row.subtype, purgeDays)) out.push(row.id)
@@ -82,7 +84,7 @@ export function createSupabaseStore({ url = process.env.SUPABASE_URL || process.
       return new Set(rows.map((r) => r.url))
     },
     async expireOld({ subtypes, purgeDays, now = new Date() } = {}) {
-      const rows = await all(ideas().select('id,status,subtype,created_at,event_date,content_id').eq('status', 'new'))
+      const rows = await all(ideas().select('id,status,subtype,created_at,event_date,content_id,chosen_angle').eq('status', 'new'))
       let referenced = new Set()
       try {
         const refs = await all(db.from('marketing_content').select('idea_id').not('idea_id', 'is', null))
