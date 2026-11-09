@@ -43,7 +43,12 @@ export function facebookSamples(json = {}, page = '') {
   const scored = posts.filter((p) => p && p.caption && score(p) > 0)
   if (scored.length < 4) return []
   const med = median(scored.map(score))
-  return scored.map((p) => ({ source: 'facebook', from: page, text: firstLine(p.caption), value: score(p), x: round1(score(p) / med) }))
+  const posts2 = scored.map((p) => ({ source: 'facebook', from: page, text: firstLine(p.caption), value: score(p), x: round1(score(p) / med) }))
+  // คลิป Reels ที่เปิดอ่านคำบรรยายแล้ว (ตัวเฝ้าเพจ · คลิปแรง) — วิวเทียบค่ากลางของคลิปทุกคลิปบนแท็บ Reels ของเพจเดียวกัน
+  const reels = Object.values(json.reels || {}).filter((r) => r && Number(r.views) > 0)
+  const medR = median(reels.map((r) => Number(r.views)))
+  const reelRows = medR ? reels.filter((r) => r.caption).map((r) => ({ source: 'reels', from: page, text: firstLine(r.caption), value: Number(r.views), x: round1(Number(r.views) / medR) })) : []
+  return [...posts2, ...reelRows]
 }
 
 // json = .local/research/ads/ads.json · ยิงนาน = last_seen − started (วัน)

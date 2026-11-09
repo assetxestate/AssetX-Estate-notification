@@ -30,7 +30,7 @@ function domPost(i, reactions, caption = `โพสต์ ${i} เรื่อ�
 const fixturePosts = () => [domPost(1, 12), domPost(2, 9), domPost(3, 11), domPost(4, 60, 'ขายฝากที่ดินโทร 081-234-5678 ไลน์ @landdeal')]
 
 // OpenCLI ปลอม: เรียก lock.require() ก่อนทุกคำสั่งเหมือนตัวจริง (ยกเว้น beat:false) · บันทึกทุกคำสั่งไว้ตรวจ
-function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = null, posts = fixturePosts, onOpen = null, vis = null, aliases = ['research'], reelTiles = null } = {}) {
+function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = null, posts = fixturePosts, onOpen = null, vis = null, aliases = ['research'], reelTiles = null, reelCaption = null } = {}) {
   const calls = []
   const oc = async (args, opts = {}) => {
     if (opts.beat !== false && lockRef.lock) lockRef.lock.require()
@@ -42,6 +42,11 @@ function fakeOc({ lockRef, connected = true, daemonRunning = true, blocked = nul
     }
     if (a === 'daemon' && b === 'restart') return { ok: true, data: { restarted: true } }
     if (a === 'browser' && b === 'open') { oc.lastUrl = args[2]; if (onOpen) await onOpen(args[2], calls); return { ok: true, data: {} } }
+    if (a === 'browser' && b === 'eval' && reelCaption !== null && /\/reel\/\d+$/.test(oc.lastUrl)) {
+      return args[2].includes('clicked')
+        ? { ok: true, data: { result: { clicked: true } } }
+        : { ok: true, data: { result: { vis: 'visible', page: 'เพจคลิป', caption: reelCaption, m: { reactions: '498', comments: '9', shares: '1.2K' }, blocked: null } } }
+    }
     if (a === 'browser' && b === 'eval' && reelTiles && oc.lastUrl.endsWith('/reels/')) return { ok: true, data: { result: { vis: 'visible', blocked: null, tiles: reelTiles } } }
     if (a === 'browser' && b === 'eval') {
       const v = typeof vis === 'function' ? vis(calls) : vis
@@ -814,9 +819,9 @@ test('แท็บ Reels (เพจ reels: true · บัญชี AssetX): เ�
   const tiles = [['1', '642'], ['2', '729'], ['3', '564'], ['4', '592'], ['5', '570'], ['6', '477'], ['7', '4.8K'], ['8', '610']].map(([id, text]) => ({ id: `90${id}`, text }))
   const h = harness({ aliases: ['research', 'assetx'], reelTiles: tiles }, { deps: { resolveChromeDir: () => 'Profile 12' } })
   const target = [{ name: 'เพจคลิป', url: 'https://www.facebook.com/ReelsPage', group: 'competitor', every_days: 2, reels: true }]
-  const out = await h.run({ cfg: OWN_CFG, targets: target })
+  const out = await h.run({ cfg: { ...OWN_CFG, reels_open_hot: 0 }, targets: target })
   assert.equal(out.status, 'ok')
-  assert.equal(out.opened.facebook, 2, 'หน้าเพจ + แท็บ Reels')
+  assert.equal(out.opened.facebook, 2, 'หน้าเพจ + แท็บ Reels (ปิดการเปิดคลิปแรงในเทสต์นี้)')
   assert.ok(openCalls(h.oc).some((c) => c.args[2] === 'https://www.facebook.com/ReelsPage/reels/'))
   assert.equal(out.reels.length, 1); assert.equal(out.reels[0].id, '907'); assert.equal(out.reels[0].views, 4800)
   const store = JSON.parse(fs.readFileSync(pageStorePath(h.storeDir, targetId(target[0])), 'utf8'))
@@ -828,3 +833,29 @@ test('แท็บ Reels (เพจ reels: true · บัญชี AssetX): เ�
   const o2 = await sh.run({ targets: target })
   assert.equal(o2.opened.facebook, 1)
 })
+
+test('คลิปแรง: เปิดหน้าคลิป (กด See more ขยายข้อความ) อ่านคำบรรยาย+ยอด · ผ่าน topic gate = ไอเดียคลิป (กุญแจ reel_<id>) · นับเพดานคลิปละ 1 เพจ · ข้อมูลบุคคลถูกลบ', async () => {
+  const tiles = [['1', '642'], ['2', '729'], ['3', '564'], ['4', '592'], ['5', '570'], ['6', '477'], ['7', '4.8K'], ['8', '610']].map(([id, text]) => ({ id: `90${id}`, text }))
+  const caption = '🔥 **มีโฉนดอยู่ในมือ วางแผนใช้ทรัพย์เป็นเงินทุนได้อย่างไร?**\nขายฝากที่ดินกับจำนองต่างกันอย่างไร ทักไลน์ @landdeal โทร 081-234-5678'
+  const h = harness({ aliases: ['research', 'assetx'], reelTiles: tiles, reelCaption: caption }, { deps: { resolveChromeDir: () => 'Profile 12' } })
+  const target = [{ name: 'เพจคลิป', url: 'https://www.facebook.com/ReelsPage', group: 'competitor', every_days: 2, reels: true }]
+  const out = await h.run({ cfg: OWN_CFG, targets: target })
+  assert.equal(out.status, 'ok')
+  assert.equal(out.opened.facebook, 3, 'หน้าเพจ + แท็บ Reels + คลิปแรง 1 คลิป')
+  assert.ok(openCalls(h.oc).some((c) => c.args[2] === 'https://www.facebook.com/reel/907'))
+  const row = out.rows.find((r) => r.key === 'reel_907')
+  assert.ok(row, 'คลิปแรงเข้าคิวไอเดีย')
+  assert.equal(row.row.external_key, `sw:fb:${targetId(target[0])}:reel_907`)
+  assert.match(row.row.title, /มีโฉนดอยู่ในมือ/)
+  assert.doesNotMatch(row.row.summary, /081-234-5678|@landdeal|\*\*/, 'เบอร์/LINE/markdown ไม่หลุด')
+  assert.match(row.row.summary, /วิว/)
+  assert.equal(out.reels[0].queued, true)
+  assert.match(out.reels[0].caption, /มีโฉนดอยู่ในมือ/)
+  const store = JSON.parse(fs.readFileSync(pageStorePath(h.storeDir, targetId(target[0])), 'utf8'))
+  assert.equal(store.reels['907'].page_m.shares, 1200, 'ยอดหน้าคลิปเก็บแยก (อาจเป็นของคลิปถัดไป)')
+  assert.deepEqual(store.reels['907'].m, { views: 4800 }, 'ไอเดียใช้แค่ยอดวิวจากไทล์')
+  const { facebookSamples } = await import('./hook-lessons.js')
+  const samples = facebacebookSafe(facebookSamples, { posts: { a: { caption: 'x1', m: { reactions: 5 } }, b: { caption: 'x2', m: { reactions: 5 } }, c: { caption: 'x3', m: { reactions: 5 } }, d: { caption: 'x4', m: { reactions: 5 } } }, reels: store.reels })
+  assert.ok(samples.some((s) => s.source === 'reels' && /มีโฉนดอยู่ในมือ/.test(s.text) && s.x > 2), 'คลิปที่อ่านคำบรรยายแล้วเป็นตัวอย่างของบทเรียน hook')
+})
+function facebacebookSafe(fn, json) { return fn(json, 'เพจคลิป') }

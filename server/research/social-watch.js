@@ -610,6 +610,50 @@ export async function readFacebookReels({ target, cfg = {}, oc, sleep, random = 
   return [...got.values()]
 }
 
+// ── หน้าคลิปเดี่ยว (เจ้าของเลือก 9 พ.ย. 2569 "ทำให้เลย": เปิดคลิปแรงอ่านคำบรรยายแล้วส่งเข้าคิวไอเดีย ≤ 2 คลิป/รอบ) ──
+// สำรวจจริง 9 พ.ย.: หัว h2 = ชื่อเพจ · คำบรรยายใน span[dir=auto] ตัดด้วย "… See more" · ยอดอยู่ใน aria-label "Like, 498 reactions" / "Comment, 9 comments" / "Share, 13 shares"
+// หน้าคลิปโหลดคลิปถัดไปรอไว้ด้วย (มีชุดปุ่มสองชุด) → อ่านเฉพาะสิ่งที่อยู่ในจอ · กด "See more" = แค่ขยายข้อความ ไม่ใช่คำสั่งเขียน (ไม่ไลก์/คอมเมนต์/ติดตาม)
+export const REEL_MORE_JS = `(() => {
+  const vh = innerHeight
+  const onScreen = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < vh }
+  const b = [...document.querySelectorAll('[role=button]')].find((e) => /^(See more|ดูเพิ่มเติม)$/i.test((e.innerText || '').trim()) && onScreen(e))
+  if (b) b.click()
+  return { clicked: Boolean(b) }
+})()`
+export const REEL_JS = `(() => {
+  const vh = innerHeight
+  const onScreen = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.bottom > 0 && r.top < vh }
+  const texts = [...document.querySelectorAll('span[dir="auto"], div[dir="auto"]')].filter(onScreen).map((e) => (e.innerText || '').trim()).filter((t) => t.length >= 8)
+  const caption = texts.sort((a, b) => b.length - a.length)[0] || ''
+  const page = [...document.querySelectorAll('h2')].filter(onScreen).map((e) => (e.innerText || '').trim()).find(Boolean) || ''
+  const m = {}
+  for (const el of document.querySelectorAll('[aria-label]')) {
+    if (!onScreen(el)) continue
+    const l = el.getAttribute('aria-label') || ''
+    let x
+    if ((x = l.match(/^Like,\\s*([\\d.,]+\\s*[KM]?)\\s*reactions?/i))) m.reactions = x[1]
+    else if ((x = l.match(/^Comment,\\s*([\\d.,]+\\s*[KM]?)\\s*comments?/i))) m.comments = x[1]
+    else if ((x = l.match(/^Share,\\s*([\\d.,]+\\s*[KM]?)\\s*shares?/i))) m.shares = x[1]
+  }
+  const pass = document.querySelector('input[name=pass]')
+  const blocked = /\\/(login|checkpoint)\\b/.test(location.pathname) || (pass && !caption) ? (location.pathname.includes('checkpoint') ? 'checkpoint' : 'login') : null
+  return { vis: document.visibilityState, page, caption: caption.replace(/\\s*…?\\s*(See more|ดูเพิ่มเติม)$/i, '').slice(0, 3000), m, blocked }
+})()`
+
+export async function readFacebookReel({ id, cfg = {}, oc, sleep, random = Math.random }) {
+  const W = ['--session', cfg.session || SESSION, '--window', 'background', '--profile', cfg.bridge_profile || DEFAULTS.bridge_profile]
+  await oc(['browser', 'open', `https://www.facebook.com/reel/${id}`, ...W])
+  await sleep(6000 + random() * 2000)
+  const more = unwrap(await oc(['browser', 'eval', REEL_MORE_JS, ...W])) || {}
+  if (more.clicked) await sleep(1200 + random() * 800)
+  const res = unwrap(await oc(['browser', 'eval', REEL_JS, ...W])) || {}
+  if (res.blocked) throw new Blocked(`Facebook ขอ ${res.blocked} (บัญชีอาจหลุดล็อกอิน/ถูกขอยืนยันตัวตน)`)
+  if (res.vis === 'hidden' && !res.caption) throw new Hidden('หน้าต่าง browser ถูกซ่อน — หน้าคลิปไม่โหลด')
+  const m = {}
+  for (const k of ['reactions', 'comments', 'shares']) { const n = parseCount(res.m?.[k]); if (n !== null) m[k] = n }
+  return { caption: String(res.caption || '').replace(/\*\*/g, ''), page: String(res.page || ''), m }
+}
+
 // รวมคลิปเข้าคลังของเพจ (store.reels) — เก็บยอดวิวล่าสุด + ประวัติ ≤ 30 จุด (ดูว่าคลิปไหนยังโตอยู่)
 export function mergeReels(store, reels = [], today) {
   if (!store.reels || typeof store.reels !== 'object') store.reels = {}
@@ -897,6 +941,31 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
               page.reels = ids.length
               for (const h of hot) { out.reels.push({ name: t.name, tid, ...h }); if (!dryRun) store.reels[h.id].reported = today }
               say(`[social] ${t.name} · Reels: ${ids.length} คลิป · วิวค่ากลาง ${median(ids.map((id) => store.reels[id]?.views).filter((v) => v > 0)) ?? '-'} · แรงกว่าปกติ ${hot.length}`)
+              // เปิดคลิปแรงอ่านคำบรรยาย (≤ reels_open_hot ต่อรอบ · มีโควตาและงบเวลา) → คำบรรยายผ่าน topic gate = ไอเดีย (source social · คลิป)
+              for (const h of hot.slice(0, Number(cfg.reels_open_hot ?? 2))) {
+                if (quota().left <= 0 || now() - t0 > NO_NEW_PAGE_MS) break
+                lock.require()
+                await sleep(4000 + random() * 4000)
+                rec.usage({ facebook: 1 }, 'open', usageDay)
+                out.opened.facebook += 1
+                const one = await readFacebookReel({ id: h.id, cfg: rcfg, oc, sleep, random })
+                const caption = scrub(cleanCaption(one.caption))
+                const r = store.reels[h.id]
+                r.caption = caption
+                // ยอดบนหน้าคลิปอาจเป็นของคลิปถัดไปที่ Facebook โหลดรอ (ทดสอบจริง 9 พ.ย.: ได้ "แชร์ 1" แต่อีกชุดในหน้าเดียวกันเป็น 498 ถูกใจ) →
+                // ไอเดียใช้แค่ยอดวิวจากไทล์บนแท็บ Reels (เชื่อได้) · ยอดหน้าคลิปเก็บแยกไว้ดูเท่านั้น
+                r.m = { views: h.views }
+                r.page_m = one.m
+                const passes = caption.length >= 20 && scoreText(caption, scoring).gated
+                h.caption = caption.split('\n').map((s) => s.trim()).find(Boolean)?.slice(0, 90) || ''
+                const entry = out.reels.find((x) => x.tid === tid && x.id === h.id)
+                if (entry) { entry.caption = h.caption; entry.queued = passes }
+                if (passes) {
+                  const key = `reel_${h.id}`
+                  out.rows.push({ name: t.name, tid, file, key, ratio: h.ratio, row: ideaRow(t, { caption, m: r.m, format: 'video', link: h.link, first_seen: r.first_seen }, { key, ratio: h.ratio, by: 'views', base_v: h.median }, today, { audience }) })
+                }
+                say(`[social] ${t.name} · คลิปแรง ${h.views} วิว (${h.ratio} เท่า): ${h.caption || '(ไม่มีคำบรรยาย)'}${passes ? ' → เข้าคิวไอเดีย' : ' · ไม่เข้าคิว (คำบรรยายสั้น/ไม่ใช่เรื่องอสังหาฯ)'}`)
+              }
             } catch (e) {
               if (e.name === 'LostLock') throw e
               if (e.name === 'Blocked') {

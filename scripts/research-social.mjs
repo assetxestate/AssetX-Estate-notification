@@ -86,7 +86,7 @@ function buildTelegramText(result, queued, cfg) {
   }
   for (const r of result.rows.slice().sort((a, b) => b.ratio - a.ratio).slice(0, 5)) lines.push(`  ▲ ${r.ratio.toFixed(1)} เท่า · ${r.name} · ${headline(r.row)}`)
   // คลิป Reels ที่วิวแรงกว่าปกติของเพจ (แท็บ Reels ไม่มีคำบรรยาย — ส่งลิงก์ให้เจ้าของเปิดดูเอง)
-  for (const r of (result.reels || []).slice(0, 5)) lines.push(`  🎬 คลิปแรง ${r.views.toLocaleString('en-US')} วิว (${r.ratio} เท่าของค่ากลาง ${Math.round(r.median).toLocaleString('en-US')}) · ${r.name} · ${r.link}`)
+  for (const r of (result.reels || []).slice(0, 5)) lines.push(`  🎬 คลิปแรง ${r.views.toLocaleString('en-US')} วิว (${r.ratio} เท่าของค่ากลาง ${Math.round(r.median).toLocaleString('en-US')}) · ${r.name}${r.caption ? ` · "${r.caption}"` : ''}${r.queued ? ' · เข้าคิวไอเดียแล้ว' : ''} · ${r.link}`)
   for (const w of result.warnings.slice(0, 5)) if (!lines.includes(w)) lines.push(w)
   if (result.status === 'ok' && result.rows.length) lines.push('เลือกไอเดียที่หน้า /marketing → แท็บ ไอเดีย')
   return lines.join('\n')
