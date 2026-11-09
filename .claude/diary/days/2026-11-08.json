@@ -72,9 +72,10 @@
   "pending": [
     {
       "id": "poster-footer-check",
-      "done": false,
+      "done": true,
       "text": "ดูโปสเตอร์ที่มีแถบท้ายแบรนด์ 2 ภาพของโพสต์ #20 ในโฟลเดอร์ generated-images (post20-free-job15-luxury-cover-footer · post20-free-job16-desk-still-life-footer) · บอกว่าขนาดโลโก้ ขนาดตัวอักษรเบอร์/LINE และความเข้มของแถบล่างพอดีไหม (ปรับได้ทันที ไม่ต้องเจนใหม่)",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-09T02:53:40.181Z"
     },
     {
       "id": "poster-luxury-check",
