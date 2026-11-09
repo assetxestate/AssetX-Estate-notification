@@ -108,3 +108,28 @@ test('แถบท้ายแบรนด์ (เจ้าของ 8 พ.ย.)
   assert.ok(footerShare(cropPlan('story-9x16')).band < 14, 'สตอรี่สูง แถบกินพื้นที่น้อยกว่า')
   assert.deepEqual(footerContactLines(), ['โทร 096-986-8888', 'LINE: assetxestate'])
 })
+
+// ── บล็อกเบอร์/LINE สำเร็จรูป (9 พ.ย. 2569 เจ้าของขอให้พรีเมียม เป็นทางการ ใช้สัญลักษณ์ LINE ของจริง) ──
+test('แถบท้าย: บล็อกติดต่อสำเร็จรูปมีครบ 2 แบบ · ข้อความมาจาก POSTER_CONTACT · ไอคอน LINE เป็นไฟล์ทางการไม่ถูกแก้ · สคริปต์แถบท้ายรับภาพบล็อก', async () => {
+  const { readFileSync, existsSync } = await import('node:fs')
+  const { createHash } = await import('node:crypto')
+  const { contactBlockHtml, CONTACT_BLOCK_FILES } = await import('../../scripts/make-contact-block.mjs')
+  const { POSTER_CONTACT } = await import('./posterDesignSystem.js')
+  const pngSize = (file) => { const b = readFileSync(file); assert.equal(b.toString('hex', 0, 8), '89504e470d0a1a0a', `${file} ไม่ใช่ PNG`); return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) } }
+  for (const file of Object.values(CONTACT_BLOCK_FILES)) assert.ok(existsSync(file), `ไม่พบ ${file} — รัน node scripts/make-contact-block.mjs`)
+  const stacked = pngSize(CONTACT_BLOCK_FILES.stacked)
+  const inline = pngSize(CONTACT_BLOCK_FILES.inline)
+  assert.ok(stacked.w / stacked.h > 1.8 && stacked.w / stacked.h < 3.2, `สองแถว ${stacked.w}x${stacked.h}`)
+  assert.ok(inline.w / inline.h > 7, `แถวเดียว ${inline.w}x${inline.h}`)
+  assert.ok(stacked.h >= 500, 'ทำภาพ ×3 ไว้ย่อ — ต้องสูงพอให้ตัวอักษรคม')
+  const html = contactBlockHtml()
+  assert.ok(html.includes(POSTER_CONTACT.phone) && html.includes(`>${POSTER_CONTACT.line}<`), 'เบอร์/LINE มาจาก POSTER_CONTACT เท่านั้น')
+  assert.doesNotMatch(html, /โทร\s|LINE:/, 'ไม่มีคำนำหน้า เพราะไอคอนบอกแล้ว')
+  // Brand icon ทางการจาก line.me/en/logo (LINE_Brand_icon.zip, 9 พ.ย. 2569) — กติกา LINE ห้ามแก้ไฟล์ · LINE เปลี่ยนไอคอน = ดาวน์โหลดใหม่แล้วแก้ค่านี้
+  const sha = createHash('sha256').update(readFileSync(new URL('../../scripts/assets/icons/line-brand-icon.png', import.meta.url))).digest('hex')
+  assert.equal(sha, '5e93437eb5ec0dcdece92d1562fcd435d1d521cca5c013d2d9e15b544a1d8a39')
+  const ps = readFileSync(new URL('../../scripts/poster-footer.ps1', import.meta.url), 'utf8')
+  assert.match(ps, /\[string\]\$Contact = ''/)
+  assert.match(ps, /\[string\]\$ContactInline = ''/)
+  assert.equal(ps.charCodeAt(0), 0xFEFF, 'ไฟล์ .ps1 ต้องมี BOM ไม่งั้น PowerShell 5.1 อ่านภาษาไทยในสคริปต์เพี้ยน')
+})

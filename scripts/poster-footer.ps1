@@ -4,14 +4,19 @@
 # Codex ไม่วาดโลโก้/เบอร์/LINE เอง (คำสั่งบอกให้เว้นแถบล่างเป็นพื้นหลังเฉย ๆ) — สคริปต์นี้วางของจริงให้เหมือนกันทุกภาพ:
 #   ม่านไล่สีน้ำเงินเข้มจากใสด้านบนลงไปทึบด้านล่าง · โลโก้แนวนอน (public/logo-lockup-white.png) ชิดซ้าย · ไอคอน + เบอร์ / LINE สองบรรทัดชิดขวา
 # ความสูงแถบ F = min(16.5% ของกว้าง, 14% ของสูง) — ตรงกับ footerShare() ใน src/lib/posterFree.js ที่บอก Codex ให้เว้นที่
-# ใช้: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/poster-footer.ps1 -Src in.jpg -Dst out.jpg -Logo logo.png -FontFile Kanit-Medium.ttf -Phone "โทร 096-986-8888" -Line "LINE: assetxestate"
+# เจ้าของ 9 พ.ย. 2569: "เบอร์โทรศัพท์และไลน์ อยากให้ดูพรีเมียมและเป็นทางการกว่านี้… ไลน์ก็ใช้เป็นสัญลักษณ์ของจริง"
+#   → บล็อกติดต่อเป็นภาพสำเร็จ (public/contact-block-stacked.png / -inline.png จาก scripts/make-contact-block.mjs: ไอคอน LINE ทางการ + ไอคอนโทรศัพท์ทึบ + Kanit SemiBold)
+#   ส่ง -Contact (สองแถว) และ -ContactInline (แถวเดียว ใช้กับภาพแนวนอน) · ไม่ส่ง = วาดตัวอักษรเองแบบเดิม (-FontFile -Phone -Line)
+# ใช้: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/poster-footer.ps1 -Src in.jpg -Dst out.jpg -Logo logo.png -Contact public/contact-block-stacked.png -ContactInline public/contact-block-inline.png
 param(
   [Parameter(Mandatory)][string]$Src,
   [Parameter(Mandatory)][string]$Dst,
   [Parameter(Mandatory)][string]$Logo,
-  [Parameter(Mandatory)][string]$FontFile,
-  [Parameter(Mandatory)][string]$Phone,
-  [Parameter(Mandatory)][string]$Line
+  [string]$Contact = '',
+  [string]$ContactInline = '',
+  [string]$FontFile = '',
+  [string]$Phone = '',
+  [string]$Line = ''
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -19,7 +24,13 @@ Add-Type -AssemblyName System.Drawing
 $img = [System.Drawing.Image]::FromFile($Src)
 $logoImg = [System.Drawing.Image]::FromFile($Logo)
 $fonts = New-Object System.Drawing.Text.PrivateFontCollection
-$fonts.AddFontFile($FontFile)
+$contactImg = $null
+# ภาพแนวนอน (กว้าง/สูง > 1.3) แถบท้ายเตี้ย → แบบแถวเดียว ไอคอนจะได้สูงพอ (LINE กำหนดขั้นต่ำ 40 px บนมือถือ)
+$wide = ($img.Width / $img.Height) -gt 1.3
+$contactFile = if ($wide -and $ContactInline -and (Test-Path $ContactInline)) { $ContactInline } elseif ($Contact -and (Test-Path $Contact)) { $Contact } else { '' }
+if ($contactFile) { $contactImg = [System.Drawing.Image]::FromFile($contactFile) }
+elseif (-not ($FontFile -and $Phone -and $Line)) { throw 'ต้องส่ง -Contact (ภาพบล็อกติดต่อ) หรือ -FontFile -Phone -Line อย่างใดอย่างหนึ่ง' }
+if (-not $contactImg) { $fonts.AddFontFile($FontFile) }
 try {
   $W = $img.Width; $H = $img.Height
   $F = [int][math]::Round([math]::Min($W * 0.165, $H * 0.14))
@@ -43,9 +54,10 @@ try {
   $blend.Colors = @(
     [System.Drawing.Color]::FromArgb(0, 8, 33, 63),
     [System.Drawing.Color]::FromArgb(150, 8, 33, 63),
-    [System.Drawing.Color]::FromArgb(225, 8, 33, 63),
-    [System.Drawing.Color]::FromArgb(238, 8, 33, 63)
+    [System.Drawing.Color]::FromArgb(228, 8, 33, 63),
+    [System.Drawing.Color]::FromArgb(250, 8, 33, 63)
   )
+  # ล่างสุดเกือบทึบ (250/255) — ไอคอน LINE ต้องอยู่บนพื้นเรียบ ไม่ใช่บนภาพ (กติกา "Use on a background" ของ LINE)
   $blend.Positions = [single[]]@(0.0, 0.32, 0.5, 1.0)
   $brush.InterpolationColors = $blend
   $g.FillRectangle($brush, (New-Object System.Drawing.Rectangle 0, $scrimTop, $W, ($H - $scrimTop)))
@@ -59,7 +71,28 @@ try {
   $g.DrawLine($pen, $pad, $bandTop, $W - $pad, $bandTop)
   $pen.Dispose()
 
-  # ข้อความติดต่อ: Kanit ขนาด 16.5% ของ F · ไอคอน Segoe MDL2 (โทรศัพท์ E717 · ข้อความ E8BD) สีไซยาน
+  if ($contactImg) {
+    # บล็อกติดต่อสำเร็จรูป: สองแถวสูง 70% ของ F · แถวเดียว (ภาพแนวนอน) สูง 56% ของ F — ไอคอนในบล็อกกินราว 85% ของความสูงแถว
+    $blockH = [int][math]::Round($F * $(if ($contactFile -eq $ContactInline) { 0.56 } else { 0.70 }))
+    $blockW = [int][math]::Round($contactImg.Width * $blockH / $contactImg.Height)
+    $maxBlockW = [int](($W - 2 * $pad) * 0.55)
+    if ($blockW -gt $maxBlockW) { $blockW = $maxBlockW; $blockH = [int][math]::Round($contactImg.Height * $blockW / $contactImg.Width) }
+    # โลโก้ 48% ของ F (เจ้าของบอกขนาดโอเค 9 พ.ย. 2569) · แบบแถวเดียวแถบเตี้ย ตัวหนังสือโลโก้จะเล็กกว่าเบอร์มาก → 62%
+    $logoH = [int][math]::Round($F * $(if ($contactFile -eq $ContactInline) { 0.62 } else { 0.48 }))
+    $logoW = [int][math]::Round($logoImg.Width * $logoH / $logoImg.Height)
+    $maxLogoW = $W - 2 * $pad - $blockW - [int]($W * 0.06)
+    if ($logoW -gt $maxLogoW) { $logoW = [math]::Max(40, $maxLogoW); $logoH = [int][math]::Round($logoImg.Height * $logoW / $logoImg.Width) }
+    $logoY = $bandTop + [int](($F - $logoH) / 2)
+    $g.DrawImage($logoImg, (New-Object System.Drawing.Rectangle $pad, $logoY, $logoW, $logoH))
+    # ย่อภาพบล็อก (×3) ลงทีเดียวด้วย HighQualityBicubic + ขอบแบบ TileFlipXY กันขอบโปร่งใสมีเส้นจาง
+    $attr = New-Object System.Drawing.Imaging.ImageAttributes
+    $attr.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+    $blockX = $W - $pad - $blockW
+    $blockY = $bandTop + [int](($F - $blockH) / 2)
+    $g.DrawImage($contactImg, (New-Object System.Drawing.Rectangle $blockX, $blockY, $blockW, $blockH), 0, 0, $contactImg.Width, $contactImg.Height, [System.Drawing.GraphicsUnit]::Pixel, $attr)
+    $attr.Dispose()
+  } else {
+  # ข้อความติดต่อ (ทางสำรองเมื่อไม่มีภาพบล็อก): Kanit ขนาด 16.5% ของ F · ไอคอน Segoe MDL2 (โทรศัพท์ E717 · ข้อความ E8BD) สีไซยาน
   $size = [single]([math]::Round($F * 0.165))
   $font = New-Object System.Drawing.Font $fonts.Families[0], $size, ([System.Drawing.FontStyle]::Regular), ([System.Drawing.GraphicsUnit]::Pixel)
   $iconFont = New-Object System.Drawing.Font 'Segoe MDL2 Assets', ([single]($size * 0.92)), ([System.Drawing.FontStyle]::Regular), ([System.Drawing.GraphicsUnit]::Pixel)
@@ -95,7 +128,9 @@ try {
     $g.DrawString($rows[$i][0], $iconFont, $cyan, (New-Object System.Drawing.RectangleF $blockX, $y, $iconCol, $lineH), $mid)
     $g.DrawString($rows[$i][1], $font, $white, (New-Object System.Drawing.RectangleF ($blockX + $iconCol), $y, ($textW + 4), $lineH), $mid)
   }
-  $white.Dispose(); $cyan.Dispose(); $font.Dispose(); $iconFont.Dispose(); $g.Dispose()
+  $white.Dispose(); $cyan.Dispose(); $font.Dispose(); $iconFont.Dispose()
+  }
+  $g.Dispose()
 
   $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
   $params = New-Object System.Drawing.Imaging.EncoderParameters 1
@@ -103,9 +138,11 @@ try {
   $img.Dispose(); $img = $null
   $bmp.Save($Dst, $codec, $params)
   $bmp.Dispose()
-  Write-Output "footer F=$F logo=${logoW}x${logoH} contact=${blockW}x${blockH} size=${W}x${H}"
+  $mode = if ($contactImg) { if ($contactFile -eq $ContactInline) { 'inline' } else { 'stacked' } } else { 'text' }
+  Write-Output "footer F=$F logo=${logoW}x${logoH} contact=${blockW}x${blockH} mode=$mode size=${W}x${H}"
 } finally {
   if ($img) { $img.Dispose() }
+  if ($contactImg) { $contactImg.Dispose() }
   $logoImg.Dispose()
   $fonts.Dispose()
 }

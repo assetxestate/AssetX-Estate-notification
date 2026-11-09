@@ -54,6 +54,10 @@ const LOGO_FULL = path.join(repo, 'public', 'logo-full.jpg')
 const FOOTER_SCRIPT = path.join(repo, 'scripts', 'poster-footer.ps1')
 const FOOTER_LOGO = path.join(repo, 'public', 'logo-lockup-white.png')
 const FOOTER_FONT = path.join(repo, 'scripts', 'assets', 'fonts', 'Kanit-Medium.ttf')
+// บล็อกเบอร์/LINE สำเร็จรูป (9 พ.ย. 2569 เจ้าของขอให้พรีเมียม เป็นทางการ และใช้สัญลักษณ์ LINE ของจริง) — scripts/make-contact-block.mjs
+// stacked = สองแถว (แนวตั้ง/จัตุรัส) · inline = แถวเดียว (แนวนอน) · ฟอนต์+ข้อความด้านบนเป็นทางสำรองของสคริปต์ ไม่ได้ใช้เมื่อมีภาพ
+const FOOTER_CONTACT = path.join(repo, 'public', 'contact-block-stacked.png')
+const FOOTER_CONTACT_INLINE = path.join(repo, 'public', 'contact-block-inline.png')
 const REFS_ROOT = path.join(LOCAL_DIR, 'poster-refs')
 const PRESENTER = path.join(REFS_ROOT, 'presenter', 'presenter-cut.jpg')
 const MAX_IMAGES = 5
@@ -250,7 +254,8 @@ function addBrandFooter(src, dst) {
     let out = ''
     let err = ''
     const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', FOOTER_SCRIPT,
-      '-Src', src, '-Dst', dst, '-Logo', FOOTER_LOGO, '-FontFile', FOOTER_FONT, '-Phone', phone, '-Line', line], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      '-Src', src, '-Dst', dst, '-Logo', FOOTER_LOGO, '-Contact', FOOTER_CONTACT, '-ContactInline', FOOTER_CONTACT_INLINE,
+      '-FontFile', FOOTER_FONT, '-Phone', phone, '-Line', line], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     child.stdout.on('data', (d) => { out += String(d) })
     child.stderr.on('data', (d) => { err += String(d) })
     child.on('error', reject)
@@ -328,7 +333,7 @@ async function processJob(db, plugin, job) {
       const free = parseFreeModeLine(job.prompt) || { direction: 'none', presenter: 'optional', footer: 'none' }
       brandFooter = free.footer === 'brand'
       if (brandFooter) {
-        const missing = [FOOTER_SCRIPT, FOOTER_LOGO, FOOTER_FONT].filter((f) => !existsSync(f))
+        const missing = [FOOTER_SCRIPT, FOOTER_LOGO, FOOTER_FONT, FOOTER_CONTACT, FOOTER_CONTACT_INLINE].filter((f) => !existsSync(f))
         if (missing.length) throw new Error(`ไม่พบไฟล์แถบท้ายแบรนด์: ${missing.map((f) => path.relative(repo, f)).join(', ')}`)
       }
       const logo = existsSync(LOGO_FULL) ? LOGO_FULL : LOGO
