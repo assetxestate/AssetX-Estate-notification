@@ -7,6 +7,7 @@ import { checkText, formatWarnings } from './marketing-model/rules.js'
 import { scoreCaption } from './marketing-model/scoring.js'
 import { checkTopicContent, resolveTopic } from './marketing-model/topics.js'
 import { swapOpeningLine, videoScriptFromDraft } from './hookOptions.js'
+import { decorateCaption } from './captionEmoji.js'
 
 export const assetxContentTypes = [
   { value: 'educate', label: 'ให้ความรู้' },
@@ -126,7 +127,8 @@ export function appendMarketingHashtags(caption = '', hashtags = []) {
 export function applyAiDraft(generated, draft, { channel = 'facebook' } = {}) {
   if (!generated || !draft?.caption) return generated
   const hashtags = Array.isArray(draft.hashtags) && draft.hashtags.length ? draft.hashtags : (generated.hashtags || [])
-  const caption = appendMarketingHashtags(draft.caption, hashtags)
+  // อีโมจิให้อ่านง่าย (เจ้าของขอ 10 พ.ย. 2569) — ระบบใส่ตามโครงโพสต์ (captionEmoji.js) ก่อนต่อแฮชแท็ก · ร่างที่มีอีโมจิอยู่แล้วคงเดิม
+  const caption = appendMarketingHashtags(decorateCaption(draft.caption, { cta: draft.cta || generated.cta }), hashtags)
   // ร่างที่มีระบบ hook (9 พ.ย. 2569): สคริปต์วิดีโอเปิดด้วย hook เดียวกับแคปชั่น แทนแม่แบบหัวข้อที่ไม่ตรงกับร่าง AI
   const hooks = Array.isArray(draft.hooks) ? draft.hooks : []
   return {

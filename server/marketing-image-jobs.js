@@ -18,6 +18,7 @@ import { buildCompactPosterPrompt } from '../src/lib/posterV4.js'
 import { posterSeed } from '../src/lib/posterVariants.js'
 import { buildFreePosterPrompt } from '../src/lib/posterFree.js'
 import { buildPremiumJobPrompt } from '../src/lib/posterPremium.js'
+import { stripEmoji } from '../src/lib/captionEmoji.js'
 
 export const IMAGE_BUCKET = 'marketing-images'
 export const WORKER_ID = 'office-pc'
@@ -65,8 +66,9 @@ export function canvasMap(plan) {
 export const POSTER_MODES = ['ref', 'free', 'premium']
 export const DEFAULT_POSTER_MODE = 'free'
 export function buildPosterJobPrompt({ title = '', caption = '', size = DEFAULT_POSTER_SIZE, seed = null, mode = 'ref' } = {}) {
-  const headline = oneLine(title).slice(0, 120) || 'รับจำนอง · ขายฝาก'
-  const body = multiLine(caption).slice(0, CAPTION_LIMIT)
+  // อีโมจิในแคปชั่น (src/lib/captionEmoji.js · 10 พ.ย. 2569) ไม่ขึ้นโปสเตอร์: ทุกโหมดห้ามไอคอนแบบอีโมจิ และข้อความบนภาพต้องตรงกับโพสต์ส่วนที่เป็นตัวหนังสือ
+  const headline = oneLine(stripEmoji(title)).slice(0, 120) || 'รับจำนอง · ขายฝาก'
+  const body = multiLine(stripEmoji(caption)).slice(0, CAPTION_LIMIT)
   if (mode === 'free') return buildFreePosterPrompt({ title: headline, caption: body, size, seed })
   if (mode === 'premium') return buildPremiumJobPrompt({ title: headline, caption: body, size, seed })
   // v4 "ตามเรฟ" (7 พ.ย. 2569 ค่ำ): โพสต์ที่มีเนื้อหาใช้คำสั่งแบบบีบสั้นตามสคีมาของสกิล Codex + ภาพแนบที่ตัวรับงานเติม (ดู src/lib/posterV4.js)

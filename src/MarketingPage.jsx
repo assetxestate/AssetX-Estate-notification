@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { aiDraftReviewNotes, appendMarketingHashtags, applyAiDraft, applyHookChoice, assetxChannels, canPublishAssetxPost, isAiDraft, reviewAssetxContent, runAssetxMarketingModel } from './lib/assetxMarketingModel.js'
 import { hookOptionsFor, isCurrentHook, swapOpeningLine, videoScriptFromDraft } from './lib/hookOptions.js'
+import { DECORATED_MIN, countEmoji, decorateCaption, stripEmoji } from './lib/captionEmoji.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
@@ -972,7 +973,7 @@ function buildPosterCopy(brief = {}, copyInput = {}) {
 // v2 (7 พ.ย. 2569): ใช้ระบบออกแบบโปสเตอร์ร่วมกับคิวสร้างภาพบนคอมสำนักงาน — การ์ดเนื้อหาตามโครงโพสต์แทนป้าย 3 ป้าย (ถอดจากตัวอย่างโปสเตอร์ของเจ้าของ · คงโทนน้ำเงิน-ไซยาน)
 function buildSocialPosterPrompt(brief = {}, posterCopy = defaultPosterCopy) {
   const baseVisual = String(brief.imagePrompt || brief.title || '').trim()
-  const body = String(brief.caption || brief.body || '').replace(/\s+\n/g, '\n').trim().slice(0, 1500)
+  const body = stripEmoji(String(brief.caption || brief.body || '')).replace(/\s+\n/g, '\n').trim().slice(0, 1500)
   const layout = body ? pickPosterLayout(body) : 'explain'
   const keyword = pickHeadlineKeyword(String(brief.title || posterCopy?.headline || ''))
   return [
@@ -3084,6 +3085,23 @@ function ApprovalsView({
                     onKeyDown={loading ? () => onWaitNotice?.() : undefined}
                     onChange={(event) => onUpdate(post.id, { caption: event.target.value })}
                   />
+                  {/* อีโมจิให้อ่านง่าย (เจ้าของขอ 10 พ.ย. 2569) — ร่างใหม่จาก AI ได้อีโมจิเอง ปุ่มนี้ใส่ให้ร่างเดิม หรือเอาออกถ้าไม่ชอบ · ระบบวางตามโครงโพสต์ (lib/captionEmoji.js) */}
+                  {(() => {
+                    if (loading || post.status === 'posted' || post.facebookPostId) return null
+                    const withEmoji = countEmoji(post.caption) >= DECORATED_MIN
+                    const next = withEmoji ? stripEmoji(post.caption) : decorateCaption(post.caption)
+                    if (!String(post.caption || '').trim() || next === post.caption) return null
+                    return (
+                      <div className="mx-caption-tools" onClick={(event) => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="mx-mini-button"
+                          title={withEmoji ? 'เอาอีโมจิออกจากแคปชั่นทั้งหมด (ตัวหนังสือคงเดิม)' : 'ใส่อีโมจิหน้าข้อ 1 2 3 · ถาม/ตอบ · ย่อหน้าเนื้อหา · บรรทัดชวนทักแชต (บรรทัดแรกคงเดิม)'}
+                          onClick={() => onUpdate(post.id, { caption: next }, withEmoji ? 'เอาอีโมจิออกแล้ว · อนุมัติใหม่อีกครั้ง' : 'ใส่อีโมจิแล้ว · อ่านทั้งโพสต์อีกรอบก่อนอนุมัติ')}
+                        >{withEmoji ? 'เอาอีโมจิออก' : '😊 ใส่อีโมจิ'}</button>
+                      </div>
+                    )
+                  })()}
                   <HookPicker
                     hooks={post.hooks}
                     caption={post.caption}
@@ -4229,6 +4247,7 @@ const styles = `
   .mx-mini-button { border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: #bfeef5; border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
   .mx-mini-button:hover { border-color: var(--mx-line-2); background: rgba(66,199,216,.1); color: #fff; }
   .mx-mini-button.danger { border-color: rgba(251,113,133,.45); color: var(--mx-err-soft); background: rgba(251,113,133,.08); }
+  .mx-caption-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 2px; }
   .mx-more { position: relative; }
   .mx-more > summary { list-style: none; cursor: pointer; border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: var(--mx-ink-2); border-radius: 11px; padding: 10px 15px; font-weight: 600; font-size: 15px; }
   .mx-more > summary::-webkit-details-marker { display: none; }

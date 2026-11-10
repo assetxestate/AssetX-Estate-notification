@@ -4,6 +4,7 @@
 // ตัวนี้เป็น "ฐานแบบกำหนดกฎ" ที่มีเสมอ (ไม่ต้องมี AI) · ตัวรับงานบนคอมสำนักงานให้ AI ในเครื่องเขียนเวอร์ชันละเอียดกว่าแล้วตรวจคำต่อคำก่อนใช้ (server/poster-brief-ai.js)
 // ใช้ได้ทั้งเซิร์ฟเวอร์ (server/marketing-image-jobs.js) และหน้าเว็บ (MarketingPage) — ห้าม import ของฝั่งเดียว
 import { pickHeadlineKeyword } from './posterDesignSystem.js'
+import { stripEmoji } from './captionEmoji.js'
 
 const thaiWords = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('th', { granularity: 'word' }) : null
 export function wordCount(text) {
@@ -22,8 +23,9 @@ const HASHTAG_RE = /(^|\s)#[\p{L}\p{M}\p{N}_]+/gu
 const CLAUSE_BREAK_RE = /\s+(?=(?:เพราะ|โดย|ซึ่ง|หาก|ถ้า|เพื่อ|แล้ว|จึง|ไม่ควร|อย่า)(?:[ก-๙]|\s|$))/
 const TRAILING_LINK_RE = /\s*(และ|หรือ|แต่|กับ|ที่|ของ|ให้|เพื่อ|โดย|ซึ่ง|จาก|ใน)$/
 
+// อีโมจิในแคปชั่น (captionEmoji.js) ไม่ขึ้นโปสเตอร์ · 1️⃣ ต้นบรรทัดกลับเป็น "1." ให้ตัวอ่านโครงโพสต์ยังเห็นรายการเลข
 export function cleanCaption(caption = '') {
-  return String(caption || '').replace(/\r\n?/g, '\n').replace(HASHTAG_RE, '$1').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+  return stripEmoji(String(caption || '').replace(/\r\n?/g, '\n')).replace(HASHTAG_RE, '$1').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 // ตัดวลีให้อยู่ในช่วงจำนวนคำ: ตัดที่ช่องว่างถ้ามี (ภาษาไทยเว้นวรรคระหว่างวลี) ไม่งั้นตัดที่ขอบคำจากตัวแบ่งคำ · ถอยไปจุดคำเชื่อมถ้ายังยาวพอ
@@ -233,7 +235,7 @@ export function extractPosterCopy({ title = '', caption = '' } = {}) {
 // ตรวจว่าสตริงที่จะขึ้นบนภาพมาจากโพสต์คำต่อคำ (ยุบช่องว่างและเครื่องหมายคำพูด/วรรคตอนก่อนเทียบ — โพสต์เขียน คือ "ค่าใช้จ่ายรวม" แต่บนภาพไม่ต้องมีเครื่องหมาย) — ใช้กับบรีฟที่ AI เขียนก่อนเชื่อ
 export function verbatimMisses(copy = {}, { title = '', caption = '' } = {}) {
   const squash = (s) => String(s || '').replace(/[\s"“”'‘’,.!?:：()]+/g, '')
-  const hay = squash(`${title}\n${caption}`)
+  const hay = squash(stripEmoji(`${title}\n${caption}`))
   const strings = [copy.ribbon, copy.cardTitle, copy.actionTitle, copy.callout, ...(copy.rows || []).flatMap((r) => [r.title, r.detail]), ...(copy.actionItems || []), ...(copy.bandChips || [])]
   return strings.filter((s) => s && !hay.includes(squash(s)))
 }

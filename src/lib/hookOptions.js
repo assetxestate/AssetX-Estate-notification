@@ -1,6 +1,7 @@
 // ประโยคเปิดทางเลือก (hook) ของร่าง AI — ใช้ทั้งหน้าเว็บ (/marketing) และตัวร่างฝั่ง server (server/research/hooks.js re-export)
 // ร่างจากรอบรีเสิร์ชเก็บ hook 2–4 แบบพร้อมคะแนน (angles[i].draft.hooks) · คนตรวจกด "ใช้ประโยคนี้" = แทนบรรทัดแรกของแคปชั่น + พาดหัว
 // ไฟล์นี้ต้องไม่ import ของ node (หน้าเว็บ import ตรง)
+import { stripEmoji } from './captionEmoji.js'
 
 // ใส่ประโยคเปิดใหม่แทนบรรทัดแรกที่มีข้อความของแคปชั่น (บรรทัดว่างนำหน้าคงไว้)
 export function swapOpeningLine(caption = '', line = '') {
@@ -33,8 +34,9 @@ export function hookOptionsFor(hooks = []) {
 
 // สคริปต์วิดีโอของร่าง AI: 0–3 วิ = hook ที่ใช้ (แพลตฟอร์มแนะนำให้บอกว่าคลิปให้อะไรภายใน 3 วิ และให้ hook ลงภายใน 6 วิ) แล้วตามด้วยเนื้อจากแคปชั่น
 // เดิมสคริปต์มาจากแม่แบบหัวข้อ เปิดด้วย "เรื่องนี้หลายคนยังเข้าใจไม่ตรงกัน" ทุกโพสต์ ไม่ตรงกับแคปชั่น AI
+// แคปชั่นที่มีอีโมจิ (captionEmoji.js) → ถอดก่อน: สคริปต์ถูกอ่านออกเสียง และ 1️⃣ ต้องกลับเป็น "1." ให้จับรายการได้
 export function videoScriptFromDraft({ caption = '', cta = '' } = {}) {
-  const lines = String(caption || '').split('\n').map((l) => l.trim()).filter(Boolean)
+  const lines = stripEmoji(String(caption || '')).split('\n').map((l) => l.trim()).filter(Boolean)
   if (!lines.length) return ''
   const hook = lines[0]
   const rest = lines.slice(1).filter((l) => !/^ที่มา\s*[:：]|^ข้อมูลนี้เป็นความรู้ทั่วไป|^เคสสมมุติเพื่ออธิบาย|^\(เคสสมมุติ\)$/.test(l) && l !== cta)
