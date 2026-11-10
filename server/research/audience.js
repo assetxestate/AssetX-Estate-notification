@@ -39,6 +39,12 @@ export function businessLine(brand = {}) {
   return page.length === 1 && page[0] === 'A' ? 'ธุรกิจขายฝาก/จำนองในไทย' : 'ธุรกิจขายฝาก/จำนอง/นายหน้าอสังหาริมทรัพย์ในไทย'
 }
 
+// พื้นที่ให้บริการในคำของโพสต์ (เจ้าของ 10 พ.ย. 2569: เริ่มที่กรุงเทพฯ และปริมณฑลก่อน วางแผนขยายทั่วประเทศ)
+// service_area = รายชื่อจังหวัด (เป็นคำให้คะแนนกลุ่ม area ของเรดาร์ด้วย) · service_area_label = ชื่อที่อ่านเป็นธรรมชาติในโพสต์
+export function serviceAreaLabel(brand = {}) {
+  return String(brand.service_area_label || '').trim() || (brand.service_area || []).join(', ') || 'ไม่ระบุ'
+}
+
 // มุมมองของคนอ่าน — A ละเอียดเพราะเพจพูดกับ A อย่างเดียว · กลุ่มอื่นใช้กติกากลาง
 export const READER_RULES = {
   A: [

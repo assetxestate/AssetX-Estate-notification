@@ -54,7 +54,7 @@ test('buildDraftPrompt: ข้อเท็จจริง+ที่มาเม�
   assert.match(prompt, /รูปแบบโพสต์: อัปเดตพร้อมที่มา/)
   assert.match(prompt, /ห้ามเปิดด้วยประโยคแนวนี้[\s\S]*1\. เงินสดก้อนโต/)
   assert.ok(prompt.trimEnd().endsWith('สำคัญที่สุด: ห้ามใส่ตัวเลข'))
-  assert.match(system, /ชลบุรี/)
+  assert.match(system, /กรุงเทพฯ และปริมณฑล/)
   assert.match(system, /อนุมัติทุกเคส/)
   assert.match(system, /ข้อห้ามเด็ดขาด/)
   assert.match(system, /จดทะเบียนที่สำนักงานที่ดิน/)

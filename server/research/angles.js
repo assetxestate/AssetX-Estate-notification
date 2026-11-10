@@ -2,7 +2,7 @@
 // กติกาผูกกับ subtype (ไม่ใช่ source) · นโยบายเครดิตของอสังหาฯ: news/official/auction ต้องอ้างแหล่ง · community/youtube/social ห้ามอ้าง
 // ทุกข้อความผ่านตัวลบข้อมูลบุคคลก่อนเข้า prompt (ซ้ำอีกชั้นแม้ตัวเก็บลบมาแล้ว)
 import { scrub } from './pii.js'
-import { targetAudience, pageServices, businessLine, readerRuleLines } from './audience.js'
+import { targetAudience, pageServices, businessLine, readerRuleLines, serviceAreaLabel } from './audience.js'
 
 export const SUBTYPE_NOTES = {
   rate: 'อ้างหน่วยงานทางการ + วันที่มีผล · อธิบายผลต่อคนอ่านของโพสต์นี้แบบทั่วไป · ห้ามทำนายดอกเบี้ยหรือราคา · ห้ามบอกว่า "วงเงิน = X% ของราคาประเมิน" ตายตัว',
@@ -84,7 +84,7 @@ export function buildAnglesPrompt({ idea, brand = {} }) {
     '',
     'ความจริงของแบรนด์ (ใช้ได้เฉพาะเรื่องเหล่านี้ ห้ามแต่งเพิ่ม):',
     `- บริการ: ${pageServices(brand).join(', ') || 'ขายฝาก, จำนอง'}`,
-    `- พื้นที่ให้บริการ: ${(brand.service_area || []).join(', ') || 'ไม่ระบุ'}`,
+    `- พื้นที่ให้บริการ: ${serviceAreaLabel(brand)}`,
     `- ประเภททรัพย์ที่รับ: ${(brand.property_types || []).join(', ') || 'ไม่ระบุ'}`,
     `- ขั้นตอนจริง: ${(brand.steps || []).join(' → ') || 'ไม่ระบุ'}`,
     `- ต้องพูดเสมอเมื่อเกี่ยวข้อง: ${(brand.must_say || []).join(' · ')}`,

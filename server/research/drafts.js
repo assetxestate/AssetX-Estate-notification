@@ -9,7 +9,7 @@
 // AI ได้แค่เล่า: ไม่มีตัวเลข/วันที่/สถิติที่ไม่อยู่ในข้อเท็จจริง · ไอเดียที่มีแค่หัวข้อ (summary ⚠️) เขียนเป็นความรู้ทั่วไป ห้ามอ้างคลิป/ข่าว
 import { scrub, POST_PII_RULES, scrubPostText } from './pii.js'
 import { ideaContextForPrompt, noteFor, audienceLines } from './angles.js'
-import { targetAudience, pageServices, businessLine, readerRuleLines, lenderViewHit } from './audience.js'
+import { targetAudience, pageServices, businessLine, readerRuleLines, lenderViewHit, serviceAreaLabel } from './audience.js'
 import { knowledgeFactLines, knowledgeSourceLabels, knowledgeIds, knowledgeForAngle, knowledgeForIdea, KB_MIN_MATCHES } from './knowledge.js'
 import { COMPLIANCE_BLOCK } from '../../src/lib/marketing-model/prompts.js'
 import { checkText } from '../../src/lib/marketing-model/rules.js'
@@ -363,7 +363,7 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     '',
     'ความจริงของแบรนด์ (ใช้เป็นความรู้พื้นหลัง เลือกหยิบเฉพาะที่เกี่ยวกับเรื่องนี้ ห้ามแต่งเพิ่ม และห้ามคัดลอกรายการด้านล่างมาวางทั้งบรรทัด เช่น ขั้นตอนที่มีลูกศร → หรือคำที่คั่นด้วย ·):',
     `- บริการ: ${pageServices(brand).join(', ') || 'ขายฝาก, จำนอง'}`,
-    `- พื้นที่ให้บริการ: ${(brand.service_area || []).join(', ') || 'ไม่ระบุ'}`,
+    `- พื้นที่ให้บริการ: ${serviceAreaLabel(brand)}`,
     `- ประเภททรัพย์ที่รับ: ${(brand.property_types || []).join(', ') || 'ไม่ระบุ'}`,
     ...stepsLines(brand),
     `- ต้องพูดเสมอเมื่อเกี่ยวข้อง (ต้องอยู่ในประโยคเต็มที่บอกคนอ่านว่าต้องรู้หรือทำอะไร ห้ามแปะเป็นหัวข้อย่อยลอย ๆ): ${(brand.must_say || []).join(' · ') || '-'}`,
@@ -391,7 +391,7 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
     '- รายการในประโยคคั่นด้วยเว้นวรรค (ไม่ใช้จุลภาคแบบอังกฤษ) · แฮชแท็กต้องเป็นคำที่ปรากฏในโพสต์จริง ห้ามใส่ จำนอง/ขายฝาก ถ้าโพสต์ไม่ได้พูดถึงบริการนั้น',
     '- ข้อเท็จจริงเชิงมหภาค (มติ กนง. เงินเฟ้อ เทคโนโลยี สินเชื่อ) ห้ามต่อยอดเองเป็นผลต่อราคาทรัพย์ ทำเล หรือโอกาสลงทุน เว้นแต่ข้อเท็จจริงพูดถึงอสังหาริมทรัพย์โดยตรง — ให้เล่าตามต้นทาง แล้วเชื่อมกับสิ่งที่คนอ่านทำได้กับบริการ/ขั้นตอน/ค่าใช้จ่ายรวมของเราแทน',
     '- เหตุการณ์ที่ "วันที่ของเหตุการณ์" ยังไม่ถึง ให้เขียนเป็นอนาคต ("จะ…ในวันที่ …") ห้ามเขียนว่า มีผลแล้ว/ประกาศแล้ว/เผยแล้ว · วันที่ในโพสต์เขียนแบบไทย เช่น "28 ต.ค. 2569" ไม่ใช่ 28/10/2026 หรือ 2026-10-28',
-    `- พื้นที่ให้บริการจริงคือ ${(brand.service_area || []).join(', ') || 'ไม่ระบุ'} — โพสต์เรื่องทรัพย์นอกพื้นที่นี้ให้เป็นความรู้ทั่วไป CTA ห้ามสัญญาว่าทีมจะไปดู/ประเมินทรัพย์ที่นั่น`,
+    `- พื้นที่ให้บริการตอนนี้คือ ${serviceAreaLabel(brand)}${brand.service_area_expanding ? ' (บริษัทวางแผนขยายพื้นที่ — ห้ามเขียนว่ารับเฉพาะพื้นที่นี้ หรือไม่รับทรัพย์ต่างจังหวัด)' : ''} — โพสต์เรื่องทรัพย์นอกพื้นที่นี้ให้เป็นความรู้ทั่วไป CTA ห้ามสัญญาว่าทีมจะไปดู/ประเมินทรัพย์ที่นั่น`,
     '',
     COMPLIANCE_BLOCK,
     '',

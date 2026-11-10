@@ -38,7 +38,7 @@ test('prompt: ล้าง PII · เก็บชื่อสำนักเม�
   assert.doesNotMatch(cite.system, /"brief":"[^"]*ให้ใคร/)
   assert.match(cite.prompt, /2027-06-30/)
   assert.match(cite.system, /อนุมัติทุกเคส/)
-  assert.match(cite.system, /ชลบุรี/)
+  assert.match(cite.system, /กรุงเทพฯ และปริมณฑล/)
   assert.match(cite.system, /15% ต่อปี/)
   assert.equal(cite.policy, 'cite')
 

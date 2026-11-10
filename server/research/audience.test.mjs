@@ -89,3 +89,16 @@ test('generateDrafts: ร่างบันทึกกลุ่มคนอ่�
   assert.equal(saved.at(-1)[0].draft.audience, 'A')
   assert.match(prompts[0], /คนอ่านของโพสต์นี้ \(กลุ่มเดียว[^\n]*\):\n- A:/)
 })
+
+test('แบรนด์จริง: พื้นที่ให้บริการเริ่มที่กรุงเทพฯ และปริมณฑล ไม่เขียนว่ารับเฉพาะพื้นที่นี้ (เจ้าของ 10 พ.ย. 2569)', async () => {
+  const { serviceAreaLabel } = await import('./audience.js')
+  const { buildDraftPrompt } = await import('./drafts.js')
+  assert.equal(serviceAreaLabel(brand), 'กรุงเทพฯ และปริมณฑล')
+  assert.ok(brand.service_area.includes('กรุงเทพ') && brand.service_area.includes('นนทบุรี'))
+  assert.equal(serviceAreaLabel({ service_area: ['ชลบุรี', 'ระยอง'] }), 'ชลบุรี, ระยอง')
+  assert.equal(serviceAreaLabel({}), 'ไม่ระบุ')
+  const { system } = buildDraftPrompt({ idea: { id: 1, title: 'ขายฝากที่ดินต้องเตรียมเอกสารอะไร', summary: 'เอกสารสิทธิ์และบัตรประชาชน', source: 'news' }, angle: { label: 'ให้ความรู้' }, brand })
+  assert.match(system, /พื้นที่ให้บริการ: กรุงเทพฯ และปริมณฑล/)
+  assert.match(system, /พื้นที่ให้บริการตอนนี้คือ กรุงเทพฯ และปริมณฑล \(บริษัทวางแผนขยายพื้นที่ — ห้ามเขียนว่ารับเฉพาะพื้นที่นี้/)
+  assert.doesNotMatch(system, /ชลบุรี/)
+})
