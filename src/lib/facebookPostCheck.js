@@ -45,12 +45,14 @@ export function canResendFacebookPost(post = {}) {
   return /facebook/i.test(String(post.channel || '')) && Boolean(post.facebookPostId) && RESENDABLE_STATES.includes(post.facebookCheck?.state)
 }
 
-// คืนการ์ดเข้าคิวเพื่อส่งใหม่ (สถานะอนุมัติ ไม่มีเวลา) · เก็บรหัสโพสต์เดิมไว้เป็นประวัติ
+// คืนการ์ดไปแท็บ ร่าง ให้แก้และตรวจใหม่ก่อนส่งอีกรอบ (ไม่มีเวลา) · เก็บรหัสโพสต์เดิมไว้เป็นประวัติ
+// (เดิมคืนเป็น "อนุมัติแล้ว" ในคิว แต่คิวแก้แคปชั่นไม่ได้ — เจ้าของอยากเติมอีโมจิให้ #32 ก่อนส่งใหม่ 10 พ.ย. 2569)
 export function resendFacebookPatch(post = {}) {
   if (!canResendFacebookPost(post)) return null
   const previous = Array.isArray(post.facebookPreviousPostIds) ? post.facebookPreviousPostIds : []
   return {
-    status: 'approved',
+    status: 'pending',
+    reviewStatus: 'needs_edit',
     scheduledAt: '',
     postedAt: '',
     facebookPostId: '',

@@ -5,7 +5,7 @@ import { DECORATED_MIN, countEmoji, decorateCaption, stripEmoji } from './lib/ca
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
-import { canRecoverManualFacebookPost, recoverManualFacebookPost } from './lib/marketingQueue.js'
+import { canRecoverManualFacebookPost, canReturnToEdit, recoverManualFacebookPost, returnToEditPatch } from './lib/marketingQueue.js'
 import { canResendFacebookPost, facebookCheckSummary, resendFacebookPatch } from './lib/facebookPostCheck.js'
 import { prioritizeMarketingIdeas, redemptionIdeas } from './lib/marketingIdeaMix.js'
 import { importHermesDraft } from './lib/hermesMarketingDraft.js'
@@ -1581,8 +1581,14 @@ export default function MarketingPage({ onBack }) {
   const resendFacebookPost = (post) => {
     const patch = resendFacebookPatch(post)
     if (!patch) return
-    if (!window.confirm('ลบโพสต์เดิมที่ค้างใน Meta Business Suite (เนื้อหา → ตั้งเวลาไว้) แล้วหรือยัง?\nถ้ายังไม่ลบ Facebook อาจเผยแพร่ซ้ำสองโพสต์\n\nกดตกลงเพื่อคืนการ์ดเข้าคิว แล้วเลือกเวลาใหม่หรือกดโพสต์ทันที')) return
-    updatePost(post.id, patch, 'คืนการ์ดเข้าคิวแล้ว · เลือกเวลาใหม่หรือกด "โพสต์ Facebook" ได้เลย')
+    if (!window.confirm('ลบโพสต์เดิมที่ค้างใน Meta Business Suite (เนื้อหา → ตั้งเวลาไว้) แล้วหรือยัง?\nถ้ายังไม่ลบ Facebook อาจเผยแพร่ซ้ำสองโพสต์\n\nกดตกลงเพื่อย้ายการ์ดกลับไปแท็บ ร่าง ให้แก้ไขก่อน แล้วอนุมัติและโพสต์ใหม่')) return
+    updatePost(post.id, patch, 'ย้ายกลับไปแท็บ ร่าง แล้ว · แก้ไข/ใส่อีโมจิ แล้วกดอนุมัติ จากนั้นโพสต์ใหม่ในคิวโพสต์')
+  }
+
+  const returnPostToEdit = (post) => {
+    const patch = returnToEditPatch(post)
+    if (!patch) return
+    updatePost(post.id, patch, 'ย้ายกลับไปแท็บ ร่าง แล้ว · แก้ไขเสร็จกดอนุมัติอีกครั้ง')
   }
 
   const recordManualPublication = (post, rawReference) => {
@@ -2516,6 +2522,7 @@ export default function MarketingPage({ onBack }) {
             onPublishFacebook={publishToFacebook}
             onCheckFacebook={checkFacebookPost}
             onResendFacebook={resendFacebookPost}
+            onReturnToEdit={returnPostToEdit}
             onRecordManual={recordManualPublication}
             onCopy={copyText}
             focusNo={focusNo}
@@ -3244,7 +3251,7 @@ function ChannelsView({ posts, facebookConnection, onCreate, onQueue }) {
   )
 }
 
-function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, checkingId = null, onCreate, onUpdate, onPublishFacebook, onCheckFacebook, onResendFacebook, onRecordManual, onCopy, focusNo, loading = false }) {
+function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, checkingId = null, onCreate, onUpdate, onPublishFacebook, onCheckFacebook, onResendFacebook, onReturnToEdit, onRecordManual, onCopy, focusNo, loading = false }) {
   const [queueFilter, setQueueFilter] = useState('action')
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -3354,7 +3361,10 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                   <a className="mx-secondary" href={post.facebookPermalink} target="_blank" rel="noreferrer">เปิดโพสต์บน Facebook</a>
                 )}
                 {canResendFacebookPost(post) && onResendFacebook && (
-                  <button className="mx-secondary" disabled={loading || isPublishing} onClick={() => onResendFacebook(post)}>ส่งใหม่อีกครั้ง</button>
+                  <button className="mx-secondary" disabled={loading || isPublishing} title="ย้ายการ์ดกลับไปแท็บ ร่าง ให้แก้ไขก่อน แล้วอนุมัติและโพสต์ใหม่" onClick={() => onResendFacebook(post)}>ส่งใหม่อีกครั้ง</button>
+                )}
+                {canReturnToEdit(post) && onReturnToEdit && (
+                  <button className="mx-secondary" disabled={loading || isPublishing} title="ย้ายกลับไปแท็บ ร่าง เพื่อแก้แคปชั่น ใส่อีโมจิ หรือเปลี่ยนรูป แล้วอนุมัติอีกครั้ง" onClick={() => onReturnToEdit(post)}>กลับไปแก้ไข</button>
                 )}
                 {canRecoverManualFacebookPost(post) && (
                   <button className="mx-secondary" disabled={isPublishing} onClick={() => {

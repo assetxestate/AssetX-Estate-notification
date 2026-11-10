@@ -28,10 +28,11 @@ test('ค้างเลยเวลา / ไม่พบ / มีแต่ร�
   assert.equal(canResendFacebookPost({ channel: 'facebook', facebookPostId: '1' }), false)
 })
 
-test('ส่งใหม่: คืนการ์ดเป็นอนุมัติแล้ว ล้างรหัสและเวลา เก็บรหัสเดิมเป็นประวัติ', () => {
+test('ส่งใหม่: คืนการ์ดไปแท็บร่างให้แก้และตรวจใหม่ ล้างรหัสและเวลา เก็บรหัสเดิมเป็นประวัติ', () => {
   const post = { channel: 'facebook', facebookPostId: '122208271406901474', status: 'scheduled', scheduledAt: '2026-11-10T11:30', facebookCheck: { state: 'stuck', checkedAt: now.toISOString() } }
   const patch = resendFacebookPatch(post)
-  assert.equal(patch.status, 'approved')
+  assert.equal(patch.status, 'pending')
+  assert.equal(patch.reviewStatus, 'needs_edit')
   assert.equal(patch.facebookPostId, '')
   assert.equal(patch.scheduledAt, '')
   assert.equal(patch.facebookCheck, null)
