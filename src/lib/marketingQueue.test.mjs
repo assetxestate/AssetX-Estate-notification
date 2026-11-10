@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { canRecoverManualFacebookPost, canReturnToEdit, recoverManualFacebookPost, returnToEditPatch } from './marketingQueue.js'
+import { canRecoverManualFacebookPost, canReturnToEdit, facebookScheduleTooSoon, publishNowPost, recoverManualFacebookPost, returnToEditPatch, scheduledAtMs } from './marketingQueue.js'
 
 const manual = { channel: 'facebook', status: 'posted', scheduledAt: '2026-10-05T17:00', postedAt: '2026-10-05' }
 assert.equal(canRecoverManualFacebookPost(manual), true)
@@ -26,4 +26,19 @@ for (const post of [{ status: 'scheduled', facebookPostId: '123' }, { status: 'p
   assert.equal(canReturnToEdit(post), false)
   assert.equal(returnToEditPatch(post), null)
 }
+// เวลาที่ตั้งไว้ผ่านไปแล้ว/ใกล้เกิน 10 นาที (เคส #32: เวลา 14:00 กดส่ง 14:04 เวลาไทย)
+const at1404 = new Date('2026-11-10T14:04:00+07:00').getTime()
+assert.equal(scheduledAtMs('2026-11-10T14:00'), new Date('2026-11-10T14:00:00+07:00').getTime())
+assert.equal(scheduledAtMs('2026-11-11'), new Date('2026-11-11T09:00:00+07:00').getTime())
+assert.ok(Number.isNaN(scheduledAtMs('')))
+const late = { status: 'scheduled', scheduledAt: '2026-11-10T14:00', caption: 'x' }
+assert.equal(facebookScheduleTooSoon(late, at1404), true)
+assert.equal(facebookScheduleTooSoon({ ...late, scheduledAt: '2026-11-10T14:10' }, at1404), true)
+assert.equal(facebookScheduleTooSoon({ ...late, scheduledAt: '2026-11-10T14:15' }, at1404), false)
+assert.equal(facebookScheduleTooSoon(late, new Date(at1404)), true)
+for (const post of [{ ...late, status: 'approved' }, { ...late, facebookPostId: '123' }, { ...late, scheduledAt: '' }, { ...late, scheduledAt: 'ไม่ใช่วันที่' }, {}]) {
+  assert.equal(facebookScheduleTooSoon(post, at1404), false)
+}
+assert.deepEqual(publishNowPost(late), { status: 'approved', scheduledAt: '', caption: 'x' })
+assert.equal(late.status, 'scheduled')
 console.log('marketing queue recovery tests passed')

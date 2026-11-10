@@ -5,7 +5,7 @@ import { DECORATED_MIN, countEmoji, decorateCaption, stripEmoji } from './lib/ca
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
-import { canRecoverManualFacebookPost, canReturnToEdit, recoverManualFacebookPost, returnToEditPatch } from './lib/marketingQueue.js'
+import { canRecoverManualFacebookPost, canReturnToEdit, facebookScheduleTooSoon, publishNowPost, recoverManualFacebookPost, returnToEditPatch, scheduledAtMs } from './lib/marketingQueue.js'
 import { canResendFacebookPost, facebookCheckSummary, resendFacebookPatch } from './lib/facebookPostCheck.js'
 import { prioritizeMarketingIdeas, redemptionIdeas } from './lib/marketingIdeaMix.js'
 import { importHermesDraft } from './lib/hermesMarketingDraft.js'
@@ -1509,6 +1509,19 @@ export default function MarketingPage({ onBack }) {
       notify('ยังไม่เชื่อม Facebook', 'error')
       return
     }
+    // เวลาที่ตั้งไว้ผ่านไปแล้ว/ใกล้เกิน 10 นาที → Facebook ไม่รับตั้งเวลา · ถามก่อนว่าจะโพสต์ทันทีไหม (10 พ.ย. 2569 #32 กดส่งแล้วไม่มีโพสต์)
+    let target = post
+    if (facebookScheduleTooSoon(post)) {
+      const when = thaiDateTime(post.scheduledAt)
+      const reason = scheduledAtMs(post.scheduledAt) <= Date.now()
+        ? `เวลาที่ตั้งไว้ (${when}) ผ่านไปแล้ว`
+        : `เวลาที่ตั้งไว้ (${when}) ใกล้เกินไป · Facebook ต้องตั้งเวลาล่วงหน้าอย่างน้อย 10 นาที`
+      if (!window.confirm(`${withContentNo(post.contentNo, reason)}\n\nกด "ตกลง" = โพสต์ขึ้นหน้าเพจทันทีตอนนี้\nกด "ยกเลิก" = ยังไม่ส่ง แล้วเลือกเวลาใหม่ในช่องวันเวลาบนการ์ด`)) {
+        notify(withContentNo(post.contentNo, 'ยังไม่ได้ส่ง · เลือกเวลาใหม่ล่วงหน้าอย่างน้อย 10 นาที หรือล้างช่องเวลาเพื่อโพสต์ทันที'), 'warn')
+        return
+      }
+      target = publishNowPost(post)
+    }
     const media = findMediaForPost(workspaceRef.current.mediaAssets || [], post)
     setFacebookPublishingId(post.id)
     try {
@@ -1519,13 +1532,13 @@ export default function MarketingPage({ onBack }) {
           post: {
             id: post.id,
             channel: post.channel,
-            status: post.status,
+            status: target.status,
             reviewStatus: post.reviewStatus,
             topic: post.topic,
             title: post.title,
             videoScript: post.videoScript,
             caption: post.caption,
-            scheduledAt: post.scheduledAt || '',
+            scheduledAt: target.scheduledAt || '',
             facebookPostId: post.facebookPostId || '',
           },
           media: media ? {
@@ -1545,6 +1558,7 @@ export default function MarketingPage({ onBack }) {
       }
       updatePost(post.id, {
         status: data.scheduled ? 'scheduled' : 'posted',
+        ...(target !== post ? { scheduledAt: '' } : {}),
         postedAt: data.scheduled ? '' : new Date().toISOString(),
         facebookPostId: data.facebookPostId,
         facebookMediaType: data.mediaType,
@@ -3313,6 +3327,7 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
           const isScheduledOnFacebook = Boolean(post.facebookPostId) && post.status === 'scheduled'
           const isPosted = post.status === 'posted'
           const isDelivered = isPosted || isScheduledOnFacebook
+          const scheduleTooSoon = isFacebook && facebookScheduleTooSoon(post, now)
           const postMedia = findMediaForPost(mediaAssets, post)
           return (
             <article className={`mx-row-card mx-publish-row ${isFocused(post, focusNo) ? 'mx-focus' : ''}`} data-content-no={post.contentNo || undefined} key={post.id}>
@@ -3329,14 +3344,14 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                   value={scheduleInputValue(post.scheduledAt)}
                   disabled={isDelivered || isPublishing || loading}
                   aria-label={`วันและเวลาโพสต์ ${titleWithNo(post)}`}
-                  onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : 'approved' }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
+                  onChange={(event) => onUpdate(post.id, { scheduledAt: event.target.value, status: event.target.value ? 'scheduled' : 'approved', publishError: '' }, event.target.value ? 'ตั้งวันโพสต์แล้ว' : 'ล้างวันโพสต์แล้ว')}
                 />
                 {isFacebook && (
                   <button
                     className="mx-primary"
                     disabled={!facebookConnection?.connected || isPublishing || isDelivered}
                     onClick={() => onPublishFacebook(post)}
-                    title={post.scheduledAt ? 'Facebook จะเผยแพร่อัตโนมัติตามวันและเวลานี้' : 'เผยแพร่บน Facebook ทันที'}
+                    title={scheduleTooSoon ? 'เวลาที่ตั้งไว้ผ่านไปแล้วหรือใกล้เกิน 10 นาที · กดแล้วจะถามก่อนโพสต์ทันที' : post.scheduledAt ? 'Facebook จะเผยแพร่อัตโนมัติตามวันและเวลานี้' : 'เผยแพร่บน Facebook ทันที'}
                   >
                     {isScheduledOnFacebook
                       ? 'ตั้งเวลาแล้ว'
@@ -3344,9 +3359,11 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                         ? post.facebookPostId ? 'ส่งไป Facebook แล้ว' : 'บันทึกเอง · ยังไม่ยืนยัน Facebook'
                         : isPublishing
                           ? 'กำลังส่ง...'
-                          : post.scheduledAt
-                            ? 'ตั้งเวลา Facebook'
-                            : 'โพสต์ Facebook'}
+                          : scheduleTooSoon
+                            ? 'เลยเวลาที่ตั้ง · โพสต์ทันที'
+                            : post.scheduledAt
+                              ? 'ตั้งเวลา Facebook'
+                              : 'โพสต์ Facebook'}
                   </button>
                 )}
                 {isFacebook && post.facebookPostId && onCheckFacebook && (
