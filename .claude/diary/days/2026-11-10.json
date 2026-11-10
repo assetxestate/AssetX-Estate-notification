@@ -48,9 +48,10 @@
     },
     {
       "id": "fb-page-email-typo",
-      "owner": "you",
+      "done": true,
       "text": "แก้อีเมลในหน้าแนะนำเพจ Facebook จาก essetxestate@gmail.com (พิมพ์ผิด) เป็น assetxestate@gmail.com: หน้าเพจ → แท็บ เกี่ยวกับ → ข้อมูลติดต่อและข้อมูลพื้นฐาน → กดรูปดินสอข้างอีเมล → บันทึก (เห็นจากภาพหน้าเพจที่เจ้าของส่งมา เจ้าของยืนยันอีเมลจริง)",
-      "done": false
+      "owner": "you",
+      "done_at": "2026-11-10T10:20:12.941Z"
     }
   ],
   "stories": [
