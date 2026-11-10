@@ -23,6 +23,7 @@
     { "source": "/api/marketing-facebook", "destination": "/api/marketing?feature=facebook" },
     { "source": "/api/marketing-ideas", "destination": "/api/marketing?feature=ideas" },
     { "source": "/api/telegram-webhook", "destination": "/api/telegram-webhook" },
+    { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
