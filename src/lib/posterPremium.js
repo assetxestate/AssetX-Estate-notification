@@ -8,7 +8,9 @@
 // ในระบบเรา: หน้าเว็บส่ง "คำขอ" (buildPremiumJobPrompt) → ตัวรับงานให้ AI วางแผนข้อความ (server/poster-premium-plan.js · ตรวจก่อนใช้)
 //   → buildPremiumImagePrompt ประกอบคำสั่งภาพแบบเดียวกับพรอมต์ของ Codex → เจนสัดส่วนที่กว้างกว่าโพสต์ (จัตุรัสสำหรับ 4:5)
 //   → ต่อแถบท้ายแบรนด์ใต้ภาพ (โลโก้จริง + เบอร์/LINE) ให้ได้สัดส่วนโพสต์พอดี — ดู premiumFrame
-// ต่างจากภาพในแชต Codex ข้อเดียว: โลโก้ไม่ให้โมเดลวาด (กติกาเดิมของเจ้าของ) — อยู่ในแถบท้ายที่ตัวรับงานวางเอง
+// ต่างจากภาพในแชต Codex: โลโก้ไม่ให้โมเดลวาด (กติกาเดิมของเจ้าของ) — อยู่ในแถบท้ายที่ตัวรับงานวางเอง
+// เจ้าของ 10 พ.ย. 2569: "เอารูปผมไปใส่ในโปสเตอร์แทน" + เอาป้าย "ภาพประกอบ" ออกจากภาพ
+//   → ภาพหลักมีเจ้าของ (รูปใน .local/poster-refs/presenter/) เป็นผู้แนะนำของ AssetX ทุกภาพ · ไม่มีป้ายกำกับบนภาพถ่าย
 import { DEFAULT_POSTER_SIZE, POSTER_SIZES } from './posterSizes.js'
 import { FOOTER_RATIO } from './posterFree.js'
 
@@ -16,7 +18,6 @@ export const PREMIUM_REQUEST_HEADER = 'PREMIUM POSTER REQUEST'
 // สีจากสกิล (premium-art-direction.md) — ข้อความหลักน้ำเงินเข้ม · เน้นได้ราว 10–20% ของตัวอักษร
 export const PREMIUM_COLORS = { navy: '#092B43', teal: '#087F93', violet: '#654697', coral: '#B74434' }
 export const PREMIUM_HIGHLIGHT_COLORS = ['violet', 'coral']
-export const PREMIUM_HERO_LABEL = 'ภาพประกอบ'
 // บรรทัดที่สองของ CTA (ตามภาพต้นแบบ) · เบอร์/LINE จริงอยู่ในแถบท้ายใต้ CTA
 export const PREMIUM_CTA_SUB = 'ทางแชต AssetX Estate'
 // ข้อความกำกับ: ระบบใส่เอง ไม่ให้ AI แต่ง (มาจากภาพต้นแบบที่เจ้าของชอบ)
@@ -142,7 +143,25 @@ function middleLines(middle = {}) {
   ].filter(Boolean)
 }
 
-export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE, seed = null, refName = '', disclaimer = PREMIUM_DISCLAIMER } = {}) {
+// presenter = ตัวรับงานแนบรูปเจ้าของเป็นภาพที่ 1 (เรฟสไตล์เป็นภาพถัดไป) · ไม่มีไฟล์รูป → ภาพหลักไม่มีใบหน้าคนเลย (ไม่ให้วาดคนแปลกหน้าแทนเจ้าของ)
+function heroLines({ presenter, refName, brief }) {
+  const refNo = presenter ? 2 : 1
+  const images = [
+    presenter
+      ? 'Image 1 = THE ADVISOR (required): the photographic hero features this man as the AssetX Estate advisor, a photoreal figure with the same face, hairstyle, skin tone and white dress shirt, lit to match the scene. Ignore that photo\'s background, signboard, clip-on microphone and any text in it.'
+      : '',
+    refName
+      ? `Image ${refNo} is the approved visual style only: match its warm premium photorealism, restrained navy/cyan/violet palette, warm-white information area, slim dividers, flat crisp Thai typography, tiny coral accents and fine diagonal X-inspired edge geometry. Do NOT copy its text (including the small caption on its photo), its content, its people, its exact grid or its logo corner; new content and a composition tailored to this topic.`
+      : '',
+    !presenter && !refName ? 'No reference image is attached: create the look from the art direction below.' : '',
+  ].filter(Boolean)
+  const hero = presenter
+    ? `The top 35-40% of the design area is the photographic hero featuring the advisor from Image 1: ${brief.hero} He is the AssetX advisor on the owner's side of the table (explaining, reviewing papers or looking warmly at the viewer), never shown as the customer, receiving cash or celebrating. He is the only clear face; any other person only from behind or out of focus.`
+    : `The top 35-40% of the design area is the photographic hero: ${brief.hero} No advisor photo is attached, so show no clear face (a person only from behind or out of focus, never a celebrity).`
+  return { images, hero }
+}
+
+export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE, seed = null, refName = '', presenter = false, disclaimer = PREMIUM_DISCLAIMER } = {}) {
   const f = premiumFrame(size)
   const brief = plan.brief || {}
   const points = (plan.points || []).filter((x) => x?.title)
@@ -152,13 +171,12 @@ export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE,
   const highlights = (plan.highlights || []).filter((h) => h?.text && PREMIUM_HIGHLIGHT_COLORS.includes(h.color))
   const cta = ctaLines(plan.cta)
   const flow = [hasMiddle ? 'the middle process strip' : '', points.length ? `the ${points.length} numbered points` : '', 'one navy CTA footer'].filter(Boolean).join(', then ')
+  const visuals = heroLines({ presenter, refName, brief })
   return [
     'PASS-THROUGH RULE: call image_gen with everything below this line as the prompt, exactly as written, character for character. Do not summarize, shorten, reorder or rewrite it; it is already a finished production spec.',
     '',
     `Generate ONE finished premium Thai Facebook educational poster for AssetX Estate, a Thai property advisory for ขายฝาก (sale with right of redemption) and จำนอง (mortgage), for a ${f.platform} post.`,
-    refName
-      ? 'Image 1 is the approved visual style only: match its warm premium photorealism, restrained navy/cyan/violet palette, warm-white information area, slim dividers, flat crisp Thai typography, tiny coral accents and fine diagonal X-inspired edge geometry. Do NOT copy its text, its content, its exact grid or its logo corner; new content and a composition tailored to this topic.'
-      : 'No reference image is attached: create the look from the art direction below.',
+    ...visuals.images,
     premiumFrameLine(f),
     `Brand footer (fixed): the design ends with the navy CTA band touching the bottom edge of the design area. After rendering we attach our own navy footer with the real logo, phone and LINE directly below that band (it becomes the bottom ${f.footerPct}% of the final ${f.targetWidth}x${f.targetHeight} post), so add nothing under the CTA band and do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere; the only brand name on the poster is inside the CTA text below.`,
     '',
@@ -170,7 +188,7 @@ export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE,
     `5 Emotional Design: ${brief.emotion} The look stays professional and trustworthy: premium realistic daylight, genuine wood, paper and metal textures, warm white and navy, cyan-violet accents and tiny dark coral. No risk-free claims, urgency or official badges.`,
     `6 Call to Action: ${cta.map(q).join(' / ')}. One action; no invented phone, LINE or QR (the footer carries the real contact); no free, expert or approval claims.`,
     '',
-    `Art direction: realistic architectural and financial editorial photography with warm commercial quality. The top 35-40% of the design area is the photographic hero: ${brief.hero} Natural light, coherent perspective, real materials; any person is an anonymous Thai adult, never a celebrity. No fake deeds, seals, readable personal data, currency piles, toy houses or cartoon objects. A flowing photographic composition, not a flat stock-icon poster. Fine diagonal X geometry only as subtle edge accents. Below the hero a warm-white information area with thin dividers and a few small thin line icons. Colour only 10-20% of the typography: primary text navy ${PREMIUM_COLORS.navy}, accents teal ${PREMIUM_COLORS.teal}, violet ${PREMIUM_COLORS.violet}, dark coral ${PREMIUM_COLORS.coral}. Flat crisp Thai typography (a refined modern Thai sans, SemiBold or Bold headings, regular body), no extrusion, heavy outlines, stickers, brush strokes, neon, confetti, speech bubbles or 3D text.`,
+    `Art direction: realistic architectural and financial editorial photography with warm commercial quality. ${visuals.hero} Natural light, coherent perspective, real materials; the photo carries no caption, label or tag. No fake deeds, seals, readable personal data, currency piles, toy houses or cartoon objects. A flowing photographic composition, not a flat stock-icon poster. Fine diagonal X geometry only as subtle edge accents. Below the hero a warm-white information area with thin dividers and a few small thin line icons. Colour only 10-20% of the typography: primary text navy ${PREMIUM_COLORS.navy}, accents teal ${PREMIUM_COLORS.teal}, violet ${PREMIUM_COLORS.violet}, dark coral ${PREMIUM_COLORS.coral}. Flat crisp Thai typography (a refined modern Thai sans, SemiBold or Bold headings, regular body), no extrusion, heavy outlines, stickers, brush strokes, neon, confetti, speech bubbles or 3D text.`,
     '',
     'Exact on-image copy (Thai, copy every string character for character with sensible line breaks; each string appears once; add no other words, figures, interest rates, calculations or hashtags):',
     plan.eyebrow ? `Small eyebrow: ${q(plan.eyebrow)}` : '',
@@ -178,7 +196,6 @@ export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE,
     `Dominant headline${(plan.headline || []).length > 1 ? ', two lines' : ''}: ${(plan.headline || []).map(q).join(' / ')}`,
     accent ? `Colour ${q(accent)} deep teal ${PREMIUM_COLORS.teal}; the rest of the headline navy. Not the whole poster in teal.` : `Headline in navy ${PREMIUM_COLORS.navy}.`,
     plan.subheading ? `Subheading: ${q(plan.subheading)}` : '',
-    `Hero label, small, bottom corner of the photo: ${q(PREMIUM_HERO_LABEL)}`,
     ...middleLines(middle),
     points.length ? `${points.length} numbered points, vertically arranged with elegant ${points.map((_, i) => String(i + 1).padStart(2, '0')).join(' ')} numbers (alternating teal and violet) and small restrained line icons:` : '',
     ...points.map((pt, i) => `${String(i + 1).padStart(2, '0')} ${q(pt.title)}${pt.body ? ` / body ${q(pt.body)}` : ''}`),
@@ -187,7 +204,7 @@ export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE,
     `Navy CTA band at the very bottom of the design area, full width, white text with tiny cyan accents: ${cta.map(q).join(' / ')}`,
     '',
     'No claims that these costs always apply, of approval, guaranteed funding or a successful case. Educational overview, no solicitation promises. Mobile readable, polished full-bleed output.',
-    'Avoid: prices, percentages, interest rates, any phone number, LINE id, URL, QR code, address, personal name or deed number; Garuda, seals, stamps, government or company emblems; any logo; watermarks or AI labels; black-and-gold or green-and-gold loan-flyer looks; neon glow; cartoon, comic, flat vector, clay or toy-like 3D; borders, frames or bars around the design.',
-    `MODE: premium seed=${seed === null || seed === undefined ? 'none' : seed} ref=${refName || 'none'} canvas=${f.width}x${f.height} footer=append`,
+    'Avoid: prices, percentages, interest rates, any phone number, LINE id, URL, QR code, address, personal name or deed number; Garuda, seals, stamps, government or company emblems; any logo; watermarks, AI labels or any caption, tag or label on the photograph; black-and-gold or green-and-gold loan-flyer looks; neon glow; cartoon, comic, flat vector, clay or toy-like 3D; borders, frames or bars around the design.',
+    `MODE: premium seed=${seed === null || seed === undefined ? 'none' : seed} ref=${refName || 'none'} presenter=${presenter ? 'use' : 'none'} canvas=${f.width}x${f.height} footer=append`,
   ].filter((line) => line !== '').join('\n').replace(/\n(Generate ONE|SIX-PART|Art direction|Exact on-image|No claims)/g, '\n\n$1')
 }

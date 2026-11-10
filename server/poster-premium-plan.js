@@ -28,8 +28,10 @@ const DEFAULT_BRIEF = {
   goal: 'The reader understands the one key point of this post and knows what to check before deciding.',
   visual: 'Teal marks the key idea in the headline; violet and dark coral mark at most one phrase per group.',
   emotion: 'Calm, careful and reassuring, on the owner\'s side of the table.',
-  hero: 'a sophisticated wooden table with a neatly arranged anonymous document folder, a calculator and a pen, with a contemporary Thai house and a green plot seen softly through a window behind, warm morning daylight.',
+  hero: 'the advisor seated at a sophisticated wooden table, calmly explaining a neatly arranged anonymous document folder beside a calculator and a pen, a contemporary Thai house and a green plot seen softly through a window behind, warm morning daylight.',
 }
+// ภาพหลักต้องมีผู้แนะนำ (รูปเจ้าของที่ตัวรับงานแนบ · เจ้าของ 10 พ.ย. 2569) — บรีฟที่ไม่พูดถึงเขาอาจวาดลูกค้าเป็นตัวเอก
+const ADVISOR_RE = /\badvisor\b/i
 
 const clean = (value) => String(value ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().replace(/^["“”'‘’]+|["“”'‘’]+$/g, '').trim()
 const len = (s) => String(s || '').length
@@ -43,7 +45,7 @@ export function buildPremiumPlanPrompt({ title = '', caption = '', feedback = []
     '',
     'ขั้นตอน:',
     '1. อ่านโพสต์ เลือกสารหลักเพียงหนึ่งประเด็นที่คนอ่านควรจำได้หลังเห็นภาพ (key_message) — ทุกส่วนของโปสเตอร์ต้องสนับสนุนสารนี้ ไม่เน้นทุกข้อเท่ากัน',
-    '2. ย่อเนื้อหาเป็นข้อความบนภาพสั้น ๆ อ่านบนมือถือได้ มีลำดับ: หัวเรื่องใหญ่ → ภาพประกอบ → แถบกลาง (ถ้ามี) → ข้อหลัก 2–4 ข้อ → CTA',
+    '2. ย่อเนื้อหาเป็นข้อความบนภาพสั้น ๆ อ่านบนมือถือได้ มีลำดับ: หัวเรื่องใหญ่ → ภาพหลัก → แถบกลาง (ถ้ามี) → ข้อหลัก 2–4 ข้อ → CTA',
     '3. เขียนบรีฟ 6 ส่วนเป็นภาษาอังกฤษ (กลุ่มเป้าหมาย วัตถุประสงค์ จิตวิทยาการมองเห็น สารหลัก อารมณ์ CTA) ให้เฉพาะเจาะจงกับโพสต์นี้ และเลือกภาพหลักแบบภาพถ่ายสมจริงที่เข้ากับเรื่อง',
     '',
     'กติกาข้อความบนภาพ (สำคัญที่สุด):',
@@ -65,7 +67,7 @@ export function buildPremiumPlanPrompt({ title = '', caption = '', feedback = []
     '- highlights: คำ/วลีสั้นจาก title ของข้อหลัก (คำต่อคำ) ไม่เกิน 2 จุด สี "violet" (สิทธิ/รายการสำคัญ) หรือ "coral" (เวลา ค่าใช้จ่าย จุดที่ต้องระวัง)',
     `- cta: การกระทำหนึ่งอย่างที่ชวนคุยกับ AssetX Estate ≤ ${L.cta} ตัว (ระบบเติมบรรทัด "ทางแชต AssetX Estate" และเบอร์/LINE ให้เอง)`,
     '- brief.audience / brief.goal / brief.visual / brief.emotion: ภาษาอังกฤษ 1–2 ประโยค ถ้าจะอ้างข้อความไทยให้คัดจากข้อความบนภาพคำต่อคำเท่านั้น',
-    '- brief.hero: ภาษาอังกฤษ ฉากภาพถ่ายสมจริงพรีเมียมที่เล่าเรื่องนี้ (สถานที่ วัตถุ แสง) คนเป็นตัวเลือก — ถ้ามีให้เป็นคนไทยไม่ระบุตัวตน ห้ามเอกสารที่อ่านออก เงินกอง ตราราชการ',
+    '- brief.hero: ภาษาอังกฤษ ฉากภาพถ่ายสมจริงพรีเมียมที่เล่าเรื่องนี้ (สถานที่ วัตถุ แสง) โดยมี "the advisor" เป็นคนเดียวที่เห็นหน้า — เขาคือผู้แนะนำของ AssetX (ระบบแนบรูปจริงให้ ห้ามบรรยายหน้าตา อายุ ทรงผม) เขียนแค่ว่าเขาทำอะไรในฉาก เช่น อธิบายแฟ้มเอกสารบนโต๊ะ มองผู้ชมอย่างอบอุ่น · ห้ามให้เขาเป็นลูกค้า คนรับเงิน หรือฉลอง · คนอื่นถ้ามีเห็นแค่ด้านหลัง · ห้ามเอกสารที่อ่านออก เงินกอง ตราราชการ',
     '',
     'รูปแบบคำตอบ (JSON เท่านั้น):',
     '{"key_message":"","eyebrow":"","headline_small":"","headline":["",""],"headline_accent":"","subheading":"","middle":{"type":"flow","title":"","items":["","",""],"note":""},"points":[{"title":"","body":""}],"highlights":[{"text":"","color":"violet"}],"cta":"","brief":{"audience":"","goal":"","visual":"","emotion":"","hero":""}}',
@@ -166,6 +168,7 @@ export function validatePremiumPlan(raw, { title = '', caption = '' } = {}) {
   const copyText = strings.join('\n')
   const briefRaw = data.brief && typeof data.brief === 'object' ? data.brief : {}
   plan.brief = Object.fromEntries(Object.entries(DEFAULT_BRIEF).map(([key, fallback]) => [key, englishBrief(briefRaw[key], copyText, fallback)]))
+  if (!ADVISOR_RE.test(plan.brief.hero)) soft.push('brief.hero ต้องมี "the advisor" (ผู้แนะนำของ AssetX) เป็นคนเดียวที่เห็นหน้าในภาพหลัก')
   return { plan, hard: [...new Set(hard)], soft: [...new Set(soft)] }
 }
 

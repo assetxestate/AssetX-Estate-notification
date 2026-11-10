@@ -70,11 +70,17 @@ test('บรรทัดกรอบงาน: ขนาดพิกเซล + 
   assert.match(premiumFrameLine(premiumFrame('square-1x1')), /1344x1152 px \(landscape 7:6\)/)
 })
 
-test('คำสั่งภาพ: PASS-THROUGH · เรฟสไตล์ · บรีฟ 6 ส่วน · ข้อความคำต่อคำ · สีเน้น · แถบท้ายต่อใต้ภาพ · ไม่ให้วาดโลโก้/เบอร์', () => {
-  const prompt = buildPremiumImagePrompt({ plan: PLAN, size: 'feed-4x5', seed: 4, refName: 'approved-1-sale-deed-check.png' })
+test('คำสั่งภาพ: PASS-THROUGH · รูปผู้แนะนำ + เรฟสไตล์ · บรีฟ 6 ส่วน · ข้อความคำต่อคำ · สีเน้น · แถบท้ายต่อใต้ภาพ · ไม่ให้วาดโลโก้/เบอร์', () => {
+  const prompt = buildPremiumImagePrompt({ plan: PLAN, size: 'feed-4x5', seed: 4, refName: 'approved-1-sale-deed-check.png', presenter: true })
   assert.match(prompt, /^PASS-THROUGH RULE: call image_gen with everything below this line/)
   assert.match(prompt, /\n\nGenerate ONE finished premium Thai Facebook educational poster for AssetX Estate/)
-  assert.match(prompt, /Image 1 is the approved visual style only[^\n]*Do NOT copy its text, its content, its exact grid or its logo corner/)
+  // เจ้าของ 10 พ.ย. 2569: รูปเจ้าของเป็นภาพที่ 1 (ผู้แนะนำในภาพหลัก) · เรฟสไตล์เป็นภาพที่ 2 และห้ามลอกป้ายบนภาพถ่าย/คนในเรฟ
+  assert.match(prompt, /\nImage 1 = THE ADVISOR \(required\): the photographic hero features this man as the AssetX Estate advisor[^\n]*same face, hairstyle, skin tone and white dress shirt[^\n]*clip-on microphone/)
+  assert.match(prompt, /\nImage 2 is the approved visual style only[^\n]*Do NOT copy its text \(including the small caption on its photo\), its content, its people, its exact grid or its logo corner/)
+  assert.match(prompt, /photographic hero featuring the advisor from Image 1: a sophisticated wooden table[^\n]*never shown as the customer, receiving cash or celebrating\. He is the only clear face/)
+  assert.doesNotMatch(prompt, /ภาพประกอบ|Hero label|anonymous Thai adult/, 'เจ้าของสั่งเอาป้าย "ภาพประกอบ" ออกจากภาพ')
+  assert.match(prompt, /the photo carries no caption, label or tag/)
+  assert.match(prompt, /any caption, tag or label on the photograph/)
   assert.match(prompt, /\nCanvas \(fixed[^\n]*1024x1024 px \(square 1:1\)/)
   // งาน 22 (9 พ.ย.): สั่งให้เว้นแถบล่างแล้ว Codex ไม่เว้น → แถบท้ายต่อใต้ภาพ ไม่ขอให้โมเดลเว้นที่อีก
   assert.doesNotMatch(prompt, /Reserved brand footer|plain flat navy/)
@@ -92,9 +98,19 @@ test('คำสั่งภาพ: PASS-THROUGH · เรฟสไตล์ · �
   assert.match(prompt, /Selectively colour “รายการหัก” violet #654697 and “จ่ายเมื่อไร” dark coral #B74434/)
   assert.ok(prompt.includes(`disclaimer just above the CTA band: “${PREMIUM_DISCLAIMER[0]}” / “${PREMIUM_DISCLAIMER[1]}”`))
   assert.ok(prompt.includes(`Navy CTA band at the very bottom of the design area, full width, white text with tiny cyan accents: “คุยเรื่องเงินสุทธิที่ต้องการใช้” / “${PREMIUM_CTA_SUB}”`))
-  assert.match(prompt, /Hero label, small, bottom corner of the photo: “ภาพประกอบ”/)
   assert.doesNotMatch(prompt, /096-986-8888|assetxestate/, 'เบอร์/LINE จริงอยู่ในแถบท้ายที่ตัวรับงานต่อ')
-  assert.match(prompt, /\nMODE: premium seed=4 ref=approved-1-sale-deed-check\.png canvas=1024x1024 footer=append$/)
+  assert.match(prompt, /\nMODE: premium seed=4 ref=approved-1-sale-deed-check\.png presenter=use canvas=1024x1024 footer=append$/)
+})
+
+test('คำสั่งภาพ: ไม่มีไฟล์รูปเจ้าของ → ไม่มีหน้าคนในภาพหลัก · เรฟเป็นภาพที่ 1 · รูปเจ้าของอย่างเดียวไม่มีบรรทัดเรฟ', () => {
+  const noPresenter = buildPremiumImagePrompt({ plan: PLAN, size: 'feed-4x5', seed: 4, refName: 'approved-1-sale-deed-check.png' })
+  assert.match(noPresenter, /\nImage 1 is the approved visual style only/)
+  assert.doesNotMatch(noPresenter, /THE ADVISOR|Image 2/)
+  assert.match(noPresenter, /photographic hero: a sophisticated wooden table[^\n]*No advisor photo is attached, so show no clear face/)
+  assert.match(noPresenter, /presenter=none canvas=1024x1024/)
+  const onlyPresenter = buildPremiumImagePrompt({ plan: PLAN, size: 'feed-4x5', seed: 4, presenter: true })
+  assert.match(onlyPresenter, /\nImage 1 = THE ADVISOR/)
+  assert.doesNotMatch(onlyPresenter, /approved visual style|No reference image is attached/)
 })
 
 test('คำสั่งภาพ: ไม่มีแถบกลาง/เรฟ/คำเน้น → ไม่มีบรรทัดที่ว่าง · ลำดับสายตาไม่พูดถึงแถบกลาง', () => {
@@ -105,7 +121,7 @@ test('คำสั่งภาพ: ไม่มีแถบกลาง/เร�
   assert.match(prompt, /Headline in navy #092B43\./, 'คำเน้นที่ไม่อยู่ในหัวเรื่องถูกทิ้ง')
   assert.match(prompt, /then the 3 numbered points, then one navy CTA footer/)
   assert.match(prompt, /white text with tiny cyan accents: “ส่งข้อมูลทรัพย์คุยกับ AssetX Estate”\n/, 'CTA ที่มีชื่อแบรนด์แล้วไม่เติมบรรทัดสอง')
-  assert.match(prompt, /MODE: premium seed=none ref=none canvas=1344x1152 footer=append$/)
+  assert.match(prompt, /MODE: premium seed=none ref=none presenter=none canvas=1344x1152 footer=append$/)
 })
 
 test('Story 9:16 และภาพลิงก์: บรรทัดกรอบงานและสัดส่วนแถบท้ายตามขนาด', () => {

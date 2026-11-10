@@ -36,7 +36,7 @@ const RAW = {
     goal: 'The viewer asks for a written breakdown before deciding.',
     visual: 'Make “อาจไม่ใช่เงินสุทธิ” the dominant line.',
     emotion: 'Calm and careful.',
-    hero: 'a walnut desk with an anonymous folder, a calculator and a pen, a Thai house seen through the window.',
+    hero: 'the advisor at a walnut desk explaining an anonymous folder beside a calculator and a pen, a Thai house seen through the window.',
   },
 }
 
@@ -67,6 +67,20 @@ test('ตรวจแผน: ชุดที่ดีผ่าน · ทิ้�
   assert.match(plan.brief.audience, /^Thai land owners, the type, considering/)
   assert.match(plan.brief.visual, /“อาจไม่ใช่เงินสุทธิ”/, 'คำไทยที่เป็นข้อความบนภาพอ้างได้')
   assert.equal(plan.keyMessage, RAW.key_message)
+})
+
+test('ตรวจแผน: ภาพหลักต้องมีผู้แนะนำ (รูปเจ้าของ · 10 พ.ย. 2569) — บรีฟไม่พูดถึง = ปัญหาเบาให้แก้ · ไม่มีบรีฟ = ใช้ค่าเริ่มต้นที่มีผู้แนะนำ', () => {
+  const noAdvisor = clone(RAW)
+  noAdvisor.brief.hero = 'a Thai business owner calculating at a cafe table.'
+  const checked = validatePremiumPlan(noAdvisor, POST)
+  assert.deepEqual(checked.hard, [])
+  assert.match(checked.soft.join(' '), /brief\.hero ต้องมี "the advisor"/)
+  const noBrief = clone(RAW)
+  delete noBrief.brief
+  const fallback = validatePremiumPlan(noBrief, POST)
+  assert.match(fallback.plan.brief.hero, /^the advisor seated/)
+  assert.deepEqual(fallback.soft, [])
+  assert.match(buildPremiumPlanPrompt({ ...POST }).prompt, /brief\.hero:[^\n]*"the advisor" เป็นคนเดียวที่เห็นหน้า[^\n]*ห้ามให้เขาเป็นลูกค้า/)
 })
 
 test('ตรวจแผน: ปัญหาหนัก — ตัวเลขแต่ง · เบอร์ · คำเกินจริง · อังกฤษ · มุมคนปล่อยเงิน · ชื่อคน · ขาดหัวเรื่อง/CTA/ข้อหลัก', () => {

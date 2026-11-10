@@ -360,13 +360,15 @@ async function processJob(db, plugin, job) {
       if (!planned.ok) throw new Error(`AI วางข้อความโปสเตอร์ไม่สำเร็จ — ${planned.error}`)
       const refs = premiumRefs()
       const ref = refs.length ? refs[premiumRefIndex(premium.seed, refs.length)] : null
-      images = ref ? [ref] : []
-      prompt = buildPremiumImagePrompt({ plan: planned.plan, size: premium.size, seed: premium.seed, refName: ref ? path.basename(ref) : '', disclaimer: disclaimerLines(premium) })
+      // รูปเจ้าของเป็นผู้แนะนำในภาพหลักทุกภาพ (เจ้าของ 10 พ.ย. 2569) — ภาพที่ 1 เสมอ แล้วตามด้วยเรฟสไตล์
+      const presenter = existsSync(PRESENTER) ? PRESENTER : null
+      images = [presenter, ref].filter(Boolean)
+      prompt = buildPremiumImagePrompt({ plan: planned.plan, size: premium.size, seed: premium.seed, refName: ref ? path.basename(ref) : '', presenter: Boolean(presenter), disclaimer: disclaimerLines(premium) })
       brandFooter = true
       premiumBox = premiumFrame(premium.size)
       // เก็บแผน + คำสั่งภาพไว้ดูย้อนหลังในเครื่อง (.local อยู่นอก git) · log ไม่พิมพ์เนื้อหาโพสต์
-      await fs.writeFile(path.join(OUTPUT_DIR, `job-${job.id}-premium.json`), JSON.stringify({ provider: planned.provider, attempts: planned.attempts, warnings: planned.warnings, ref: ref ? path.basename(ref) : null, plan: planned.plan, prompt }, null, 2))
-      log(`${label}: พรีเมียม · วางข้อความเสร็จใน ${Math.round((Date.now() - t0) / 1000)} วินาที (${planned.provider} รอบ ${planned.attempts}${planned.warnings.length ? ` · ยาวเกิน ${planned.warnings.length} จุด` : ''}) · ข้อหลัก ${planned.plan.points.length} ข้อ · แถบกลาง ${planned.plan.middle.type} · เรฟ ${ref ? path.basename(ref) : 'ไม่มี'}`)
+      await fs.writeFile(path.join(OUTPUT_DIR, `job-${job.id}-premium.json`), JSON.stringify({ provider: planned.provider, attempts: planned.attempts, warnings: planned.warnings, ref: ref ? path.basename(ref) : null, presenter: Boolean(presenter), plan: planned.plan, prompt }, null, 2))
+      log(`${label}: พรีเมียม · วางข้อความเสร็จใน ${Math.round((Date.now() - t0) / 1000)} วินาที (${planned.provider} รอบ ${planned.attempts}${planned.warnings.length ? ` · ยาวเกิน ${planned.warnings.length} จุด` : ''}) · ข้อหลัก ${planned.plan.points.length} ข้อ · แถบกลาง ${planned.plan.middle.type} · เรฟ ${ref ? path.basename(ref) : 'ไม่มี'} · ${presenter ? 'รูปผู้แนะนำ' : 'ไม่มีรูปผู้แนะนำ (ภาพหลักไม่มีหน้าคน)'}`)
     } else if (String(job.prompt || '').includes(PLACEHOLDER_FREE_IMAGES)) {
       // โหมดอิสระ: Codex ออกแบบเอง — ไม่แนบเรฟคู่แข่ง ไม่ให้ลอกโครงเดิม
       // presenter=use ในบรรทัด MODE = ทิศที่มีคนเป็นจุดเด่น → บังคับใส่รูปเจ้าของ (8 พ.ย. 2569)
