@@ -106,8 +106,73 @@ function facebookError(data, status, config) {
 async function graphRequest(url, options, fetchImpl, config) {
   const response = await fetchImpl(url, options)
   const data = await response.json().catch(() => ({}))
-  if (!response.ok || data?.error) throw new Error(facebookError(data, response.status, config))
+  if (!response.ok || data?.error) {
+    const error = new Error(facebookError(data, response.status, config))
+    // รหัสของ Facebook ไว้แยก "ไม่มีโพสต์นี้" (100/33) ออกจาก "ฟิลด์ไม่ตรงชนิดโหนด" (100) ตอนตรวจสถานะโพสต์
+    error.fbCode = Number.isInteger(data?.error?.code) ? data.error.code : null
+    error.fbSubcode = Number.isInteger(data?.error?.error_subcode) ? data.error.error_subcode : null
+    throw error
+  }
   return data
+}
+
+function graphGet(config, path, fields, fetchImpl) {
+  const params = addProofParam(new URLSearchParams({ fields }), config)
+  return graphRequest(`${graphUrl(config, path)}?${params.toString()}`, { method: 'GET', headers: graphHeaders(config) }, fetchImpl, config)
+}
+
+const isMissingObject = (error) => (error?.fbCode === 100 && error?.fbSubcode === 33) || error?.fbCode === 803
+const isFieldError = (error) => error?.fbCode === 100 && !error?.fbSubcode
+
+function graphTime(value) {
+  if (value === undefined || value === null || value === '') return null
+  const ms = /^\d+$/.test(String(value)) ? Number(value) * 1000 : Date.parse(String(value))
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null
+}
+
+// ตรวจสถานะโพสต์จริงบน Facebook (อ่านอย่างเดียว · เจ้าของถาม 10 พ.ย. 2569 ว่าทำไม #32 ที่ตั้งเวลาไว้ไม่ขึ้นหน้าเพจ)
+// ระบบเก็บรหัสรูปเมื่อโพสต์รูป (/photos คืน id ของรูป) และรหัสโพสต์เมื่อโพสต์ข้อความ → ลองถามแบบรูปก่อน ได้ error ฟิลด์แปลว่าเป็นโพสต์
+// state: published · scheduled (ยังไม่ถึงเวลา) · stuck (เลยเวลาแล้วแต่ยังไม่เผยแพร่) · hidden (ซ่อนจากหน้าเพจ) · photo_only (มีรูปแต่ไม่มีโพสต์บนเพจ) · not_found · exists (อ่านสถานะละเอียดไม่ได้)
+export async function checkFacebookPost(id, fetchImpl = fetch, config = facebookConfig(), now = Date.now()) {
+  const status = configStatus(config)
+  if (!status.ready) throw new Error(`ยังไม่ได้ตั้งค่า ${status.missing.join(', ')}`)
+  const clean = String(id || '').trim()
+  if (!/^\d+(_\d+)?$/.test(clean)) throw new Error('รหัสโพสต์ Facebook ไม่ถูกต้อง')
+
+  let storyId = clean.includes('_') ? clean : null
+  let photo = null
+  if (!storyId) {
+    try {
+      photo = await graphGet(config, clean, 'id,created_time,link,page_story_id', fetchImpl)
+      storyId = photo.page_story_id || null
+    } catch (error) {
+      if (isMissingObject(error)) return { state: 'not_found', id: clean }
+      if (!isFieldError(error)) throw error
+      storyId = clean
+    }
+  }
+  if (!storyId) return { state: 'photo_only', id: clean, permalink: photo?.link || null, createdTime: graphTime(photo?.created_time) }
+
+  let post
+  try {
+    post = await graphGet(config, storyId, 'id,created_time,is_published,is_hidden,scheduled_publish_time,permalink_url', fetchImpl)
+  } catch (error) {
+    if (isMissingObject(error)) return { state: 'not_found', id: clean, storyId }
+    if (!isFieldError(error)) throw error
+    post = await graphGet(config, storyId, 'id,created_time,permalink_url', fetchImpl)
+  }
+  const scheduledAt = graphTime(post.scheduled_publish_time)
+  let state = 'exists'
+  if (post.is_published === false) state = scheduledAt && Date.parse(scheduledAt) > now ? 'scheduled' : 'stuck'
+  else if (post.is_published === true) state = post.is_hidden ? 'hidden' : 'published'
+  return {
+    state,
+    id: clean,
+    storyId: post.id || storyId,
+    permalink: post.permalink_url || photo?.link || null,
+    createdTime: graphTime(post.created_time),
+    scheduledAt,
+  }
 }
 
 export async function getFacebookConnection(fetchImpl = fetch, config = facebookConfig()) {
@@ -229,6 +294,7 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
+      if (req.query?.check) return res.status(200).json({ success: true, ...(await checkFacebookPost(req.query.check)) })
       return res.status(200).json(await getFacebookConnection())
     }
     if (req.method === 'POST') {

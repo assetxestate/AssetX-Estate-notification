@@ -6,6 +6,7 @@ import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
 import { canRecoverManualFacebookPost, recoverManualFacebookPost } from './lib/marketingQueue.js'
+import { canResendFacebookPost, facebookCheckSummary, resendFacebookPatch } from './lib/facebookPostCheck.js'
 import { prioritizeMarketingIdeas, redemptionIdeas } from './lib/marketingIdeaMix.js'
 import { importHermesDraft } from './lib/hermesMarketingDraft.js'
 import { assetxImageStyles, buildGalleryFireflyPrompt } from './lib/assetxImageStyles.js'
@@ -1105,6 +1106,7 @@ export default function MarketingPage({ onBack }) {
   const [toast, setToast] = useState(null)
   const [facebookConnection, setFacebookConnection] = useState({ loading: true, connected: false })
   const [facebookPublishingId, setFacebookPublishingId] = useState(null)
+  const [facebookCheckingId, setFacebookCheckingId] = useState(null)
   const [artworkBrief, setArtworkBrief] = useState(null)
   // คิวไอเดียจากระบบรีเสิร์ช: state = loading | ok | unauthorized | unavailable | error (ไม่เงียบอีกต่อไป)
   const [researchFeed, setResearchFeed] = useState({ state: 'loading', ideas: [], total: 0, meta: null, httpStatus: null, fetchedAt: null })
@@ -1556,6 +1558,31 @@ export default function MarketingPage({ onBack }) {
     } finally {
       setFacebookPublishingId(null)
     }
+  }
+
+  // ตรวจสถานะจริงบน Facebook (อ่านอย่างเดียว · 10 พ.ย. 2569 #32 ตั้งเวลาไว้แต่ไม่ขึ้นหน้าเพจ) → บันทึกผลลงการ์ด · เผยแพร่แล้ว = ย้ายเป็นโพสต์แล้ว
+  const checkFacebookPost = async (post) => {
+    if (blockedWhileLoading() || !post?.facebookPostId) return
+    setFacebookCheckingId(post.id)
+    try {
+      const response = await fetch(`/api/marketing-facebook?check=${encodeURIComponent(post.facebookPostId)}`)
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data.success) throw new Error(friendlyApiError(response.status, data, 'ตรวจสถานะบน Facebook ไม่สำเร็จ ลองใหม่อีกครั้ง'))
+      const summary = facebookCheckSummary(data)
+      updatePost(post.id, summary.patch, '')
+      notify(withContentNo(post.contentNo, summary.message), summary.tone)
+    } catch (error) {
+      notify(withContentNo(post.contentNo, errorMessage(error, 'ตรวจสถานะบน Facebook ไม่สำเร็จ')), 'error')
+    } finally {
+      setFacebookCheckingId(null)
+    }
+  }
+
+  const resendFacebookPost = (post) => {
+    const patch = resendFacebookPatch(post)
+    if (!patch) return
+    if (!window.confirm('ลบโพสต์เดิมที่ค้างใน Meta Business Suite (เนื้อหา → ตั้งเวลาไว้) แล้วหรือยัง?\nถ้ายังไม่ลบ Facebook อาจเผยแพร่ซ้ำสองโพสต์\n\nกดตกลงเพื่อคืนการ์ดเข้าคิว แล้วเลือกเวลาใหม่หรือกดโพสต์ทันที')) return
+    updatePost(post.id, patch, 'คืนการ์ดเข้าคิวแล้ว · เลือกเวลาใหม่หรือกด "โพสต์ Facebook" ได้เลย')
   }
 
   const recordManualPublication = (post, rawReference) => {
@@ -2483,9 +2510,12 @@ export default function MarketingPage({ onBack }) {
             mediaAssets={workspace.mediaAssets || []}
             facebookConnection={facebookConnection}
             publishingId={facebookPublishingId}
+            checkingId={facebookCheckingId}
             onCreate={() => goTo('ideas')}
             onUpdate={updatePost}
             onPublishFacebook={publishToFacebook}
+            onCheckFacebook={checkFacebookPost}
+            onResendFacebook={resendFacebookPost}
             onRecordManual={recordManualPublication}
             onCopy={copyText}
             focusNo={focusNo}
@@ -3214,7 +3244,7 @@ function ChannelsView({ posts, facebookConnection, onCreate, onQueue }) {
   )
 }
 
-function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, onCreate, onUpdate, onPublishFacebook, onRecordManual, onCopy, focusNo, loading = false }) {
+function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, checkingId = null, onCreate, onUpdate, onPublishFacebook, onCheckFacebook, onResendFacebook, onRecordManual, onCopy, focusNo, loading = false }) {
   const [queueFilter, setQueueFilter] = useState('action')
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -3311,6 +3341,20 @@ function QueueView({ posts, mediaAssets = [], facebookConnection, publishingId, 
                             ? 'ตั้งเวลา Facebook'
                             : 'โพสต์ Facebook'}
                   </button>
+                )}
+                {isFacebook && post.facebookPostId && onCheckFacebook && (
+                  <button
+                    className="mx-secondary"
+                    disabled={!facebookConnection?.connected || loading || String(checkingId) === String(post.id)}
+                    title="ถาม Facebook ว่าโพสต์นี้เผยแพร่แล้ว ยังรอเวลา หรือไม่ขึ้น (อ่านอย่างเดียว ไม่โพสต์ซ้ำ)"
+                    onClick={() => onCheckFacebook(post)}
+                  >{String(checkingId) === String(post.id) ? 'กำลังตรวจ...' : 'ตรวจบน Facebook'}</button>
+                )}
+                {isFacebook && post.facebookPermalink && (
+                  <a className="mx-secondary" href={post.facebookPermalink} target="_blank" rel="noreferrer">เปิดโพสต์บน Facebook</a>
+                )}
+                {canResendFacebookPost(post) && onResendFacebook && (
+                  <button className="mx-secondary" disabled={loading || isPublishing} onClick={() => onResendFacebook(post)}>ส่งใหม่อีกครั้ง</button>
                 )}
                 {canRecoverManualFacebookPost(post) && (
                   <button className="mx-secondary" disabled={isPublishing} onClick={() => {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { describeTokenHealth, getFacebookConnection, parseImageDataUrl, parseScheduledAt, publishFacebookPost } from './marketing-facebook.js'
+import { checkFacebookPost, describeTokenHealth, getFacebookConnection, parseImageDataUrl, parseScheduledAt, publishFacebookPost } from './marketing-facebook.js'
 
 const config = {
   pageId: 'page-123',
@@ -122,4 +122,50 @@ const checked = await getFacebookConnection(async (url, options) => {
 }, { ...config, appId: 'app-123' })
 assert.equal(checked.tokenHealth.state, 'valid')
 assert.doesNotMatch(JSON.stringify(checked), /secret-token|app-secret/)
+// ── ตรวจสถานะโพสต์จริงบน Facebook (10 พ.ย. 2569) ──
+const graphError = (code, subcode, message) => new Response(JSON.stringify({ error: { code, ...(subcode ? { error_subcode: subcode } : {}), message } }), { status: 400 })
+const at = Date.parse('2026-11-10T06:00:00Z')
+const fakeGraph = (routes) => async (url) => {
+  assert.doesNotMatch(url, /secret-token/)
+  const node = url.split('/v26.0/')[1].split('?')[0]
+  const fields = new URL(url).searchParams.get('fields')
+  const hit = routes[`${node}|${fields}`] ?? routes[node]
+  if (!hit) throw new Error(`unexpected ${node} ${fields}`)
+  return typeof hit === 'function' ? hit() : new Response(JSON.stringify(hit))
+}
+const POST_FIELDS = 'id,created_time,is_published,is_hidden,scheduled_publish_time,permalink_url'
+// รูปที่ตั้งเวลาไว้แล้วเลยเวลา (กรณี #32): รูปมี page_story_id → โพสต์ is_published=false และเวลาผ่านไปแล้ว
+const stuck = await checkFacebookPost('122208271406901474', fakeGraph({
+  '122208271406901474': { id: '122208271406901474', page_story_id: 'page-123_999' },
+  'page-123_999': { id: 'page-123_999', is_published: false, scheduled_publish_time: Math.floor(Date.parse('2026-11-10T04:30:00Z') / 1000) },
+}), config, at)
+assert.equal(stuck.state, 'stuck')
+assert.equal(stuck.storyId, 'page-123_999')
+assert.equal(stuck.scheduledAt, '2026-11-10T04:30:00.000Z')
+// ยังไม่ถึงเวลา
+const waiting = await checkFacebookPost('1001', fakeGraph({
+  1001: { id: '1001', page_story_id: 'page-123_1' },
+  'page-123_1': { id: 'page-123_1', is_published: false, scheduled_publish_time: '2026-11-11T02:00:00+0000' },
+}), config, at)
+assert.equal(waiting.state, 'scheduled')
+// เผยแพร่แล้ว + ลิงก์
+const live = await checkFacebookPost('1002', fakeGraph({
+  1002: { id: '1002', page_story_id: 'page-123_2', link: 'https://www.facebook.com/photo/?fbid=1002' },
+  'page-123_2': { id: 'page-123_2', is_published: true, is_hidden: false, created_time: '2026-11-10T04:30:05+0000', permalink_url: 'https://www.facebook.com/page/posts/2' },
+}), config, at)
+assert.deepEqual([live.state, live.permalink, live.createdTime], ['published', 'https://www.facebook.com/page/posts/2', '2026-11-10T04:30:05.000Z'])
+// รหัสโพสต์ข้อความ (ไม่ใช่รูป): ถามแบบรูปได้ error ฟิลด์ → ถามแบบโพสต์
+const textPost = await checkFacebookPost('1003', fakeGraph({
+  '1003|id,created_time,link,page_story_id': () => graphError(100, null, '(#100) Tried accessing nonexisting field (page_story_id) on node type (Post)'),
+  [`1003|${POST_FIELDS}`]: { id: '1003', is_published: true, is_hidden: true },
+}), config, at)
+assert.equal(textPost.state, 'hidden')
+// ไม่มีโพสต์นี้ (ถูกลบ/โพสต์ไม่สำเร็จ)
+assert.equal((await checkFacebookPost('1004', fakeGraph({ 1004: () => graphError(100, 33, 'Unsupported get request. Object with ID does not exist') }), config, at)).state, 'not_found')
+// มีรูปแต่ไม่มีโพสต์บนหน้าเพจ
+assert.equal((await checkFacebookPost('1005', fakeGraph({ 1005: { id: '1005', link: 'https://www.facebook.com/photo/?fbid=1005' } }), config, at)).state, 'photo_only')
+// โทเคนหมดอายุ = โยนข้อผิดพลาดตามเดิม ไม่เดาว่าไม่มีโพสต์
+await assert.rejects(checkFacebookPost('1006', fakeGraph({ 1006: () => graphError(190, 463, 'expired') }), config, at), /หมดอายุ/)
+await assert.rejects(checkFacebookPost('abc', fakeGraph({}), config, at), /รหัสโพสต์ Facebook ไม่ถูกต้อง/)
+
 console.log('marketing facebook tests passed')
