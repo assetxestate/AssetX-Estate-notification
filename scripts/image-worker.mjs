@@ -33,7 +33,7 @@ import { claimNextContentJob, CONTENT_JOB_TABLE, isMissingTable, processContentJ
 import { generateFreshContent } from '../server/research/fresh.js'
 import { loadKnowledgeBase } from '../server/research/knowledge.js'
 import { loadHookLessons, loadHookPatterns } from '../server/research/hooks.js'
-import { buildPremiumImagePrompt, disclaimerLines, parsePremiumRequest, pickPremiumLayout, premiumFrame, premiumHasMiddle, premiumRefIndex } from '../src/lib/posterPremium.js'
+import { buildPremiumImagePrompt, CONTENT_LAYOUT, disclaimerLines, parsePremiumRequest, pickPremiumLayout, pickPremiumStyleRef, premiumFrame, premiumHasMiddle, premiumRecentNote } from '../src/lib/posterPremium.js'
 import { planPremiumPoster } from '../server/poster-premium-plan.js'
 
 // 2 = รับงานคิดคอนเทนต์ใหม่ได้ (หน้าเว็บดู info.content_jobs ว่าตัวรับงานที่เปิดอยู่เป็นรุ่นนี้หรือยัง)
@@ -72,15 +72,20 @@ const REFS_ROOT = path.join(LOCAL_DIR, 'poster-refs')
 const PRESENTER = path.join(REFS_ROOT, 'presenter', 'presenter-cut.jpg')
 // โหมดพรีเมียม: ภาพต้นแบบที่เจ้าของชอบจากแชต Codex (9 พ.ย. 2569) — แนบ 1 ภาพต่องาน หมุนตาม seed · เพิ่มภาพที่ชอบลงโฟลเดอร์นี้ได้ (นอก git)
 const PREMIUM_REFS = path.join(REFS_ROOT, 'premium')
+// ภาพโฉนด (สกิล assetx-estate-visuals 11 พ.ย. 2569 · realistic-deeds.md) — คัดจากโฟลเดอร์ assets ของสกิล (นอก git):
+//   official-deed-layout-reference.png = แบบโฉนดจากสำนักงานกิจการยุติธรรม (ใช้แค่โครงเอกสาร) · approved-deed-front-back.png = ภาพที่เจ้าของยืนยันว่าชอบ (ความสมจริง)
+const DEED_REFS = path.join(REFS_ROOT, 'deed')
+const DEED_LAYOUT_REF = path.join(DEED_REFS, 'official-deed-layout-reference.png')
+const DEED_REALISM_REF = path.join(DEED_REFS, 'approved-deed-front-back.png')
 
 function premiumRefs() {
   if (!existsSync(PREMIUM_REFS)) return []
   return readdirSync(PREMIUM_REFS).filter((f) => /\.(png|jpe?g|webp)$/i.test(f)).sort().map((f) => path.join(PREMIUM_REFS, f))
 }
 
-// โครงของงานพรีเมียมล่าสุด (ใหม่สุดก่อน) จากไฟล์แผนใน .local/image-jobs — ไฟล์ก่อนมีโครงหมุนเวียน (ก่อน 11 พ.ย. 2569) = classic
-// ใช้เลี่ยงโครงซ้ำกับภาพที่เพิ่งทำ (เจ้าของ: ภาพพรีเมียม "ดูซ้ำและน่าเบื่อ")
-function recentPremiumLayouts(count = 2) {
+// งานพรีเมียมล่าสุด (ใหม่สุดก่อน) จากไฟล์แผนใน .local/image-jobs — ไฟล์ก่อนมีโครงหมุนเวียน (ก่อน 11 พ.ย. 2569) = classic
+// ใช้เลี่ยงโครงซ้ำกับภาพที่เพิ่งทำ (เจ้าของ: ภาพพรีเมียม "ดูซ้ำและน่าเบื่อ") · AI วางแผนเห็นสรุปงานเหล่านี้ (premiumRecentNote)
+function recentPremiumWork(count = 3) {
   if (!existsSync(OUTPUT_DIR)) return []
   return readdirSync(OUTPUT_DIR)
     .map((f) => Number((f.match(/^job-(\d+)-premium\.json$/) || [])[1]))
@@ -88,8 +93,9 @@ function recentPremiumLayouts(count = 2) {
     .sort((a, b) => b - a)
     .slice(0, count)
     .map((id) => {
-      try { return JSON.parse(readFileSync(path.join(OUTPUT_DIR, `job-${id}-premium.json`), 'utf8')).layout || 'classic' } catch { return 'classic' }
+      try { return JSON.parse(readFileSync(path.join(OUTPUT_DIR, `job-${id}-premium.json`), 'utf8')) } catch { return { layout: 'classic' } }
     })
+    .map((entry) => ({ ...entry, layout: entry.layout || 'classic' }))
 }
 const MAX_IMAGES = 5
 const PLUGIN_SERVER = process.env.GPT_IMAGE_SERVER || path.join('C:', 'tools', 'gpt-image-marketplace', 'gpt-image', 'server', 'index.mjs')
@@ -370,21 +376,31 @@ async function processJob(db, plugin, job) {
       const ask = createAsk({ log: say })
       if (!ask.providers.length) throw new Error(NO_PROVIDER_MESSAGE)
       const t0 = Date.now()
-      const planned = await planPremiumPoster({ title: premium.title, caption: premium.caption, ask, log: say })
+      const recent = recentPremiumWork(3)
+      const planned = await planPremiumPoster({ title: premium.title, caption: premium.caption, recent: recent.map(premiumRecentNote), ask, log: say })
       if (!planned.ok) throw new Error(`AI วางข้อความโปสเตอร์ไม่สำเร็จ — ${planned.error}`)
-      const refs = premiumRefs()
-      const ref = refs.length ? refs[premiumRefIndex(premium.seed, refs.length)] : null
-      // รูปเจ้าของเป็นผู้แนะนำในภาพหลักทุกภาพ (เจ้าของ 10 พ.ย. 2569) — ภาพที่ 1 เสมอ แล้วตามด้วยเรฟสไตล์
-      const presenter = existsSync(PRESENTER) ? PRESENTER : null
-      images = [presenter, ref].filter(Boolean)
-      // โครงภาพหมุนเวียน 5 แบบ (11 พ.ย. 2569) · เลี่ยงโครงของ 2 งานพรีเมียมล่าสุด
-      const layout = pickPremiumLayout(premium.seed, { recent: recentPremiumLayouts(2), hasMiddle: premiumHasMiddle(planned.plan) })
-      prompt = buildPremiumImagePrompt({ plan: planned.plan, size: premium.size, seed: premium.seed, refName: ref ? path.basename(ref) : '', presenter: Boolean(presenter), disclaimer: disclaimerLines(premium), layout: layout.id })
+      const plan = planned.plan
+      // สกิล 11 พ.ย. 2569: AI เลือกโครงจากเนื้อหา (composition) → โครง 'content' · แผนไม่มี composition (เช่น AI สำรอง) → โครงหมุนเวียน 5 แบบ เลี่ยง 2 งานล่าสุด
+      const led = Boolean(plan.composition)
+      const layout = led ? CONTENT_LAYOUT : pickPremiumLayout(premium.seed, { recent: recent.slice(0, 2).map((e) => e.layout), hasMiddle: premiumHasMiddle(plan) })
+      // เรฟสไตล์ตามโทนที่ AI เลือก (ไฟล์ชื่อมี dark = พื้นน้ำเงินเข้ม) · โครงหมุนเวียนใช้ต้นแบบพื้นสว่าง
+      const ref = pickPremiumStyleRef(premiumRefs(), { seed: premium.seed, theme: led ? plan.theme : 'light' })
+      // รูปเจ้าของ = ภาพที่ 1 เมื่อภาพมีคน (มีคน = เจ้าของเสมอ เจ้าของ 10 พ.ย. 2569) · โครงตามเนื้อหา AI เลือกได้ว่าไม่ต้องมีคน (สกิล: ไม่ใช้ภาพบุคคลเด่นทุกโพสต์)
+      const presenter = (!led || plan.advisor) && existsSync(PRESENTER) ? PRESENTER : null
+      // ภาพโฉนด: แนบแบบโฉนดจริง + ภาพที่เจ้าของยืนยัน (ข้ามถ้าเป็นไฟล์เดียวกับเรฟสไตล์)
+      const deed = led && plan.deed
+      const deedLayout = deed && existsSync(DEED_LAYOUT_REF) ? DEED_LAYOUT_REF : null
+      const deedRealism = deed && existsSync(DEED_REALISM_REF) && !(ref && /deed-front-back/i.test(path.basename(ref))) ? DEED_REALISM_REF : null
+      images = [presenter, ref, deedLayout, deedRealism].filter(Boolean)
+      prompt = buildPremiumImagePrompt({
+        plan, size: premium.size, seed: premium.seed, refName: ref ? path.basename(ref) : '', presenter: Boolean(presenter), disclaimer: disclaimerLines(premium), layout: layout.id,
+        deedLayoutRef: deedLayout ? path.basename(deedLayout) : '', deedRealismRef: deedRealism ? path.basename(deedRealism) : '',
+      })
       brandFooter = true
       premiumBox = premiumFrame(premium.size)
       // เก็บแผน + คำสั่งภาพไว้ดูย้อนหลังในเครื่อง (.local อยู่นอก git) · log ไม่พิมพ์เนื้อหาโพสต์
-      await fs.writeFile(path.join(OUTPUT_DIR, `job-${job.id}-premium.json`), JSON.stringify({ provider: planned.provider, attempts: planned.attempts, warnings: planned.warnings, ref: ref ? path.basename(ref) : null, presenter: Boolean(presenter), layout: layout.id, plan: planned.plan, prompt }, null, 2))
-      log(`${label}: พรีเมียม · วางข้อความเสร็จใน ${Math.round((Date.now() - t0) / 1000)} วินาที (${planned.provider} รอบ ${planned.attempts}${planned.warnings.length ? ` · ยาวเกิน ${planned.warnings.length} จุด` : ''}) · ข้อหลัก ${planned.plan.points.length} ข้อ · แถบกลาง ${planned.plan.middle.type} · โครง ${layout.id} (${layout.label}) · เรฟ ${ref ? path.basename(ref) : 'ไม่มี'} · ${presenter ? 'รูปผู้แนะนำ' : 'ไม่มีรูปผู้แนะนำ (ภาพหลักไม่มีหน้าคน)'}`)
+      await fs.writeFile(path.join(OUTPUT_DIR, `job-${job.id}-premium.json`), JSON.stringify({ provider: planned.provider, attempts: planned.attempts, warnings: planned.warnings, ref: ref ? path.basename(ref) : null, presenter: Boolean(presenter), layout: layout.id, images: images.map((f) => path.basename(f)), plan, prompt }, null, 2))
+      log(`${label}: พรีเมียม · วางข้อความเสร็จใน ${Math.round((Date.now() - t0) / 1000)} วินาที (${planned.provider} รอบ ${planned.attempts}${planned.warnings.length ? ` · ปัญหาเบา ${planned.warnings.length} จุด` : ''}) · ข้อหลัก ${plan.points.length} ข้อ${plan.callout?.title ? ' + กล่องเน้น' : ''} · แถบกลาง ${plan.middle.type} · โครง ${layout.id} (${layout.label})${led ? ` · โทน ${plan.theme}${deed ? ' · โฉนด' : ''}` : ''} · เรฟ ${ref ? path.basename(ref) : 'ไม่มี'} · ${presenter ? 'รูปผู้แนะนำ' : 'ไม่มีคน (ภาพหลักไม่มีหน้าคน)'} · แนบ ${images.length} ภาพ`)
     } else if (String(job.prompt || '').includes(PLACEHOLDER_FREE_IMAGES)) {
       // โหมดอิสระ: Codex ออกแบบเอง — ไม่แนบเรฟคู่แข่ง ไม่ให้ลอกโครงเดิม
       // presenter=use ในบรรทัด MODE = ทิศที่มีคนเป็นจุดเด่น → บังคับใส่รูปเจ้าของ (8 พ.ย. 2569)

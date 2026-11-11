@@ -24,6 +24,9 @@ export const PREMIUM_CTA_SUB = 'ทางแชต AssetX Estate'
 export const PREMIUM_DISCLAIMER = ['ความรู้ทั่วไป ไม่ใช่ข้อเสนอวงเงินหรือคำรับประกัน', 'ค่าใช้จ่ายและเงื่อนไขขึ้นอยู่กับเอกสารและข้อเท็จจริงแต่ละกรณี']
 export const HYPOTHETICAL_NOTE = 'เคสสมมุติ ไม่ใช่ลูกค้าจริง ผลลัพธ์ต่างกันทุกกรณี'
 const HYPOTHETICAL_RE = /(?:เคส|กรณี)สมม[ุ]?ติ/
+// ภาพโฉนด (สกิล realistic-deeds.md 11 พ.ย. 2569): ต้องมีคำว่า "ตัวอย่าง" บนเอกสาร + ข้อความกำกับใกล้เอกสาร — ข้อความเดียวกับภาพที่เจ้าของยืนยัน
+export const DEED_STAMP = 'ตัวอย่าง'
+export const DEED_NOTE = 'ภาพประกอบเอกสารตัวอย่าง ไม่ใช่เอกสารทรัพย์จริง'
 
 const q = (s) => `“${String(s || '').trim()}”`
 
@@ -72,6 +75,7 @@ export function premiumCopyStrings(plan = {}) {
   return [
     plan.eyebrow, plan.headlineSmall, ...(plan.headline || []), plan.subheading,
     plan.middle?.title, ...(plan.middle?.items || []), plan.middle?.note,
+    plan.callout?.title, plan.callout?.body,
     ...(plan.points || []).flatMap((p) => [p.title, p.body]), plan.cta,
   ].map((s) => String(s || '').trim()).filter(Boolean)
 }
@@ -80,6 +84,15 @@ export function premiumRefIndex(seed, count) {
   if (!count) return -1
   const n = Number(seed)
   return Number.isFinite(n) ? Math.abs(Math.trunc(n)) % count : 0
+}
+
+// เรฟสไตล์ตามโทนที่ AI เลือก: ไฟล์ที่ชื่อมี "dark" = ต้นแบบพื้นน้ำเงินเข้ม (โฉนดหน้า-หลัง ที่เจ้าของยืนยัน 11 พ.ย. 2569) · ที่เหลือ = พื้นสว่าง
+// ไม่มีไฟล์ของโทนนั้น → ใช้ทั้งหมด · หมุนตาม seed
+export function pickPremiumStyleRef(files = [], { seed = null, theme = 'light' } = {}) {
+  const isDark = (f) => /dark/i.test(String(f).split(/[\\/]/).pop())
+  const own = files.filter((f) => (theme === 'dark' ? isDark(f) : !isDark(f)))
+  const list = own.length ? own : files
+  return list.length ? list[premiumRefIndex(seed, list.length)] : null
 }
 
 // กรอบงานของโหมดพรีเมียม: สั่งภาพสัดส่วนมาตรฐานที่ "เตี้ยกว่าโพสต์" แล้วต่อแถบท้ายแบรนด์ใต้ภาพ (ไม่วางทับ ไม่ตัดเนื้อหา)
@@ -140,6 +153,7 @@ export const PREMIUM_LAYOUTS = [
   {
     id: 'classic',
     label: 'ภาพหลักด้านบน · ข้อ 01-03 เรียงลง',
+    summary: 'headline top left, photo hero across the top third, warm-white area below with points 01-03 listed vertically, navy CTA band across the bottom',
     heroPlace: 'The top 35-40% of the design area is the photographic hero',
     headlinePos: 'upper left',
     headlineText: NAVY_TEXT,
@@ -151,6 +165,7 @@ export const PREMIUM_LAYOUTS = [
   {
     id: 'split',
     label: 'แบ่งซ้าย-ขวา · ข้อความซ้าย ภาพสูงด้านขวา',
+    summary: 'vertical split: text column with a checklist on the left, one tall photo on the right, navy CTA band across the bottom',
     heroPlace: 'The right 52-56% of the design area, from the top edge down to the CTA band, is one tall photographic panel',
     headlinePos: 'at the top of the left text column',
     headlineText: NAVY_TEXT,
@@ -162,6 +177,7 @@ export const PREMIUM_LAYOUTS = [
   {
     id: 'cards',
     label: 'พาดหัวกลาง · แถบภาพกลาง · การ์ดเรียงแถว',
+    summary: 'centred headline, a wide photo band across the middle, equal numbered cards in a row below, navy CTA band across the bottom',
     heroPlace: 'A wide photographic band across the middle of the design area (about 28-32% of its height, full width)',
     headlinePos: 'centred at the top on warm white, the eyebrow above it and the subheading below it',
     headlineText: NAVY_TEXT,
@@ -173,6 +189,7 @@ export const PREMIUM_LAYOUTS = [
   {
     id: 'overlay',
     label: 'ภาพเต็มใบโทนเข้ม · แผงกระจกฝ้า',
+    summary: 'dark full-bleed photo, headline on a navy gradient at the left, points on a frosted-glass panel, navy CTA band across the bottom',
     dark: true,
     heroPlace: 'One full-bleed photograph fills the whole design area behind all the text',
     headlinePos: 'on the left side of the upper half, over a deep navy gradient that darkens the left 55% of the photo',
@@ -185,6 +202,7 @@ export const PREMIUM_LAYOUTS = [
   {
     id: 'steps',
     label: 'ภาพหลักมีพาดหัวทับ · ขั้นตอนเรียงแนวนอน',
+    summary: 'headline over the lower left of a top photo hero, numbered steps joined by a line from left to right below, navy CTA band across the bottom',
     noMiddle: true,
     heroPlace: 'The top 40-45% of the design area is the photographic hero',
     headlinePos: 'on the lower left of the hero photo, over a soft dark navy gradient along the bottom of the photo',
@@ -196,9 +214,26 @@ export const PREMIUM_LAYOUTS = [
   },
 ]
 const LAYOUT_BY_ID = Object.fromEntries(PREMIUM_LAYOUTS.map((l) => [l.id, l]))
+// สกิล assetx-estate-visuals ฉบับ 11 พ.ย. 2569 (composition-freedom.md): เลือกโครงจากเนื้อหา ไม่ใช่รอบหมุนตายตัว
+// → AI วางแผน (server/poster-premium-plan.js) เขียน composition เอง = โครง 'content' · 5 โครงด้านบนเหลือเป็นทางสำรองเมื่อแผนไม่มี composition
+export const CONTENT_LAYOUT = { id: 'content', label: 'จัดวางตามเนื้อหา (AI เลือกเอง)' }
 
 export function premiumLayout(id) {
+  if (id === CONTENT_LAYOUT.id) return CONTENT_LAYOUT
   return LAYOUT_BY_ID[id] || LAYOUT_BY_ID.classic
+}
+
+// สรุปงานพรีเมียมล่าสุดหนึ่งงาน (ไฟล์ .local/image-jobs/job-<id>-premium.json) เป็นภาษาอังกฤษสั้น ๆ ให้ AI วางแผนเลี่ยงโครงซ้ำ
+// ("Variation from Recent Work" ในสกิล) · ไม่มีข้อความโพสต์ (เนื้อหาไทยอยู่ในไฟล์ แต่ไม่ส่งต่อ)
+export function premiumRecentNote(entry = {}) {
+  const plan = entry.plan || {}
+  const who = entry.presenter ? 'advisor photo' : 'no person'
+  if (entry.layout === CONTENT_LAYOUT.id && plan.composition) {
+    const text = String(plan.composition).replace(/\s+/g, ' ').trim()
+    return `${plan.theme === 'dark' ? 'dark' : 'light'} · ${who}${plan.deed ? ' · title deed' : ''} · ${text.length > 260 ? `${text.slice(0, 257)}...` : text}`
+  }
+  const L = premiumLayout(entry.layout || 'classic')
+  return `${L.dark ? 'dark' : 'light'} · ${who} · ${L.summary}`
 }
 
 // recent = โครงของงานพรีเมียมล่าสุด (ใหม่สุดก่อน) · มีแถบกระบวนการกลางภาพ (middle) แล้วไม่ใช้โครง steps (แถบแนวนอนซ้อนกัน 2 แถบ)
@@ -255,9 +290,110 @@ function highlightColour(color, dark) {
   return dark ? 'warm coral #F2A68F' : `dark coral ${PREMIUM_COLORS.coral}`
 }
 
-export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE, seed = null, refName = '', presenter = false, disclaimer = PREMIUM_DISCLAIMER, layout = 'classic' } = {}) {
+// ---------------------------------------------------------------- โครง 'content' (สกิล 11 พ.ย. 2569: จัดวางอิสระตามเนื้อหา + โฉนดสมจริง)
+// ต่างจาก 5 โครงหมุนเวียน: ไม่มีตำแหน่ง/เปอร์เซ็นต์ตายตัว ไม่บังคับแถบ CTA ท้ายภาพ · โทนสว่าง/เข้ม คนหรือวัตถุ และโฉนด AI เลือกจากเนื้อหา
+// ที่คงเดิม: PASS-THROUGH · บรีฟ 6 ส่วน · ข้อความคำต่อคำ · สีเน้น 10–20% · ไม่วาดโลโก้/เบอร์/LINE (แถบแบรนด์ต่อใต้ภาพ) · ห้ามคำเกินจริง
+const STYLE_REF_ONLY = 'Style reference only: preserve photographic quality, restrained palette and brand character; create a new content-led composition. Do not copy the reference layout, object arrangement, headline position, panel grid or footer.'
+const REPEATED_PATTERN = 'headline top left, a house or desk photo across the top half, an information panel below and a CTA band across the bottom'
+
+function contentLedPrompt({ plan, f, seed, refName, presenter, disclaimer, deedLayoutRef, deedRealismRef }) {
+  const brief = plan.brief || {}
+  const dark = plan.theme === 'dark'
+  const deed = Boolean(plan.deed)
+  const advisor = Boolean(presenter && plan.advisor)
+  const points = (plan.points || []).filter((x) => x?.title)
+  const middle = plan.middle || { type: 'none', items: [] }
+  const callout = plan.callout?.title ? plan.callout : null
+  const accent = plan.headlineAccent && (plan.headline || []).join(' ').includes(plan.headlineAccent) ? plan.headlineAccent : ''
+  const highlights = (plan.highlights || []).filter((h) => h?.text && PREMIUM_HIGHLIGHT_COLORS.includes(h.color))
+  const cta = ctaLines(plan.cta)
+  const notes = deed && !disclaimer.includes(DEED_NOTE) ? [DEED_NOTE, ...disclaimer] : disclaimer
+  let n = 0
+  const images = []
+  if (advisor) {
+    n += 1
+    images.push(`Image ${n} = THE ADVISOR (required): the photographic hero features this man as the AssetX Estate advisor, a photoreal figure with the same face, hairstyle, skin tone and white dress shirt, lit to match the scene. Ignore that photo's background, signboard, clip-on microphone and any text in it.`)
+  }
+  if (refName) {
+    n += 1
+    images.push(`Image ${n}: ${STYLE_REF_ONLY} Do not copy its text, its content, its people or its logo corner either.`)
+  }
+  if (deed && deedLayoutRef) {
+    n += 1
+    images.push(`Image ${n} = DEED LAYOUT REFERENCE (official format, from an educational infographic): draw every title deed in this poster with the real layout of the deed pictured there: paper proportions, the red Garuda at the top centre, the header โฉนดที่ดิน, the order of the field blocks and the plot-map box on the front, and the สารบัญจดทะเบียน registration table on the back. Use only the document itself; ignore the orange infographic, its callouts, numbers, labels, colours, logos and contact line.`)
+  }
+  if (deed && deedRealismRef) {
+    n += 1
+    images.push(`Image ${n} = DEED REALISM REFERENCE (approved by the owner): match how real its deed pages, paper texture, binding and lighting look and how clearly ${q(DEED_STAMP)} is stamped on each page; do not copy its composition, folder arrangement, headline, panels or footer.`)
+  }
+  if (!images.length) images.push('No reference image is attached: create the look from the art direction below.')
+  const hero = advisor
+    ? `${brief.hero} The advisor from Image 1 is the AssetX advisor on the owner's side of the table (explaining, reviewing papers or looking warmly at the viewer), never shown as the customer, receiving cash or celebrating. He is the only clear face; any other person only from behind or out of focus.`
+    : `${brief.hero} No person is needed: places, property, documents and objects carry the story, so show no clear face (a person at most from behind or out of focus, never a celebrity).`
+  const deedRule = deed
+    ? `Every title deed is a realistic Thai land title deed (โฉนดที่ดิน) following the deed layout reference: the front page and/or the back registration page, whichever the content needs, never one invented page that merges the map and the registration list. All fields are blank or covered by neat solid bars: no names, ID numbers, deed numbers, signatures, dates or registration entries. A large translucent red stamp ${q(DEED_STAMP)} lies across each page.`
+    : 'Documents stay anonymous: no deeds with seals, no readable personal data.'
+  const theme = dark
+    ? 'deep navy base (#061C2E to #092B43) with warm-white text and translucent navy panels'
+    : 'warm-white base with deep navy and warm-white information panels'
+  const colourRule = dark
+    ? `Colour: text on dark areas warm white #FFF8EE; accents light cyan #7FD8E8, soft violet #B9A3E3 and a tiny warm coral #F2A68F, about 10-20% of the typography; never dark violet text on dark navy.`
+    : `Colour only 10-20% of the typography: primary text navy ${PREMIUM_COLORS.navy}, accents teal ${PREMIUM_COLORS.teal}, violet ${PREMIUM_COLORS.violet}, dark coral ${PREMIUM_COLORS.coral}.`
+  const headText = dark ? LIGHT_TEXT : NAVY_TEXT
+  const nums = points.map((_, i) => String(i + 1).padStart(2, '0')).join(' ')
+  return [
+    'PASS-THROUGH RULE: call image_gen with everything below this line as the prompt, exactly as written, character for character. Do not summarize, shorten, reorder or rewrite it; it is already a finished production spec.',
+    '',
+    `Generate ONE finished premium Thai Facebook educational poster for AssetX Estate, a Thai property advisory for ขายฝาก (sale with right of redemption) and จำนอง (mortgage), for a ${f.platform} post.`,
+    ...images,
+    premiumFrameLine(f),
+    `Brand footer (fixed): after rendering we attach our own slim navy brand strip with the real logo, phone and LINE directly below the bottom edge of this design (it becomes the bottom ${f.footerPct}% of the final ${f.targetWidth}x${f.targetHeight} post). Place the CTA where the composition below puts it; do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere; the only brand name on the poster is inside the CTA text.`,
+    '',
+    'SIX-PART DESIGN BRIEF (instructions only, not text to print):',
+    `1 Target Audience: ${brief.audience}`,
+    `2 Communication Goal: ${brief.goal} Secondary action: chat with AssetX Estate.`,
+    `3 Visual Psychology: ${brief.visual} The dominant headline is the largest text; secondary titles stay clearly smaller; clear contrast and ample whitespace; the eye follows the order in Creative Composition.`,
+    `4 Key Message: ${q(plan.keyMessage)}. One takeaway; every supporting element explains it, no competing slogans.`,
+    `5 Emotional Design: ${brief.emotion} The look stays professional and trustworthy: premium realistic light, genuine wood, leather, paper and metal textures, cyan-violet accents and tiny coral. No risk-free claims, urgency or official badges.`,
+    `6 Call to Action: ${cta.map(q).join(' / ')}. One action; no invented phone, LINE or QR (the footer carries the real contact); no free, expert or approval claims.`,
+    '',
+    `Creative Composition (chosen from this post's content, not from a template): ${plan.composition}`,
+    `Variation from Recent Work: ${plan.variation || 'No recent work is available to compare.'} Do not fall back to the pattern our recent posters repeated (${REPEATED_PATTERN}).`,
+    '',
+    `Art direction: premium photorealistic real-estate editorial advertising; content-led photographic composition; realistic architecture and human skin; coherent soft directional lighting; restrained AssetX cyan and violet accents with small coral highlights; ${theme}; crisp flat Thai typography; thin dividers; generous spacing; subtle depth through photography rather than cartoon effects. Hero visual: ${hero} Natural light, coherent perspective, real materials; photographs carry no caption, label or tag. ${deedRule} No currency piles, floating coins, toy houses or cartoon objects. Fine diagonal X geometry and thin cyan-violet gradient lines only as subtle accents. ${colourRule} Flat crisp Thai typography (a refined modern Thai sans, SemiBold or Bold headings, regular body), no extrusion, heavy outlines, stickers, brush strokes, neon, confetti, speech bubbles or 3D text.`,
+    '',
+    'Exact on-image copy (Thai, copy every string character for character with sensible line breaks; each string appears once; add no other words, figures, interest rates, calculations or hashtags):',
+    plan.eyebrow ? `Small eyebrow: ${q(plan.eyebrow)}` : '',
+    plan.headlineSmall ? `Headline contextual line, smaller: ${q(plan.headlineSmall)}` : '',
+    `Dominant headline${(plan.headline || []).length > 1 ? ', two lines' : ''}: ${(plan.headline || []).map(q).join(' / ')}`,
+    accent
+      ? `Colour ${q(accent)} ${headText.accent}${dark ? ' (a subtle cyan-to-soft-violet gradient is fine)' : ''}; the rest of the headline ${headText.base}.`
+      : `Headline in ${headText.base}.`,
+    plan.subheading ? `Subheading: ${q(plan.subheading)}` : '',
+    ...middleLines(middle),
+    callout ? `Key callout (a calm emphasis block, for example a thin coloured vertical rule beside it): title ${q(callout.title)}${callout.body ? ` / line ${q(callout.body)}` : ''}` : '',
+    points.length
+      ? `${points.length} information groups, arranged as Creative Composition describes${plan.numbered ? `, numbered ${nums} in reading order` : ', no big numbers'}; small restrained line icons or short labels at most:`
+      : '',
+    ...points.map((pt, i) => `${plan.numbered ? String(i + 1).padStart(2, '0') : '-'} ${q(pt.title)}${pt.body ? ` / body ${q(pt.body)}` : ''}`),
+    highlights.length ? `Selectively colour ${highlights.map((h) => `${q(h.text)} ${highlightColour(h.color, dark)}`).join(' and ')} (only these words); all group titles stay smaller than the dominant headline.` : '',
+    deed ? `On every deed page: the red stamp ${q(DEED_STAMP)} (the only added word on the documents).` : '',
+    `Small readable disclaimer near the CTA${deed ? ', its first line next to the documents' : ''}: ${notes.map(q).join(' / ')}`,
+    `One CTA, the single clear action, placed as Creative Composition describes (a rounded pill, a side box or a calm text line; not necessarily a band across the bottom): ${cta.map(q).join(' / ')}`,
+    '',
+    'No claims that these costs always apply, of approval, guaranteed funding or a successful case. Educational overview, no solicitation promises. Mobile readable, polished full-bleed output.',
+    `Avoid: prices, percentages, interest rates, any phone number, LINE id, URL, QR code, address, personal name or deed number; ${deed ? 'any seal, stamp or signature beyond the printed form of the reference deed and the ตัวอย่าง stamp; government or company emblems outside the deed document' : 'Garuda, seals, stamps, government or company emblems'}; any logo; watermarks, AI labels or any caption, tag or label on the photograph${deed ? ' (the ตัวอย่าง stamp on the deed is required)' : ''}; black-and-gold or green-and-gold loan-flyer looks; neon glow; cartoon, comic, flat vector, clay or toy-like 3D; borders, frames or bars around the design.`,
+    `MODE: premium seed=${seed === null || seed === undefined ? 'none' : seed} ref=${refName || 'none'} presenter=${advisor ? 'use' : 'none'} layout=content theme=${dark ? 'dark' : 'light'} deed=${deed ? 'yes' : 'no'} canvas=${f.width}x${f.height} footer=append`,
+  ].filter((line) => line !== '').join('\n').replace(/\n(Generate ONE|SIX-PART|Creative Composition|Art direction|Exact on-image|No claims)/g, '\n\n$1')
+}
+
+export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE, seed = null, refName = '', presenter = false, disclaimer = PREMIUM_DISCLAIMER, layout = 'classic', deedLayoutRef = '', deedRealismRef = '' } = {}) {
   const f = premiumFrame(size)
   const L = typeof layout === 'object' && layout ? layout : premiumLayout(layout)
+  if (L.id === CONTENT_LAYOUT.id) {
+    if (plan.composition) return contentLedPrompt({ plan, f, seed, refName, presenter, disclaimer, deedLayoutRef, deedRealismRef })
+    return buildPremiumImagePrompt({ plan, size, seed, refName, presenter, disclaimer, layout: 'classic' })
+  }
   const brief = plan.brief || {}
   const points = (plan.points || []).filter((x) => x?.title)
   const middle = plan.middle || { type: 'none', items: [] }

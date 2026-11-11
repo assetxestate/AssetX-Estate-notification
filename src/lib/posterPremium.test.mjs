@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { appendedFooterHeight, buildPremiumImagePrompt, buildPremiumJobPrompt, ctaLines, disclaimerLines, parsePremiumRequest, premiumCopyStrings, premiumFrame, premiumFrameLine, premiumRefIndex, pickPremiumLayout, premiumHasMiddle, premiumLayout, HYPOTHETICAL_NOTE, PREMIUM_LAYOUTS, PREMIUM_CTA_SUB, PREMIUM_DISCLAIMER, PREMIUM_REQUEST_HEADER } from './posterPremium.js'
+import { appendedFooterHeight, buildPremiumImagePrompt, buildPremiumJobPrompt, ctaLines, disclaimerLines, parsePremiumRequest, premiumCopyStrings, premiumFrame, premiumFrameLine, premiumRefIndex, pickPremiumLayout, pickPremiumStyleRef, premiumHasMiddle, premiumLayout, premiumRecentNote, CONTENT_LAYOUT, DEED_NOTE, DEED_STAMP, HYPOTHETICAL_NOTE, PREMIUM_LAYOUTS, PREMIUM_CTA_SUB, PREMIUM_DISCLAIMER, PREMIUM_REQUEST_HEADER } from './posterPremium.js'
 import { POSTER_SIZES } from './posterSizes.js'
 
 // ความสูงแถบที่ poster-footer.ps1 -Append -Ratio ต่อใต้ภาพ — เขียนสูตรซ้ำจากสคริปต์ตรง ๆ ไว้เทียบกับ appendedFooterHeight
@@ -186,4 +186,112 @@ test('คำสั่งภาพตามโครง: การจัดวา
   assert.match(steps, /one horizontal step path/)
   assert.match(steps, /then the 3 steps from left to right, then one navy CTA footer/)
   assert.match(steps, /The top 40-45% of the design area is the photographic hero: /)
+})
+
+// ---------------------------------------------------------------- สกิล assetx-estate-visuals ฉบับ 11 พ.ย. 2569: จัดวางอิสระตามเนื้อหา + โฉนดสมจริง
+// แผนแบบภาพที่เจ้าของยืนยัน (approved-deed-front-back.png · โฉนดหน้า-หลังในแฟ้มบนพื้นน้ำเงินเข้ม)
+const DEED_PLAN = {
+  brief: {
+    audience: 'Thai land owners preparing documents before talking about a sale with right of redemption or a mortgage.',
+    goal: 'The viewer checks both sides of the title deed before a conversation.',
+    visual: 'The open folder with both deed pages is the anchor; the headline sits above it.',
+    emotion: 'Calm, careful and organised.',
+    hero: 'an open navy leather folder on a dark desk holding the front page and the registration page of a Thai title deed, soft window light, a pen beside it.',
+  },
+  keyMessage: 'ดูโฉนดให้ครบทั้งหน้า-หลัง',
+  eyebrow: 'เตรียมเอกสารก่อนคุยเรื่องทรัพย์',
+  headlineSmall: '',
+  headline: ['ดูโฉนดให้ครบ', 'ทั้งหน้า-หลัง'],
+  headlineAccent: 'ทั้งหน้า-หลัง',
+  subheading: 'ข้อมูลคนละส่วน ต้องอ่านประกอบกัน',
+  middle: { type: 'none', title: '', items: [], note: '' },
+  callout: { title: 'อย่าดูเพียงชื่อเจ้าของด้านหน้า', body: 'อ่านรายการจดทะเบียน และตรวจข้อมูลปัจจุบันกับสำนักงานที่ดิน' },
+  points: [
+    { title: 'ด้านหน้า', body: 'ตำแหน่งที่ดิน • เนื้อที่ • รูปแปลง' },
+    { title: 'ด้านหลัง', body: 'สารบัญจดทะเบียน ตรวจรายการโอนและภาระผูกพัน' },
+  ],
+  numbered: false,
+  highlights: [{ text: 'ด้านหลัง', color: 'violet' }],
+  cta: 'เตรียมภาพหน้า-หลัง แล้วคุยกับ AssetX Estate ทางแชต',
+  theme: 'dark',
+  advisor: false,
+  deed: true,
+  composition: 'A document-led layout: the open folder with the deed front and back pages fills the middle at a slight angle, the headline is centred above it, short labels for each side sit under each page, and the callout with a violet rule sits below. The CTA is a rounded pill at the lower left.',
+  variation: 'Recent posters led with a person and a top photo band; this one has no person, a dark theme and the documents as the hero.',
+}
+
+test('โครงตามเนื้อหา: เรฟเป็นสไตล์อย่างเดียว · Creative Composition + Variation · CTA ไม่บังคับเป็นแถบล่าง · แถบแบรนด์ยังต่อใต้ภาพ', () => {
+  const plan = { ...PLAN, theme: 'light', advisor: true, deed: false, numbered: true, callout: { title: '', body: '' }, composition: 'An equation-led layout: the three money blocks run large across the middle, the headline above on warm white, a small advisor photo beside the checklist on the right. The CTA is a rounded pill under the checklist.', variation: 'Recent posters used a top photo hero; this one leads with the equation.' }
+  const prompt = buildPremiumImagePrompt({ plan, size: 'feed-4x5', seed: 4, refName: 'approved-1-sale-deed-check.png', presenter: true, layout: 'content' })
+  assert.match(prompt, /^PASS-THROUGH RULE/)
+  assert.match(prompt, /\nImage 1 = THE ADVISOR \(required\)/)
+  // ข้อความบังคับจากสกิล composition-freedom.md เวลาแนบภาพต้นแบบ
+  assert.ok(prompt.includes('\nImage 2: Style reference only: preserve photographic quality, restrained palette and brand character; create a new content-led composition. Do not copy the reference layout, object arrangement, headline position, panel grid or footer.'))
+  assert.match(prompt, /\n\nCreative Composition \(chosen from this post's content, not from a template\): An equation-led layout/)
+  assert.match(prompt, /\nVariation from Recent Work: Recent posters used a top photo hero[^\n]*Do not fall back to the pattern our recent posters repeated \(headline top left/)
+  assert.match(prompt, /Premium photorealistic|premium photorealistic real-estate editorial advertising; content-led photographic composition/)
+  assert.doesNotMatch(prompt, /The top 35-40%|Navy CTA band at the very bottom|the design ends with the navy CTA band/, 'ไม่มีตำแหน่งตายตัว')
+  assert.match(prompt, /One CTA, the single clear action, placed as Creative Composition describes \(a rounded pill, a side box or a calm text line; not necessarily a band across the bottom\): “คุยเรื่องเงินสุทธิที่ต้องการใช้” \/ “ทางแชต AssetX Estate”/)
+  assert.match(prompt, /Brand footer \(fixed\): after rendering we attach our own slim navy brand strip[^\n]*bottom 20% of the final 1080x1350 post[^\n]*do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere/)
+  for (const n of [1, 2, 3, 4, 5, 6]) assert.match(prompt, new RegExp(`\\n${n} (Target Audience|Communication Goal|Visual Psychology|Key Message|Emotional Design|Call to Action):`))
+  for (const s of premiumCopyStrings(plan)) assert.ok(prompt.includes(`“${s}”`), s)
+  assert.match(prompt, /3 information groups, arranged as Creative Composition describes, numbered 01 02 03 in reading order/)
+  assert.match(prompt, /Colour “เงินสุทธิ” deep teal #087F93; the rest of the headline navy #092B43\./)
+  assert.match(prompt, /Colour only 10-20% of the typography: primary text navy/)
+  assert.match(prompt, /Documents stay anonymous: no deeds with seals/)
+  assert.match(prompt, /Avoid: [^\n]*Garuda, seals, stamps, government or company emblems/)
+  assert.match(prompt, /\nMODE: premium seed=4 ref=approved-1-sale-deed-check\.png presenter=use layout=content theme=light deed=no canvas=1024x1024 footer=append$/)
+  // แผนไม่มี composition → โครงเดิม (classic) ทุกตัวอักษร
+  assert.equal(buildPremiumImagePrompt({ plan: PLAN, size: 'feed-4x5', seed: 4, refName: 'approved-1-sale-deed-check.png', presenter: true, layout: 'content' }), buildPremiumImagePrompt({ plan: PLAN, size: 'feed-4x5', seed: 4, refName: 'approved-1-sale-deed-check.png', presenter: true }))
+  assert.equal(premiumLayout('content'), CONTENT_LAYOUT)
+})
+
+test('โครงตามเนื้อหา + โฉนด + พื้นเข้ม + ไม่มีคน: ลำดับภาพแนบ · แบบโฉนดจริง · ตรา "ตัวอย่าง" · ข้อความกำกับเอกสาร · ห้ามข้อมูลบุคคล', () => {
+  const prompt = buildPremiumImagePrompt({ plan: DEED_PLAN, size: 'feed-4x5', seed: 2, refName: 'approved-4-dark-deed-front-back.png', presenter: true, layout: 'content', deedLayoutRef: 'official-deed-layout-reference.png' })
+  // AI เลือกไม่มีคน → ไม่แนบ/ไม่พูดถึงรูปเจ้าของ แม้มีไฟล์ (ตัวรับงานไม่แนบด้วย)
+  assert.doesNotMatch(prompt, /THE ADVISOR|advisor from Image/)
+  assert.match(prompt, /No person is needed: places, property, documents and objects carry the story, so show no clear face/)
+  assert.match(prompt, /\nImage 1: Style reference only/)
+  assert.match(prompt, /\nImage 2 = DEED LAYOUT REFERENCE \(official format, from an educational infographic\)[^\n]*red Garuda at the top centre, the header โฉนดที่ดิน[^\n]*สารบัญจดทะเบียน registration table on the back\. Use only the document itself; ignore the orange infographic/)
+  assert.doesNotMatch(prompt, /DEED REALISM REFERENCE/, 'เรฟสไตล์เป็นภาพโฉนดที่เจ้าของยืนยันอยู่แล้ว')
+  assert.match(prompt, /Every title deed is a realistic Thai land title deed \(โฉนดที่ดิน\)[^\n]*never one invented page that merges the map and the registration list\. All fields are blank or covered by neat solid bars: no names, ID numbers, deed numbers, signatures/)
+  assert.ok(prompt.includes(`On every deed page: the red stamp “${DEED_STAMP}”`))
+  assert.ok(prompt.includes(`Small readable disclaimer near the CTA, its first line next to the documents: “${DEED_NOTE}” / “${PREMIUM_DISCLAIMER[0]}”`))
+  assert.match(prompt, /Avoid: [^\n]*any seal, stamp or signature beyond the printed form of the reference deed and the ตัวอย่าง stamp[^\n]*\(the ตัวอย่าง stamp on the deed is required\)/)
+  assert.doesNotMatch(prompt, /Garuda, seals, stamps, government or company emblems|no deeds with seals/)
+  // พื้นเข้ม: สีอ่อนบนพื้นน้ำเงิน ไม่ใช้ม่วงเข้ม
+  assert.match(prompt, /deep navy base \(#061C2E to #092B43\) with warm-white text/)
+  assert.match(prompt, /Colour “ทั้งหน้า-หลัง” light cyan #7FD8E8 \(a subtle cyan-to-soft-violet gradient is fine\); the rest of the headline warm white #FFF8EE\./)
+  assert.match(prompt, /never dark violet text on dark navy/)
+  assert.match(prompt, /“ด้านหลัง” soft violet #B9A3E3/)
+  // กล่องเน้น + ข้อไม่มีเลข
+  assert.match(prompt, /\nKey callout[^\n]*title “อย่าดูเพียงชื่อเจ้าของด้านหน้า” \/ line “อ่านรายการจดทะเบียน และตรวจข้อมูลปัจจุบันกับสำนักงานที่ดิน”/)
+  assert.match(prompt, /2 information groups, arranged as Creative Composition describes, no big numbers/)
+  assert.match(prompt, /\n- “ด้านหน้า” \/ body “ตำแหน่งที่ดิน • เนื้อที่ • รูปแปลง”/)
+  for (const s of premiumCopyStrings(DEED_PLAN)) assert.ok(prompt.includes(`“${s}”`), s)
+  assert.match(prompt, /\nMODE: premium seed=2 ref=approved-4-dark-deed-front-back\.png presenter=none layout=content theme=dark deed=yes canvas=1024x1024 footer=append$/)
+  // เรฟสไตล์พื้นสว่าง + โฉนด → แนบภาพโฉนดที่เจ้าของยืนยันเป็นเรฟความสมจริงเพิ่ม (ภาพที่ 3)
+  const light = buildPremiumImagePrompt({ plan: { ...DEED_PLAN, theme: 'light', advisor: true, brief: { ...DEED_PLAN.brief, hero: 'the advisor pointing at the registration page of a title deed in an open folder.' } }, size: 'feed-4x5', seed: 2, refName: 'approved-1-sale-deed-check.png', presenter: true, layout: 'content', deedLayoutRef: 'official-deed-layout-reference.png', deedRealismRef: 'approved-deed-front-back.png' })
+  assert.match(light, /\nImage 1 = THE ADVISOR[^\n]*\nImage 2: Style reference only[^\n]*\nImage 3 = DEED LAYOUT REFERENCE[^\n]*\nImage 4 = DEED REALISM REFERENCE \(approved by the owner\)[^\n]*how clearly “ตัวอย่าง” is stamped/)
+  assert.match(light, /presenter=use layout=content theme=light deed=yes/)
+  // ข้อความกำกับมีบรรทัดเอกสารอยู่แล้ว → ไม่ซ้ำ
+  const once = buildPremiumImagePrompt({ plan: DEED_PLAN, size: 'feed-4x5', seed: 2, layout: 'content', disclaimer: [DEED_NOTE] })
+  assert.ok(once.includes(`disclaimer near the CTA, its first line next to the documents: “${DEED_NOTE}”\n`))
+  assert.match(once, /No reference image is attached/)
+})
+
+test('เรฟสไตล์ตามโทน + สรุปงานล่าสุดให้ AI เลี่ยงโครงซ้ำ', () => {
+  const files = ['p/approved-1-sale-deed-check.png', 'p/approved-2-business-cashflow.png', 'p/approved-3-net-proceeds.png', 'p/approved-4-dark-deed-front-back.png']
+  assert.equal(pickPremiumStyleRef(files, { seed: 3, theme: 'dark' }), 'p/approved-4-dark-deed-front-back.png')
+  for (let seed = 0; seed < 6; seed++) assert.doesNotMatch(pickPremiumStyleRef(files, { seed, theme: 'light' }), /dark/)
+  assert.equal(pickPremiumStyleRef(files.slice(0, 3), { seed: 1, theme: 'dark' }), 'p/approved-2-business-cashflow.png', 'ไม่มีต้นแบบพื้นเข้ม → ใช้ที่มี')
+  assert.equal(pickPremiumStyleRef([], { seed: 1 }), null)
+  // ไฟล์งานเก่า (ไม่มี layout) = classic · งานโครงตามเนื้อหาใช้ composition ของมันเอง
+  assert.equal(premiumRecentNote({ presenter: true }), `light · advisor photo · ${PREMIUM_LAYOUTS[0].summary}`)
+  assert.equal(premiumRecentNote({ presenter: true, layout: 'overlay' }), `dark · advisor photo · ${premiumLayout('overlay').summary}`)
+  assert.equal(premiumRecentNote({ presenter: false, layout: 'content', plan: DEED_PLAN }), `dark · no person · title deed · ${DEED_PLAN.composition.slice(0, 257)}...`)
+  assert.equal(premiumRecentNote({ presenter: true, layout: 'content', plan: { theme: 'light', composition: 'A split comparison with two calm columns.' } }), 'light · advisor photo · A split comparison with two calm columns.')
+  const long = premiumRecentNote({ layout: 'content', plan: { theme: 'light', composition: 'x'.repeat(400) } })
+  assert.ok(long.endsWith('...') && long.length < 300)
+  for (const l of PREMIUM_LAYOUTS) assert.ok(l.summary && !/[฀-๿]/.test(l.summary), `${l.id} ต้องมีสรุปภาษาอังกฤษ`)
 })
