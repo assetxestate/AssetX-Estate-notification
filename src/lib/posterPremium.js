@@ -120,20 +120,36 @@ export function appendedFooterHeight(width, height, ratio) {
   return Math.max(Math.round(width / ratio) - height, Math.ceil(standard * 0.46))
 }
 
+// เจ้าของ 11 พ.ย. 2569 (งาน 41): "ด้านล่างของภาพไม่กลืนกับภาพ เป็นช่องแบ่งแยก และกินพื้นที่ด้านล่างเยอะเกินไป"
+// → แถบท้ายกลืนกับภาพ (poster-footer.ps1 -Blend: สีพื้นตามขอบล่างของภาพ ขอบล่างจางลงในแถบ ไม่มีเส้นคั่น)
+//   ฟีด/จัตุรัส: แถบบาง 11% ของกว้าง สัดส่วนโพสต์ไม่ล็อก (ฟีด Facebook/IG รับ 4:5 ถึง 1.91:1 · ฟีด 4:5 ได้ราว 9:10) — ส่วนที่เป็นภาพเท่าเดิม แค่แถบบางลงครึ่งหนึ่ง
+//   Story/ภาพลิงก์/YouTube ยังล็อกสัดส่วน (เต็มจอ/ภาพปกต้องพอดี) แถบสูงตามที่ต้องเติม แต่กลืนสีเหมือนกัน
+export const SLIM_FOOTER_RATIO = 0.11
+const FLEXIBLE_SIZES = new Set(['feed-4x5', 'square-1x1'])
+
 export function premiumFrame(size = DEFAULT_POSTER_SIZE) {
   const key = POSTER_SIZES[size] ? size : DEFAULT_POSTER_SIZE
   const target = POSTER_SIZES[key]
   const canvas = PREMIUM_CANVAS[key] || PREMIUM_CANVAS[DEFAULT_POSTER_SIZE]
   const t = target.width / target.height
-  const band = appendedFooterHeight(canvas.width, canvas.height, t)
+  const exact = !FLEXIBLE_SIZES.has(key)
+  const band = exact ? appendedFooterHeight(canvas.width, canvas.height, t) : Math.round(canvas.width * SLIM_FOOTER_RATIO)
   return {
     ...canvas,
+    exact,
     targetRatio: Number(t.toFixed(4)),
     footerPct: Math.round((band / (canvas.height + band)) * 100),
     targetWidth: target.width,
     targetHeight: target.height,
     platform: target.platform,
   }
+}
+
+// ส่วนของแถบท้ายในคำสั่งภาพ: ล็อกสัดส่วน = บอกขนาดโพสต์สุดท้าย · ไม่ล็อก = แถบบาง
+function footerShare(f) {
+  return f.exact
+    ? `it becomes the bottom ${f.footerPct}% of the final ${f.targetWidth}x${f.targetHeight} post`
+    : `a slim strip, about ${f.footerPct}% of the final post height`
 }
 
 export function premiumFrameLine(frame) {
@@ -347,7 +363,7 @@ function contentLedPrompt({ plan, f, seed, refName, presenter, disclaimer, deedL
     `Generate ONE finished premium Thai Facebook educational poster for AssetX Estate, a Thai property advisory for ขายฝาก (sale with right of redemption) and จำนอง (mortgage), for a ${f.platform} post.`,
     ...images,
     premiumFrameLine(f),
-    `Brand footer (fixed): after rendering we attach our own slim navy brand strip with the real logo, phone and LINE directly below the bottom edge of this design (it becomes the bottom ${f.footerPct}% of the final ${f.targetWidth}x${f.targetHeight} post). Place the CTA where the composition below puts it; do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere; the only brand name on the poster is inside the CTA text.`,
+    `Brand footer (fixed): after rendering we attach our own brand strip with the real logo, phone and LINE directly below the bottom edge of this design (${footerShare(f)}). The strip continues the colour of this design's bottom edge, so let the design end calmly in its own background or photo, with no text near the bottom edge. Place the CTA where the composition below puts it; do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere; the only brand name on the poster is inside the CTA text.`,
     '',
     'SIX-PART DESIGN BRIEF (instructions only, not text to print):',
     `1 Target Audience: ${brief.audience}`,
@@ -413,7 +429,7 @@ export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE,
     `Generate ONE finished premium Thai Facebook educational poster for AssetX Estate, a Thai property advisory for ขายฝาก (sale with right of redemption) and จำนอง (mortgage), for a ${f.platform} post.`,
     ...visuals.images,
     premiumFrameLine(f),
-    `Brand footer (fixed): the design ends with the navy CTA band touching the bottom edge of the design area. After rendering we attach our own navy footer with the real logo, phone and LINE directly below that band (it becomes the bottom ${f.footerPct}% of the final ${f.targetWidth}x${f.targetHeight} post), so add nothing under the CTA band and do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere; the only brand name on the poster is inside the CTA text below.`,
+    `Brand footer (fixed): the design ends with the navy CTA band touching the bottom edge of the design area. After rendering we attach our own navy footer with the real logo, phone and LINE directly below that band (${footerShare(f)}), so add nothing under the CTA band and do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere; the only brand name on the poster is inside the CTA text below.`,
     '',
     'SIX-PART DESIGN BRIEF (instructions only, not text to print):',
     `1 Target Audience: ${brief.audience}`,

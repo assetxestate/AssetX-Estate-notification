@@ -4,6 +4,7 @@
 # ผลลัพธ์ (รันซ้ำได้ ผลเหมือนเดิม):
 #   public/logo-full-transparent.png  — โลโก้แนวตั้งเดิม (X + ตัวหนังสือน้ำเงิน) พื้นโปร่งใส สำหรับพื้นสว่าง
 #   public/logo-lockup-white.png      — แนวนอน: X ซ้าย + ตัวหนังสือสีขาวขวา พื้นโปร่งใส สำหรับแถบท้ายโปสเตอร์ (พื้นน้ำเงินเข้ม)
+#   public/logo-lockup-navy.png       — แนวนอนเดียวกัน ตัวหนังสือสีน้ำเงินเดิม สำหรับแถบท้ายพื้นสว่าง (11 พ.ย. 2569)
 # วิธีลบพื้นขาว: ระยะห่างจากสีขาว (d = 255 - ช่องสีที่เข้มสุด) ≥ SOLID = ทึบเต็ม (สีอ่อนอย่างฟ้าไซยานไม่โปร่งตาม แบบ color-to-alpha ที่ทำให้ X หม่นบนพื้นเข้ม)
 # ต่ำกว่านั้น = ขอบรอยหยัก โปร่งตามสัดส่วนและถอดสีขาวที่ผสมอยู่ออก · ส่วนขาวด้านในอาคารโปร่งตามไปด้วยแบบโลโก้กลับสี
 # ใช้: python scripts/make-logo-assets.py   (ต้องมี Pillow)
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / 'public' / 'logo-full.jpg'
 OUT_FULL = ROOT / 'public' / 'logo-full-transparent.png'
 OUT_LOCKUP = ROOT / 'public' / 'logo-lockup-white.png'
+OUT_LOCKUP_NAVY = ROOT / 'public' / 'logo-lockup-navy.png'
 NOISE = 12  # d ต่ำกว่านี้ถือเป็นพื้น (สัญญาณรบกวน JPEG)
 SOLID = 64  # d ตั้งแต่นี้ขึ้นไปทึบเต็ม
 
@@ -79,7 +81,14 @@ def main():
     lockup.alpha_composite(mark, (m, m))
     lockup.alpha_composite(word_white, (m + mark.width + gap, m + (H - wh) // 2))
     lockup.save(OUT_LOCKUP, optimize=True)
-    print(f'mark {mark_box} word {word_box} -> {OUT_FULL.name} {OUT_LOCKUP.name} {lockup.size}')
+
+    # แนวนอนเดียวกัน ตัวหนังสือสีน้ำเงินเดิมของโลโก้ — แถบท้ายพื้นสว่างที่กลืนกับภาพ (เจ้าของ 11 พ.ย. 2569: แถบน้ำเงินทึบดูแยกจากภาพ)
+    word_navy = word.resize((round(word.width * wh / word.height), wh), Image.LANCZOS)
+    navy = Image.new('RGBA', lockup.size, (0, 0, 0, 0))
+    navy.alpha_composite(mark, (m, m))
+    navy.alpha_composite(word_navy, (m + mark.width + gap, m + (H - wh) // 2))
+    navy.save(OUT_LOCKUP_NAVY, optimize=True)
+    print(f'mark {mark_box} word {word_box} -> {OUT_FULL.name} {OUT_LOCKUP.name} {OUT_LOCKUP_NAVY.name} {lockup.size}')
 
 
 if __name__ == '__main__':

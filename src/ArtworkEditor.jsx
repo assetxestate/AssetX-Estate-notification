@@ -50,8 +50,11 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
   }
 
   const applyChatImage = async (job, image) => {
-    await useSource(image, 'ai')
-    patch({ layout: 'original', posterSize: POSTER_SIZES[job.size] ? job.size : '' })
+    const dims = await useSource(image, 'ai')
+    // ภาพพรีเมียมแถบท้ายบางกลืนกับภาพ (เจ้าของ 11 พ.ย. 2569) สัดส่วนไม่ล็อก 4:5 → คงสัดส่วนภาพไว้ (ไม่ย่อลงกรอบแล้วเติมขอบเบลอบน-ล่าง)
+    const target = POSTER_SIZES[job.size]
+    const fits = target && dims && Math.abs(dims.width / dims.height - target.width / target.height) <= 0.02
+    patch({ layout: 'original', posterSize: fits ? job.size : '' })
     setAppliedJobId(job.id)
   }
 
@@ -200,6 +203,7 @@ export default function ArtworkEditor({ brief, asset, onSave, onClose }) {
     setSource(canvas.toDataURL('image/jpeg', 0.86))
     // ภาพใหม่เริ่มที่ "ตามภาพต้นฉบับ" เสมอ — ภาพจาก ChatGPT ตั้งขนาดครอปตามงานเองหลังบรรทัดนี้ (applyChatImage)
     patch({ sourceKind: kind, cropX: 50, cropY: 50, zoom: 1, posterSize: '', posterFit: 'contain' })
+    return { width: image.width, height: image.height }
   }
 
   const uploadSource = async (file) => {

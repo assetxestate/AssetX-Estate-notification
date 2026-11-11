@@ -68,6 +68,10 @@ const FOOTER_FONT = path.join(repo, 'scripts', 'assets', 'fonts', 'Kanit-Medium.
 // stacked = สองแถว (แนวตั้ง/จัตุรัส) · inline = แถวเดียว (แนวนอน) · ฟอนต์+ข้อความด้านบนเป็นทางสำรองของสคริปต์ ไม่ได้ใช้เมื่อมีภาพ
 const FOOTER_CONTACT = path.join(repo, 'public', 'contact-block-stacked.png')
 const FOOTER_CONTACT_INLINE = path.join(repo, 'public', 'contact-block-inline.png')
+// แถบท้ายกลืนกับภาพ (โหมดพรีเมียม · เจ้าของ 11 พ.ย. 2569): พื้นสว่างใช้ชุดตัวหนังสือน้ำเงิน (scripts/make-logo-assets.py · scripts/make-contact-block.mjs)
+const FOOTER_LOGO_NAVY = path.join(repo, 'public', 'logo-lockup-navy.png')
+const FOOTER_CONTACT_NAVY = path.join(repo, 'public', 'contact-block-stacked-navy.png')
+const FOOTER_CONTACT_INLINE_NAVY = path.join(repo, 'public', 'contact-block-inline-navy.png')
 const REFS_ROOT = path.join(LOCAL_DIR, 'poster-refs')
 const PRESENTER = path.join(REFS_ROOT, 'presenter', 'presenter-cut.jpg')
 // โหมดพรีเมียม: ภาพต้นแบบที่เจ้าของชอบจากแชต Codex (9 พ.ย. 2569) — แนบ 1 ภาพต่องาน หมุนตาม seed · เพิ่มภาพที่ชอบลงโฟลเดอร์นี้ได้ (นอก git)
@@ -286,14 +290,15 @@ const TO_JPEG_PS = [
 
 // วางแถบท้ายแบรนด์ลงภาพที่ครอปแล้ว · คืนข้อความสรุปจากสคริปต์ · ล้ม = throw (ให้งานล้ม ไม่ส่งภาพที่ไม่มีช่องทางติดต่อ)
 // append = ต่อแถบทึบใต้ภาพแทนการวางทับ (โหมดพรีเมียม) · ratio = สัดส่วนโพสต์สุดท้าย (แถบสูงพอดีให้ได้สัดส่วนนั้น)
-function addBrandFooter(src, dst, { append = false, ratio = 0 } = {}) {
+function addBrandFooter(src, dst, { append = false, ratio = 0, blend = false } = {}) {
   const [phone, line] = footerContactLines()
+  const blendArgs = blend ? ['-Blend', '-LogoNavy', FOOTER_LOGO_NAVY, '-ContactNavy', FOOTER_CONTACT_NAVY, '-ContactInlineNavy', FOOTER_CONTACT_INLINE_NAVY] : []
   return new Promise((resolve, reject) => {
     let out = ''
     let err = ''
     const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', FOOTER_SCRIPT,
       '-Src', src, '-Dst', dst, '-Logo', FOOTER_LOGO, '-Contact', FOOTER_CONTACT, '-ContactInline', FOOTER_CONTACT_INLINE,
-      '-FontFile', FOOTER_FONT, '-Phone', phone, '-Line', line, ...(append ? ['-Append', ...(ratio ? ['-Ratio', String(ratio)] : [])] : [])], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      '-FontFile', FOOTER_FONT, '-Phone', phone, '-Line', line, ...(append ? ['-Append', ...(ratio ? ['-Ratio', String(ratio)] : []), ...blendArgs] : [])], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     child.stdout.on('data', (d) => { out += String(d) })
     child.stderr.on('data', (d) => { err += String(d) })
     child.on('error', reject)
@@ -370,7 +375,8 @@ async function processJob(db, plugin, job) {
     if (premium) {
       // โหมดพรีเมียม (9 พ.ย. 2569): AI วางบรีฟ 6 ส่วน + ข้อความบนภาพก่อน (ตรวจตัวเลข/คำเกินจริง/มุมคนปล่อยเงิน) → คำสั่งภาพแบบเดียวกับพรอมต์ของ Codex
       // + ภาพต้นแบบที่เจ้าของชอบ 1 ภาพ · โลโก้/เบอร์/LINE = แถบท้ายทึบที่ "ต่อใต้ภาพ" หลังเจน (วางทับแล้ว CTA ของ Codex หาย — งาน 22)
-      const missing = [FOOTER_SCRIPT, FOOTER_LOGO, FOOTER_FONT, FOOTER_CONTACT, FOOTER_CONTACT_INLINE].filter((f) => !existsSync(f))
+      // ไฟล์ชุดน้ำเงินต้องมี — ไม่มีแล้วสคริปต์ใช้ชุดสีขาวบนแถบพื้นสว่าง ตัวหนังสือจะมองไม่เห็น
+      const missing = [FOOTER_SCRIPT, FOOTER_LOGO, FOOTER_FONT, FOOTER_CONTACT, FOOTER_CONTACT_INLINE, FOOTER_LOGO_NAVY, FOOTER_CONTACT_NAVY, FOOTER_CONTACT_INLINE_NAVY].filter((f) => !existsSync(f))
       if (missing.length) throw new Error(`ไม่พบไฟล์แถบท้ายแบรนด์: ${missing.map((f) => path.relative(repo, f)).join(', ')}`)
       const say = (s) => log(`${label}: ${s}`)
       const ask = createAsk({ log: say })
@@ -458,7 +464,8 @@ async function processJob(db, plugin, job) {
       // แถบท้ายแบรนด์: โลโก้จริงพื้นโปร่งใส + เบอร์/LINE ตัวพิมพ์ Kanit (เจ้าของ 8 พ.ย. 2569) · ล้ม = งานล้ม (ห้ามส่งโปสเตอร์ที่ไม่มีช่องทางติดต่อ)
       if (jpg === saved) throw new Error('ตัดแถบ/แปลง JPEG ไม่สำเร็จ จึงวางแถบท้ายแบรนด์ไม่ได้')
       finalFile = path.join(OUTPUT_DIR, `job-${job.id}-final.jpg`)
-      log(`${label}: ${await addBrandFooter(jpg, finalFile, premiumBox ? { append: true, ratio: premiumBox.targetRatio } : {})}`)
+      // พรีเมียม: แถบกลืนกับภาพ · ฟีด/จัตุรัสแถบบางไม่ล็อกสัดส่วน · Story/ลิงก์/YouTube ล็อกสัดส่วน (premiumFrame)
+      log(`${label}: ${await addBrandFooter(jpg, finalFile, premiumBox ? { append: true, ratio: premiumBox.exact ? premiumBox.targetRatio : 0, blend: true } : {})}`)
     }
     const isJpeg = /\.jpe?g$/i.test(finalFile)
     const objectPath = `jobs/${job.id}.${isJpeg ? 'jpg' : 'png'}`

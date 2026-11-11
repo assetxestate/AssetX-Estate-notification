@@ -48,12 +48,19 @@ test('คำขอในคิว: เก็บหัวข้อ + โพสต
 
 test('กรอบงาน: สั่งสัดส่วนมาตรฐานที่เตี้ยกว่าโพสต์ (aspect auto) แล้วต่อแถบท้ายใต้ภาพ → ได้สัดส่วนแพลตฟอร์มพอดีทุกขนาด ไม่ครอปเนื้อหา', () => {
   const feed = premiumFrame('feed-4x5')
-  // งาน 24–25 (9 พ.ย.): สั่งขนาดเอง (aspect auto) โมเดลให้ยาวกว่าที่สั่ง → ฟีดใช้จัตุรัสที่ปลั๊กอินบังคับได้แน่นอน แถบท้าย 20%
-  assert.deepEqual([feed.aspect, feed.width, feed.height, feed.label, feed.targetRatio, feed.footerPct], ['square', 1024, 1024, 'square 1:1', 0.8, 20])
-  assert.deepEqual([premiumFrame('story-9x16').aspect, premiumFrame('story-9x16').label], ['portrait', 'portrait 2:3'])
-  assert.deepEqual([premiumFrame('square-1x1').aspect, premiumFrame('square-1x1').label], ['auto', 'landscape 7:6'])
+  // งาน 24–25 (9 พ.ย.): สั่งขนาดเอง (aspect auto) โมเดลให้ยาวกว่าที่สั่ง → ฟีดใช้จัตุรัสที่ปลั๊กอินบังคับได้แน่นอน
+  // เจ้าของ 11 พ.ย. 2569 (งาน 41): แถบท้าย 20% "กินพื้นที่ด้านล่างเยอะเกินไป" → ฟีด/จัตุรัสแถบบาง 11% ของกว้าง (ราว 10% ของโพสต์) ไม่ล็อกสัดส่วน
+  assert.deepEqual([feed.aspect, feed.width, feed.height, feed.label, feed.targetRatio, feed.footerPct, feed.exact], ['square', 1024, 1024, 'square 1:1', 0.8, 10, false])
+  assert.deepEqual([premiumFrame('story-9x16').aspect, premiumFrame('story-9x16').label, premiumFrame('story-9x16').exact], ['portrait', 'portrait 2:3', true])
+  assert.deepEqual([premiumFrame('square-1x1').aspect, premiumFrame('square-1x1').label, premiumFrame('square-1x1').exact], ['auto', 'landscape 7:6', false])
   for (const size of Object.keys(POSTER_SIZES)) {
     const f = premiumFrame(size)
+    if (!f.exact) {
+      // แถบบาง: ฟีด Facebook/IG รับ 4:5 (0.8) ถึง 1.91:1 — ผลจริงงาน 41 = 1254x1392 (0.90)
+      const finalRatio = f.width / (f.height + Math.round(f.width * 0.11))
+      assert.ok(finalRatio >= 0.8 && finalRatio <= 1.91, `${size}: ${finalRatio}`)
+      continue
+    }
     assert.equal(appendedFooterHeight(f.width, f.height, f.targetRatio), appendedFooter(f.width, f.height, f.targetRatio))
     const finalRatio = f.width / (f.height + appendedFooter(f.width, f.height, f.targetRatio))
     assert.ok(Math.abs(finalRatio - f.targetRatio) < 0.002, `${size}: ${finalRatio}`)
@@ -84,7 +91,7 @@ test('คำสั่งภาพ: PASS-THROUGH · รูปผู้แนะ�
   assert.match(prompt, /\nCanvas \(fixed[^\n]*1024x1024 px \(square 1:1\)/)
   // งาน 22 (9 พ.ย.): สั่งให้เว้นแถบล่างแล้ว Codex ไม่เว้น → แถบท้ายต่อใต้ภาพ ไม่ขอให้โมเดลเว้นที่อีก
   assert.doesNotMatch(prompt, /Reserved brand footer|plain flat navy/)
-  assert.match(prompt, /Brand footer \(fixed\): the design ends with the navy CTA band touching the bottom edge[^\n]*directly below that band \(it becomes the bottom 20% of the final 1080x1350 post\)[^\n]*do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere/)
+  assert.match(prompt, /Brand footer \(fixed\): the design ends with the navy CTA band touching the bottom edge[^\n]*directly below that band \(a slim strip, about 10% of the final post height\)[^\n]*do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere/)
   assert.match(prompt, /The top 35-40% of the design area is the photographic hero/)
   for (const n of [1, 2, 3, 4, 5, 6]) assert.match(prompt, new RegExp(`\\n${n} (Target Audience|Communication Goal|Visual Psychology|Key Message|Emotional Design|Call to Action):`))
   assert.match(prompt, /4 Key Message: “ดูเงินสุทธิที่ใช้ได้จริง ก่อนตัดสินใจ”\./)
@@ -232,7 +239,9 @@ test('โครงตามเนื้อหา: เรฟเป็นสไต
   assert.match(prompt, /Premium photorealistic|premium photorealistic real-estate editorial advertising; content-led photographic composition/)
   assert.doesNotMatch(prompt, /The top 35-40%|Navy CTA band at the very bottom|the design ends with the navy CTA band/, 'ไม่มีตำแหน่งตายตัว')
   assert.match(prompt, /One CTA, the single clear action, placed as Creative Composition describes \(a rounded pill, a side box or a calm text line; not necessarily a band across the bottom\): “คุยเรื่องเงินสุทธิที่ต้องการใช้” \/ “ทางแชต AssetX Estate”/)
-  assert.match(prompt, /Brand footer \(fixed\): after rendering we attach our own slim navy brand strip[^\n]*bottom 20% of the final 1080x1350 post[^\n]*do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere/)
+  assert.match(prompt, /Brand footer \(fixed\): after rendering we attach our own brand strip[^\n]*\(a slim strip, about 10% of the final post height\)\. The strip continues the colour of this design's bottom edge, so let the design end calmly[^\n]*do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere/)
+  // Story ยังล็อกสัดส่วน → บอกขนาดโพสต์สุดท้าย
+  assert.match(buildPremiumImagePrompt({ plan, size: 'story-9x16', seed: 4, layout: 'content' }), /directly below the bottom edge of this design \(it becomes the bottom 16% of the final 1080x1920 post\)/)
   for (const n of [1, 2, 3, 4, 5, 6]) assert.match(prompt, new RegExp(`\\n${n} (Target Audience|Communication Goal|Visual Psychology|Key Message|Emotional Design|Call to Action):`))
   for (const s of premiumCopyStrings(plan)) assert.ok(prompt.includes(`“${s}”`), s)
   assert.match(prompt, /3 information groups, arranged as Creative Composition describes, numbered 01 02 03 in reading order/)

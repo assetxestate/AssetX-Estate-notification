@@ -18,9 +18,12 @@ import { POSTER_CONTACT } from '../src/lib/posterDesignSystem.js'
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const asset = (...p) => path.join(repo, 'scripts', 'assets', ...p)
 const dataUri = (file, type) => `data:${type};base64,${readFileSync(file).toString('base64')}`
+// -navy = ตัวเลข/ไอดีสีน้ำเงิน #092B43 สำหรับแถบท้ายพื้นสว่างที่กลืนกับภาพ (เจ้าของ 11 พ.ย. 2569: แถบน้ำเงินทึบดูแยกจากภาพ)
 export const CONTACT_BLOCK_FILES = {
   stacked: path.join(repo, 'public', 'contact-block-stacked.png'),
   inline: path.join(repo, 'public', 'contact-block-inline.png'),
+  'stacked-navy': path.join(repo, 'public', 'contact-block-stacked-navy.png'),
+  'inline-navy': path.join(repo, 'public', 'contact-block-inline-navy.png'),
 }
 
 const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -44,17 +47,21 @@ body { padding: 20px; }
 .stacked { display: inline-grid; grid-template-columns: 88px auto; column-gap: 30px; row-gap: 30px; align-items: center; }
 .inline { display: inline-flex; align-items: center; gap: 28px; }
 .rule { width: 2px; height: 70px; background: linear-gradient(180deg, rgba(66,199,216,0), rgba(66,199,216,.75), rgba(66,199,216,0)); margin: 0 18px; }
+.navy .val { color: #092B43; }
+.navy .rule { background: linear-gradient(180deg, rgba(8,127,147,0), rgba(8,127,147,.6), rgba(8,127,147,0)); }
 </style></head><body>
-<div id="stacked" class="stacked">
+${['', 'navy'].map((tone) => `
+<div id="stacked${tone ? `-${tone}` : ''}" class="stacked ${tone}">
   <div class="tile phone">${phoneSvg}</div><div class="val">${phone}</div>
   <img class="tile" src="${lineIcon}" alt="LINE"><div class="val">${line}</div>
 </div>
 <div style="height:40px"></div>
-<div id="inline" class="inline">
+<div id="inline${tone ? `-${tone}` : ''}" class="inline ${tone}">
   <div class="tile phone">${phoneSvg}</div><div class="val">${phone}</div>
   <div class="rule"></div>
   <img class="tile" src="${lineIcon}" alt="LINE"><div class="val">${line}</div>
 </div>
+<div style="height:40px"></div>`).join('')}
 </body></html>`
 }
 
@@ -62,7 +69,7 @@ async function main() {
   const { chromium } = await import('playwright-core')
   const browser = await chromium.launch({ channel: 'chrome', headless: true })
   try {
-    const page = await browser.newPage({ deviceScaleFactor: 3, viewport: { width: 1400, height: 700 } })
+    const page = await browser.newPage({ deviceScaleFactor: 3, viewport: { width: 1400, height: 1400 } })
     await page.setContent(contactBlockHtml(), { waitUntil: 'load' })
     await page.evaluate(() => document.fonts.ready)
     const family = await page.evaluate(() => getComputedStyle(document.querySelector('.val')).fontFamily)
