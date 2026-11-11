@@ -1418,7 +1418,7 @@ export default function MarketingPage({ onBack }) {
       if (message) notify(`${message} · แต่คอนเทนต์นี้ถูกลบจากหน้านี้ไปแล้ว`, 'warn')
       return
     }
-    if (Object.hasOwn(patch, 'caption') || Object.hasOwn(patch, 'channel')) {
+    if (Object.hasOwn(patch, 'caption') || Object.hasOwn(patch, 'channel') || Object.hasOwn(patch, 'title')) {
       const review = reviewAssetxContent({ ...current, ...patch })
       patch = { ...patch, status: 'pending', reviewStatus: review.ok ? 'passed' : 'needs_edit', reviewNotes: [...review.notes, 'ข้อความเปลี่ยนแล้ว ต้องตรวจและอนุมัติใหม่'] }
     }
@@ -3127,6 +3127,22 @@ function ApprovalsView({
                     </div>
                     <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{reviewLabel(post)}</span>
                   </div>
+                  {/* พาดหัวพิมพ์แก้เองได้ (เจ้าของ 11 พ.ย. 2569 #37: ภาพพรีเมียมได้พาดหัวที่ดีกว่า แต่แก้พาดหัวการ์ดให้ตรงกับภาพไม่ได้ — เดิมเลือกได้แค่ 3 ประโยคเปิดทางเลือก)
+                      พาดหัวนี้ใช้เป็นหัวข้อโปสเตอร์รอบถัดไปด้วย · แก้แล้วต้องตรวจและอนุมัติใหม่ */}
+                  {!(post.status === 'posted' || post.facebookPostId) && (
+                    <label className="mx-title-edit" onClick={(event) => event.stopPropagation()}>
+                      <span>พาดหัว</span>
+                      <input
+                        value={post.title || ''}
+                        maxLength={80}
+                        readOnly={loading}
+                        aria-label={`พาดหัว ${titleWithNo(post)}`}
+                        placeholder="พาดหัวสั้น ๆ ของโพสต์"
+                        onKeyDown={loading ? () => onWaitNotice?.() : undefined}
+                        onChange={(event) => onUpdate(post.id, { title: event.target.value })}
+                      />
+                    </label>
+                  )}
                   <textarea
                     className="mx-approval-caption"
                     value={post.caption}
@@ -4319,6 +4335,10 @@ const styles = `
   .mx-mini-button:hover { border-color: var(--mx-line-2); background: rgba(66,199,216,.1); color: #fff; }
   .mx-mini-button.danger { border-color: rgba(251,113,133,.45); color: var(--mx-err-soft); background: rgba(251,113,133,.08); }
   .mx-caption-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 2px; }
+  .mx-title-edit { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; }
+  .mx-title-edit span { font-size: 13px; font-weight: 600; color: var(--mx-muted); white-space: nowrap; }
+  .mx-title-edit input { flex: 1; min-width: 0; border: 1px solid var(--mx-line); background: var(--mx-field); color: var(--mx-ink); border-radius: 8px; padding: 8px 10px; font-size: 15px; font-weight: 600; }
+  .mx-title-edit input:focus { outline: 0; border-color: var(--mx-line-2); }
   .mx-more { position: relative; }
   .mx-more > summary { list-style: none; cursor: pointer; border: 1px solid var(--mx-line); background: rgba(255,255,255,.03); color: var(--mx-ink-2); border-radius: 11px; padding: 10px 15px; font-weight: 600; font-size: 15px; }
   .mx-more > summary::-webkit-details-marker { display: none; }

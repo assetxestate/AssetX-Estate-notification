@@ -79,6 +79,19 @@ test('สร้างงาน: เก็บขนาดแพลตฟอร์
   assert.match(row.prompt, /โทร 096-986-8888/, 'เบอร์บริษัทจากค่าคงที่ ไม่ใช่จากโพสต์')
 })
 
+test('สร้างงาน: แคปชั่นที่พูดกับ "คุณ" ไม่ถูกลบ (เคส #37 "ของคุณ↵↵ถาม:" กลายเป็น "ของ[ลบ]:") · ชื่อหลัง นาย/นาง และเบอร์ยังถูกลบ', async () => {
+  const db = fakeDb({ worker: onlineWorker })
+  const res = response()
+  await handlerWith(db)({ method: 'POST', body: {
+    action: 'create', post_key: 'no-37', content_no: 37, title: 'ติดภาระเดิม คุยก่อนได้ไหม', mode: 'premium',
+    caption: 'ตอบ: ต้องดูเงื่อนไขสัญญาเดิมของคุณ\n\nถาม: ต้องบอกเรื่องของเดิมแค่ไหน\nเคสของ นาย สมชาย ใจดี โทร 081-234-5678',
+  } }, res)
+  assert.equal(res.code, 200)
+  const row = db.tables.marketing_image_jobs[0]
+  assert.match(row.prompt, /สัญญาเดิมของคุณ\n\nถาม: ต้องบอกเรื่องของเดิมแค่ไหน/)
+  assert.doesNotMatch(row.prompt, /สมชาย|081-234-5678/)
+})
+
 test('สร้างงาน: ขนาดที่ไม่รู้จัก = ฟีด 4:5 · ไม่มีหัวข้อและเนื้อหา = 400 · รหัสโพสต์แปลก = 400', async () => {
   const db = fakeDb()
   let res = response()

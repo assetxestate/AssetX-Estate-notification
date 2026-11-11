@@ -129,6 +129,91 @@ export function premiumFrameLine(frame) {
   return `Canvas (fixed, keep it word for word in your image_gen prompt): render the image at ${f.width}x${f.height} px (${f.label}). The whole canvas is the design, full bleed, with no border, frame or bars; keep every text at least ${margin} px from every edge.`
 }
 
+// ---------------------------------------------------------------- โครงภาพหมุนเวียน
+// เจ้าของ 11 พ.ย. 2569 (#37): ภาพพรีเมียมออกมาโครงเดียวกันทุกครั้ง (ภาพหลักด้านบน · พื้นขาว · ข้อ 01-03 เรียงลง) เหมือนโพสต์ #32 ที่เพิ่งลง
+// "อยากให้ปรับรูปแบบให้แตกต่างจากเดิมนิดนึงเพื่อไม่ให้รูปแบบดูซ้ำและน่าเบื่อ" → 5 โครง หน้าตา/สี/ตัวอักษร/แถบชวนทักแบบเดิม ต่างกันที่การจัดวาง
+// ตัวรับงานเลือกด้วย seed และเลี่ยงโครงที่ใช้ไปในงานพรีเมียม 2 งานล่าสุด (pickPremiumLayout) · ทุกโครงจบด้วยแถบ CTA สีน้ำเงินชิดขอบล่าง (ต่อแถบท้ายใต้แถบนี้)
+const LIGHT_TEXT = { base: 'warm white #FFF8EE', accent: 'light cyan #7FD8E8' }
+const NAVY_TEXT = { base: `navy ${PREMIUM_COLORS.navy}`, accent: `deep teal ${PREMIUM_COLORS.teal}` }
+
+export const PREMIUM_LAYOUTS = [
+  {
+    id: 'classic',
+    label: 'ภาพหลักด้านบน · ข้อ 01-03 เรียงลง',
+    heroPlace: 'The top 35-40% of the design area is the photographic hero',
+    headlinePos: 'upper left',
+    headlineText: NAVY_TEXT,
+    afterHeadline: 'the photographic hero',
+    flowPoints: (n) => `the ${n} numbered points`,
+    info: 'Below the hero a warm-white information area with thin dividers and a few small thin line icons.',
+    points: (n, nums) => `${n} numbered points, vertically arranged with elegant ${nums} numbers (alternating teal and violet) and small restrained line icons:`,
+  },
+  {
+    id: 'split',
+    label: 'แบ่งซ้าย-ขวา · ข้อความซ้าย ภาพสูงด้านขวา',
+    heroPlace: 'The right 52-56% of the design area, from the top edge down to the CTA band, is one tall photographic panel',
+    headlinePos: 'at the top of the left text column',
+    headlineText: NAVY_TEXT,
+    afterHeadline: 'the checklist beside the tall photo',
+    flowPoints: null,
+    info: 'LAYOUT: a vertical split, not a hero strip across the top. The left 44-48% is a warm-white text column with generous margins: eyebrow, headline and subheading at the top, then the points as a clean checklist; a thin vertical teal rule separates the column from the tall photo on the right.',
+    points: (n) => `${n} points as a vertical checklist in the left column, each with a small teal circle check mark instead of big numbers, title SemiBold and body regular:`,
+  },
+  {
+    id: 'cards',
+    label: 'พาดหัวกลาง · แถบภาพกลาง · การ์ดเรียงแถว',
+    heroPlace: 'A wide photographic band across the middle of the design area (about 28-32% of its height, full width)',
+    headlinePos: 'centred at the top on warm white, the eyebrow above it and the subheading below it',
+    headlineText: NAVY_TEXT,
+    afterHeadline: 'the photo band',
+    flowPoints: (n) => `the ${n} cards`,
+    info: 'LAYOUT: centred and symmetrical, not a hero strip at the very top. Warm-white background above and below the photo band; below the photo the points are equal rounded cards (soft tint, thin border, one small thin line icon each) side by side in one row, or a 2 by 2 grid when there are 4.',
+    points: (n, nums) => `${n} points as equal cards, each card topped by a large number (${nums}, alternating teal and violet), then the title and the body:`,
+  },
+  {
+    id: 'overlay',
+    label: 'ภาพเต็มใบโทนเข้ม · แผงกระจกฝ้า',
+    dark: true,
+    heroPlace: 'One full-bleed photograph fills the whole design area behind all the text',
+    headlinePos: 'on the left side of the upper half, over a deep navy gradient that darkens the left 55% of the photo',
+    headlineText: LIGHT_TEXT,
+    afterHeadline: 'the advisor in the photo',
+    flowPoints: (n) => `the ${n} points on the glass panel`,
+    info: 'LAYOUT: a dark luxurious full-photo poster, not a warm-white information area. The photograph stays clear on the right; the left is a deep navy gradient (#061C2E fading to transparent); the points sit on one translucent dark-navy frosted-glass panel with a thin light border in the lower half.',
+    points: (n, nums) => `${n} points on the frosted-glass panel in warm white, each with a slim light-cyan number (${nums}) and a hairline divider between them:`,
+  },
+  {
+    id: 'steps',
+    label: 'ภาพหลักมีพาดหัวทับ · ขั้นตอนเรียงแนวนอน',
+    noMiddle: true,
+    heroPlace: 'The top 40-45% of the design area is the photographic hero',
+    headlinePos: 'on the lower left of the hero photo, over a soft dark navy gradient along the bottom of the photo',
+    headlineText: LIGHT_TEXT,
+    afterHeadline: 'the photo behind it',
+    flowPoints: (n) => `the ${n} steps from left to right`,
+    info: 'LAYOUT: below the hero a warm-white area where the points form one horizontal step path: numbered circles joined by a single thin teal line from left to right, the title and body centred under each circle (no vertical list).',
+    points: (n, nums) => `${n} points as steps on that path, numbered circles (${nums}) with a teal outline and navy number:`,
+  },
+]
+const LAYOUT_BY_ID = Object.fromEntries(PREMIUM_LAYOUTS.map((l) => [l.id, l]))
+
+export function premiumLayout(id) {
+  return LAYOUT_BY_ID[id] || LAYOUT_BY_ID.classic
+}
+
+// recent = โครงของงานพรีเมียมล่าสุด (ใหม่สุดก่อน) · มีแถบกระบวนการกลางภาพ (middle) แล้วไม่ใช้โครง steps (แถบแนวนอนซ้อนกัน 2 แถบ)
+export function pickPremiumLayout(seed, { recent = [], hasMiddle = false } = {}) {
+  const pool = PREMIUM_LAYOUTS.filter((l) => !(hasMiddle && l.noMiddle))
+  const fresh = pool.filter((l) => !recent.includes(l.id))
+  const list = fresh.length ? fresh : pool
+  const n = Number(seed)
+  return list[seed !== null && seed !== undefined && Number.isFinite(n) ? Math.abs(Math.trunc(n)) % list.length : 0]
+}
+
+export function premiumHasMiddle(plan = {}) {
+  return middleLines(plan.middle || {}).length > 0
+}
+
 function middleLines(middle = {}) {
   const items = (middle.items || []).filter(Boolean)
   if (middle.type === 'none' || items.length < 2) return []
@@ -144,25 +229,35 @@ function middleLines(middle = {}) {
 }
 
 // presenter = ตัวรับงานแนบรูปเจ้าของเป็นภาพที่ 1 (เรฟสไตล์เป็นภาพถัดไป) · ไม่มีไฟล์รูป → ภาพหลักไม่มีใบหน้าคนเลย (ไม่ให้วาดคนแปลกหน้าแทนเจ้าของ)
-function heroLines({ presenter, refName, brief }) {
+function heroLines({ presenter, refName, brief, layout = premiumLayout('classic') }) {
   const refNo = presenter ? 2 : 1
+  const styleOf = layout.dark
+    ? 'its warm premium photorealism, flat crisp Thai typography, slim dividers, cyan/violet accent hues and fine diagonal X-inspired edge geometry (this poster is a dark full-photo layout, so do not copy its warm-white information area)'
+    : 'its warm premium photorealism, restrained navy/cyan/violet palette, warm-white information area, slim dividers, flat crisp Thai typography, tiny coral accents and fine diagonal X-inspired edge geometry'
   const images = [
     presenter
       ? 'Image 1 = THE ADVISOR (required): the photographic hero features this man as the AssetX Estate advisor, a photoreal figure with the same face, hairstyle, skin tone and white dress shirt, lit to match the scene. Ignore that photo\'s background, signboard, clip-on microphone and any text in it.'
       : '',
     refName
-      ? `Image ${refNo} is the approved visual style only: match its warm premium photorealism, restrained navy/cyan/violet palette, warm-white information area, slim dividers, flat crisp Thai typography, tiny coral accents and fine diagonal X-inspired edge geometry. Do NOT copy its text (including the small caption on its photo), its content, its people, its exact grid or its logo corner; new content and a composition tailored to this topic.`
+      ? `Image ${refNo} is the approved visual style only: match ${styleOf}. Do NOT copy its text (including the small caption on its photo), its content, its people, its exact grid or its logo corner; new content and a composition tailored to this topic.${layout.id === 'classic' ? '' : ' Follow the LAYOUT described below, not the reference\'s arrangement.'}`
       : '',
     !presenter && !refName ? 'No reference image is attached: create the look from the art direction below.' : '',
   ].filter(Boolean)
   const hero = presenter
-    ? `The top 35-40% of the design area is the photographic hero featuring the advisor from Image 1: ${brief.hero} He is the AssetX advisor on the owner's side of the table (explaining, reviewing papers or looking warmly at the viewer), never shown as the customer, receiving cash or celebrating. He is the only clear face; any other person only from behind or out of focus.`
-    : `The top 35-40% of the design area is the photographic hero: ${brief.hero} No advisor photo is attached, so show no clear face (a person only from behind or out of focus, never a celebrity).`
+    ? `${layout.heroPlace} featuring the advisor from Image 1: ${brief.hero} He is the AssetX advisor on the owner's side of the table (explaining, reviewing papers or looking warmly at the viewer), never shown as the customer, receiving cash or celebrating. He is the only clear face; any other person only from behind or out of focus.`
+    : `${layout.heroPlace}: ${brief.hero} No advisor photo is attached, so show no clear face (a person only from behind or out of focus, never a celebrity).`
   return { images, hero }
 }
 
-export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE, seed = null, refName = '', presenter = false, disclaimer = PREMIUM_DISCLAIMER } = {}) {
+// สีเน้นคำในข้อย่อย: โครงพื้นเข้มใช้เฉดอ่อนให้อ่านออกบนกระจกฝ้าสีน้ำเงิน
+function highlightColour(color, dark) {
+  if (color === 'violet') return dark ? 'soft violet #B9A3E3' : `violet ${PREMIUM_COLORS.violet}`
+  return dark ? 'warm coral #F2A68F' : `dark coral ${PREMIUM_COLORS.coral}`
+}
+
+export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE, seed = null, refName = '', presenter = false, disclaimer = PREMIUM_DISCLAIMER, layout = 'classic' } = {}) {
   const f = premiumFrame(size)
+  const L = typeof layout === 'object' && layout ? layout : premiumLayout(layout)
   const brief = plan.brief || {}
   const points = (plan.points || []).filter((x) => x?.title)
   const middle = plan.middle || { type: 'none', items: [] }
@@ -170,8 +265,12 @@ export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE,
   const accent = plan.headlineAccent && (plan.headline || []).join(' ').includes(plan.headlineAccent) ? plan.headlineAccent : ''
   const highlights = (plan.highlights || []).filter((h) => h?.text && PREMIUM_HIGHLIGHT_COLORS.includes(h.color))
   const cta = ctaLines(plan.cta)
-  const flow = [hasMiddle ? 'the middle process strip' : '', points.length ? `the ${points.length} numbered points` : '', 'one navy CTA footer'].filter(Boolean).join(', then ')
-  const visuals = heroLines({ presenter, refName, brief })
+  const nums = points.map((_, i) => String(i + 1).padStart(2, '0')).join(' ')
+  const flow = [hasMiddle ? 'the middle process strip' : '', points.length && L.flowPoints ? L.flowPoints(points.length) : '', 'one navy CTA footer'].filter(Boolean).join(', then ')
+  const visuals = heroLines({ presenter, refName, brief, layout: L })
+  const colourRule = L.dark
+    ? `Colour: text on the dark areas warm white #FFF8EE; accents light cyan #7FD8E8, soft violet #B9A3E3 and a tiny warm coral, about 10-20% of the typography; the CTA band stays solid navy ${PREMIUM_COLORS.navy}.`
+    : `Colour only 10-20% of the typography: primary text navy ${PREMIUM_COLORS.navy}, accents teal ${PREMIUM_COLORS.teal}, violet ${PREMIUM_COLORS.violet}, dark coral ${PREMIUM_COLORS.coral}.`
   return [
     'PASS-THROUGH RULE: call image_gen with everything below this line as the prompt, exactly as written, character for character. Do not summarize, shorten, reorder or rewrite it; it is already a finished production spec.',
     '',
@@ -183,28 +282,30 @@ export function buildPremiumImagePrompt({ plan = {}, size = DEFAULT_POSTER_SIZE,
     'SIX-PART DESIGN BRIEF (instructions only, not text to print):',
     `1 Target Audience: ${brief.audience}`,
     `2 Communication Goal: ${brief.goal} Secondary action: chat with AssetX Estate.`,
-    `3 Visual Psychology: ${brief.visual} The dominant headline is the largest text, upper left. Eye flows from the headline to the photographic hero, then ${flow}. Secondary titles stay clearly smaller than the headline; clear contrast and ample whitespace.`,
+    `3 Visual Psychology: ${brief.visual}${L.id === 'classic' ? '' : ' Where this brief\'s wording on layout or colours differs from the layout and colour lines in this spec, follow the spec.'} The dominant headline is the largest text, ${L.headlinePos}. Eye flows from the headline to ${L.afterHeadline}, then ${flow}. Secondary titles stay clearly smaller than the headline; clear contrast and ample whitespace.`,
     `4 Key Message: ${q(plan.keyMessage)}. One takeaway; every supporting element explains it, no competing slogans.`,
     `5 Emotional Design: ${brief.emotion} The look stays professional and trustworthy: premium realistic daylight, genuine wood, paper and metal textures, warm white and navy, cyan-violet accents and tiny dark coral. No risk-free claims, urgency or official badges.`,
     `6 Call to Action: ${cta.map(q).join(' / ')}. One action; no invented phone, LINE or QR (the footer carries the real contact); no free, expert or approval claims.`,
     '',
-    `Art direction: realistic architectural and financial editorial photography with warm commercial quality. ${visuals.hero} Natural light, coherent perspective, real materials; the photo carries no caption, label or tag. No fake deeds, seals, readable personal data, currency piles, toy houses or cartoon objects. A flowing photographic composition, not a flat stock-icon poster. Fine diagonal X geometry only as subtle edge accents. Below the hero a warm-white information area with thin dividers and a few small thin line icons. Colour only 10-20% of the typography: primary text navy ${PREMIUM_COLORS.navy}, accents teal ${PREMIUM_COLORS.teal}, violet ${PREMIUM_COLORS.violet}, dark coral ${PREMIUM_COLORS.coral}. Flat crisp Thai typography (a refined modern Thai sans, SemiBold or Bold headings, regular body), no extrusion, heavy outlines, stickers, brush strokes, neon, confetti, speech bubbles or 3D text.`,
+    `Art direction: realistic architectural and financial editorial photography with warm commercial quality. ${visuals.hero} Natural light, coherent perspective, real materials; the photo carries no caption, label or tag. No fake deeds, seals, readable personal data, currency piles, toy houses or cartoon objects. A flowing photographic composition, not a flat stock-icon poster. Fine diagonal X geometry only as subtle edge accents. ${L.info} ${colourRule} Flat crisp Thai typography (a refined modern Thai sans, SemiBold or Bold headings, regular body), no extrusion, heavy outlines, stickers, brush strokes, neon, confetti, speech bubbles or 3D text.`,
     '',
     'Exact on-image copy (Thai, copy every string character for character with sensible line breaks; each string appears once; add no other words, figures, interest rates, calculations or hashtags):',
     plan.eyebrow ? `Small eyebrow: ${q(plan.eyebrow)}` : '',
     plan.headlineSmall ? `Headline contextual line, smaller: ${q(plan.headlineSmall)}` : '',
     `Dominant headline${(plan.headline || []).length > 1 ? ', two lines' : ''}: ${(plan.headline || []).map(q).join(' / ')}`,
-    accent ? `Colour ${q(accent)} deep teal ${PREMIUM_COLORS.teal}; the rest of the headline navy. Not the whole poster in teal.` : `Headline in navy ${PREMIUM_COLORS.navy}.`,
+    accent
+      ? `Colour ${q(accent)} ${L.headlineText.accent}; the rest of the headline ${L.headlineText.base}. Not the whole poster in ${L.headlineText === LIGHT_TEXT ? 'cyan' : 'teal'}.`
+      : `Headline in ${L.headlineText.base}.`,
     plan.subheading ? `Subheading: ${q(plan.subheading)}` : '',
     ...middleLines(middle),
-    points.length ? `${points.length} numbered points, vertically arranged with elegant ${points.map((_, i) => String(i + 1).padStart(2, '0')).join(' ')} numbers (alternating teal and violet) and small restrained line icons:` : '',
+    points.length ? L.points(points.length, nums) : '',
     ...points.map((pt, i) => `${String(i + 1).padStart(2, '0')} ${q(pt.title)}${pt.body ? ` / body ${q(pt.body)}` : ''}`),
-    highlights.length ? `Selectively colour ${highlights.map((h) => `${q(h.text)} ${h.color === 'violet' ? `violet ${PREMIUM_COLORS.violet}` : `dark coral ${PREMIUM_COLORS.coral}`}`).join(' and ')} (only these words); all point titles stay smaller than the dominant headline.` : '',
-    `Small readable disclaimer just above the CTA band: ${disclaimer.map(q).join(' / ')}`,
+    highlights.length ? `Selectively colour ${highlights.map((h) => `${q(h.text)} ${highlightColour(h.color, L.dark)}`).join(' and ')} (only these words); all point titles stay smaller than the dominant headline.` : '',
+    `Small readable disclaimer just above the CTA band${L.dark ? ', warm white over the dark photo' : ''}: ${disclaimer.map(q).join(' / ')}`,
     `Navy CTA band at the very bottom of the design area, full width, white text with tiny cyan accents: ${cta.map(q).join(' / ')}`,
     '',
     'No claims that these costs always apply, of approval, guaranteed funding or a successful case. Educational overview, no solicitation promises. Mobile readable, polished full-bleed output.',
     'Avoid: prices, percentages, interest rates, any phone number, LINE id, URL, QR code, address, personal name or deed number; Garuda, seals, stamps, government or company emblems; any logo; watermarks, AI labels or any caption, tag or label on the photograph; black-and-gold or green-and-gold loan-flyer looks; neon glow; cartoon, comic, flat vector, clay or toy-like 3D; borders, frames or bars around the design.',
-    `MODE: premium seed=${seed === null || seed === undefined ? 'none' : seed} ref=${refName || 'none'} presenter=${presenter ? 'use' : 'none'} canvas=${f.width}x${f.height} footer=append`,
+    `MODE: premium seed=${seed === null || seed === undefined ? 'none' : seed} ref=${refName || 'none'} presenter=${presenter ? 'use' : 'none'} layout=${L.id} canvas=${f.width}x${f.height} footer=append`,
   ].filter((line) => line !== '').join('\n').replace(/\n(Generate ONE|SIX-PART|Art direction|Exact on-image|No claims)/g, '\n\n$1')
 }

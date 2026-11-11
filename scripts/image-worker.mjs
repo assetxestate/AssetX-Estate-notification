@@ -33,7 +33,7 @@ import { claimNextContentJob, CONTENT_JOB_TABLE, isMissingTable, processContentJ
 import { generateFreshContent } from '../server/research/fresh.js'
 import { loadKnowledgeBase } from '../server/research/knowledge.js'
 import { loadHookLessons, loadHookPatterns } from '../server/research/hooks.js'
-import { buildPremiumImagePrompt, disclaimerLines, parsePremiumRequest, premiumFrame, premiumRefIndex } from '../src/lib/posterPremium.js'
+import { buildPremiumImagePrompt, disclaimerLines, parsePremiumRequest, pickPremiumLayout, premiumFrame, premiumHasMiddle, premiumRefIndex } from '../src/lib/posterPremium.js'
 import { planPremiumPoster } from '../server/poster-premium-plan.js'
 
 // 2 = รับงานคิดคอนเทนต์ใหม่ได้ (หน้าเว็บดู info.content_jobs ว่าตัวรับงานที่เปิดอยู่เป็นรุ่นนี้หรือยัง)
@@ -76,6 +76,20 @@ const PREMIUM_REFS = path.join(REFS_ROOT, 'premium')
 function premiumRefs() {
   if (!existsSync(PREMIUM_REFS)) return []
   return readdirSync(PREMIUM_REFS).filter((f) => /\.(png|jpe?g|webp)$/i.test(f)).sort().map((f) => path.join(PREMIUM_REFS, f))
+}
+
+// โครงของงานพรีเมียมล่าสุด (ใหม่สุดก่อน) จากไฟล์แผนใน .local/image-jobs — ไฟล์ก่อนมีโครงหมุนเวียน (ก่อน 11 พ.ย. 2569) = classic
+// ใช้เลี่ยงโครงซ้ำกับภาพที่เพิ่งทำ (เจ้าของ: ภาพพรีเมียม "ดูซ้ำและน่าเบื่อ")
+function recentPremiumLayouts(count = 2) {
+  if (!existsSync(OUTPUT_DIR)) return []
+  return readdirSync(OUTPUT_DIR)
+    .map((f) => Number((f.match(/^job-(\d+)-premium\.json$/) || [])[1]))
+    .filter(Boolean)
+    .sort((a, b) => b - a)
+    .slice(0, count)
+    .map((id) => {
+      try { return JSON.parse(readFileSync(path.join(OUTPUT_DIR, `job-${id}-premium.json`), 'utf8')).layout || 'classic' } catch { return 'classic' }
+    })
 }
 const MAX_IMAGES = 5
 const PLUGIN_SERVER = process.env.GPT_IMAGE_SERVER || path.join('C:', 'tools', 'gpt-image-marketplace', 'gpt-image', 'server', 'index.mjs')
@@ -363,12 +377,14 @@ async function processJob(db, plugin, job) {
       // รูปเจ้าของเป็นผู้แนะนำในภาพหลักทุกภาพ (เจ้าของ 10 พ.ย. 2569) — ภาพที่ 1 เสมอ แล้วตามด้วยเรฟสไตล์
       const presenter = existsSync(PRESENTER) ? PRESENTER : null
       images = [presenter, ref].filter(Boolean)
-      prompt = buildPremiumImagePrompt({ plan: planned.plan, size: premium.size, seed: premium.seed, refName: ref ? path.basename(ref) : '', presenter: Boolean(presenter), disclaimer: disclaimerLines(premium) })
+      // โครงภาพหมุนเวียน 5 แบบ (11 พ.ย. 2569) · เลี่ยงโครงของ 2 งานพรีเมียมล่าสุด
+      const layout = pickPremiumLayout(premium.seed, { recent: recentPremiumLayouts(2), hasMiddle: premiumHasMiddle(planned.plan) })
+      prompt = buildPremiumImagePrompt({ plan: planned.plan, size: premium.size, seed: premium.seed, refName: ref ? path.basename(ref) : '', presenter: Boolean(presenter), disclaimer: disclaimerLines(premium), layout: layout.id })
       brandFooter = true
       premiumBox = premiumFrame(premium.size)
       // เก็บแผน + คำสั่งภาพไว้ดูย้อนหลังในเครื่อง (.local อยู่นอก git) · log ไม่พิมพ์เนื้อหาโพสต์
-      await fs.writeFile(path.join(OUTPUT_DIR, `job-${job.id}-premium.json`), JSON.stringify({ provider: planned.provider, attempts: planned.attempts, warnings: planned.warnings, ref: ref ? path.basename(ref) : null, presenter: Boolean(presenter), plan: planned.plan, prompt }, null, 2))
-      log(`${label}: พรีเมียม · วางข้อความเสร็จใน ${Math.round((Date.now() - t0) / 1000)} วินาที (${planned.provider} รอบ ${planned.attempts}${planned.warnings.length ? ` · ยาวเกิน ${planned.warnings.length} จุด` : ''}) · ข้อหลัก ${planned.plan.points.length} ข้อ · แถบกลาง ${planned.plan.middle.type} · เรฟ ${ref ? path.basename(ref) : 'ไม่มี'} · ${presenter ? 'รูปผู้แนะนำ' : 'ไม่มีรูปผู้แนะนำ (ภาพหลักไม่มีหน้าคน)'}`)
+      await fs.writeFile(path.join(OUTPUT_DIR, `job-${job.id}-premium.json`), JSON.stringify({ provider: planned.provider, attempts: planned.attempts, warnings: planned.warnings, ref: ref ? path.basename(ref) : null, presenter: Boolean(presenter), layout: layout.id, plan: planned.plan, prompt }, null, 2))
+      log(`${label}: พรีเมียม · วางข้อความเสร็จใน ${Math.round((Date.now() - t0) / 1000)} วินาที (${planned.provider} รอบ ${planned.attempts}${planned.warnings.length ? ` · ยาวเกิน ${planned.warnings.length} จุด` : ''}) · ข้อหลัก ${planned.plan.points.length} ข้อ · แถบกลาง ${planned.plan.middle.type} · โครง ${layout.id} (${layout.label}) · เรฟ ${ref ? path.basename(ref) : 'ไม่มี'} · ${presenter ? 'รูปผู้แนะนำ' : 'ไม่มีรูปผู้แนะนำ (ภาพหลักไม่มีหน้าคน)'}`)
     } else if (String(job.prompt || '').includes(PLACEHOLDER_FREE_IMAGES)) {
       // โหมดอิสระ: Codex ออกแบบเอง — ไม่แนบเรฟคู่แข่ง ไม่ให้ลอกโครงเดิม
       // presenter=use ในบรรทัด MODE = ทิศที่มีคนเป็นจุดเด่น → บังคับใส่รูปเจ้าของ (8 พ.ย. 2569)

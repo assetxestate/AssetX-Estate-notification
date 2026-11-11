@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { appendedFooterHeight, buildPremiumImagePrompt, buildPremiumJobPrompt, ctaLines, disclaimerLines, parsePremiumRequest, premiumCopyStrings, premiumFrame, premiumFrameLine, premiumRefIndex, HYPOTHETICAL_NOTE, PREMIUM_CTA_SUB, PREMIUM_DISCLAIMER, PREMIUM_REQUEST_HEADER } from './posterPremium.js'
+import { appendedFooterHeight, buildPremiumImagePrompt, buildPremiumJobPrompt, ctaLines, disclaimerLines, parsePremiumRequest, premiumCopyStrings, premiumFrame, premiumFrameLine, premiumRefIndex, pickPremiumLayout, premiumHasMiddle, premiumLayout, HYPOTHETICAL_NOTE, PREMIUM_LAYOUTS, PREMIUM_CTA_SUB, PREMIUM_DISCLAIMER, PREMIUM_REQUEST_HEADER } from './posterPremium.js'
 import { POSTER_SIZES } from './posterSizes.js'
 
 // ความสูงแถบที่ poster-footer.ps1 -Append -Ratio ต่อใต้ภาพ — เขียนสูตรซ้ำจากสคริปต์ตรง ๆ ไว้เทียบกับ appendedFooterHeight
@@ -99,7 +99,7 @@ test('คำสั่งภาพ: PASS-THROUGH · รูปผู้แนะ�
   assert.ok(prompt.includes(`disclaimer just above the CTA band: “${PREMIUM_DISCLAIMER[0]}” / “${PREMIUM_DISCLAIMER[1]}”`))
   assert.ok(prompt.includes(`Navy CTA band at the very bottom of the design area, full width, white text with tiny cyan accents: “คุยเรื่องเงินสุทธิที่ต้องการใช้” / “${PREMIUM_CTA_SUB}”`))
   assert.doesNotMatch(prompt, /096-986-8888|assetxestate/, 'เบอร์/LINE จริงอยู่ในแถบท้ายที่ตัวรับงานต่อ')
-  assert.match(prompt, /\nMODE: premium seed=4 ref=approved-1-sale-deed-check\.png presenter=use canvas=1024x1024 footer=append$/)
+  assert.match(prompt, /\nMODE: premium seed=4 ref=approved-1-sale-deed-check\.png presenter=use layout=classic canvas=1024x1024 footer=append$/)
 })
 
 test('คำสั่งภาพ: ไม่มีไฟล์รูปเจ้าของ → ไม่มีหน้าคนในภาพหลัก · เรฟเป็นภาพที่ 1 · รูปเจ้าของอย่างเดียวไม่มีบรรทัดเรฟ', () => {
@@ -107,7 +107,7 @@ test('คำสั่งภาพ: ไม่มีไฟล์รูปเจ้
   assert.match(noPresenter, /\nImage 1 is the approved visual style only/)
   assert.doesNotMatch(noPresenter, /THE ADVISOR|Image 2/)
   assert.match(noPresenter, /photographic hero: a sophisticated wooden table[^\n]*No advisor photo is attached, so show no clear face/)
-  assert.match(noPresenter, /presenter=none canvas=1024x1024/)
+  assert.match(noPresenter, /presenter=none layout=classic canvas=1024x1024/)
   const onlyPresenter = buildPremiumImagePrompt({ plan: PLAN, size: 'feed-4x5', seed: 4, presenter: true })
   assert.match(onlyPresenter, /\nImage 1 = THE ADVISOR/)
   assert.doesNotMatch(onlyPresenter, /approved visual style|No reference image is attached/)
@@ -121,7 +121,7 @@ test('คำสั่งภาพ: ไม่มีแถบกลาง/เร�
   assert.match(prompt, /Headline in navy #092B43\./, 'คำเน้นที่ไม่อยู่ในหัวเรื่องถูกทิ้ง')
   assert.match(prompt, /then the 3 numbered points, then one navy CTA footer/)
   assert.match(prompt, /white text with tiny cyan accents: “ส่งข้อมูลทรัพย์คุยกับ AssetX Estate”\n/, 'CTA ที่มีชื่อแบรนด์แล้วไม่เติมบรรทัดสอง')
-  assert.match(prompt, /MODE: premium seed=none ref=none presenter=none canvas=1344x1152 footer=append$/)
+  assert.match(prompt, /MODE: premium seed=none ref=none presenter=none layout=classic canvas=1344x1152 footer=append$/)
 })
 
 test('Story 9:16 และภาพลิงก์: บรรทัดกรอบงานและสัดส่วนแถบท้ายตามขนาด', () => {
@@ -140,4 +140,50 @@ test('ข้อความกำกับ: เคสสมมุติได้
   assert.equal(premiumRefIndex(4, 3), 1)
   assert.equal(premiumRefIndex(null, 3), 0)
   assert.equal(premiumRefIndex(2, 0), -1)
+})
+
+test('โครงภาพหมุนเวียน (เจ้าของ 11 พ.ย. 2569 #37 ภาพพรีเมียมโครงซ้ำ): 5 โครง · เลี่ยงโครงล่าสุด · มีแถบกลางไม่ใช้ steps', () => {
+  assert.deepEqual(PREMIUM_LAYOUTS.map((l) => l.id), ['classic', 'split', 'cards', 'overlay', 'steps'])
+  for (let seed = 0; seed < 40; seed++) {
+    assert.notEqual(pickPremiumLayout(seed, { recent: ['classic', 'classic'] }).id, 'classic', 'งานเก่าเป็น classic หมด → งานถัดไปต้องต่าง')
+    assert.ok(!['split', 'cards'].includes(pickPremiumLayout(seed, { recent: ['split', 'cards'] }).id))
+    assert.notEqual(pickPremiumLayout(seed, { hasMiddle: true }).id, 'steps')
+  }
+  assert.equal(new Set(Array.from({ length: 10 }, (_, s) => pickPremiumLayout(s).id)).size, 5, 'seed ต่างกันได้ครบทุกโครง')
+  assert.ok(pickPremiumLayout(3, { recent: PREMIUM_LAYOUTS.map((l) => l.id) }).id, 'ใช้ครบทุกโครงแล้วยังเลือกได้')
+  assert.equal(pickPremiumLayout(null).id, 'classic')
+  assert.equal(premiumLayout('ไม่มีโครงนี้').id, 'classic')
+  assert.equal(premiumHasMiddle(PLAN), true)
+  assert.equal(premiumHasMiddle({ ...PLAN, middle: { type: 'none', items: [] } }), false)
+})
+
+test('คำสั่งภาพตามโครง: การจัดวางเปลี่ยน · ข้อความคำต่อคำ แถบ CTA ชิดล่าง รูปผู้แนะนำ และกติกาแบรนด์คงเดิมทุกโครง', () => {
+  const opts = { plan: PLAN, size: 'feed-4x5', seed: 4, refName: 'approved-1-sale-deed-check.png', presenter: true }
+  const base = buildPremiumImagePrompt(opts)
+  for (const layout of PREMIUM_LAYOUTS) {
+    const prompt = buildPremiumImagePrompt({ ...opts, layout: layout.id })
+    assert.match(prompt, new RegExp(`layout=${layout.id} canvas=1024x1024 footer=append$`))
+    assert.match(prompt, /^PASS-THROUGH RULE/)
+    assert.match(prompt, /Navy CTA band at the very bottom of the design area, full width/)
+    assert.match(prompt, /do NOT draw any logo, X mark, emblem, phone number, LINE id or QR code anywhere/)
+    assert.match(prompt, /featuring the advisor from Image 1: /)
+    for (const s of premiumCopyStrings(PLAN)) assert.ok(prompt.includes(`“${s}”`), `${layout.id}: ${s}`)
+    if (layout.id === 'classic') { assert.equal(prompt, base, 'classic = คำสั่งเดิมทุกตัวอักษร'); continue }
+    assert.doesNotMatch(prompt, /The top 35-40% of the design area|vertically arranged with elegant/)
+    assert.match(prompt, /Follow the LAYOUT described below, not the reference's arrangement\./)
+  }
+  const split = buildPremiumImagePrompt({ ...opts, layout: 'split' })
+  assert.match(split, /The right 52-56% of the design area, from the top edge down to the CTA band, is one tall photographic panel featuring the advisor/)
+  assert.match(split, /vertical checklist in the left column, each with a small teal circle check mark/)
+  assert.match(split, /Eye flows from the headline to the checklist beside the tall photo, then the middle process strip, then one navy CTA footer\./)
+  const dark = buildPremiumImagePrompt({ ...opts, layout: 'overlay' })
+  assert.match(dark, /Colour “เงินสุทธิ” light cyan #7FD8E8; the rest of the headline warm white #FFF8EE\. Not the whole poster in cyan\./)
+  assert.match(dark, /“รายการหัก” soft violet #B9A3E3 and “จ่ายเมื่อไร” warm coral #F2A68F/)
+  assert.match(dark, /do not copy its warm-white information area/)
+  assert.match(dark, /disclaimer just above the CTA band, warm white over the dark photo/)
+  assert.doesNotMatch(dark, /Colour only 10-20% of the typography: primary text navy/)
+  const steps = buildPremiumImagePrompt({ plan: { ...PLAN, middle: { type: 'none', items: [] } }, size: 'feed-4x5', seed: 4, layout: 'steps' })
+  assert.match(steps, /one horizontal step path/)
+  assert.match(steps, /then the 3 steps from left to right, then one navy CTA footer/)
+  assert.match(steps, /The top 40-45% of the design area is the photographic hero: /)
 })

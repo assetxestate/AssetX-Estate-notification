@@ -10,7 +10,7 @@
 // ข้อความโพสต์ผ่านตัวลบข้อมูลบุคคลก่อนเก็บและก่อนส่งให้ Codex · ไม่มีการลบแถว (ยกเลิก = cancelled)
 import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
-import { scrub } from './research/pii.js'
+import { scrubPostText } from './research/pii.js'
 import { POSTER_SIZES, DEFAULT_POSTER_SIZE, cropPlan } from '../src/lib/posterSizes.js'
 import { POSTER_DESIGN_SYSTEM, POSTER_TEXT_RULES, pickPosterLayout, posterLayoutInstruction, pickHeadlineKeyword } from '../src/lib/posterDesignSystem.js'
 import { posterBriefFor } from '../src/lib/posterBrief.js'
@@ -36,9 +36,11 @@ function defaultDatabase() {
   return url && key ? createClient(url, key, { auth: { persistSession: false } }) : null
 }
 
-const oneLine = (value) => scrub(String(value ?? '')).replace(/\s+/g, ' ').trim()
+// หัวข้อ/แคปชั่นเป็นข้อความโพสต์ของเราเอง → ชุดกฎโพสต์ (ไม่จับ "คุณ" + คำถัดไป · ยังลบเบอร์ เลขบัตร เลขโฉนด และชื่อหลัง นาย/นาง/นางสาว)
+// ชุดเต็มเคยลบ "ของคุณ↵↵ถาม:" ในแคปชั่น #37 เป็น "ของ[ลบ]:" ก่อนส่งให้ AI วางข้อความโปสเตอร์ (11 พ.ย. 2569) — เหตุเดียวกับร่างโพสต์ 6 พ.ย. ใน pii.js
+const oneLine = (value) => scrubPostText(String(value ?? '')).replace(/\s+/g, ' ').trim()
 // คงขึ้นบรรทัดไว้ให้ Codex อ่านโครงโพสต์ได้ แต่บีบช่องว่างและบรรทัดว่างซ้อน
-const multiLine = (value) => scrub(String(value ?? ''))
+const multiLine = (value) => scrubPostText(String(value ?? ''))
   .replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
 
 const SHAPES = { portrait: 'vertical (portrait)', square: 'square', landscape: 'horizontal (landscape)' }
