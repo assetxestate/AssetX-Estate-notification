@@ -80,8 +80,9 @@ test('buildCompactPosterPrompt (ฟีด 4:5): PASS-THROUGH · แถบดำ 
   assert.match(prompt, /row 1 \(calendar icon\): "ตรวจวันครบกำหนดและเงื่อนไขการไถ่ถอนในสัญญา" \/ "เริ่มจากทำตารางวันที่สำคัญและรายการที่ต้องตรวจจากสัญญา"/)
   assert.match(prompt, /Left card of the pair[^\n]*"ก่อนคุยกับผู้ให้บริการ"[^\n]*"จดสิ่งที่รู้แล้ว" \/ "สิ่งที่ยังไม่ชัด" \/ "หลักฐานที่ต้องขอเพิ่ม"/)
   assert.match(prompt, /Right card of the pair[^\n]*"ก่อนลงนาม"/)
-  assert.match(prompt, /- Bottom band[^\n]*"โทร 096-986-8888"[^\n]*"LINE: assetxestate", side by side and centred; nothing else in the band/)
-  assert.doesNotMatch(prompt, /small white chips/)
+  // แถบล่าง = เบอร์/LINE + บริการของบริษัท (เจ้าของสั่ง 11 พ.ย. 2569 แทนชิปคำนามจากโพสต์)
+  assert.match(prompt, /- Bottom band[^\n]*"โทร 096-986-8888"[^\n]*"LINE: assetxestate"; right 3 small white chips[^\n]*"รับขายฝาก"[^\n]*"รับจำนอง"[^\n]*"ประเมินมูลค่า"\. The digits/)
+  assert.doesNotMatch(prompt, /"วันครบกำหนด", |"เอกสารประกอบ"|map pin "สำนักงานที่ดิน"/)
   assert.match(prompt, /any phone number or LINE id other than the two given above/)
   assert.match(prompt, /\nLAYOUT: steps$/)
   assert.doesNotMatch(prompt, /CREATIVE BRIEF|LETTERBOX BARS/)
@@ -260,7 +261,12 @@ test('คำสั่งภาพถาม-ตอบ: แถวคำถาม-�
   assert.doesNotMatch(prompt, /with no title text|Wide checklist panel|Wide callout strip/)
   assert.match(prompt, /a full-width sharp photo band of the backdrop scene \(no text, no cards, no icons\)/)
   assert.match(prompt, /a card gets a header pill only when the Text section gives it a title/)
-  assert.match(prompt, /side by side and centred; nothing else in the band/)
+  assert.match(prompt, /right 3 small white chips, each a navy line icon above a short label: [^\n]*"รับขายฝาก", [^\n]*"รับจำนอง", [^\n]*"ประเมินมูลค่า"/)
+  assert.doesNotMatch(prompt, /"สำนักงานที่ดิน"|"เอกสารสิทธิ์"|"ค่าใช้จ่าย"/, 'ไม่มีชิปคำนามจากโพสต์')
+  // บริการเป็นข้อความบริษัท (แบบเดียวกับเบอร์/LINE) — ไม่ต้องมีในโพสต์ ไม่เข้าด่านคำต่อคำ
+  const copy = extractPosterCopyV4(QA_POST)
+  assert.deepEqual(copy.services.map((s) => s.label), ['รับขายฝาก', 'รับจำนอง', 'ประเมินมูลค่า'])
+  assert.deepEqual(verbatimMissesV4(copy, QA_POST), [])
 })
 
 test('โพสต์ไม่มีข้อเลขหรือถาม-ตอบ: โซนการ์ดหลักเป็นแถบภาพ ไม่ใช่การ์ดว่างให้โมเดลแต่งข้อความ', () => {

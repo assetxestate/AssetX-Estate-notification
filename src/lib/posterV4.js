@@ -6,7 +6,7 @@
 // PASS-THROUGH RULE เพื่อให้ตัวแทน Codex ส่งต่อคำต่อคำ (ตรวจแล้ว 7 พ.ย.: ไม่ย่อ) · แถบทึบบน-ล่างเป็นสีดำ (ต่างจากแถบล่างสีน้ำเงิน ตัวรับงานตัดออกเอง)
 // ทุกสตริงไทยที่ขึ้นบนภาพคัดจากโพสต์คำต่อคำ ยกเว้นช่องทางติดต่อของบริษัท (POSTER_CONTACT)
 // ภาพแนบ (โลโก้เต็ม · รูปผู้แนะนำ · เรฟสไตล์) ตัวรับงานบนคอมสำนักงานเป็นคนเลือกไฟล์ จึงเว้นที่ไว้เป็น {{INPUT_IMAGES}} และ {{PRESENTER}} ให้เติมตอนสั่ง
-import { pickHeadlineKeyword, POSTER_CONTACT } from './posterDesignSystem.js'
+import { pickHeadlineKeyword, POSTER_CONTACT, POSTER_SERVICES } from './posterDesignSystem.js'
 import { cleanCaption, extractPosterCopy, iconFor, parsePost, trimClause, verbatimMisses, wordCount } from './posterBrief.js'
 import { cropPlan, DEFAULT_POSTER_SIZE } from './posterSizes.js'
 import { pickPosterVariant, variantLine } from './posterVariants.js'
@@ -105,8 +105,8 @@ export function extractPosterCopyV4({ title = '', caption = '' } = {}) {
   const bubblePool = [...pointClauses, ...otherClauses].filter((c) => /^(หาก|ถ้า|เมื่อ)/.test(c) && /ให้|ควร|ต้อง/.test(c) && wordCount(c) >= 5 && wordCount(c) <= 14 && unused(c))
   const bubble = bubblePool[0] || ''
 
-  // ชิปแถบล่างเลิกใช้ (เจ้าของ 11 พ.ย. 2569 #37: "สำนักงานที่ดิน · เอกสารสิทธิ์ · ค่าใช้จ่าย" ดูแล้วไม่รู้ว่าหมายถึงอะไร)
-  // เป็นคำนามที่หยิบจากโพสต์มาเลียนแบบแถบบริการของเรฟ ไม่ได้บอกอะไรคนอ่าน → แถบล่างเหลือเบอร์/LINE · pickBandChips เก็บไว้เผื่อใช้กับข้อความที่มีความหมาย
+  // ชิปคำนามจากโพสต์เลิกใช้ (เจ้าของ 11 พ.ย. 2569 #37: "สำนักงานที่ดิน · เอกสารสิทธิ์ · ค่าใช้จ่าย" ดูแล้วไม่รู้ว่าหมายถึงอะไร)
+  // แถบล่างใช้บริการของบริษัทแทน (services · POSTER_SERVICES — เจ้าของสั่งวันเดียวกัน) · pickBandChips เก็บไว้เผื่อใช้กับข้อความที่มีความหมาย
   const bandChips = []
 
   return {
@@ -122,6 +122,7 @@ export function extractPosterCopyV4({ title = '', caption = '' } = {}) {
     strip,
     bubble,
     bandChips,
+    services: POSTER_SERVICES.map((s) => ({ ...s })),
     contact: { ...POSTER_CONTACT },
   }
 }
@@ -268,7 +269,8 @@ export function buildCompactPosterPrompt({ title = '', caption = '', size = DEFA
   const qa = rows.length > 0 && rows.every((r) => r.qa)
   const gets = ['the topic', ...(rows.length ? [qa ? 'the questions and answers' : 'the key points'] : []), ...(pair ? ['what to do', 'what to avoid'] : [])]
   const readerGets = gets.length > 1 ? `${gets.slice(0, -1).join(', ')} and ${gets.at(-1)}` : gets[0]
-  const chips = copy.bandChips || []
+  // ชิปแถบล่าง = บริการของบริษัท (POSTER_SERVICES) · ถ้าไม่มี (คำสั่งจากโค้ดเก่า) ใช้ชิปจากโพสต์
+  const chips = copy.services?.length ? copy.services : (copy.bandChips || []).map((c) => ({ label: c, icon: iconFor(c) }))
   const steps = v.compositionId === 'numbered-steps'
   const hero = v.compositionId === 'hero-scene'
   const mainName = rows.length ? (steps ? 'steps card' : 'main card') : 'the top photo band'
@@ -314,7 +316,7 @@ export function buildCompactPosterPrompt({ title = '', caption = '', size = DEFA
       : (copy.rightItems.length === 1 ? `- Warning chip (${a2.name}, white text, under the checklist panel): ${q(copy.rightItems[0])}` : ''),
     copy.strip ? `- Wide callout strip (navy, white text, a small cyan document icon at its left): ${q(copy.strip)}` : '',
     chips.length
-      ? `- Bottom band (flat navy, every label fully above the crop line): left a cyan pill with a navy phone icon and navy text ${q(`โทร ${contact.phone}`)} and under it a white pill with a navy chat-bubble icon and navy text ${q(`LINE: ${contact.line}`)}; right ${chips.length} small white chips, each a navy line icon above a short label: ${chips.map((c) => `${iconFor(c)} ${q(c)}`).join(', ')}. The digits ${contact.phone} and the id ${contact.line} must be copied exactly, character for character.`
+      ? `- Bottom band (flat navy, every label fully above the crop line): left a cyan pill with a navy phone icon and navy text ${q(`โทร ${contact.phone}`)} and under it a white pill with a navy chat-bubble icon and navy text ${q(`LINE: ${contact.line}`)}; right ${chips.length} small white chips, each a navy line icon above a short label: ${chips.map((c) => `${c.icon} ${q(c.label)}`).join(', ')}. The digits ${contact.phone} and the id ${contact.line} must be copied exactly, character for character.`
       : `- Bottom band (flat navy, every label fully above the crop line): a cyan pill with a navy phone icon and navy text ${q(`โทร ${contact.phone}`)} and a white pill with a navy chat-bubble icon and navy text ${q(`LINE: ${contact.line}`)}, side by side and centred; nothing else in the band (no chips, no icon tiles, no other labels). The digits ${contact.phone} and the id ${contact.line} must be copied exactly, character for character.`,
     `Constraints: a card gets a header pill only when the Text section gives it a title (a card without a title has no pill or tab at all, never an empty one); icon-per-row lists like the references; cards overlap the backdrop with soft shadows; the presenter is ${presenterPlacement(v.compositionId)} but never covers any text; all text inside the cards stays clear of the presenter; the ${mainName}, ${pairName} and ${copy.strip ? 'the strip' : 'the divider'} keep the zones of the Canvas map; never add cards, lists, header pills or text that are not in the Text section (if a zone has spare room, use more spacing or more of the backdrop photo instead); the logo image is the only logo and is never redrawn; the black bars stay completely empty; the poster must tell the story with the caption hidden.`,
     `Avoid: any text not listed above; any phone number or LINE id other than the two given above; URLs, QR codes, prices, percentages, interest rates, deed numbers, addresses, names; Garuda, seals, stamps, government or other company emblems; watermarks or AI labels; a second logo; green and gold styling; neon glow, lens flare; anything drawn on the black bars.`,

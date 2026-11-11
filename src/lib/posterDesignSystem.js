@@ -70,6 +70,14 @@ export function pickHeadlineKeyword(headline = '') {
 // ช่องทางติดต่อของบริษัทที่ขึ้นบนโปสเตอร์ (เจ้าของกำหนด 7 พ.ย. 2569 ค่ำ) — ข้อมูลธุรกิจสาธารณะ ไม่ใช่ข้อมูลลูกค้า · เบอร์/ไอดีอื่นยังห้ามเหมือนเดิม
 export const POSTER_CONTACT = { phone: '096-986-8888', line: 'assetxestate', cta: 'ติดต่อ AssetX Estate' }
 
+// บริการของบริษัทในแถบล่างโปสเตอร์แบบ "ตามเรฟ" (เจ้าของสั่ง 11 พ.ย. 2569 แทนชิปคำนามจากโพสต์ที่อ่านไม่รู้เรื่อง)
+// คำเดียวกับหน้า /privacy ที่เจ้าของอนุมัติ · ข้อความบริษัทแบบเดียวกับ POSTER_CONTACT จึงไม่ต้องมีในโพสต์ (ไม่เข้าด่านคำต่อคำ) · ห้ามเติมคำโฆษณา เช่น ฟรี/อนุมัติไว
+export const POSTER_SERVICES = [
+  { label: 'รับขายฝาก', icon: 'a small house with a circular return arrow' },
+  { label: 'รับจำนอง', icon: 'a small house on a document' },
+  { label: 'ประเมินมูลค่า', icon: 'a magnifier over a small house' },
+]
+
 // กติกาข้อความบนภาพที่ใช้ซ้ำทุกทาง — ทุกคำต้องมาจากโพสต์ · สะกดผิดไม่ได้ · ไม่มีข้อมูลที่ไม่ได้ให้
 export const POSTER_TEXT_RULES = [
   'Thai text must be spelled exactly as given. Use fewer words rather than risk a misspelled word.',
