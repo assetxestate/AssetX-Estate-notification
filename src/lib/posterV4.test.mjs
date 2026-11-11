@@ -50,7 +50,7 @@ test('extractPosterCopyV4 (โพสต์ #4): ริบบิ้นเต็�
   assert.deepEqual(copy.rightItems, ['อย่าพิจารณาเฉพาะวงเงินที่เสนอ', 'อย่าอาศัยรายการเอกสารของคนอื่นเป็นข้อสรุปว่าครบแล้ว', 'ไม่ควรรอให้ใกล้ครบกำหนดจึงเริ่มวางแผน'])
   assert.equal(copy.strip, 'ก่อนส่งเอกสารทางออนไลน์ควรปิดข้อมูลส่วนบุคคลที่ไม่จำเป็น')
   assert.equal(copy.bubble, 'หากมีตัวเลขหลายชุด ให้ขอสรุปเป็นลายลักษณ์อักษร')
-  assert.deepEqual(copy.bandChips, ['วันครบกำหนด', 'เอกสารประกอบ', 'สำนักงานที่ดิน'])
+  assert.deepEqual(copy.bandChips, [], 'ชิปแถบล่างเลิกใช้ (เจ้าของ 11 พ.ย. 2569: ดูแล้วไม่รู้ว่าหมายถึงอะไร)')
   assert.deepEqual(copy.contact, { phone: '096-986-8888', line: 'assetxestate', cta: 'ติดต่อ AssetX Estate' })
   assert.deepEqual(verbatimMissesV4(copy, POST4), [])
 })
@@ -80,7 +80,8 @@ test('buildCompactPosterPrompt (ฟีด 4:5): PASS-THROUGH · แถบดำ 
   assert.match(prompt, /row 1 \(calendar icon\): "ตรวจวันครบกำหนดและเงื่อนไขการไถ่ถอนในสัญญา" \/ "เริ่มจากทำตารางวันที่สำคัญและรายการที่ต้องตรวจจากสัญญา"/)
   assert.match(prompt, /Left card of the pair[^\n]*"ก่อนคุยกับผู้ให้บริการ"[^\n]*"จดสิ่งที่รู้แล้ว" \/ "สิ่งที่ยังไม่ชัด" \/ "หลักฐานที่ต้องขอเพิ่ม"/)
   assert.match(prompt, /Right card of the pair[^\n]*"ก่อนลงนาม"/)
-  assert.match(prompt, /"โทร 096-986-8888"[^\n]*"LINE: assetxestate"[^\n]*calendar "วันครบกำหนด"[^\n]*"สำนักงานที่ดิน"/)
+  assert.match(prompt, /- Bottom band[^\n]*"โทร 096-986-8888"[^\n]*"LINE: assetxestate", side by side and centred; nothing else in the band/)
+  assert.doesNotMatch(prompt, /small white chips/)
   assert.match(prompt, /any phone number or LINE id other than the two given above/)
   assert.match(prompt, /\nLAYOUT: steps$/)
   assert.doesNotMatch(prompt, /CREATIVE BRIEF|LETTERBOX BARS/)
@@ -212,4 +213,62 @@ test('zoneLabels / canvasMapV4: บล็อกที่ไม่มีข้อ
   const withPair = buildCompactPosterPrompt({ ...POST4, size: 'feed-4x5', layout: 'steps' })
   assert.match(withPair, /two side-by-side cards/)
   assert.match(withPair, /what to do and what to avoid/)
+})
+
+// โพสต์แบบถาม-ตอบ (เคส #37 11 พ.ย. 2569): การ์ดหลักว่าง → โมเดลแต่งคำตอบเอง · คำถาม+คำตอบปนเป็นเช็กลิสต์ · แถบเตือนซ้ำคำตอบ · ป้ายหัวการ์ดว่าง
+const QA_POST = {
+  title: 'ติดภาระเดิม เริ่มคุยก่อนได้',
+  caption: [
+    'โฉนดติดจำนองหรือขายฝากเดิม ต้องปิดภาระก่อนคุยเรื่องเงินหมุนธุรกิจจริงไหม',
+    '',
+    '❓ ถาม: ต้องไปปิดของเดิมให้เรียบร้อยก่อนหรือเปล่า',
+    '💡 ตอบ: เริ่มคุยเพื่อประเมินแนวทางก่อนได้ โดยแจ้งภาระเดิมให้ครบ ยังสรุปไม่ได้ว่าจะดำเนินการต่อได้หรือไม่ เพราะต้องดูเอกสารสิทธิ์และเงื่อนไขสัญญาเดิมของคุณ',
+    '',
+    '❓ ถาม: ต้องบอกเรื่องของเดิมแค่ไหน',
+    '💡 ตอบ: แจ้งว่าติดจำนองหรือขายฝาก ยอดที่ต้องชำระ และกำหนดตามสัญญา พร้อมเปิดเผยภาระอื่นที่มี',
+    '',
+    'ถาม: ถ้ายังขายฝากอยู่ ต้องดูตรงไหนก่อน',
+    '',
+    'ตอบ: ตรวจสิทธิไถ่ถอนและกำหนดเวลาในสัญญาเดิมให้ชัด',
+    '',
+    '📌 ข้อมูลนี้เป็นความรู้ทั่วไป ต้องดูเอกสารและข้อเท็จจริงของแต่ละกรณี',
+    '',
+    '👉 ทักแชต AssetX Estate พร้อมแจ้งภาระเดิมของทรัพย์',
+    '',
+    '#AssetXEstate #จำนอง',
+  ].join('\n'),
+}
+
+test('โพสต์ถาม-ตอบ: คำถาม = หัวข้อแถว · คำตอบ = รายละเอียด (คำตอบขึ้นย่อหน้าใหม่ก็ได้) · ไม่มีเช็กลิสต์/แถบเตือนซ้ำ · ทุกสตริงมาจากโพสต์', () => {
+  const copy = extractPosterCopyV4(QA_POST)
+  assert.deepEqual(copy.rows.map((r) => r.title), ['ต้องไปปิดของเดิมให้เรียบร้อยก่อนหรือเปล่า', 'ต้องบอกเรื่องของเดิมแค่ไหน', 'ถ้ายังขายฝากอยู่ ต้องดูตรงไหนก่อน'])
+  assert.ok(copy.rows.every((r) => r.qa && r.detail), 'ทุกแถวมีคำตอบ')
+  assert.match(copy.rows[0].detail, /^เริ่มคุยเพื่อประเมินแนวทางก่อนได้/)
+  assert.equal(copy.rows[2].detail, 'ตรวจสิทธิไถ่ถอนและกำหนดเวลาในสัญญาเดิมให้ชัด')
+  assert.deepEqual(copy.leftItems, [])
+  const all = [copy.ribbon, copy.strip, copy.bubble, ...copy.leftItems, ...copy.rightItems].filter(Boolean)
+  assert.ok(all.every((s) => !/ถาม|ตอบ/.test(s)), 'ไม่มีคำว่า ถาม:/ตอบ: หลุดไปบล็อกอื่น')
+  assert.ok(all.every((s) => !copy.rows.some((r) => r.detail && (s.includes(r.detail) || r.detail.includes(s)))), 'ไม่ซ้ำคำตอบในแถว')
+  assert.deepEqual(verbatimMissesV4(copy, QA_POST), [])
+})
+
+test('คำสั่งภาพถาม-ตอบ: แถวคำถาม-คำตอบ · การ์ดไม่มีหัวข้อ = ไม่มีป้าย · บล็อกที่ไม่มีข้อความ = ภาพ/เส้น · แถบล่างไม่มีชิป', () => {
+  const prompt = buildCompactPosterPrompt({ ...QA_POST, size: 'feed-4x5', layout: 'qa', seed: 22010 })
+  assert.match(prompt, /3 question-and-answer rows, each with a pale-cyan question-mark icon circle/)
+  assert.match(prompt, /row 1 \(question-mark icon\): "ต้องไปปิดของเดิมให้เรียบร้อยก่อนหรือเปล่า" \/ "เริ่มคุยเพื่อประเมินแนวทางก่อนได้/)
+  assert.match(prompt, /no header pill and no title, only a cyan magnifier circle at its top-left\)/)
+  assert.doesNotMatch(prompt, /with no title text|Wide checklist panel|Wide callout strip/)
+  assert.match(prompt, /a full-width sharp photo band of the backdrop scene \(no text, no cards, no icons\)/)
+  assert.match(prompt, /a card gets a header pill only when the Text section gives it a title/)
+  assert.match(prompt, /side by side and centred; nothing else in the band/)
+})
+
+test('โพสต์ไม่มีข้อเลขหรือถาม-ตอบ: โซนการ์ดหลักเป็นแถบภาพ ไม่ใช่การ์ดว่างให้โมเดลแต่งข้อความ', () => {
+  const plain = { title: 'ก่อนขายฝาก อ่านสัญญาให้ครบ', caption: 'ก่อนขายฝาก ควรอ่านสัญญาให้ครบทุกข้อ และถามเงื่อนไขที่ไม่เข้าใจก่อนลงนาม' }
+  assert.equal(extractPosterCopyV4(plain).rows.length, 0)
+  const prompt = buildCompactPosterPrompt({ ...plain, size: 'feed-4x5', layout: 'steps', seed: 3 })
+  assert.doesNotMatch(prompt, / main card y \d+-\d+/)
+  assert.match(prompt, /a full-width sharp photo band of the backdrop scene \(no text, no cards, no icons\) y \d+-\d+/)
+  assert.equal(zoneLabels({ main: false }).main, zoneLabels({ pair: false }).pair)
+  assert.equal(ZONE_LABELS.main, 'main card')
 })

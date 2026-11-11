@@ -105,7 +105,9 @@ export function extractPosterCopyV4({ title = '', caption = '' } = {}) {
   const bubblePool = [...pointClauses, ...otherClauses].filter((c) => /^(หาก|ถ้า|เมื่อ)/.test(c) && /ให้|ควร|ต้อง/.test(c) && wordCount(c) >= 5 && wordCount(c) <= 14 && unused(c))
   const bubble = bubblePool[0] || ''
 
-  const bandChips = pickBandChips(text, { max: 3, exclude: keyWord ? [keyWord] : [], rowTitles: rows.map((r) => r.title) })
+  // ชิปแถบล่างเลิกใช้ (เจ้าของ 11 พ.ย. 2569 #37: "สำนักงานที่ดิน · เอกสารสิทธิ์ · ค่าใช้จ่าย" ดูแล้วไม่รู้ว่าหมายถึงอะไร)
+  // เป็นคำนามที่หยิบจากโพสต์มาเลียนแบบแถบบริการของเรฟ ไม่ได้บอกอะไรคนอ่าน → แถบล่างเหลือเบอร์/LINE · pickBandChips เก็บไว้เผื่อใช้กับข้อความที่มีความหมาย
+  const bandChips = []
 
   return {
     ...base,
@@ -144,10 +146,13 @@ const ZONES = { logoTop: 0.02, logoBottom: 0.10, headTop: 0.02, headBottom: 0.20
 // ชื่อบล็อกในแผนที่แคนวาส — บล็อกที่โพสต์ไม่มีข้อความให้ ต้องเปลี่ยนเป็นของที่ไม่มีตัวอักษร (zoneLabels)
 // เจอจริง #27 (9 พ.ย. 2569): แผนที่จอง "two side-by-side cards" + คำสั่งบอก "what to do and what to avoid" แต่โพสต์มีแค่ 1 บรรทัด
 // → โมเดลแต่งการ์ด "ควรทำอะไรบ้าง / ควรหลีกเลี่ยงอะไร" 8 ข้อเอง (ไม่อยู่ในโพสต์ ไม่ผ่านด่านตรวจ) รวมข้อที่ไล่ลูกค้าติดจำนอง
-export const ZONE_LABELS = { pair: 'two side-by-side cards', strip: 'one wide callout strip', ribbon: 'brush ribbon' }
-export function zoneLabels({ pair = true, panel = false, strip = true, ribbon = true } = {}) {
+// การ์ดหลักที่โพสต์ไม่มีข้อให้ = แถบภาพฉากหลัง (เจอจริง #37: การ์ดว่างในแผนที่ → โมเดลแต่ง "คำถาม/คำตอบ" เอง ไม่อยู่ในโพสต์)
+export const ZONE_LABELS = { main: 'main card', pair: 'two side-by-side cards', strip: 'one wide callout strip', ribbon: 'brush ribbon' }
+const PHOTO_BAND = 'a full-width sharp photo band of the backdrop scene (no text, no cards, no icons)'
+export function zoneLabels({ main = true, pair = true, panel = false, strip = true, ribbon = true } = {}) {
   return {
-    pair: pair ? ZONE_LABELS.pair : panel ? 'one wide checklist panel' : 'a full-width sharp photo band of the backdrop scene (no text, no cards, no icons)',
+    main: main ? ZONE_LABELS.main : PHOTO_BAND,
+    pair: pair ? ZONE_LABELS.pair : panel ? 'one wide checklist panel' : PHOTO_BAND,
     strip: strip ? ZONE_LABELS.strip : 'a thin cyan divider line (no text)',
     ribbon: ribbon ? ZONE_LABELS.ribbon : 'thin cyan brush-stroke accent (no text)',
   }
@@ -158,15 +163,15 @@ function compositionZones(compositionId, { Z, Y, topWord, a1, L = ZONE_LABELS })
   const band = Z(ZONES.bandTop, 1)
   switch (compositionId) {
     case 'presenter-left':
-      return `logo chip top-right ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the right 60% of the width, right-aligned, ending left of the logo chip · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · ${L.ribbon} ${Z(ZONES.headBottom, ZONES.ribbonBottom)} right-aligned · presenter cutout on the left 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the left edge of the main card · main card ${Z(ZONES.cardTop, ZONES.cardBottom)} with all its text in the right 62% of the width · ${L.pair} ${Z(ZONES.pairTop, ZONES.pairBottom)} · ${L.strip} ${Z(ZONES.stripTop, ZONES.stripBottom)} · bottom band ${band}`
+      return `logo chip top-right ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the right 60% of the width, right-aligned, ending left of the logo chip · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · ${L.ribbon} ${Z(ZONES.headBottom, ZONES.ribbonBottom)} right-aligned · presenter cutout on the left 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the left edge of the main card · ${L.main} ${Z(ZONES.cardTop, ZONES.cardBottom)}${L.main === ZONE_LABELS.main ? ' with all its text in the right 62% of the width' : ''} · ${L.pair} ${Z(ZONES.pairTop, ZONES.pairBottom)} · ${L.strip} ${Z(ZONES.stripTop, ZONES.stripBottom)} · bottom band ${band}`
     case 'numbered-steps':
       return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the left 60% of the width · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · ${L.ribbon} ${Z(ZONES.headBottom, ZONES.ribbonBottom)} · presenter cutout on the right 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the right edge of the steps card · steps card ${Z(ZONES.cardTop, 0.60)} (one tall card; a vertical dotted cyan line down its left side joins big ${a1} numbered circles, one per row) · ${L.pair} ${Z(0.62, ZONES.pairBottom)} · ${L.strip} ${Z(0.815, 0.86)} · bottom band ${band}`
     case 'hero-scene':
-      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, 0.18)} full width, left-aligned, starting right of the logo chip · ${L.ribbon} ${Z(0.18, 0.225)} · scene strip ${Z(0.235, 0.42)} full width showing the backdrop scene itself, sharp · presenter cutout (head to chest, about 22% of the width) at the right end of the scene strip from ${Y(0.21)} down to ${Y(0.44)}, overlapping the main card's top-right corner · speech bubble (if any) inside the scene strip, left of the presenter · main card ${Z(0.41, 0.62)} overlapping the bottom edge of the scene strip · ${L.pair} ${Z(0.64, ZONES.pairBottom)} · ${L.strip} ${Z(0.815, 0.86)} · bottom band ${band}`
+      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, 0.18)} full width, left-aligned, starting right of the logo chip · ${L.ribbon} ${Z(0.18, 0.225)} · scene strip ${Z(0.235, 0.42)} full width showing the backdrop scene itself, sharp · presenter cutout (head to chest, about 22% of the width) at the right end of the scene strip from ${Y(0.21)} down to ${Y(0.44)}, overlapping the main card's top-right corner · speech bubble (if any) inside the scene strip, left of the presenter · ${L.main} ${Z(0.41, 0.62)} overlapping the bottom edge of the scene strip · ${L.pair} ${Z(0.64, ZONES.pairBottom)} · ${L.strip} ${Z(0.815, 0.86)} · bottom band ${band}`
     case 'presenter-bottom':
-      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, 0.19)} in the left 65% of the width · speech bubble (if any) in the right 35% of the width inside ${Z(ZONES.logoTop, 0.19)} · ${L.ribbon} ${Z(0.19, 0.235)} · main card ${Z(0.25, 0.52)} full width · ${L.pair} ${Z(0.54, 0.72)} · ${L.strip} ${Z(0.735, 0.785)} with its text in the left 70% of the width · presenter cutout (head to chest, about 26% of the width) in the bottom-right corner from ${Y(0.68)} down to ${Y(ZONES.bandTop)}, overlapping the right end of the callout strip and the bottom-right corner of the right card, never covering text · bottom band ${band}`
+      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, 0.19)} in the left 65% of the width · speech bubble (if any) in the right 35% of the width inside ${Z(ZONES.logoTop, 0.19)} · ${L.ribbon} ${Z(0.19, 0.235)} · ${L.main} ${Z(0.25, 0.52)} full width · ${L.pair} ${Z(0.54, 0.72)} · ${L.strip} ${Z(0.735, 0.785)} with its text in the left 70% of the width · presenter cutout (head to chest, about 26% of the width) in the bottom-right corner from ${Y(0.68)} down to ${Y(ZONES.bandTop)}, overlapping the right end of the callout strip and the bottom-right corner of the right card, never covering text · bottom band ${band}`
     default:
-      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the left 60% of the width · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · ${L.ribbon} ${Z(ZONES.headBottom, ZONES.ribbonBottom)} · presenter cutout on the right 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the right edge of the main card · main card ${Z(ZONES.cardTop, ZONES.cardBottom)} · ${L.pair} ${Z(ZONES.pairTop, ZONES.pairBottom)} · ${L.strip} ${Z(ZONES.stripTop, ZONES.stripBottom)} · bottom band ${band}`
+      return `logo chip top-left ${Z(ZONES.logoTop, ZONES.logoBottom)} · headline block ${Z(ZONES.headTop, ZONES.headBottom)} in the left 60% of the width · speech bubble (if any) entirely inside ${Z(ZONES.logoTop, ZONES.headBottom)} · ${L.ribbon} ${Z(ZONES.headBottom, ZONES.ribbonBottom)} · presenter cutout on the right 40% from ${topWord} down to ${Y(ZONES.presenterBottom)}, overlapping the right edge of the main card · ${L.main} ${Z(ZONES.cardTop, ZONES.cardBottom)} · ${L.pair} ${Z(ZONES.pairTop, ZONES.pairBottom)} · ${L.strip} ${Z(ZONES.stripTop, ZONES.stripBottom)} · bottom band ${band}`
   }
 }
 
@@ -258,14 +263,17 @@ export function buildCompactPosterPrompt({ title = '', caption = '', size = DEFA
   const pair = copy.rightItems.length >= 2 && copy.leftItems.length >= 2
   // บล็อกที่ไม่มีข้อความจากโพสต์ = ของที่ไม่มีตัวอักษร (zoneLabels) — ไม่งั้นโมเดลแต่งข้อความมาเติมเอง
   const panel = !pair && (copy.leftItems.length > 0 || copy.rightItems.length === 1)
-  const labels = zoneLabels({ pair, panel, strip: Boolean(copy.strip), ribbon: Boolean(copy.ribbon) })
+  const labels = zoneLabels({ main: rows.length > 0, pair, panel, strip: Boolean(copy.strip), ribbon: Boolean(copy.ribbon) })
   const pairName = pair ? 'the pair' : panel ? 'the checklist panel' : 'the photo band'
-  const gets = ['the topic', ...(rows.length ? ['the key points'] : []), ...(pair ? ['what to do', 'what to avoid'] : [])]
+  const qa = rows.length > 0 && rows.every((r) => r.qa)
+  const gets = ['the topic', ...(rows.length ? [qa ? 'the questions and answers' : 'the key points'] : []), ...(pair ? ['what to do', 'what to avoid'] : [])]
   const readerGets = gets.length > 1 ? `${gets.slice(0, -1).join(', ')} and ${gets.at(-1)}` : gets[0]
-  const chips = copy.bandChips
+  const chips = copy.bandChips || []
   const steps = v.compositionId === 'numbered-steps'
   const hero = v.compositionId === 'hero-scene'
-  const mainName = steps ? 'steps card' : 'main card'
+  const mainName = rows.length ? (steps ? 'steps card' : 'main card') : 'the top photo band'
+  // การ์ดที่ไม่มีหัวข้อ = ไม่มีป้ายหัวการ์ดเลย (สั่ง "header pill … with no title text" แล้วได้ป้ายสีว่างเปล่า — #37 งาน 38)
+  const head = (pill, icon, title) => title ? `${pill} header pill with ${icon}): title ${q(title)}` : `no header pill and no title, only ${icon} at its top-left)`
   const sceneTreatment = hero
     ? ', shown sharp inside the scene strip and softly blurred everywhere else behind the cards; no readable background text'
     : `, all softly blurred with a ${v.palette.light ? 'white' : 'navy'}-to-transparent scrim over the top 30% of the poster; no readable background text`
@@ -291,20 +299,24 @@ export function buildCompactPosterPrompt({ title = '', caption = '', size = DEFA
     rows.length
       ? [
           steps
-            ? `- Steps card (${v.cards.text}; navy header pill at its top-left with a cyan magnifier circle)${copy.cardTitle ? `: title ${q(copy.cardTitle)}` : ' with no title text'} then ${rows.length} rows on a vertical dotted cyan line, each starting with a big ${a1.name} circle holding its number in navy, then a bold navy title${rows.some((r) => r.detail) ? ' and one regular detail line' : ''}:`
-            : `- Main card (${v.cards.text}; navy header pill at its top-left with a cyan magnifier circle)${copy.cardTitle ? `: title ${q(copy.cardTitle)}` : ' with no title text'} then ${rows.length} rows, each with a pale-cyan icon circle on the left, a bold navy title${rows.some((r) => r.detail) ? ' and one regular detail line' : ''}:`,
-          ...rows.map((r, i) => `  row ${i + 1} (${steps ? `number ${i + 1}, small ${r.icon} icon after the title` : `${r.icon} icon`}): ${q(r.title)}${r.detail ? ` / ${q(r.detail)}` : ''}`),
+            ? `- Steps card (${v.cards.text}; ${head('navy', 'a cyan magnifier circle', copy.cardTitle)} then ${rows.length} rows on a vertical dotted cyan line, each starting with a big ${a1.name} circle holding its number in navy, then a bold navy title${rows.some((r) => r.detail) ? ' and one regular detail line' : ''}:`
+            : qa
+              ? `- Main card (${v.cards.text}; ${head('navy', 'a cyan magnifier circle', copy.cardTitle)} then ${rows.length} question-and-answer rows, each with a pale-cyan question-mark icon circle on the left, the question as a bold navy title and its answer as one regular line under it:`
+              : `- Main card (${v.cards.text}; ${head('navy', 'a cyan magnifier circle', copy.cardTitle)} then ${rows.length} rows, each with a pale-cyan icon circle on the left, a bold navy title${rows.some((r) => r.detail) ? ' and one regular detail line' : ''}:`,
+          ...rows.map((r, i) => `  row ${i + 1} (${steps ? `number ${i + 1}, small ${r.icon} icon after the title` : qa ? 'question-mark icon' : `${r.icon} icon`}): ${q(r.title)}${r.detail ? ` / ${q(r.detail)}` : ''}`),
         ].join('\n')
       : '',
     pair
-      ? `- Left card of the pair (${a1.name} header pill with a navy notepad icon)${copy.leftTitle ? `: title ${q(copy.leftTitle)}` : ' with no title text'} then ${copy.leftItems.length} checklist lines, each with a cyan check-circle: ${copy.leftItems.map(q).join(' / ')}`
-      : (copy.leftItems.length ? `- Wide checklist panel (${a1.name} header pill with a navy notepad icon)${copy.leftTitle ? `: title ${q(copy.leftTitle)}` : ' with no title text'} then ${copy.leftItems.length} lines, each with a cyan check-circle: ${copy.leftItems.map(q).join(' / ')}` : ''),
+      ? `- Left card of the pair (${head(a1.name, 'a navy notepad icon', copy.leftTitle)} then ${copy.leftItems.length} checklist lines, each with a cyan check-circle: ${copy.leftItems.map(q).join(' / ')}`
+      : (copy.leftItems.length ? `- Wide checklist panel (${head(a1.name, 'a navy notepad icon', copy.leftTitle)} then ${copy.leftItems.length} lines, each with a cyan check-circle: ${copy.leftItems.map(q).join(' / ')}` : ''),
     pair
-      ? `- Right card of the pair (${a2.name} header pill with a white warning-triangle icon)${copy.rightTitle ? `: title ${q(copy.rightTitle)}` : ' with no title text'} then ${copy.rightItems.length} lines, each with a ${a2.name} exclamation circle: ${copy.rightItems.map(q).join(' / ')}`
+      ? `- Right card of the pair (${head(a2.name, 'a white warning-triangle icon', copy.rightTitle)} then ${copy.rightItems.length} lines, each with a ${a2.name} exclamation circle: ${copy.rightItems.map(q).join(' / ')}`
       : (copy.rightItems.length === 1 ? `- Warning chip (${a2.name}, white text, under the checklist panel): ${q(copy.rightItems[0])}` : ''),
     copy.strip ? `- Wide callout strip (navy, white text, a small cyan document icon at its left): ${q(copy.strip)}` : '',
-    `- Bottom band (flat navy, every label fully above the crop line): left a cyan pill with a navy phone icon and navy text ${q(`โทร ${contact.phone}`)} and under it a white pill with a navy chat-bubble icon and navy text ${q(`LINE: ${contact.line}`)}${chips.length ? `; right ${chips.length} small white chips, each a navy line icon above a short label: ${chips.map((c) => `${iconFor(c)} ${q(c)}`).join(', ')}` : ''}. The digits ${contact.phone} and the id ${contact.line} must be copied exactly, character for character.`,
-    `Constraints: every card has one header pill or tab and icon-per-row lists like the references; cards overlap the backdrop with soft shadows; the presenter is ${presenterPlacement(v.compositionId)} but never covers any text; all text inside the cards stays clear of the presenter; the ${mainName}, ${pairName} and ${copy.strip ? 'the strip' : 'the divider'} keep the zones of the Canvas map; never add cards, lists, header pills or text that are not in the Text section (if a zone has spare room, use more spacing or more of the backdrop photo instead); the logo image is the only logo and is never redrawn; the black bars stay completely empty; the poster must tell the story with the caption hidden.`,
+    chips.length
+      ? `- Bottom band (flat navy, every label fully above the crop line): left a cyan pill with a navy phone icon and navy text ${q(`โทร ${contact.phone}`)} and under it a white pill with a navy chat-bubble icon and navy text ${q(`LINE: ${contact.line}`)}; right ${chips.length} small white chips, each a navy line icon above a short label: ${chips.map((c) => `${iconFor(c)} ${q(c)}`).join(', ')}. The digits ${contact.phone} and the id ${contact.line} must be copied exactly, character for character.`
+      : `- Bottom band (flat navy, every label fully above the crop line): a cyan pill with a navy phone icon and navy text ${q(`โทร ${contact.phone}`)} and a white pill with a navy chat-bubble icon and navy text ${q(`LINE: ${contact.line}`)}, side by side and centred; nothing else in the band (no chips, no icon tiles, no other labels). The digits ${contact.phone} and the id ${contact.line} must be copied exactly, character for character.`,
+    `Constraints: a card gets a header pill only when the Text section gives it a title (a card without a title has no pill or tab at all, never an empty one); icon-per-row lists like the references; cards overlap the backdrop with soft shadows; the presenter is ${presenterPlacement(v.compositionId)} but never covers any text; all text inside the cards stays clear of the presenter; the ${mainName}, ${pairName} and ${copy.strip ? 'the strip' : 'the divider'} keep the zones of the Canvas map; never add cards, lists, header pills or text that are not in the Text section (if a zone has spare room, use more spacing or more of the backdrop photo instead); the logo image is the only logo and is never redrawn; the black bars stay completely empty; the poster must tell the story with the caption hidden.`,
     `Avoid: any text not listed above; any phone number or LINE id other than the two given above; URLs, QR codes, prices, percentages, interest rates, deed numbers, addresses, names; Garuda, seals, stamps, government or other company emblems; watermarks or AI labels; a second logo; green and gold styling; neon glow, lens flare; anything drawn on the black bars.`,
     variantLine(v),
     `LAYOUT: ${layout}`,

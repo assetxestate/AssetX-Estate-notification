@@ -62,10 +62,10 @@ export const DECORS = {
 }
 
 export const CARD_STYLES = {
-  'white-pill': { label: 'การ์ดขาวหัวพิล', text: 'white rounded cards, each with a coloured header pill at its top-left and a soft navy shadow' },
-  glass: { label: 'การ์ดกระจกฝ้า', text: 'frosted-glass cards (white at 85% opacity with a 1 px pale-cyan border), each with a coloured header pill at its top-left' },
-  'left-stripe': { label: 'การ์ดแถบข้าง', text: 'white rounded cards with a thick coloured left border stripe and a coloured header tab at the top-left instead of a pill' },
-  'tilted-sticker': { label: 'การ์ดสติกเกอร์เอียง', text: 'white sticker-style cards with a thick white border, rotated by about 1–2 degrees alternately, each with a coloured header pill at its top-left' },
+  'white-pill': { label: 'การ์ดขาวหัวพิล', text: 'white rounded cards, each with a coloured header pill at its top-left when the card has a title, and a soft navy shadow' },
+  glass: { label: 'การ์ดกระจกฝ้า', text: 'frosted-glass cards (white at 85% opacity with a 1 px pale-cyan border), each with a coloured header pill at its top-left when the card has a title' },
+  'left-stripe': { label: 'การ์ดแถบข้าง', text: 'white rounded cards with a thick coloured left border stripe and, when the card has a title, a coloured header tab at the top-left instead of a pill' },
+  'tilted-sticker': { label: 'การ์ดสติกเกอร์เอียง', text: 'white sticker-style cards with a thick white border, rotated by about 1–2 degrees alternately, each with a coloured header pill at its top-left when the card has a title' },
 }
 
 // สื่อ — ภาพถ่ายตัดต่อเป็นรสนิยมหลักของเจ้าของ

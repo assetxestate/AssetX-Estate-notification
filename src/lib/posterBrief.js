@@ -78,7 +78,13 @@ function splitSentences(paragraph = '') {
   return String(paragraph || '').split(/(?<=[.!?])\s+|\s+·\s+|\s{2,}/).map((s) => s.trim()).filter(Boolean)
 }
 
-// แยกโพสต์เป็นย่อหน้า → หัวข้อ (ถ้าเขียน "หัวข้อ:") · ข้อเลขลำดับพร้อมรายละเอียด · ย่อหน้าเปิด (ก่อนข้อแรก) · ย่อหน้าปิด (หลังข้อสุดท้าย) — ไม่นับบรรทัดกำกับ/ชวนติดต่อ
+// โพสต์แบบถาม-ตอบ ("ถาม: …" แล้ว "ตอบ: …" บรรทัดถัดไป — โครงที่ร่าง AI ใช้บ่อย) = ข้อหนึ่งข้อ: หัวข้อ = คำถาม · รายละเอียด = คำตอบ
+// เจอจริง #37 (11 พ.ย. 2569): ตัวแยกรู้จักแค่ข้อเลข → การ์ดหลักไม่มีข้อความ (โมเดลแต่งคำตอบเองว่า "ไม่จำเป็นต้องปิดภาระเดิมก่อน")
+// และประโยค "คำถาม ตอบ: คำตอบ" ไปปนเป็นข้อเช็กลิสต์ + แถบเตือน = ข้อความซ้ำกันทั้งภาพ
+const QUESTION_RE = /^(?:ถาม|คำถาม|Q)\s*[:：]\s*(.+)$/i
+const ANSWER_RE = /^(?:ตอบ|คำตอบ|A)\s*[:：]\s*(.+)$/i
+
+// แยกโพสต์เป็นย่อหน้า → หัวข้อ (ถ้าเขียน "หัวข้อ:") · ข้อเลขลำดับ/ข้อถาม-ตอบพร้อมรายละเอียด · ย่อหน้าเปิด (ก่อนข้อแรก) · ย่อหน้าปิด (หลังข้อสุดท้าย) — ไม่นับบรรทัดกำกับ/ชวนติดต่อ
 export function parsePost({ title = '', caption = '' } = {}) {
   const text = cleanCaption(caption)
   const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
@@ -94,6 +100,21 @@ export function parsePost({ title = '', caption = '' } = {}) {
     const numbered = first.match(/^(\d{1,2})[.)]\s*(.+)$/)
     if (numbered) {
       points.push({ n: Number(numbered[1]), head: numbered[2].trim(), detail: lines.slice(1).join(' ').trim() })
+      continue
+    }
+    const question = first.match(QUESTION_RE)
+    if (question) {
+      const at = lines.findIndex((l, i) => i > 0 && ANSWER_RE.test(l))
+      const head = [question[1], ...lines.slice(1, at < 0 ? lines.length : at)].join(' ').trim()
+      const detail = at < 0 ? '' : [lines[at].match(ANSWER_RE)[1], ...lines.slice(at + 1)].join(' ').trim()
+      points.push({ n: points.length + 1, head, detail, qa: true })
+      continue
+    }
+    const answer = first.match(ANSWER_RE)
+    const lastPoint = points[points.length - 1]
+    if (answer && lastPoint?.qa && !lastPoint.detail) {
+      // คำตอบขึ้นย่อหน้าใหม่ = รายละเอียดของคำถามก่อนหน้า
+      lastPoint.detail = [answer[1], ...lines.slice(1)].join(' ').trim()
       continue
     }
     if (CAVEAT_RE.test(para) && wordCount(para) <= 22) continue
@@ -179,7 +200,7 @@ export function extractPosterCopy({ title = '', caption = '' } = {}) {
     let detail = ''
     if (tail) detail = trimClause(splitSentences(tail)[0] || tail, { min: 8, max: 22 })
     if (detail && (rowTitle.includes(detail) || detail.includes(rowTitle))) detail = ''
-    return { title: rowTitle, detail, icon: iconFor(rowTitle) === 'check mark' ? iconFor(detail) : iconFor(rowTitle) }
+    return { title: rowTitle, detail, icon: iconFor(rowTitle) === 'check mark' ? iconFor(detail) : iconFor(rowTitle), ...(p.qa ? { qa: true } : {}) }
   })
 
   // ชื่อการ์ด = วลีในเครื่องหมายคำพูดของย่อหน้าเปิด (ที่มีคำเน้น ไม่งั้นอันท้ายสุด) · ไม่มีก็วรรคสั้น 2–4 คำที่ขึ้นต้น ก่อน/เมื่อ/ถ้า และไม่ซ้ำริบบิ้น/คำพาดหัว · ไม่มีก็ 2–4 คำแรกของประโยคเปิด
