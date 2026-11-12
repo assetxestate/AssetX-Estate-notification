@@ -70,6 +70,34 @@ test('GET คืนคิว new · สถานะแปลก = 400', async ()
   assert.equal(res.code, 400)
 })
 
+test('GET ?channel= (ชิปช่องทาง 12 พ.ย. 2569): ทุกใบของช่องทางนั้นเรียงคะแนน ไม่ติดเพดานต่อประเภท · นับต่อช่องทางใน meta · ช่องทางแปลก = 400', async () => {
+  // เพจ Facebook 12 ใบประเภทเดียว (แบบคิวจริง) — คิวปกติติดเพดาน per_subtype 10 · กดชิป Facebook ต้องได้ครบ 12
+  const fb = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, status: 'new', source: 'social', subtype: 'social_fb', url: `https://www.facebook.com/p/${i}`, score: 20 - i }))
+  const rows = [...fb,
+    { id: 50, status: 'new', source: 'social', subtype: 'ad_library', url: 'https://www.facebook.com/ads/library/?id=1', score: 6 },
+    { id: 51, status: 'new', source: 'news', subtype: 'valuation', url: 'https://news.google.com/rss/articles/a', score: 5 },
+    { id: 52, status: 'new', source: 'youtube', subtype: 'competitor', url: 'https://www.youtube.com/watch?v=a', score: 4 },
+  ]
+  const db = fakeDb(rows)
+  let res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas?status=new&per_subtype=10&limit=60' }, res)
+  assert.equal(res.body.ideas.filter((i) => i.subtype === 'social_fb').length, 10, 'คิวปกติยังติดเพดาน 10 ต่อประเภท')
+  assert.deepEqual(res.body.meta.by_channel, { facebook: 12, meta_ads: 1, news: 1, youtube: 1 })
+  assert.equal(res.body.channel, undefined)
+  res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas?status=new&channel=facebook' }, res)
+  assert.equal(res.code, 200)
+  assert.equal(res.body.channel, 'facebook')
+  assert.deepEqual(res.body.ideas.map((i) => i.id), fb.map((r) => r.id), 'ครบ 12 ใบ เรียงคะแนน · ไม่ปนแอดคู่แข่ง')
+  assert.equal(res.body.total, 15)
+  res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas?status=new&channel=meta_ads' }, res)
+  assert.deepEqual(res.body.ideas.map((i) => i.id), [50])
+  res = response()
+  await createIdeasHandler({ authorized: () => true, database: () => db })({ method: 'GET', url: '/api/marketing-ideas?status=new&channel=myspace' }, res)
+  assert.equal(res.code, 400)
+})
+
 test('pick/dismiss: ล้าง PII ในเหตุผล · ไอเดียที่ไม่มี = 404', async () => {
   const db = fakeDb([{ id: 7, status: 'new' }])
   let res = response()
@@ -175,7 +203,8 @@ test('GET meta: สถานะรอบรีเสิร์ชจากข้�
   assert.deepEqual(res.body.ideas.map((i) => i.id), [1, 2, 3])
   assert.equal(res.body.total, 3)
   const { meta } = res.body
-  assert.deepEqual(Object.keys(meta).sort(), ['arrived_last_24h', 'by_source', 'degraded', 'fetched_at', 'latest_created_at', 'status', 'total', 'with_angles'])
+  assert.deepEqual(Object.keys(meta).sort(), ['arrived_last_24h', 'by_channel', 'by_source', 'degraded', 'fetched_at', 'latest_created_at', 'status', 'total', 'with_angles'])
+  assert.deepEqual(meta.by_channel, { news: 2, official: 1 })
   assert.equal(meta.degraded, false)
   assert.equal(meta.status, 'new')
   assert.equal(meta.total, res.body.total)

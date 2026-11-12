@@ -17,6 +17,7 @@ import { organizeMarketingQueue } from './lib/marketingQueuePlan.js'
 import { SESSION_EXPIRED_MESSAGE, errorMessage, friendlyApiError } from './lib/marketingErrors.js'
 import { contentNoOf, contentReference, ensureContentNumbers, findContentByNo, formatContentNo, parseContentNo } from './lib/marketingContentNumbers.js'
 import { freshJobStatus, isActiveJob as isActiveFreshJob, latestJobBy, shouldResumeJob } from './lib/freshContentJob.js'
+import { CHANNEL_ORDER, channelMeta, channelOfIdea, countByChannel } from './lib/ideaChannels.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -41,6 +42,8 @@ function researchIdeaToCard(row) {
     source: cite ? `${researchSourceLabels[row.source] || row.source} · ${row.source_label}` : (researchSourceLabels[row.source] || 'ตลาด'),
     type: researchSubtypeLabels[row.subtype] || 'ตลาด',
     subtype: row.subtype || null,
+    // ช่องทางต้นทาง (ชิปกรอง + โลโก้บนการ์ด · src/lib/ideaChannels.js ตัวเดียวกับที่ API นับ) — คนละอย่างกับ channel ด้านล่าง (ช่องทางที่จะโพสต์)
+    sourceChannel: channelOfIdea(row),
     // คะแนนเรดาร์อยู่ช่วง ~1–9 ส่วนไอเดียเดิมในหน้าใช้ 0–100 → ยืดสเกลให้เรียงรวมกันได้ (ใช้เรียงเท่านั้น ไม่โชว์)
     score: Math.round(Math.min(99, 40 + Number(row.score || 0) * 7)),
     radarScore: Number(row.score || 0),
@@ -59,6 +62,17 @@ function researchIdeaToCard(row) {
     createdAt: row.created_at || null,
   }
 }
+
+// โลโก้ช่องทางต้นทางของไอเดีย — โซเชียลใช้โลโก้แบรนด์ (Simple Icons) · ช่องอื่นใช้ไอคอนเส้น
+function ChannelLogo({ channel, size = 16 }) {
+  const m = channelMeta(channel)
+  return m.path
+    ? <svg className="mx-ch-logo" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={m.path} fill={m.color} /></svg>
+    : <svg className="mx-ch-logo" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke={m.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={m.icon} /></svg>
+}
+
+// ไอเดียบนหน้า → ช่องทาง (ไอเดียรีเสิร์ชมีจาก API · สำรวจตลาดเป็นช่องของมันเอง)
+const ideaChannel = (idea) => idea.sourceChannel || (idea.kind === 'radar' ? 'radar' : 'manual')
 
 // ป้ายช่องทางสำหรับแสดงผล (ค่าที่บันทึกเป็น facebook / line-oa / Facebook ปะปนกัน)
 function channelLabel(value = '') {
@@ -1187,6 +1201,14 @@ export default function MarketingPage({ onBack }) {
     } catch {
       setResearchFeed((feed) => ({ ...feed, state: 'error', httpStatus: null }))
     }
+  }
+
+  // ชิปช่องทางบนแท็บไอเดีย: ช่องที่มีใบถูกซ่อน (คิวปกติจำกัด 10 ใบต่อประเภท) → ขอทุกใบของช่องนั้น (อ่านอย่างเดียว)
+  const loadChannelIdeas = async (channel) => {
+    const res = await fetch(`/api/marketing-ideas?status=new&channel=${encodeURIComponent(channel)}`)
+    const data = await res.json().catch(() => null)
+    if (!res.ok || !data || !Array.isArray(data.ideas)) throw new Error(friendlyApiError(res.status, data, 'โหลดไอเดียของช่องทางนี้ไม่สำเร็จ'))
+    return data.ideas.map(researchIdeaToCard)
   }
 
   useEffect(() => {
@@ -2476,6 +2498,7 @@ export default function MarketingPage({ onBack }) {
             onDismiss={dismissResearchIdea}
             onLoadRadar={loadTrendRadar}
             onReload={loadResearchIdeas}
+            onLoadChannel={loadChannelIdeas}
             highlight={returnedIdea}
             freshJobs={freshByIdea}
             freshWorker={contentWorker}
@@ -2848,6 +2871,7 @@ function IdeasView({
   onDismiss,
   onLoadRadar,
   onReload,
+  onLoadChannel = null,
   highlight = null,
   freshJobs = {},
   freshWorker = null,
@@ -2859,22 +2883,50 @@ function IdeasView({
   const [showAll, setShowAll] = useState(false)
   const [angleChoice, setAngleChoice] = useState({})
   const [expanded, setExpanded] = useState({})
+  // ชิปช่องทาง (เจ้าของ 12 พ.ย. 2569 ตามหน้า Marketing OS ของ DivisionX): '' = ทุกช่องทาง
+  // channelFull = ทุกใบของช่องที่เลือกจาก API (เมื่อคิวปกติซ่อนบางใบไว้) · { channel, ideas, loading, error }
+  const [channel, setChannel] = useState('')
+  const [channelFull, setChannelFull] = useState(null)
   // ไอเดียที่เพิ่งได้มุมใหม่จาก AI → เลือกช่องแรก (มุมใหม่) ให้เลย
   useEffect(() => {
     if (freshIdea?.id) setAngleChoice((prev) => ({ ...prev, [`research-${freshIdea.id}`]: 0 }))
   }, [freshIdea])
   const syncState = feed.syncState || { state: 'saved' }
-  const ordered = useMemo(() => {
+  const sortIdeas = (items) => {
     const byDate = (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
     const byScore = (a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)
-    const sorted = [...research].sort(sort === 'score' ? byScore : byDate)
+    const sorted = [...items].sort(sort === 'score' ? byScore : byDate)
     // ไอเดียที่เพิ่งย้อนกลับจากแท็บร่าง ขึ้นบนสุด (ไม่งั้นไอเดียเก่าจะจมอยู่หน้าหลัง ๆ)
     const back = highlight ? sorted.findIndex((idea) => idea.dbId === highlight.id) : -1
     return back > 0 ? [sorted[back], ...sorted.slice(0, back), ...sorted.slice(back + 1)] : sorted
-  }, [research, sort, highlight])
-  const live = [...ordered, ...radar]
+  }
+  const ordered = useMemo(() => sortIdeas(research), [research, sort, highlight])
+  const all = [...ordered, ...radar]
+  // ตัวเลขบนชิป: แสดงอยู่ (ในหน้า) / ทั้งหมด (คิวจริงจาก meta.by_channel ของ API — คิวปกติจำกัด 10 ใบต่อประเภท)
+  const shownBy = countByChannel(all, ideaChannel)
+  const totalBy = { ...shownBy }
+  for (const [key, n] of Object.entries(feed.meta?.by_channel || {})) totalBy[key] = Math.max(Number(n) || 0, shownBy[key] || 0)
+  const chips = CHANNEL_ORDER.filter((key) => (totalBy[key] || 0) > 0)
+  const totalAll = Math.max(all.length, (Number(feed.total) || research.length) + radar.length)
+  const needsFull = Boolean(channel && onLoadChannel && (totalBy[channel] || 0) > (shownBy[channel] || 0))
+  // โหลดทุกใบของช่องที่เลือก — ทำใหม่เมื่อคิวในหน้าเปลี่ยน (ทิ้ง/ร่าง/คิดใหม่) ให้รายการตรงกับคิวจริง
+  useEffect(() => {
+    if (!needsFull) return undefined
+    let cancelled = false
+    setChannelFull((cur) => ({ channel, ideas: cur?.channel === channel ? cur.ideas : [], loading: true, error: '' }))
+    onLoadChannel(channel)
+      .then((ideas) => { if (!cancelled) setChannelFull({ channel, ideas, loading: false, error: '' }) })
+      .catch((err) => { if (!cancelled) setChannelFull((cur) => ({ channel, ideas: cur?.ideas || [], loading: false, error: err.message || 'โหลดไม่สำเร็จ' })) })
+    return () => { cancelled = true }
+  }, [channel, needsFull, research])
+  const pickChannel = (key) => { setChannel(key); setShowAll(false) }
+  const full = needsFull && channelFull?.channel === channel && channelFull.ideas.length ? channelFull : null
+  // ใบในหน้าใหม่กว่า (มุมใหม่จาก AI ฯลฯ) → ใช้ใบในหน้าแทนใบที่โหลดมา
+  const byId = new Map(all.map((idea) => [idea.id, idea]))
+  const live = !channel ? all : full ? sortIdeas(full.ideas.map((idea) => byId.get(idea.id) || idea)) : all.filter((idea) => ideaChannel(idea) === channel)
   const visible = showAll ? live : live.slice(0, PAGE_SIZE)
   const hidden = Math.max(0, live.length - visible.length)
+  const countText = (shown, total) => (total > shown ? `${shown}/${total}` : String(total))
   const status = describeResearchFeed(feed)
   const showNotice = feed.state !== 'ok' || research.length === 0
 
@@ -2894,7 +2946,10 @@ function IdeasView({
     return (
       <article className={`mx-idea-card ${isExample ? 'example' : ''} ${isReturned || isFresh ? 'mx-focus' : ''}`} key={isReturned ? `${idea.id}-${highlight.at}` : isFresh ? `${idea.id}-f${freshIdea.at}` : idea.id}>
         <div className="mx-idea-top">
-          <span>{isExample ? 'ตัวอย่าง' : idea.kind === 'radar' ? 'สำรวจตลาด' : idea.type}</span>
+          <span className="mx-idea-kind" title={isExample ? undefined : `ช่องทาง: ${channelMeta(ideaChannel(idea)).label}`}>
+            {!isExample && <ChannelLogo channel={ideaChannel(idea)} />}
+            {isExample ? 'ตัวอย่าง' : idea.kind === 'radar' ? 'สำรวจตลาด' : idea.type}
+          </span>
           <strong>{isResearch ? [idea.dbId ? `ไอเดีย ${idea.dbId}` : '', idea.createdAt ? thaiDate(idea.createdAt) : 'ใหม่'].filter(Boolean).join(' · ') : isExample ? 'จากแม่แบบ' : 'จากการสำรวจตลาด'}</strong>
         </div>
         <h2>
@@ -2965,6 +3020,39 @@ function IdeasView({
           <span>{feed.state === 'ok' ? 'ยังไม่มีไอเดียจากรีเสิร์ชในคิว — ตัวเก็บรันบนเครื่องของเจ้าของตามตารางเวลา กลับมาดูใหม่หลังรอบถัดไป' : status.text}</span>
           {status.action === 'login' && <button type="button" className="mx-secondary" onClick={() => reloadForLogin(syncState)}>เข้าสู่ระบบใหม่</button>}
           {status.action === 'retry' && <button type="button" className="mx-secondary" onClick={onReload}>ลองใหม่</button>}
+        </div>
+      )}
+      {chips.length > 0 && (
+        <div className="mx-channel-row" role="group" aria-label="กรองไอเดียตามช่องทางต้นทาง">
+          <button type="button" className={`mx-channel-chip ${!channel ? 'active' : ''}`} aria-pressed={!channel} onClick={() => pickChannel('')}
+            title={totalAll > all.length ? `แสดง ${all.length} จาก ${totalAll} — คิวปกติแสดงไม่เกิน 10 ใบต่อประเภท กดชิปช่องทางเพื่อดูครบ` : 'ไอเดียทุกช่องทาง'}>
+            ทุกช่องทาง <b>{countText(all.length, totalAll)}</b>
+          </button>
+          {chips.map((key) => {
+            const m = channelMeta(key)
+            const on = channel === key
+            const shown = on && full ? full.ideas.length : shownBy[key] || 0
+            const total = totalBy[key] || 0
+            const tip = [`${m.label} · ${m.hint}`, total > shown ? `แสดง ${shown} จาก ${total} — กดเพื่อดูครบ` : '', on ? 'กดอีกครั้งเพื่อดูทุกช่องทาง' : ''].filter(Boolean).join(' · ')
+            return (
+              <button key={key} type="button" className={`mx-channel-chip ${on ? 'active' : ''}`} aria-pressed={on} title={tip} onClick={() => pickChannel(on ? '' : key)}>
+                <ChannelLogo channel={key} />
+                <span>{m.label}</span>
+                <b>{countText(shown, total)}</b>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {channel && needsFull && channelFull?.channel === channel && (channelFull.loading || channelFull.error) && (
+        <div className={`mx-feed-notice ${channelFull.error ? 'warn' : 'muted'}`} role="status">
+          <span>{channelFull.error ? `${channelFull.error} — แสดงเฉพาะใบที่มีในหน้า` : `กำลังโหลดไอเดียทั้งหมดของ ${channelMeta(channel).label}…`}</span>
+        </div>
+      )}
+      {channel && live.length === 0 && !(channelFull?.loading) && (
+        <div className="mx-feed-notice" role="status">
+          <span>ยังไม่มีไอเดียใหม่จาก {channelMeta(channel).label}</span>
+          <button type="button" className="mx-secondary" onClick={() => pickChannel('')}>ดูทุกช่องทาง</button>
         </div>
       )}
       {live.length > 0 && <div className="mx-idea-grid">{visible.map(renderCard)}</div>}
@@ -4365,6 +4453,15 @@ const styles = `
   .mx-idea-card.example { background: rgba(14, 30, 58, .45); border-style: dashed; box-shadow: none; }
   .mx-idea-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--mx-muted); font-size: 13px; font-weight: 600; }
   .mx-idea-top span { color: var(--mx-sky); }
+  .mx-idea-kind { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+  .mx-ch-logo { flex: none; display: block; }
+  .mx-channel-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+  .mx-channel-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 1px solid var(--mx-line); border-radius: 10px; background: rgba(255,255,255,.03); color: var(--mx-ink-2); font-size: 14px; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s; }
+  .mx-channel-chip b { font-weight: 700; color: var(--mx-muted); font-variant-numeric: tabular-nums; }
+  .mx-channel-chip:hover { border-color: rgba(112,215,232,.45); }
+  .mx-channel-chip.active { background: rgba(66,199,216,.16); color: #fff; border-color: rgba(112,215,232,.55); }
+  .mx-channel-chip.active b { color: #fff; }
+  .mx-channel-chip:focus-visible { outline: 2px solid var(--mx-sky); outline-offset: 2px; }
   .mx-idea-top strong { color: var(--mx-ink-2); font-weight: 600; }
   .mx-idea-card h2 { margin: 0; font-size: 17px; line-height: 1.4; color: #fff; letter-spacing: 0; font-weight: 700; }
   .mx-idea-title-link { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }

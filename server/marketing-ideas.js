@@ -12,6 +12,7 @@ import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
 import { scrub } from './research/pii.js'
 import { normalizeUrl } from './research/classify.js'
+import { CHANNELS, channelOfIdea, countByChannel } from '../src/lib/ideaChannels.js'
 
 const STATUSES = ['new', 'picked', 'dismissed', 'expired']
 const LEAD_CHANNELS = ['messenger', 'line', 'phone', 'web_form', 'walk_in', 'other']
@@ -80,6 +81,9 @@ export function createIdeasHandler({ authorized = verifySession, database = defa
         if (!STATUSES.includes(status)) return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' })
         const perSubtype = Math.min(10, Math.max(1, Number(url.searchParams.get('per_subtype')) || 3))
         const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 30))
+        // ?channel= (ชิปช่องทางบนแท็บไอเดีย · src/lib/ideaChannels.js): คืนทุกใบของช่องทางนั้นเรียงคะแนน ไม่ติดเพดานต่อประเภท
+        const channel = url.searchParams.get('channel') || ''
+        if (channel && !CHANNELS[channel]) return res.status(400).json({ error: 'ช่องทางไม่ถูกต้อง' })
         const { data, error } = await db.from('marketing_ideas')
           .select(CARD_COLUMNS)
           .eq('status', status).order('score', { ascending: false }).order('created_at', { ascending: false }).limit(200)
@@ -109,10 +113,13 @@ export function createIdeasHandler({ authorized = verifySession, database = defa
           arrived_last_24h: arrivedLast24h,
           with_angles: rows.filter((r) => Array.isArray(r.angles) && r.angles.length > 0).length,
           by_source: bySource,
+          // ช่องทางต้นทาง (Facebook · แอดคู่แข่ง · YouTube · ข่าว · เว็บทางการ …) ของทุกใบในสถานะนี้ — ตัวเลข "ทั้งหมด" บนชิป
+          by_channel: countByChannel(rows),
           fetched_at: now.toISOString(),
           degraded,
         }
-        return res.status(200).json({ ideas: roundRobinBySubtype(rows, { perSubtype, limit }), total: rows.length, meta })
+        const ideas = channel ? rows.filter((row) => channelOfIdea(row) === channel).slice(0, 100) : roundRobinBySubtype(rows, { perSubtype, limit })
+        return res.status(200).json({ ideas, total: rows.length, meta, ...(channel ? { channel } : {}) })
       }
 
       const body = req.body && typeof req.body === 'object' ? req.body : {}

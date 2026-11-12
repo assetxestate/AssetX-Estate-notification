@@ -341,6 +341,15 @@ Get-ScheduledTask -TaskName 'AssetX Ads Weekly' | Format-Table TaskName, State
 - รวมข่าวเหตุการณ์เดียวกันด้วย `event_key = <subtype>:<วัน>:<คำ policy>` (กนง. 70 ชิ้น → 1 แถว + "สำนักอื่นที่รายงาน") · ซ้ำข้ามรอบภายใน 7 วันไม่ใส่
 - หมดอายุ = `status='expired'` เมื่ออายุ > max(14, max_age_days ของ subtype) · `event_date` ยังไม่ถึง หรือมีคอนเทนต์อ้าง = ไม่แตะ
 
+### ชิปช่องทางบนแท็บไอเดีย (12 พ.ย. 2569)
+
+เจ้าของส่งภาพหน้า Marketing OS ของ DivisionX: "อยากให้ระบบของเรามีแบบนี้บ้าง ที่บอกรายละเอียดช่องทางของข่าวแต่ละโซเชียล" → ต้นแบบ `divisionX Card/deploy/lib/ideaPlatform.js`
+- `src/lib/ideaChannels.js` ตัดสินช่องทางต้นทาง ใช้ร่วมกันทั้ง API และหน้าเว็บ (ตัวเลขบนชิปตรงกับรายการเสมอ): `social/social_fb` = Facebook · `social/ad_library` = แอดคู่แข่ง · `youtube` · `news` = ข่าว (ลิงก์ news.google.com) · `official` = เว็บทางการ (รวมปฏิทินเหตุการณ์) · `auction` · `community` · `internal` = ข้อมูลเราเอง · `manual` ดูโดเมนลิงก์ก่อน (TikTok/IG/X/YouTube/Facebook) ไม่รู้จัก = วางเอง · การ์ดสำรวจตลาด = สำรวจตลาด
+- API `GET /api/marketing-ideas`: `meta.by_channel` นับทุกใบของสถานะนั้น · `?channel=<key>` คืนทุกใบของช่องนั้นเรียงคะแนน (ไม่ติดเพดาน 10 ใบต่อประเภทของคิวปกติ) · ช่องที่ไม่รู้จัก = 400
+- หน้าเว็บ (`IdeasView`): ชิป "ทุกช่องทาง" + ชิปโลโก้ต่อช่องที่มีไอเดีย ตัวเลข "แสดง/ทั้งหมด" เมื่อมีใบถูกซ่อน (เช่น Facebook 10/12) · กดชิป = กรองเหลือช่องเดียว และโหลดใบที่ถูกซ่อนจาก `?channel=` · กดซ้ำ = กลับทุกช่องทาง · การ์ดทุกใบมีโลโก้ช่องทางหน้าประเภท
+- โลโก้โซเชียลจาก Simple Icons (CC0 · คัดจากไฟล์ของ DivisionX) สีปรับให้อ่านออกบนพื้นเข้ม · ช่องที่ไม่ใช่โซเชียลเป็นไอคอนเส้น · การ์ดไอเดียมีฟิลด์ `channel` (ช่องทางที่จะโพสต์) อยู่แล้ว ช่องทางต้นทางจึงชื่อ `sourceChannel`
+- ทดสอบ `npm run test:research` (`src/lib/ideaChannels.test.mjs` + `server/marketing-ideas.test.mjs`) · ถ่ายภาพหน้าจริงแบบอ่านอย่างเดียว `node .local/shoot-idea-channels.mjs` (ต้องเปิด vite 5173 + `scripts/local-api-dev.mjs` 5175)
+
 ## นโยบายเครดิตและมุมเล่า
 
 - `news` `official` `auction` → ต้องอ้างชื่อสำนัก/หน่วยงาน (+วันที่) ในโพสต์ ห้ามลงเนื้อเต็ม (ฐานเศรษฐกิจ · Bangkok Post · REIC · กรมบังคับคดี บังคับ)
