@@ -11,7 +11,7 @@ import {
   EMPTY_DEED, computeValuation,
 } from './lib/valuationOptions.js'
 
-const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569' }
+const BRAND = { ...BASE_BRAND, bgCard: 'var(--ax-c-0d1b2e)', textMut: 'var(--ax-c-475569)' }
 
 const STEPS = ['ติดต่อกลับ', 'ประเภททรัพย์', 'ที่ตั้ง & โฉนด', 'ปัจจัยทำเล', 'ความเสี่ยง', 'วงเงินที่ต้องการ']
 
@@ -32,7 +32,7 @@ const INITIAL_FORM = {
 
 const card = { background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 14, padding: 18 }
 const label = { fontSize: 12, color: BRAND.textSec, marginBottom: 6, display: 'block' }
-const inputBase = { width: '100%', background: '#050B18', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 14, padding: '10px 12px', outline: 'none', boxSizing: 'border-box' }
+const inputBase = { width: '100%', background: 'var(--ax-c-050b18)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 14, padding: '10px 12px', outline: 'none', boxSizing: 'border-box' }
 const Inp = (props) => <input {...props} style={{ ...inputBase, ...props.style }} />
 const Sel = ({ children, ...props }) => <select {...props} style={{ ...inputBase, ...props.style }}>{children}</select>
 
@@ -110,7 +110,7 @@ export default function AssessPage() {
                   width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 11, fontWeight: 700,
                   background: active ? BRAND.gold : done ? BRAND.teal : BRAND.bgCard,
-                  color: active || done ? '#000' : BRAND.textMut,
+                  color: active || done ? 'var(--ax-c-000)' : BRAND.textMut,
                   border: `1px solid ${active ? BRAND.gold : done ? BRAND.teal : BRAND.border}`,
                 }}>{done ? '✓' : num}</div>
                 {i < STEPS.length - 1 && <div style={{ width: 14, height: 1, background: BRAND.border }} />}
@@ -144,7 +144,7 @@ export default function AssessPage() {
               <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.gold, marginBottom: 14 }}>⚡ ประเภทที่ต้องการ</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 16 }}>
                 {ASSESSMENT_TYPES.filter(t => ['ขายฝาก', 'จำนอง', 'อื่นๆ'].includes(t.value)).map(t => (
-                  <button key={t.value} onClick={() => update('assessmentType', t.value)} style={{ padding: '12px 8px', borderRadius: 10, border: `1px solid ${form.assessmentType === t.value ? BRAND.gold : BRAND.border}`, background: form.assessmentType === t.value ? 'rgba(245,158,11,0.12)' : '#050B18', color: BRAND.textPri, cursor: 'pointer', textAlign: 'center', fontSize: 12 }}>
+                  <button key={t.value} onClick={() => update('assessmentType', t.value)} style={{ padding: '12px 8px', borderRadius: 10, border: `1px solid ${form.assessmentType === t.value ? BRAND.gold : BRAND.border}`, background: form.assessmentType === t.value ? 'rgba(245,158,11,0.12)' : 'var(--ax-c-050b18)', color: BRAND.textPri, cursor: 'pointer', textAlign: 'center', fontSize: 12 }}>
                     <div style={{ fontSize: 22, marginBottom: 4 }}>{t.icon}</div>
                     <div style={{ fontWeight: 600 }}>{t.value}</div>
                   </button>
@@ -153,7 +153,7 @@ export default function AssessPage() {
               <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.gold, marginBottom: 14 }}>🏗️ ประเภททรัพย์สิน</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 12 }}>
                 {PROPERTY_TYPES.map(t => (
-                  <button key={t.value} onClick={() => { update('propertyType', t.value); update('propertySubtype', (PROPERTY_SUBTYPES[t.value] || ['อื่นๆ'])[0]) }} style={{ padding: '10px 6px', borderRadius: 10, border: `1px solid ${form.propertyType === t.value ? BRAND.teal : BRAND.border}`, background: form.propertyType === t.value ? 'rgba(45,212,191,0.1)' : '#050B18', color: BRAND.textPri, cursor: 'pointer', textAlign: 'center', fontSize: 11 }}>
+                  <button key={t.value} onClick={() => { update('propertyType', t.value); update('propertySubtype', (PROPERTY_SUBTYPES[t.value] || ['อื่นๆ'])[0]) }} style={{ padding: '10px 6px', borderRadius: 10, border: `1px solid ${form.propertyType === t.value ? BRAND.teal : BRAND.border}`, background: form.propertyType === t.value ? 'rgba(45,212,191,0.1)' : 'var(--ax-c-050b18)', color: BRAND.textPri, cursor: 'pointer', textAlign: 'center', fontSize: 11 }}>
                     <div style={{ fontSize: 18, marginBottom: 4 }}>{t.icon}</div>
                     <div style={{ fontWeight: 600 }}>{t.value}</div>
                   </button>
@@ -193,11 +193,11 @@ export default function AssessPage() {
               <div style={{ fontSize: 11, color: BRAND.textMut, marginBottom: 12 }}>ถ้าไม่ทราบเลขโฉนด/ระวางแน่ชัด กรอกแค่เนื้อที่โดยประมาณก็ได้ ทีมงานจะตรวจสอบให้อีกครั้ง</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {form.deeds.map((deed, idx) => (
-                  <div key={deed.id} style={{ padding: 12, borderRadius: 10, border: `1px solid ${BRAND.border}`, background: '#050B18' }}>
+                  <div key={deed.id} style={{ padding: 12, borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'var(--ax-c-050b18)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: BRAND.textSec }}>แปลงที่ {idx + 1}</span>
                       {form.deeds.length > 1 && (
-                        <button onClick={() => removeDeed(idx)} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,0.4)', background: 'transparent', color: '#F87171', cursor: 'pointer' }}>✕ ลบ</button>
+                        <button onClick={() => removeDeed(idx)} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,0.4)', background: 'transparent', color: 'var(--ax-c-f87171)', cursor: 'pointer' }}>✕ ลบ</button>
                       )}
                     </div>
                     <label style={label}>เลขโฉนด (ถ้าทราบ)</label>
@@ -268,7 +268,7 @@ export default function AssessPage() {
               <label style={{ ...label, marginBottom: 10 }}>ลักษณะอื่นๆ ที่มี (เลือกได้หลายข้อ)</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {RISK_FACTORS.map(rf => (
-                  <label key={rf.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, cursor: 'pointer', border: `1px solid ${form.risks[rf.key] ? 'rgba(239,68,68,0.4)' : BRAND.border}`, background: form.risks[rf.key] ? 'rgba(239,68,68,0.08)' : '#050B18' }}>
+                  <label key={rf.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, cursor: 'pointer', border: `1px solid ${form.risks[rf.key] ? 'rgba(239,68,68,0.4)' : BRAND.border}`, background: form.risks[rf.key] ? 'rgba(239,68,68,0.08)' : 'var(--ax-c-050b18)' }}>
                     <input type="checkbox" checked={!!form.risks[rf.key]} onChange={e => update('risks', { ...form.risks, [rf.key]: e.target.checked })} />
                     <span style={{ fontSize: 13, color: BRAND.textPri }}>{rf.label}</span>
                   </label>
@@ -305,9 +305,9 @@ export default function AssessPage() {
               <button onClick={() => setStep(s => s - 1)} style={{ flex: 1, padding: 12, borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 14, cursor: 'pointer' }}>← ย้อนกลับ</button>
             )}
             {step < STEPS.length ? (
-              <button onClick={() => canNext() && setStep(s => s + 1)} disabled={!canNext()} style={{ flex: 2, padding: 12, borderRadius: 10, border: 'none', background: canNext() ? BRAND.gold : 'rgba(245,158,11,0.3)', color: '#000', fontWeight: 700, fontSize: 14, cursor: canNext() ? 'pointer' : 'not-allowed' }}>ถัดไป →</button>
+              <button onClick={() => canNext() && setStep(s => s + 1)} disabled={!canNext()} style={{ flex: 2, padding: 12, borderRadius: 10, border: 'none', background: canNext() ? BRAND.gold : 'rgba(245,158,11,0.3)', color: 'var(--ax-c-000)', fontWeight: 700, fontSize: 14, cursor: canNext() ? 'pointer' : 'not-allowed' }}>ถัดไป →</button>
             ) : (
-              <button onClick={handleSubmit} disabled={submitting || !form.requestedLoan} style={{ flex: 2, padding: 12, borderRadius: 10, border: 'none', background: submitting ? 'rgba(45,212,191,0.3)' : 'linear-gradient(135deg,#2DD4BF,#0E7490)', color: '#000', fontWeight: 700, fontSize: 14, cursor: submitting ? 'not-allowed' : 'pointer' }}>
+              <button onClick={handleSubmit} disabled={submitting || !form.requestedLoan} style={{ flex: 2, padding: 12, borderRadius: 10, border: 'none', background: submitting ? 'rgba(45,212,191,0.3)' : 'linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))', color: 'var(--ax-c-000)', fontWeight: 700, fontSize: 14, cursor: submitting ? 'not-allowed' : 'pointer' }}>
                 {submitting ? '⏳ กำลังส่งข้อมูล...' : '✅ ส่งข้อมูลให้ทีมงาน'}
               </button>
             )}

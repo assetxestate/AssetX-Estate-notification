@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
+import './theme.css'
 
 const App = lazy(() => import('./App.jsx'))
 const LoginPage = lazy(() => import('./LoginPage.jsx'))
@@ -9,7 +10,7 @@ const AUTH_STORAGE_VERSION = 'assetx-auth-2026-09-11'
 
 function PageLoading() {
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#050814', color: '#94A3B8' }}>
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--ax-bg)', color: 'var(--ax-text-sec)' }}>
       กำลังโหลด...
     </div>
   )

@@ -48,7 +48,7 @@ export function CustomerExtraInfoSection({ customer, extraInfoMap, onUpdate }) {
         onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
         placeholder={placeholder}
         style={{
-          background: "rgba(255,255,255,.05)", border: "1px solid rgba(45,212,191,.2)",
+          background: "var(--ax-c-r255-255-255-a50)", border: "1px solid rgba(45,212,191,.2)",
           borderRadius: 7, color: BRAND.textPri, fontSize: 12, padding: "6px 10px", outline: "none",
         }}
       />
@@ -72,12 +72,12 @@ export function CustomerExtraInfoSection({ customer, extraInfoMap, onUpdate }) {
         <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
           <span style={{ fontSize: 14 }}>📋</span>
           <span style={{ fontWeight: 600, color: BRAND.textPri, fontSize: 13 }}>ข้อมูลหนังสือแจ้งกำหนดไถ่</span>
-          {!isComplete && <span style={{ fontSize: 10, color: "#F59E0B", background: "rgba(245,158,11,.15)", padding: "2px 8px", borderRadius: 20 }}>ข้อมูล {completedCount}/{requiredValues.length}</span>}
+          {!isComplete && <span style={{ fontSize: 10, color: "var(--ax-c-f59e0b)", background: "rgba(245,158,11,.15)", padding: "2px 8px", borderRadius: 20 }}>ข้อมูล {completedCount}/{requiredValues.length}</span>}
         </div>
         <button onClick={() => setEditing(v => !v)} style={{
           background: editing ? "transparent" : BRAND.teal,
           border: `1px solid ${BRAND.teal}`, borderRadius: 6,
-          color: editing ? BRAND.teal : "#062723", fontSize: 11,
+          color: editing ? BRAND.teal : "var(--ax-c-062723)", fontSize: 11,
           fontWeight: 700, padding: "6px 12px", cursor: "pointer",
         }}>
           {editing ? "ย่อแบบฟอร์ม" : isComplete ? "แก้ไขข้อมูล" : "เปิดแบบฟอร์มกรอกข้อมูล"}
@@ -110,7 +110,7 @@ export function CustomerExtraInfoSection({ customer, extraInfoMap, onUpdate }) {
           {field("contractDate", "วันที่ทำสัญญา", "", "date")}
           {field("contractTerm", "กำหนดเวลาไถ่ (ไม่กรอกได้ ระบบคำนวณจากวันครบสัญญา)", "เช่น 1 ปี")}
           {field("redemptionAmount", "จำนวนสินไถ่ตามสัญญา (บาท)", "ตรวจสอบยอดจากสัญญาก่อนพิมพ์", "number")}
-          <div style={{ fontSize: 10, color: "#F59E0B", lineHeight: 1.5 }}>
+          <div style={{ fontSize: 10, color: "var(--ax-c-f59e0b)", lineHeight: 1.5 }}>
             จำนวนสินไถ่เป็นข้อมูลสำคัญ ระบบจะไม่คำนวณแทนโดยอัตโนมัติ กรุณาตรวจสอบกับสัญญาฉบับจริง
           </div>
           {field("landOffice", "สำนักงานที่ดินที่จดทะเบียน", "เช่น สำนักงานที่ดินกรุงเทพมหานคร สาขาหนองแขม")}
@@ -133,8 +133,8 @@ export function CustomerExtraInfoSection({ customer, extraInfoMap, onUpdate }) {
           {field("noticeDate", "วันที่ออกหนังสือ (ไม่กรอกได้ ใช้วันที่ปัจจุบัน)", "", "date")}
           <button onClick={handleSave} style={{
             padding: "8px 0", borderRadius: 8, marginTop: 4,
-            background: "linear-gradient(135deg,#2DD4BF,#0E7490)",
-            border: "none", color: "#000", fontWeight: 700, fontSize: 13, cursor: "pointer",
+            background: "linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))",
+            border: "none", color: "var(--ax-c-000)", fontWeight: 700, fontSize: 13, cursor: "pointer",
           }}>
             บันทึก
           </button>

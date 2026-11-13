@@ -9,18 +9,18 @@ import {
 } from "./lib/api.js";
 
 const BRAND = {
-  bg: "#0A1628", cardBg: "#111D35", border: "rgba(45,212,191,0.15)",
-  textPri: "#E2E8F0", textSec: "#94A3B8", textMut: "#64748B",
-  teal: "#2DD4BF", gold: "#F59E0B", success: "#10B981",
+  bg: "var(--ax-c-0a1628)", cardBg: "var(--ax-c-111d35)", border: "rgba(45,212,191,0.15)",
+  textPri: "var(--ax-c-e2e8f0)", textSec: "var(--ax-c-94a3b8)", textMut: "var(--ax-c-64748b)",
+  teal: "var(--ax-c-2dd4bf)", gold: "var(--ax-c-f59e0b)", success: "var(--ax-c-10b981)",
 };
 
 const STATUS_CONFIG = {
-  'Lead จากเว็บ':   { bg: 'rgba(56,189,248,0.12)',  border: 'rgba(56,189,248,0.4)', text: '#38BDF8', label: '🌐 Lead จากเว็บ' },
-  'รอการพิจารณา': { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: '#F59E0B', label: '⏳ รอการพิจารณา' },
-  'อนุมัติ':        { bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.4)', text: '#10B981', label: '✅ อนุมัติแล้ว' },
-  'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.4)',  text: '#F87171', label: '❌ ปฏิเสธ' },
-  'สร้างสัญญาแล้ว': { bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.4)', text: '#A5B4FC', label: '📋 สร้างสัญญาแล้ว' },
-  'ยกเลิก':         { bg: 'rgba(100,116,139,0.12)', border: 'rgba(100,116,139,0.4)', text: '#94A3B8', label: '🚫 ยกเลิก' },
+  'Lead จากเว็บ':   { bg: 'rgba(56,189,248,0.12)',  border: 'rgba(56,189,248,0.4)', text: 'var(--ax-c-38bdf8)', label: '🌐 Lead จากเว็บ' },
+  'รอการพิจารณา': { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: 'var(--ax-c-f59e0b)', label: '⏳ รอการพิจารณา' },
+  'อนุมัติ':        { bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.4)', text: 'var(--ax-c-10b981)', label: '✅ อนุมัติแล้ว' },
+  'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.4)',  text: 'var(--ax-c-f87171)', label: '❌ ปฏิเสธ' },
+  'สร้างสัญญาแล้ว': { bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.4)', text: 'var(--ax-c-a5b4fc)', label: '📋 สร้างสัญญาแล้ว' },
+  'ยกเลิก':         { bg: 'rgba(100,116,139,0.12)', border: 'rgba(100,116,139,0.4)', text: 'var(--ax-c-94a3b8)', label: '🚫 ยกเลิก' },
 };
 
 const TABS = [
@@ -55,7 +55,7 @@ function Card({ children, style }) {
 
 function StatBox({ label, value, color }) {
   return (
-    <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${BRAND.border}`, borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
+    <div style={{ background: 'var(--ax-c-r255-255-255-a30)', border: `1px solid ${BRAND.border}`, borderRadius: 10, padding: '10px 12px', textAlign: 'center' }}>
       <div style={{ fontSize: 10, color: BRAND.textSec, marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 14, fontWeight: 700, color: color || BRAND.textPri }}>{value}</div>
     </div>
@@ -239,13 +239,13 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     }
   };
 
-  const inp = { width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: 'rgba(255,255,255,0.05)', color: BRAND.textPri, fontSize: 13, boxSizing: 'border-box' };
+  const inp = { width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: 'var(--ax-c-r255-255-255-a50)', color: BRAND.textPri, fontSize: 13, boxSizing: 'border-box' };
   const lbl = { fontSize: 11, color: BRAND.textSec, marginBottom: 4, display: 'block' };
 
   // Modal แสดงรหัสลงทะเบียน LINE หลังสร้างสัญญาสำเร็จ
   if (regToken) {
     return (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+      <div style={{ position: 'fixed', inset: 0, background: 'var(--ax-c-r0-0-0-a800)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
         <div style={{ background: BRAND.cardBg, border: '1px solid rgba(6,199,85,0.4)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 400, textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
           <div style={{ fontWeight: 800, fontSize: 18, color: BRAND.textPri, marginBottom: 6 }}>สร้างสัญญาสำเร็จ!</div>
@@ -253,15 +253,15 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
 
           <div style={{ background: 'rgba(6,199,85,0.08)', border: '1px solid rgba(6,199,85,0.3)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
             <div style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 8 }}>รหัสลงทะเบียน LINE</div>
-            <div style={{ fontSize: 32, fontWeight: 900, color: '#06C755', letterSpacing: 4, marginBottom: 8 }}>{regToken.token}</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: 'var(--ax-line-green)', letterSpacing: 4, marginBottom: 8 }}>{regToken.token}</div>
             <button
               onClick={() => navigator.clipboard.writeText(regToken.token)}
-              style={{ padding: '6px 20px', borderRadius: 8, background: 'rgba(6,199,85,.2)', border: '1px solid rgba(6,199,85,.5)', color: '#06C755', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+              style={{ padding: '6px 20px', borderRadius: 8, background: 'rgba(6,199,85,.2)', border: '1px solid rgba(6,199,85,.5)', color: 'var(--ax-line-green)', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
             >📋 คัดลอกรหัส</button>
             <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 10 }}>หมดอายุ {regToken.expiresAt}</div>
           </div>
 
-          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 14, marginBottom: 20, textAlign: 'left' }}>
+          <div style={{ background: 'var(--ax-c-r255-255-255-a40)', borderRadius: 10, padding: 14, marginBottom: 20, textAlign: 'left' }}>
             <div style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 6 }}>แจ้งลูกค้าพิมพ์ในกลุ่ม LINE:</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.textPri, fontFamily: 'monospace' }}>/ลงทะเบียน {regToken.token}</div>
           </div>
@@ -276,7 +276,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--ax-c-r0-0-0-a700)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
       <div style={{ background: BRAND.cardBg, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: 24, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ fontWeight: 700, fontSize: 17, color: BRAND.textPri, marginBottom: 4 }}>📋 สร้างสัญญาลูกค้า</div>
         <div style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 20 }}>{row['รหัส/ชื่อทรัพย์'] || '—'} • {row['จังหวัด']}</div>
@@ -362,10 +362,10 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
           {/* ทุนเก่า */}
           <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textSec, marginBottom: 6 }}>🔗 ทุนเก่า ({existingDebts.length} รายการ)</div>
           {existingDebts.map((debt, idx) => (
-            <div key={debt.id} style={{ background: 'rgba(0,0,0,.25)', borderRadius: 10, padding: 10, marginBottom: 8, border: `1px solid ${BRAND.border}` }}>
+            <div key={debt.id} style={{ background: 'var(--ax-c-r0-0-0-a250)', borderRadius: 10, padding: 10, marginBottom: 8, border: `1px solid ${BRAND.border}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: BRAND.textPri }}>เจ้าหนี้ที่ {idx + 1}</span>
-                <button onClick={() => setExistingDebts(p => p.filter(d => d.id !== debt.id))} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(239,68,68,.4)', background: 'transparent', color: '#FCA5A5', cursor: 'pointer' }}>ลบ</button>
+                <button onClick={() => setExistingDebts(p => p.filter(d => d.id !== debt.id))} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 5, border: '1px solid rgba(239,68,68,.4)', background: 'transparent', color: 'var(--ax-c-fca5a5)', cursor: 'pointer' }}>ลบ</button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 <div style={{ gridColumn: '1/-1' }}>
@@ -415,7 +415,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
               </div>
             </div>
           ))}
-          <button onClick={() => setExistingDebts(p => [...p, EMPTY_DEBT()])} style={{ width: '100%', padding: '7px', borderRadius: 8, border: '1px dashed rgba(239,68,68,.4)', background: 'transparent', color: '#FCA5A5', fontSize: 12, cursor: 'pointer', marginBottom: 12 }}>
+          <button onClick={() => setExistingDebts(p => [...p, EMPTY_DEBT()])} style={{ width: '100%', padding: '7px', borderRadius: 8, border: '1px dashed rgba(239,68,68,.4)', background: 'transparent', color: 'var(--ax-c-fca5a5)', fontSize: 12, cursor: 'pointer', marginBottom: 12 }}>
             + เพิ่มเจ้าหนี้เดิม
           </button>
 
@@ -467,13 +467,13 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
           </div>
 
           {/* Summary การเบิกจ่าย */}
-          <div style={{ padding: 12, background: 'rgba(0,0,0,.3)', borderRadius: 10, border: `1px solid ${BRAND.border}` }}>
+          <div style={{ padding: 12, background: 'var(--ax-c-r0-0-0-a300)', borderRadius: 10, border: `1px solid ${BRAND.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.textSec, marginBottom: 8 }}>สรุปการเบิกจ่าย</div>
             {[
               ['วงเงินอนุมัติ', principal, BRAND.textPri, false],
-              totalDebt > 0 && ['หักทุนเก่า', totalDebt, '#FCA5A5', true],
-              advanceTotal > 0 && [`หักล่วงหน้า (${form.advanceInstallments} เดือน)`, advanceTotal, '#FCA5A5', true],
-              externalFee > 0 && ['ค่านายหน้าภายนอก', externalFee, '#FCA5A5', true],
+              totalDebt > 0 && ['หักทุนเก่า', totalDebt, 'var(--ax-c-fca5a5)', true],
+              advanceTotal > 0 && [`หักล่วงหน้า (${form.advanceInstallments} เดือน)`, advanceTotal, 'var(--ax-c-fca5a5)', true],
+              externalFee > 0 && ['ค่านายหน้าภายนอก', externalFee, 'var(--ax-c-fca5a5)', true],
               companyFeeAmt > 0 && ['ค่านายหน้าบริษัท', companyFeeAmt, BRAND.gold, true],
             ].filter(Boolean).map(([label, val, color, minus]) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: `1px solid ${BRAND.border}`, fontSize: 12 }}>
@@ -483,7 +483,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 14, fontWeight: 800 }}>
               <span style={{ color: BRAND.textPri }}>ยอดที่ลูกค้าได้รับจริง</span>
-              <span style={{ color: netDisbursement >= 0 ? BRAND.teal : '#FCA5A5' }}>{netDisbursement.toLocaleString('th-TH')} ฿</span>
+              <span style={{ color: netDisbursement >= 0 ? BRAND.teal : 'var(--ax-c-fca5a5)' }}>{netDisbursement.toLocaleString('th-TH')} ฿</span>
             </div>
           </div>
         </div>
@@ -512,7 +512,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
 
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, cursor: 'pointer', fontSize: 13 }}>ยกเลิก</button>
-          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: saving ? 'rgba(45,212,191,0.3)' : 'linear-gradient(135deg,#2DD4BF,#0E7490)', color: '#000', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13 }}>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: saving ? 'rgba(45,212,191,0.3)' : 'linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))', color: 'var(--ax-c-000)', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13 }}>
             {saving ? '⏳ กำลังบันทึก...' : '💾 บันทึกลูกค้า'}
           </button>
         </div>
@@ -600,7 +600,7 @@ export default function InvestorPage({ appsScriptUrl }) {
       </div>
 
       {successMsg && (
-        <div style={{ margin: '12px 16px', padding: '12px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: 10, color: '#10B981', fontSize: 13, fontWeight: 600 }}>
+        <div style={{ margin: '12px 16px', padding: '12px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)', borderRadius: 10, color: 'var(--ax-c-10b981)', fontSize: 13, fontWeight: 600 }}>
           {successMsg}
         </div>
       )}
@@ -627,7 +627,7 @@ export default function InvestorPage({ appsScriptUrl }) {
               >
                 {t.label}
                 {counts[t.key] > 0 && (
-                  <span style={{ background: isActive ? 'rgba(0,0,0,0.2)' : BRAND.border, borderRadius: 10, padding: '0px 6px', fontSize: 11, fontWeight: 700 }}>
+                  <span style={{ background: isActive ? 'var(--ax-c-r0-0-0-a200)' : BRAND.border, borderRadius: 10, padding: '0px 6px', fontSize: 11, fontWeight: 700 }}>
                     {counts[t.key]}
                   </span>
                 )}
@@ -679,7 +679,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                 {(row.contactName || row.contactPhone || row.contactLine) && (
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12, padding: '8px 12px', borderRadius: 10, background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.2)', fontSize: 12 }}>
                     {row.contactName && <span style={{ color: BRAND.textPri }}>👤 {row.contactName}</span>}
-                    {row.contactPhone && <span style={{ color: '#38BDF8', fontWeight: 700 }}>📞 {row.contactPhone}</span>}
+                    {row.contactPhone && <span style={{ color: 'var(--ax-c-38bdf8)', fontWeight: 700 }}>📞 {row.contactPhone}</span>}
                     {row.contactLine && <span style={{ color: BRAND.textSec }}>💬 LINE: {row.contactLine}</span>}
                   </div>
                 )}
@@ -697,10 +697,10 @@ export default function InvestorPage({ appsScriptUrl }) {
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: BRAND.textSec, marginBottom: 4 }}>
                       <span>LTV ลูกค้า</span>
-                      <span style={{ color: parseFloat(ltv) > 80 ? '#F87171' : parseFloat(ltv) > 60 ? BRAND.gold : BRAND.success, fontWeight: 700 }}>{parseFloat(ltv).toFixed(1)}%</span>
+                      <span style={{ color: parseFloat(ltv) > 80 ? 'var(--ax-c-f87171)' : parseFloat(ltv) > 60 ? BRAND.gold : BRAND.success, fontWeight: 700 }}>{parseFloat(ltv).toFixed(1)}%</span>
                     </div>
-                    <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3 }}>
-                      <div style={{ height: '100%', width: Math.min(parseFloat(ltv), 100) + '%', borderRadius: 3, background: parseFloat(ltv) > 80 ? '#F87171' : parseFloat(ltv) > 60 ? BRAND.gold : BRAND.success }} />
+                    <div style={{ height: 6, background: 'var(--ax-c-r255-255-255-a80)', borderRadius: 3 }}>
+                      <div style={{ height: '100%', width: Math.min(parseFloat(ltv), 100) + '%', borderRadius: 3, background: parseFloat(ltv) > 80 ? 'var(--ax-c-f87171)' : parseFloat(ltv) > 60 ? BRAND.gold : BRAND.success }} />
                     </div>
                   </div>
                 )}
@@ -708,11 +708,11 @@ export default function InvestorPage({ appsScriptUrl }) {
                 {/* Risk & Score */}
                 {(row['ปัจจัยเสี่ยง'] || row['Property Score']) && (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, fontSize: 12 }}>
-                    <span style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: '4px 10px', color: BRAND.textSec }}>
+                    <span style={{ background: 'var(--ax-c-r255-255-255-a50)', borderRadius: 8, padding: '4px 10px', color: BRAND.textSec }}>
                       Score: <b style={{ color: BRAND.textPri }}>{row['Property Score']}</b>/100
                     </span>
                     {row['ปัจจัยเสี่ยง'] && row['ปัจจัยเสี่ยง'] !== 'ไม่มี' && (
-                      <span style={{ color: '#F87171', fontSize: 11 }}>⚠️ {row['ปัจจัยเสี่ยง']}</span>
+                      <span style={{ color: 'var(--ax-c-f87171)', fontSize: 11 }}>⚠️ {row['ปัจจัยเสี่ยง']}</span>
                     )}
                   </div>
                 )}
@@ -730,7 +730,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                     <button
                       onClick={() => updateStatus(row, 'รอการพิจารณา')}
                       disabled={isProcessing}
-                      style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#38BDF8,#0E7490)', color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                      style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,var(--ax-c-38bdf8),var(--ax-c-0e7490))', color: 'var(--ax-c-000)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
                     >
                       {isProcessing ? '⏳' : '✅ รับเป็นเคสจริง'}
                     </button>
@@ -741,14 +741,14 @@ export default function InvestorPage({ appsScriptUrl }) {
                     <button
                       onClick={() => updateStatus(row, 'ปฏิเสธ')}
                       disabled={isProcessing}
-                      style={{ flex: 1, padding: '9px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', color: '#F87171', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                      style={{ flex: 1, padding: '9px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', color: 'var(--ax-c-f87171)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
                     >
                       {isProcessing ? '⏳' : '❌ ปฏิเสธ'}
                     </button>
                     <button
                       onClick={() => updateStatus(row, 'อนุมัติ')}
                       disabled={isProcessing}
-                      style={{ flex: 1, padding: '9px', borderRadius: 10, border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.08)', color: '#10B981', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                      style={{ flex: 1, padding: '9px', borderRadius: 10, border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.08)', color: 'var(--ax-c-10b981)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
                     >
                       {isProcessing ? '⏳' : '✅ อนุมัติ'}
                     </button>
@@ -765,7 +765,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                     </button>
                     <button
                       onClick={() => setContractModal(row)}
-                      style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#2DD4BF,#0E7490)', color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                      style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))', color: 'var(--ax-c-000)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
                     >
                       📋 สร้างสัญญาลูกค้า
                     </button>
@@ -785,7 +785,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                     <button
                       onClick={() => holdCustomer(row)}
                       disabled={isProcessing}
-                      style={{ width: '100%', padding: '9px', borderRadius: 10, border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#FCD34D', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      style={{ width: '100%', padding: '9px', borderRadius: 10, border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: 'var(--ax-c-fcd34d)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                     >
                       🛑 เบรกทรัพย์ (กลับรอการพิจารณา)
                     </button>
@@ -795,7 +795,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                         cancelCustomer(row);
                       }}
                       disabled={isProcessing}
-                      style={{ width: '100%', padding: '9px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', color: '#F87171', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      style={{ width: '100%', padding: '9px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', color: 'var(--ax-c-f87171)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                     >
                       🚫 ยกเลิกสัญญา (ลูกค้าเปลี่ยนใจ)
                     </button>

@@ -38,7 +38,7 @@ export function DeedAssessmentEditor({ customer, deed, index, onSave }) {
     return () => { alive = false; };
   }, [editing, deed]);
 
-  const inp = { width: "100%", background: "rgba(255,255,255,.06)", border: `1px solid ${BRAND.border}`, borderRadius: 7, color: BRAND.textPri, fontSize: 12, padding: "6px 9px", outline: "none", boxSizing: "border-box" };
+  const inp = { width: "100%", background: "var(--ax-c-r255-255-255-a60)", border: `1px solid ${BRAND.border}`, borderRadius: 7, color: BRAND.textPri, fontSize: 12, padding: "6px 9px", outline: "none", boxSizing: "border-box" };
   const lbl = { fontSize: 10, color: BRAND.textSec, marginBottom: 3, display: "block" };
   const btn = (active) => ({ padding: "4px 10px", borderRadius: 6, fontSize: 11, cursor: "pointer", border: `1px solid ${active ? "rgba(45,212,191,.4)" : BRAND.border}`, background: active ? "rgba(45,212,191,.15)" : "transparent", color: active ? BRAND.teal : BRAND.textSec });
 
@@ -74,7 +74,7 @@ export function DeedAssessmentEditor({ customer, deed, index, onSave }) {
               </span>
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: "#FCD34D" }}>
+            <div style={{ fontSize: 12, color: "var(--ax-c-fcd34d)" }}>
               {deed.govPrice > 0 ? `บันทึกราคา ${money(deed.govPrice)} ฿/ตร.ว. ไว้แล้ว แต่` : "ยังไม่ระบุ"}
               {current.wa > 0 ? ` (เนื้อที่ ${money(current.wa)} ตร.ว.)` : " — เนื้อที่โฉนดอ่านไม่ได้ กรอกไร่-งาน-วาได้ในแบบฟอร์ม"}
             </div>

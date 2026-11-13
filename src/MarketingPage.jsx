@@ -18,6 +18,7 @@ import { SESSION_EXPIRED_MESSAGE, errorMessage, friendlyApiError } from './lib/m
 import { contentNoOf, contentReference, ensureContentNumbers, findContentByNo, formatContentNo, parseContentNo } from './lib/marketingContentNumbers.js'
 import { freshJobStatus, isActiveJob as isActiveFreshJob, latestJobBy, shouldResumeJob } from './lib/freshContentJob.js'
 import { CHANNEL_ORDER, channelMeta, channelOfIdea, countByChannel } from './lib/ideaChannels.js'
+import { ThemeToggle } from './components/ThemeToggle.jsx'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -64,11 +65,13 @@ function researchIdeaToCard(row) {
 }
 
 // โลโก้ช่องทางต้นทางของไอเดีย — โซเชียลใช้โลโก้แบรนด์ (Simple Icons) · ช่องอื่นใช้ไอคอนเส้น
+// สีตามโหมด: โหมดสว่างใช้สีแบรนด์ทางการ (ideaChannels.js) · โหมดมืดใช้ --mx-ch-<ช่อง> ในบล็อกธีมมืดของ styles
 function ChannelLogo({ channel, size = 16 }) {
   const m = channelMeta(channel)
+  const style = { color: `var(--mx-ch-${String(channel).replace(/[^a-z_]/g, '')}, ${m.color})` }
   return m.path
-    ? <svg className="mx-ch-logo" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={m.path} fill={m.color} /></svg>
-    : <svg className="mx-ch-logo" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke={m.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={m.icon} /></svg>
+    ? <svg className="mx-ch-logo" style={style} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={m.path} fill="currentColor" /></svg>
+    : <svg className="mx-ch-logo" style={style} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={m.icon} /></svg>
 }
 
 // ไอเดียบนหน้า → ช่องทาง (ไอเดียรีเสิร์ชมีจาก API · สำรวจตลาดเป็นช่องของมันเอง)
@@ -2450,6 +2453,7 @@ export default function MarketingPage({ onBack }) {
               <img src="/logo.jpg" alt="" className="mx-brand-logo" />
               <span className="mx-brand-name">AssetX · การตลาด</span>
             </div>
+            <ThemeToggle className="mx-back mx-theme-toggle" />
           </div>
           <StatusStrip feed={researchFeed} syncState={syncState} facebookConnection={facebookConnection} onReload={loadResearchIdeas} onRetrySave={cloudReady ? retrySave : null} />
         </header>
@@ -4331,6 +4335,36 @@ const styles = `
     background: var(--mx-bg); color: var(--mx-ink); color-scheme: light;
     font-family: "Noto Sans Thai", "Segoe UI", sans-serif; font-size: 15px; line-height: 1.55; font-weight: 400;
   }
+  /* ── โหมดมืด (ปุ่มสลับบนแถบหัว · <html data-theme="dark">) = ธีมเข้มเดิมก่อน 13 พ.ย. 2569 ── */
+  :root[data-theme="dark"] .mx-page {
+    --mx-bg: #050b18; --mx-bg-2: #0a1630;
+    --mx-panel: rgba(14, 30, 58, .78); --mx-panel-2: rgba(19, 38, 72, .74); --mx-panel-solid: #10203f; --mx-field: rgba(5, 11, 24, .55);
+    --mx-inset: rgba(5, 11, 24, .35); --mx-soft: rgba(255, 255, 255, .03); --mx-hover: rgba(255, 255, 255, .05);
+    --mx-line: rgba(112, 215, 232, .16); --mx-line-2: rgba(112, 215, 232, .36);
+    --mx-ink: #eef4ff; --mx-ink-2: #c9d7ee; --mx-muted: #9db1d2;
+    --mx-cyan: #42c7d8; --mx-sky: #7fe1f0; --mx-blue: #2f9fe6; --mx-violet: #7c5cff; --mx-coral: #ff8e73;
+    --mx-accent-ink: #bfeef5; --mx-tint: rgba(66,199,216,.08); --mx-tint-2: rgba(66,199,216,.16);
+    --mx-ok: #4ade80; --mx-ok-ink: #bbf7d0; --mx-warn: #fbbf24; --mx-warn-ink: #fde68a; --mx-err: #fb7185; --mx-err-soft: #ffd1d6;
+    --mx-glow: 0 0 0 1px rgba(66,199,216,.35), 0 0 24px rgba(66,199,216,.22);
+    --mx-shadow: 0 18px 44px rgba(2, 8, 24, .45);
+    --mx-ch-facebook: #4C8DFF; --mx-ch-meta_ads: #4C8DFF; --mx-ch-youtube: #FF3B30; --mx-ch-tiktok: #F2F5F8; --mx-ch-instagram: #FF4F8B; --mx-ch-x: #F2F5F8;
+    --mx-ch-news: #8AB4F8; --mx-ch-official: #70D7E8; --mx-ch-auction: #F2B866; --mx-ch-community: #B9A3E3; --mx-ch-internal: #7FE3B0; --mx-ch-manual: #C9D4DE; --mx-ch-radar: #C9D4DE;
+    color-scheme: dark;
+  }
+  :root[data-theme="dark"] .mx-page *:not(.ax-artwork, .ax-artwork *) { color-scheme: dark; }
+  :root[data-theme="dark"] .mx-page .mx-head { background: rgba(6, 14, 32, .72); }
+  :root[data-theme="dark"] .mx-page .mx-tools-menu, :root[data-theme="dark"] .mx-page .mx-find-msg { background: #0d1a33; }
+  :root[data-theme="dark"] .mx-page .mx-more-menu { background: rgba(12, 24, 48, .97); }
+  :root[data-theme="dark"] .mx-page .mx-toast, :root[data-theme="dark"] .mx-page .mx-toast.error, :root[data-theme="dark"] .mx-page .mx-toast.warn { background: rgba(12, 24, 48, .96); }
+  :root[data-theme="dark"] .mx-page .mx-hook-option { background: rgba(255,255,255,.02); }
+  :root[data-theme="dark"] .mx-page .mx-find input { background: rgba(5,11,24,.55); }
+  :root[data-theme="dark"] .mx-page .mx-primary { background: linear-gradient(135deg, var(--mx-cyan), var(--mx-blue)); color: #06203c; }
+  :root[data-theme="dark"] .mx-page .mx-tab strong { background: var(--mx-cyan); color: #06203c; }
+  :root[data-theme="dark"] .mx-page::before, :root[data-theme="dark"] .mx-page::after { content: ''; position: fixed; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(70px); opacity: .55; }
+  :root[data-theme="dark"] .mx-page::before { width: 60vw; height: 60vw; top: -25vw; right: -15vw; background: radial-gradient(circle at 40% 40%, rgba(66,199,216,.55), rgba(47,159,230,.25) 45%, transparent 70%); animation: mx-drift-a 26s ease-in-out infinite alternate; }
+  :root[data-theme="dark"] .mx-page::after { width: 55vw; height: 55vw; bottom: -30vw; left: -20vw; background: radial-gradient(circle at 60% 60%, rgba(124,92,255,.5), rgba(75,42,130,.3) 45%, transparent 70%); animation: mx-drift-b 32s ease-in-out infinite alternate; }
+  @keyframes mx-drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-8vw, 10vh, 0) scale(1.15); } }
+  @keyframes mx-drift-b { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(10vw, -8vh, 0) scale(1.1); } }
   .mx-page * { box-sizing: border-box; }
   .mx-page button, .mx-page input, .mx-page select, .mx-page textarea { font: inherit; color: inherit; }
   .mx-page :focus-visible:not(.ax-artwork *) { outline: 2px solid var(--mx-sky); outline-offset: 2px; }

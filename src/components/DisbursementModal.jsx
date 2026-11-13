@@ -87,7 +87,7 @@ export function DisbursementModal({ customer, focusAdvance = false, onClose, onS
 
   const inp = {
     width: '100%', boxSizing: 'border-box',
-    background: 'rgba(255,255,255,.05)', border: '1px solid rgba(45,212,191,.2)',
+    background: 'var(--ax-c-r255-255-255-a50)', border: '1px solid rgba(45,212,191,.2)',
     borderRadius: 7, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none',
   }
   const lbl = { fontSize: 11, color: BRAND.textSec, marginBottom: 4, display: 'block' }
@@ -96,7 +96,7 @@ export function DisbursementModal({ customer, focusAdvance = false, onClose, onS
   )
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'var(--ax-c-r0-0-0-a750)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div style={{ background: BRAND.bgCard, border: `1px solid rgba(45,212,191,.3)`, borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -117,10 +117,10 @@ export function DisbursementModal({ customer, focusAdvance = false, onClose, onS
         {/* ทุนเก่า */}
         <SectionTitle icon="🔗" text={`ทุนเก่า (${form.existingDebts.length} รายการ)`} />
         {form.existingDebts.map((debt, idx) => (
-          <div key={debt.id} style={{ background: 'rgba(0,0,0,.3)', borderRadius: 10, padding: 12, marginBottom: 10, border: `1px solid ${BRAND.border}` }}>
+          <div key={debt.id} style={{ background: 'var(--ax-c-r0-0-0-a300)', borderRadius: 10, padding: 12, marginBottom: 10, border: `1px solid ${BRAND.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textPri }}>เจ้าหนี้ที่ {idx + 1}</div>
-              <button onClick={() => removeDebt(debt.id)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,.4)', background: 'transparent', color: '#FCA5A5', cursor: 'pointer' }}>ลบ</button>
+              <button onClick={() => removeDebt(debt.id)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,.4)', background: 'transparent', color: 'var(--ax-c-fca5a5)', cursor: 'pointer' }}>ลบ</button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div style={{ gridColumn: '1/-1' }}>
@@ -170,7 +170,7 @@ export function DisbursementModal({ customer, focusAdvance = false, onClose, onS
             </div>
           </div>
         ))}
-        <button onClick={addDebt} style={{ width: '100%', padding: '8px', borderRadius: 8, border: '1px dashed rgba(239,68,68,.5)', background: 'transparent', color: '#FCA5A5', fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
+        <button onClick={addDebt} style={{ width: '100%', padding: '8px', borderRadius: 8, border: '1px dashed rgba(239,68,68,.5)', background: 'transparent', color: 'var(--ax-c-fca5a5)', fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
           + เพิ่มเจ้าหนี้เดิม
         </button>
 
@@ -187,7 +187,7 @@ export function DisbursementModal({ customer, focusAdvance = false, onClose, onS
           </div>
           <div>
             <label style={lbl}>รวม (บาท)</label>
-            <input style={{ ...inp, color: '#FCA5A5' }} value={advanceTotal.toLocaleString('th-TH')} readOnly />
+            <input style={{ ...inp, color: 'var(--ax-c-fca5a5)' }} value={advanceTotal.toLocaleString('th-TH')} readOnly />
           </div>
         </div>
         {Number(form.advanceMonths) > 0 && (
@@ -249,13 +249,13 @@ export function DisbursementModal({ customer, focusAdvance = false, onClose, onS
         </div>
 
         {/* Summary */}
-        <div style={{ marginTop: 20, padding: 16, background: 'rgba(0,0,0,.4)', borderRadius: 12, border: `1px solid ${BRAND.border}` }}>
+        <div style={{ marginTop: 20, padding: 16, background: 'var(--ax-c-r0-0-0-a400)', borderRadius: 12, border: `1px solid ${BRAND.border}` }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textSec, marginBottom: 10 }}>สรุปการเบิกจ่าย</div>
           {[
             ['วงเงินอนุมัติ', approved, BRAND.textPri, false],
-            ['หักทุนเก่า', totalDebt, '#FCA5A5', true],
-            ['หักล่วงหน้า', advanceTotal, '#FCA5A5', true],
-            ['ค่านายหน้าภายนอก', externalFee, '#FCA5A5', true],
+            ['หักทุนเก่า', totalDebt, 'var(--ax-c-fca5a5)', true],
+            ['หักล่วงหน้า', advanceTotal, 'var(--ax-c-fca5a5)', true],
+            ['ค่านายหน้าภายนอก', externalFee, 'var(--ax-c-fca5a5)', true],
             ['ค่านายหน้าบริษัท', companyFee, BRAND.gold, true],
           ].filter(([, val]) => val > 0).map(([label, val, color, minus]) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${BRAND.border}`, fontSize: 13 }}>
@@ -265,13 +265,13 @@ export function DisbursementModal({ customer, focusAdvance = false, onClose, onS
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 16, fontWeight: 800 }}>
             <span style={{ color: BRAND.textPri }}>ยอดสุทธิตามรายการที่กรอก</span>
-            <span style={{ color: net >= 0 ? BRAND.teal : '#FCA5A5' }}>{net.toLocaleString('th-TH')} ฿</span>
+            <span style={{ color: net >= 0 ? BRAND.teal : 'var(--ax-c-fca5a5)' }}>{net.toLocaleString('th-TH')} ฿</span>
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.1)', color: BRAND.textSec, fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
-          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px 0', borderRadius: 8, background: saving ? 'rgba(45,212,191,.3)' : 'linear-gradient(135deg,#2DD4BF,#0E7490)', border: 'none', color: '#000', fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: 'var(--ax-c-r255-255-255-a70)', border: '1px solid var(--ax-c-r255-255-255-a100)', color: BRAND.textSec, fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px 0', borderRadius: 8, background: saving ? 'rgba(45,212,191,.3)' : 'linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))', border: 'none', color: 'var(--ax-c-000)', fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer' }}>
             {saving ? '⏳ กำลังบันทึก...' : '💾 บันทึกการเบิกจ่าย'}
           </button>
         </div>

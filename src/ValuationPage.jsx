@@ -14,9 +14,10 @@ import {
 import { searchGovPrice, extractPrice, recordLabel } from './lib/treasuryApi.js'
 import { confidenceBand } from './lib/pricePoints.js'
 import { parseParcelBoundary, parcelBoundaryToGeoJson } from './lib/parcelBoundary.js'
+import { withAlpha } from './lib/theme.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
-const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981' }
+const BRAND = { ...BASE_BRAND, bgCard: 'var(--ax-c-0d1b2e)', textMut: 'var(--ax-c-475569)', success: 'var(--ax-c-10b981)' }
 
 import {
   ASSESSMENT_TYPES, PROPERTY_TYPES, PROPERTY_SUBTYPES,
@@ -85,7 +86,7 @@ function Stepper({ step }) {
         return (
           <React.Fragment key={i}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: done ? BRAND.teal : active ? BRAND.gold : BRAND.border, color: done || active ? '#000' : BRAND.textSec, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: done ? BRAND.teal : active ? BRAND.gold : BRAND.border, color: done || active ? 'var(--ax-c-000)' : BRAND.textSec, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>
                 {done ? '✓' : num}
               </div>
               <span style={{ fontSize: 12, color: active ? BRAND.gold : done ? BRAND.teal : BRAND.textSec, fontWeight: active ? 700 : 400 }}>{s}</span>
@@ -102,7 +103,7 @@ const Card = ({ children, style }) => (
   <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 12, padding: 20, ...style }}>{children}</div>
 )
 const Label = ({ children }) => <div style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 6 }}>{children}</div>
-const inputBase = { width: '100%', background: '#050B18', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '9px 12px', outline: 'none', boxSizing: 'border-box' }
+const inputBase = { width: '100%', background: 'var(--ax-c-050b18)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '9px 12px', outline: 'none', boxSizing: 'border-box' }
 const Inp = (props) => <input {...props} style={{ ...inputBase, ...props.style }} />
 const Sel = ({ children, ...props }) => <select {...props} style={{ ...inputBase, ...props.style }}>{children}</select>
 
@@ -114,10 +115,10 @@ function printHistoryRow(row) {
   const f = (v) => Number(v) ? Number(v).toLocaleString('th-TH') : (v || '—')
   const fm = (v) => Number(v) ? '฿' + Number(v).toLocaleString('th-TH') : '—'
   const score = Number(row['Property Score']) || 100
-  const scoreColor = score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626'
+  const scoreColor = score >= 80 ? 'var(--ax-c-16a34a)' : score >= 60 ? 'var(--ax-c-d97706)' : 'var(--ax-c-dc2626)'
   const ltv = Number(row['LTV Rate (%)']) || 0
   const ltvCustomer = Number(row['LTV ลูกค้า (% ต่อตลาด)']) || 0
-  const ltvColor = ltvCustomer <= 50 ? '#16a34a' : ltvCustomer <= 70 ? '#d97706' : '#dc2626'
+  const ltvColor = ltvCustomer <= 50 ? 'var(--ax-c-16a34a)' : ltvCustomer <= 70 ? 'var(--ax-c-d97706)' : 'var(--ax-c-dc2626)'
   const location = [row['ตำบล/แขวง'] ? 'ต.' + row['ตำบล/แขวง'] : '', row['อำเภอ/เขต'] ? 'อ.' + row['อำเภอ/เขต'] : '', row['จังหวัด'] || ''].filter(Boolean).join(' ')
   const area = `${row['ไร่'] || 0} ไร่ ${row['งาน'] || 0} งาน ${row['ตร.ว.'] || 0} ตร.ว. (${f(row['ตร.ว.รวม'])} ตร.ว.)`
   const win = window.open('', '_blank')
@@ -335,10 +336,10 @@ function printHistoryRow(row) {
 }
 
 const INVESTOR_STATUS_COLORS = {
-  'รอการพิจารณา': { bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.4)', text: '#F59E0B' },
-  'อนุมัติ':        { bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.4)', text: '#10B981' },
-  'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.15)',  border: 'rgba(239,68,68,0.4)',  text: '#F87171' },
-  'สร้างสัญญาแล้ว': { bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.4)', text: '#A5B4FC' },
+  'รอการพิจารณา': { bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.4)', text: 'var(--ax-c-f59e0b)' },
+  'อนุมัติ':        { bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.4)', text: 'var(--ax-c-10b981)' },
+  'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.15)',  border: 'rgba(239,68,68,0.4)',  text: 'var(--ax-c-f87171)' },
+  'สร้างสัญญาแล้ว': { bg: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.4)', text: 'var(--ax-c-a5b4fc)' },
 }
 
 function HistoryView({ appsScriptUrl }) {
@@ -425,14 +426,14 @@ function HistoryView({ appsScriptUrl }) {
   }
 
   if (loading) return <div style={{ textAlign: 'center', padding: 40, color: BRAND.textSec }}>กำลังโหลด...</div>
-  if (error) return <div style={{ textAlign: 'center', padding: 40, color: '#FCA5A5' }}>⚠️ {error}</div>
+  if (error) return <div style={{ textAlign: 'center', padding: 40, color: 'var(--ax-c-fca5a5)' }}>⚠️ {error}</div>
   if (rows.length === 0) return <div style={{ textAlign: 'center', padding: 40, color: BRAND.textSec }}>ยังไม่มีข้อมูลการประเมิน</div>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Confirm Dialog */}
       {confirmRow && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'var(--ax-c-r0-0-0-a600)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: BRAND.bgCard, border: `1px solid rgba(239,68,68,0.4)`, borderRadius: 16, padding: 24, maxWidth: 360, width: '100%' }}>
             <div style={{ fontSize: 28, marginBottom: 8, textAlign: 'center' }}>🗑️</div>
             <div style={{ fontWeight: 700, fontSize: 16, color: BRAND.textPri, marginBottom: 6, textAlign: 'center' }}>ยืนยันการลบ</div>
@@ -452,7 +453,7 @@ function HistoryView({ appsScriptUrl }) {
               <button
                 onClick={() => handleDelete(confirmRow)}
                 disabled={deletingIdx !== null}
-                style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: '#EF4444', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
+                style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: 'var(--ax-c-ef4444)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
               >
                 {deletingIdx !== null ? '⏳ กำลังลบ...' : '🗑️ ลบถาวร'}
               </button>
@@ -463,7 +464,7 @@ function HistoryView({ appsScriptUrl }) {
 
       {/* Edit Modal */}
       {editRow && (() => {
-        const inp = { width: '100%', background: 'rgba(255,255,255,0.06)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', marginTop: 4 }
+        const inp = { width: '100%', background: 'var(--ax-c-r255-255-255-a60)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', marginTop: 4 }
         const lbl = { fontSize: 11, color: BRAND.textSec, display: 'block', marginBottom: 2 }
         const ef = (k, v) => setEditForm(p => {
           const next = { ...p, [k]: v }
@@ -477,7 +478,7 @@ function HistoryView({ appsScriptUrl }) {
           return next
         })
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ position: 'fixed', inset: 0, background: 'var(--ax-c-r0-0-0-a750)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
             <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: 24, maxWidth: 580, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div style={{ fontWeight: 800, fontSize: 16, color: BRAND.textPri }}>✏️ แก้ไขรายการประเมิน</div>
@@ -532,7 +533,7 @@ function HistoryView({ appsScriptUrl }) {
                     {(editForm.deeds || []).length > 1 && (
                       <button
                         onClick={() => setEditForm(p => ({ ...p, deeds: p.deeds.filter((_, i) => i !== idx) }))}
-                        style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,0.4)', background: 'transparent', color: '#FCA5A5', cursor: 'pointer' }}
+                        style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,0.4)', background: 'transparent', color: 'var(--ax-c-fca5a5)', cursor: 'pointer' }}
                       >ลบ</button>
                     )}
                   </div>
@@ -567,7 +568,7 @@ function HistoryView({ appsScriptUrl }) {
 
               <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
                 <button onClick={() => setEditRow(null)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 13, cursor: 'pointer' }}>ยกเลิก</button>
-                <button onClick={handleUpdate} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: BRAND.teal, color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                <button onClick={handleUpdate} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: BRAND.teal, color: 'var(--ax-c-000)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                   {saving ? '⏳ กำลังบันทึก...' : '💾 บันทึกการแก้ไข'}
                 </button>
               </div>
@@ -578,12 +579,12 @@ function HistoryView({ appsScriptUrl }) {
 
       {/* Detail Modal */}
       {detailRow && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'var(--ax-c-r0-0-0-a700)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
           <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: 24, maxWidth: 640, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ fontWeight: 800, fontSize: 16, color: BRAND.textPri }}>📋 รายละเอียดการประเมิน</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => printHistoryRow(detailRow)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: BRAND.gold, color: '#000', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>📄 PDF</button>
+                <button onClick={() => printHistoryRow(detailRow)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: BRAND.gold, color: 'var(--ax-c-000)', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>📄 PDF</button>
                 <button onClick={() => setDetailRow(null)} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}>✕ ปิด</button>
               </div>
             </div>
@@ -667,7 +668,7 @@ function HistoryView({ appsScriptUrl }) {
                 {isContracted && (
                   <button
                     onClick={() => setExpandedContracted(p => ({ ...p, [row['_rowIndex'] || i]: !isExpanded }))}
-                    style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 10, cursor: 'pointer' }}
+                    style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'var(--ax-c-a5b4fc)', fontSize: 10, cursor: 'pointer' }}
                   >
                     {isExpanded ? '▲ ย่อ' : '▼ ดูข้อมูล'}
                   </button>
@@ -704,7 +705,7 @@ function HistoryView({ appsScriptUrl }) {
                 <button
                   onClick={() => openEdit(row)}
                   title="แก้ไขข้อมูล"
-                  style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(99,102,241,0.3)`, background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
+                  style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(99,102,241,0.3)`, background: 'rgba(99,102,241,0.08)', color: 'var(--ax-c-a5b4fc)', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
                 >
                   ✏️
                 </button>
@@ -726,7 +727,7 @@ function HistoryView({ appsScriptUrl }) {
               <button
                 onClick={() => setConfirmRow(row)}
                 title="ลบรายการนี้"
-                style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(239,68,68,0.3)`, background: 'rgba(239,68,68,0.08)', color: '#F87171', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
+                style={{ padding: '5px 9px', borderRadius: 8, border: `1px solid rgba(239,68,68,0.3)`, background: 'rgba(239,68,68,0.08)', color: 'var(--ax-c-f87171)', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
               >
                 🗑️
               </button>
@@ -769,7 +770,7 @@ function HistoryView({ appsScriptUrl }) {
                 <div style={{ padding: '8px 12px', borderRadius: 8, background: BRAND.bg, border: `1px solid ${BRAND.border}`, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: BRAND.textSec }}>📷 {(row.propertyImages || []).length} รูป</span>
                   {(row.propertyImages || []).filter(img => img?.url).slice(0, 5).map((image, idx) => (
-                    <a key={image.path || image.url || idx} href={image.url} target="_blank" rel="noopener noreferrer" style={{ width: 46, height: 34, borderRadius: 6, overflow: 'hidden', border: `1px solid ${BRAND.border}`, display: 'block', background: '#050B18' }}>
+                    <a key={image.path || image.url || idx} href={image.url} target="_blank" rel="noopener noreferrer" style={{ width: 46, height: 34, borderRadius: 6, overflow: 'hidden', border: `1px solid ${BRAND.border}`, display: 'block', background: 'var(--ax-c-050b18)' }}>
                       <img src={image.url} alt={`รูปทรัพย์ ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     </a>
                   ))}
@@ -1108,7 +1109,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
         </div>
 
         {imageError && (
-          <div style={{ padding: 10, borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#FCA5A5', fontSize: 11, marginBottom: 10 }}>
+          <div style={{ padding: 10, borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--ax-c-fca5a5)', fontSize: 11, marginBottom: 10 }}>
             {imageError}
           </div>
         )}
@@ -1117,7 +1118,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))', gap: 10 }}>
             {(form.propertyImages || []).map((image, idx) => (
               <div key={image.path || image.url || idx} style={{ border: `1px solid ${BRAND.border}`, borderRadius: 8, overflow: 'hidden', background: BRAND.bg }}>
-                <a href={image.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', aspectRatio: '4 / 3', background: '#050B18' }}>
+                <a href={image.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', aspectRatio: '4 / 3', background: 'var(--ax-c-050b18)' }}>
                   <img src={image.url} alt={`รูปทรัพย์ ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </a>
                 <div style={{ padding: 8 }}>
@@ -1131,7 +1132,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                     type="button"
                     onClick={() => handleRemoveImage(image)}
                     disabled={imageUploading}
-                    style={{ width: '100%', marginTop: 6, padding: '5px 8px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: '#FCA5A5', fontSize: 10, cursor: imageUploading ? 'not-allowed' : 'pointer' }}
+                    style={{ width: '100%', marginTop: 6, padding: '5px 8px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: 'var(--ax-c-fca5a5)', fontSize: 10, cursor: imageUploading ? 'not-allowed' : 'pointer' }}
                   >
                     ลบรูป
                   </button>
@@ -1140,7 +1141,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
             ))}
           </div>
         ) : (
-          <div style={{ padding: 12, borderRadius: 8, background: '#050B18', border: `1px dashed ${BRAND.border}`, color: BRAND.textSec, fontSize: 12, textAlign: 'center' }}>
+          <div style={{ padding: 12, borderRadius: 8, background: 'var(--ax-c-050b18)', border: `1px dashed ${BRAND.border}`, color: BRAND.textSec, fontSize: 12, textAlign: 'center' }}>
             ยังไม่มีรูปแนบ
           </div>
         )}
@@ -1190,7 +1191,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                 {/* Deed header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: BRAND.teal, color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800 }}>{idx + 1}</div>
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: BRAND.teal, color: 'var(--ax-c-000)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800 }}>{idx + 1}</div>
                     <span style={{ fontSize: 12, fontWeight: 600, color: BRAND.textPri }}>
                       {deed.titleDeedNo ? `โฉนด ${deed.titleDeedNo}` : `โฉนดแปลงที่ ${idx + 1}`}
                     </span>
@@ -1207,7 +1208,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                     {form.deeds.length > 1 && (
                       <button
                         onClick={() => removeDeed(idx)}
-                        style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,0.4)', background: 'transparent', color: '#F87171', cursor: 'pointer' }}
+                        style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(239,68,68,0.4)', background: 'transparent', color: 'var(--ax-c-f87171)', cursor: 'pointer' }}
                       >✕ ลบ</button>
                     )}
                   </div>
@@ -1266,9 +1267,9 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
 
                     {/* Treasury lookup results */}
                     {trdLookup?.deedIdx === idx && !trdLookup.loading && (
-                      <div style={{ marginTop: 6, padding: '10px 12px', background: '#0A1628', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 8, fontSize: 12 }}>
+                      <div style={{ marginTop: 6, padding: '10px 12px', background: 'var(--ax-c-0a1628)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 8, fontSize: 12 }}>
                         {trdLookup.error ? (
-                          <div style={{ color: '#FCA5A5' }}>❌ {trdLookup.error}</div>
+                          <div style={{ color: 'var(--ax-c-fca5a5)' }}>❌ {trdLookup.error}</div>
                         ) : trdLookup.records.length === 0 ? (
                           <div style={{ color: BRAND.textSec }}>ไม่พบข้อมูล — ลองตรวจสอบเลขที่ดินหรือระวาง</div>
                         ) : (
@@ -1276,7 +1277,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                             <div style={{ color: BRAND.textSec, marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span>พบ {trdLookup.total.toLocaleString('th-TH')} รายการ</span>
                               {trdLookup.total > 10 && (
-                                <span style={{ color: '#FBBF24', fontSize: 9 }}>ระบุระวางเพื่อลดผลลัพธ์</span>
+                                <span style={{ color: 'var(--ax-c-fbbf24)', fontSize: 9 }}>ระบุระวางเพื่อลดผลลัพธ์</span>
                               )}
                             </div>
                             <div style={{ maxHeight: 240, overflowY: 'auto' }}>
@@ -1388,13 +1389,13 @@ function squareWaToThaiArea(totalSqw) {
 
 function createBoundaryLayer(points) {
   const boundary = points.length >= 3
-    ? L.polygon(points, { color: '#EF4444', weight: 3, fillColor: '#EF4444', fillOpacity: 0.18 })
-    : L.polyline(points, { color: '#EF4444', weight: 3, dashArray: '7 7' })
+    ? L.polygon(points, { color: 'var(--ax-c-ef4444)', weight: 3, fillColor: 'var(--ax-c-ef4444)', fillOpacity: 0.18 })
+    : L.polyline(points, { color: 'var(--ax-c-ef4444)', weight: 3, dashArray: '7 7' })
   const vertices = points.map((point, index) => L.circleMarker(point, {
     radius: 6,
     color: '#FFFFFF',
     weight: 2,
-    fillColor: '#EF4444',
+    fillColor: 'var(--ax-c-ef4444)',
     fillOpacity: 1,
   }).bindTooltip(String(index + 1), { permanent: true, direction: 'center', className: 'measurement-point-label' }))
   return L.layerGroup([boundary, ...vertices])
@@ -1536,7 +1537,7 @@ function MapPicker({ form, update, updateDeed }) {
       ? { color: BRAND.success, label: 'เนื้อที่ใกล้เคียงข้อมูลหน้าโฉนด' }
       : areaDifferencePercent <= 10
         ? { color: BRAND.gold, label: 'เนื้อที่คลาดเคลื่อน ควรตรวจตำแหน่งมุมอีกครั้ง' }
-        : { color: '#F87171', label: 'เนื้อที่คลาดเคลื่อนสูง ห้ามใช้แทนแนวเขตทางการ' }
+        : { color: 'var(--ax-c-f87171)', label: 'เนื้อที่คลาดเคลื่อนสูง ห้ามใช้แทนแนวเขตทางการ' }
 
   const toggleMeasuring = () => {
     const nextMode = !measurementModeRef.current
@@ -1841,7 +1842,7 @@ function MapPicker({ form, update, updateDeed }) {
           <button
             type="button"
             onClick={toggleMeasuring}
-            style={{ padding: '7px 12px', borderRadius: 7, border: `1px solid ${BRAND.teal}`, background: measuring ? BRAND.teal : 'rgba(45,212,191,0.1)', color: measuring ? '#062A2A' : BRAND.teal, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+            style={{ padding: '7px 12px', borderRadius: 7, border: `1px solid ${BRAND.teal}`, background: measuring ? BRAND.teal : 'rgba(45,212,191,0.1)', color: measuring ? 'var(--ax-c-062a2a)' : BRAND.teal, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
           >
             {measuring ? 'หยุดเพิ่มจุด' : 'วัดพื้นที่บนแผนที่'}
           </button>
@@ -1884,20 +1885,20 @@ function MapPicker({ form, update, updateDeed }) {
         </div>
 
         {PARCEL_BOUNDARY_IMPORT_ENABLED && showBoundaryImporter && (
-          <div style={{ marginTop: 10, padding: 10, borderRadius: 7, border: `1px solid ${BRAND.border}`, background: 'rgba(5,11,24,0.55)' }}>
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 7, border: `1px solid ${BRAND.border}`, background: 'var(--ax-c-r5-11-24-a550)' }}>
             <Label>วาง GeoJSON, KML หรือพิกัด Latitude, Longitude แยกบรรทัด</Label>
             <textarea
               value={boundaryText}
               onChange={event => setBoundaryText(event.target.value)}
               placeholder={'13.4048000, 101.1810700\n13.4049000, 101.1815000\n13.4044000, 101.1817000'}
-              style={{ width: '100%', minHeight: 100, boxSizing: 'border-box', resize: 'vertical', background: BRAND.bg, border: `1px solid ${boundaryError ? '#F87171' : BRAND.border}`, borderRadius: 7, color: BRAND.textPri, padding: 9, fontSize: 11, lineHeight: 1.5, outline: 'none' }}
+              style={{ width: '100%', minHeight: 100, boxSizing: 'border-box', resize: 'vertical', background: BRAND.bg, border: `1px solid ${boundaryError ? 'var(--ax-c-f87171)' : BRAND.border}`, borderRadius: 7, color: BRAND.textPri, padding: 9, fontSize: 11, lineHeight: 1.5, outline: 'none' }}
             />
-            {boundaryError && <div style={{ marginTop: 5, color: '#F87171', fontSize: 10 }}>{boundaryError}</div>}
+            {boundaryError && <div style={{ marginTop: 5, color: 'var(--ax-c-f87171)', fontSize: 10 }}>{boundaryError}</div>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 7, marginTop: 7 }}>
               <button type="button" onClick={() => { setShowBoundaryImporter(false); setBoundaryError('') }} style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 10, cursor: 'pointer' }}>
                 ยกเลิก
               </button>
-              <button type="button" onClick={() => loadBoundary(boundaryText)} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: BRAND.gold, color: '#111827', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
+              <button type="button" onClick={() => loadBoundary(boundaryText)} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: BRAND.gold, color: 'var(--ax-c-111827)', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
                 แสดงแนวเขต
               </button>
             </div>
@@ -1931,7 +1932,7 @@ function MapPicker({ form, update, updateDeed }) {
                   {form.deeds.map((deed, index) => <option key={index} value={index}>โฉนด {deed.titleDeedNo || `รายการที่ ${index + 1}`}</option>)}
                 </select>
               )}
-              <button type="button" onClick={applyMeasuredArea} style={{ padding: '8px 12px', borderRadius: 7, border: 'none', background: BRAND.teal, color: '#062A2A', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
+              <button type="button" onClick={applyMeasuredArea} style={{ padding: '8px 12px', borderRadius: 7, border: 'none', background: BRAND.teal, color: 'var(--ax-c-062a2a)', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
                 ใช้เป็นพื้นที่ประมาณการ
               </button>
             </div>
@@ -1944,7 +1945,7 @@ function MapPicker({ form, update, updateDeed }) {
           : '💡 วางพิกัดจาก LandsMaps ได้ในช่องเดียว เช่น 16.3395405|103.43032410 / คลิกบนแผนที่ / หรือกด "ค้นหาจากที่อยู่"'
         }
       </div>
-      <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 7, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.07)', color: '#FBBF24', fontSize: 10, lineHeight: 1.6 }}>
+      <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 7, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.07)', color: 'var(--ax-c-fbbf24)', fontSize: 10, lineHeight: 1.6 }}>
         แนวเขตสีแดงเป็นการวาดประมาณจากภาพถ่ายดาวเทียม อาจเหลื่อมจากระวางกรมที่ดิน แม้เนื้อที่จะใกล้เคียงกัน การตรวจรูปแปลงใน LandsMaps ต้องสแกน QR และยืนยันตัวตนผ่านแอป ThaiID ก่อน และต้องตรวจเอกสารสำนักงานที่ดินก่อนใช้ตัดสินใจหรือทำนิติกรรม
       </div>
     </Card>
@@ -1977,25 +1978,25 @@ function MarketSearchPanel({ form, update, calc }) {
       name: 'DDproperty',
       icon: '🏠',
       url: `https://www.ddproperty.com/property-for-sale?freetext=${encodeURIComponent(`${type} ${location}`)}`,
-      color: '#E53E3E',
+      color: 'var(--ax-c-e53e3e)',
     },
     {
       name: 'Fazwaz',
       icon: '🏡',
       url: `https://www.fazwaz.com/search?search=${q}`,
-      color: '#D69E2E',
+      color: 'var(--ax-c-d69e2e)',
     },
     {
       name: 'Hipflat',
       icon: '🏘️',
       url: `https://www.hipflat.com/th/search?query=${q}`,
-      color: '#38A169',
+      color: 'var(--ax-c-38a169)',
     },
     {
       name: 'Livinginsider',
       icon: '🔑',
       url: `https://www.livinginsider.com/search?keyword=${encodeURIComponent(`${type} ${location}`)}`,
-      color: '#3182CE',
+      color: 'var(--ax-c-3182ce)',
     },
     {
       name: 'Google ราคาตลาด',
@@ -2007,7 +2008,7 @@ function MarketSearchPanel({ form, update, calc }) {
       name: 'Pantip ราคาที่ดิน',
       icon: '💬',
       url: `https://pantip.com/search?q=${encodeURIComponent(`ราคาที่ดิน ${location}`)}`,
-      color: '#DD6B20',
+      color: 'var(--ax-c-dd6b20)',
     },
   ]
 
@@ -2095,7 +2096,7 @@ function MarketSearchPanel({ form, update, calc }) {
         <button
           onClick={handleAiSearch}
           disabled={aiLoading}
-          style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: aiLoading ? BRAND.border : BRAND.teal, color: aiLoading ? BRAND.textMut : '#000', fontSize: 12, fontWeight: 800, cursor: aiLoading ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
+          style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: aiLoading ? BRAND.border : BRAND.teal, color: aiLoading ? BRAND.textMut : 'var(--ax-c-000)', fontSize: 12, fontWeight: 800, cursor: aiLoading ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}
         >
           {aiLoading ? 'กำลังหา Comp...' : 'หา Comp ด้วย AI'}
         </button>
@@ -2105,13 +2106,13 @@ function MarketSearchPanel({ form, update, calc }) {
       </div>
 
       {aiError && (
-        <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: '#fca5a5', fontSize: 11, marginBottom: 12 }}>
+        <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: 'var(--ax-c-fca5a5)', fontSize: 11, marginBottom: 12 }}>
           {aiError}
         </div>
       )}
 
       {aiResult && (
-        <div style={{ border: `1px solid rgba(45,212,191,0.25)`, borderRadius: 10, padding: 12, background: 'rgba(15,23,42,0.45)', marginBottom: 14 }}>
+        <div style={{ border: `1px solid rgba(45,212,191,0.25)`, borderRadius: 10, padding: 12, background: 'var(--ax-c-r15-23-42-a450)', marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
             <div>
               <div style={{ fontSize: 11, color: BRAND.textMut, marginBottom: 3 }}>คำค้นที่ใช้</div>
@@ -2156,7 +2157,7 @@ function MarketSearchPanel({ form, update, calc }) {
             </div>
           )}
           {aiResult.filteredOutOfAreaCount > 0 && (
-            <div style={{ fontSize: 10, color: '#FCA5A5', marginBottom: 10 }}>
+            <div style={{ fontSize: 10, color: 'var(--ax-c-fca5a5)', marginBottom: 10 }}>
               ตัดผลลัพธ์นอกพื้นที่ที่ระบุออกแล้ว {aiResult.filteredOutOfAreaCount} รายการ
             </div>
           )}
@@ -2198,7 +2199,7 @@ function MarketSearchPanel({ form, update, calc }) {
                   {source.content || 'ไม่มีสรุปจากแหล่งนี้'}
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, fontWeight: 800, color: source.quality === 'strong' ? '#042f2e' : source.quality === 'usable' ? '#111827' : '#fecaca', background: source.quality === 'strong' ? BRAND.teal : source.quality === 'usable' ? BRAND.gold : 'rgba(239,68,68,0.12)', border: `1px solid ${source.quality === 'weak' ? 'rgba(239,68,68,0.35)' : 'transparent'}` }}>
+                  <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, fontWeight: 800, color: source.quality === 'strong' ? 'var(--ax-c-042f2e)' : source.quality === 'usable' ? 'var(--ax-c-111827)' : 'var(--ax-c-fecaca)', background: source.quality === 'strong' ? BRAND.teal : source.quality === 'usable' ? BRAND.gold : 'rgba(239,68,68,0.12)', border: `1px solid ${source.quality === 'weak' ? 'rgba(239,68,68,0.35)' : 'transparent'}` }}>
                     {source.quality === 'strong' ? 'ข้อมูลครบ' : source.quality === 'usable' ? 'พอใช้' : 'ต้องตรวจเพิ่ม'} · {source.qualityScore}
                   </span>
                   {source.comparisonRole === 'nearby_cross_basis' && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.gold, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}>เทียบทำเล คนละประเภท</span>}
@@ -2206,7 +2207,7 @@ function MarketSearchPanel({ form, update, calc }) {
                   {source.priceBasis === 'derived_from_total_price' && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.teal, border: '1px solid rgba(45,212,191,0.35)', background: 'rgba(45,212,191,0.08)' }}>คำนวณจากราคารวม ฿{fmt(source.totalPrice)} / {fmt(source.listingAreaSqw)} ตร.ว.</span>}
                   {source.qualityChecks?.locationStrictMatch && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.teal, border: '1px solid rgba(45,212,191,0.35)', background: 'rgba(45,212,191,0.08)' }}>ตรงตำบล</span>}
                   {!source.qualityChecks?.locationStrictMatch && source.qualityChecks?.locationDistrictMatch && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.gold, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}>ตรงอำเภอ</span>}
-                  {Number.isFinite(source.distanceM) && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.textPri, border: `1px solid ${BRAND.border}`, background: 'rgba(255,255,255,0.04)' }}>ห่าง {source.distanceM < 1000 ? `${fmt(source.distanceM)} ม.` : `${source.distanceKm.toLocaleString('th-TH', { maximumFractionDigits: 2 })} กม.`}</span>}
+                  {Number.isFinite(source.distanceM) && <span style={{ padding: '3px 7px', borderRadius: 999, fontSize: 10, color: BRAND.textPri, border: `1px solid ${BRAND.border}`, background: 'var(--ax-c-r255-255-255-a40)' }}>ห่าง {source.distanceM < 1000 ? `${fmt(source.distanceM)} ม.` : `${source.distanceKm.toLocaleString('th-TH', { maximumFractionDigits: 2 })} กม.`}</span>}
                   {aiResult.distanceSorted && !Number.isFinite(source.distanceM) && <span style={{ fontSize: 10, color: BRAND.textMut }}>ไม่พบพิกัดในแหล่งนี้</span>}
                   {source.publishedDate && <span style={{ fontSize: 10, color: BRAND.textMut }}>อัปเดต {source.publishedDate}</span>}
                   {!source.publishedDate && source.extractedYear && <span style={{ fontSize: 10, color: BRAND.textMut }}>พบปี {source.extractedYear}</span>}
@@ -2220,7 +2221,7 @@ function MarketSearchPanel({ form, update, calc }) {
                   <button
                     onClick={() => applyComp(source.pricePerSqw, source.title || source.url)}
                     disabled={source.quality === 'weak' || !source.qualityChecks?.basisMatches}
-                    style={{ padding: '6px 10px', borderRadius: 8, border: 'none', background: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.border : BRAND.gold, color: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.textMut : '#111827', fontSize: 11, fontWeight: 800, cursor: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'not-allowed' : 'pointer' }}
+                    style={{ padding: '6px 10px', borderRadius: 8, border: 'none', background: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.border : BRAND.gold, color: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.textMut : 'var(--ax-c-111827)', fontSize: 11, fontWeight: 800, cursor: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'not-allowed' : 'pointer' }}
                   >
                     {source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'ยังไม่แนะนำให้ใช้' : `ใช้ราคานี้ ฿${fmt(source.pricePerSqw)}/ตร.ว.`}
                   </button>
@@ -2251,20 +2252,20 @@ function MarketSearchPanel({ form, update, calc }) {
             onChange={e => setUrlInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleUrlAnalyze()}
             placeholder="วาง URL จาก DDproperty / Livinginsider / LandsMaps / เว็บประกาศ..."
-            style={{ width: '100%', background: '#050B18', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 12, padding: '9px 10px', outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', background: 'var(--ax-c-050b18)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 12, padding: '9px 10px', outline: 'none', boxSizing: 'border-box' }}
           />
           <button
             type="button"
             onClick={handleUrlAnalyze}
             disabled={urlLoading || !urlInput.trim()}
-            style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: urlLoading || !urlInput.trim() ? BRAND.border : BRAND.gold, color: urlLoading || !urlInput.trim() ? BRAND.textMut : '#111827', fontSize: 12, fontWeight: 800, cursor: urlLoading || !urlInput.trim() ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+            style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: urlLoading || !urlInput.trim() ? BRAND.border : BRAND.gold, color: urlLoading || !urlInput.trim() ? BRAND.textMut : 'var(--ax-c-111827)', fontSize: 12, fontWeight: 800, cursor: urlLoading || !urlInput.trim() ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
           >
             {urlLoading ? 'กำลังอ่าน...' : 'อ่าน URL นี้'}
           </button>
         </div>
 
         {urlError && (
-          <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: '#fca5a5', fontSize: 11 }}>
+          <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: 'var(--ax-c-fca5a5)', fontSize: 11 }}>
             {urlError}
           </div>
         )}
@@ -2277,7 +2278,7 @@ function MarketSearchPanel({ form, update, calc }) {
                 <a href={source.url} target="_blank" rel="noopener noreferrer" style={{ color: BRAND.textPri, fontSize: 12, fontWeight: 800, textDecoration: 'none' }}>
                   {source.title || 'หน้าที่ Tavily อ่าน'} ↗
                 </a>
-                <span style={{ fontSize: 10, color: source.quality === 'strong' ? BRAND.teal : source.quality === 'usable' ? BRAND.gold : '#FCA5A5' }}>
+                <span style={{ fontSize: 10, color: source.quality === 'strong' ? BRAND.teal : source.quality === 'usable' ? BRAND.gold : 'var(--ax-c-fca5a5)' }}>
                   {source.quality === 'strong' ? 'ข้อมูลครบ' : source.quality === 'usable' ? 'พอใช้' : 'ต้องตรวจเพิ่ม'} · {source.qualityScore}
                 </span>
               </div>
@@ -2305,7 +2306,7 @@ function MarketSearchPanel({ form, update, calc }) {
                     type="button"
                     onClick={() => applyComp(source.pricePerSqw, source.title || source.url)}
                     disabled={source.quality === 'weak' || !source.qualityChecks?.basisMatches}
-                    style={{ padding: '7px 10px', borderRadius: 8, border: 'none', background: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.border : BRAND.gold, color: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.textMut : '#111827', fontSize: 11, fontWeight: 800, cursor: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'not-allowed' : 'pointer' }}
+                    style={{ padding: '7px 10px', borderRadius: 8, border: 'none', background: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.border : BRAND.gold, color: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? BRAND.textMut : 'var(--ax-c-111827)', fontSize: 11, fontWeight: 800, cursor: source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'not-allowed' : 'pointer' }}
                   >
                     {source.quality === 'weak' || !source.qualityChecks?.basisMatches ? 'ยังไม่แนะนำให้ใช้' : `ใช้ราคานี้ ฿${fmt(source.pricePerSqw)}/ตร.ว.`}
                   </button>
@@ -2355,7 +2356,7 @@ function MarketSearchPanel({ form, update, calc }) {
               value={manualPrice}
               onChange={e => setManualPrice(e.target.value)}
               placeholder="เช่น 25000"
-              style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', background: 'var(--ax-c-r255-255-255-a60)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', boxSizing: 'border-box' }}
             />
           </div>
           <div style={{ flex: 1 }}>
@@ -2364,7 +2365,7 @@ function MarketSearchPanel({ form, update, calc }) {
               value={manualSource}
               onChange={e => setManualSource(e.target.value)}
               placeholder="เช่น DDproperty ซ.20"
-              style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', background: 'var(--ax-c-r255-255-255-a60)', border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none', boxSizing: 'border-box' }}
             />
           </div>
           <button
@@ -2375,7 +2376,7 @@ function MarketSearchPanel({ form, update, calc }) {
               setManualPrice('')
               setManualSource('')
             }}
-            style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: manualPrice ? BRAND.teal : BRAND.border, color: manualPrice ? '#000' : BRAND.textMut, fontSize: 12, fontWeight: 700, cursor: manualPrice ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap' }}
+            style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: manualPrice ? BRAND.teal : BRAND.border, color: manualPrice ? 'var(--ax-c-000)' : BRAND.textMut, fontSize: 12, fontWeight: 700, cursor: manualPrice ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap' }}
           >
             ✓ เติม
           </button>
@@ -2668,13 +2669,13 @@ function PolicyGatePanel({ policy, compact = false }) {
   const visibleFlags = policy.activeFlags.slice(0, compact ? 3 : 6)
   const visibleConditions = policy.conditions.slice(0, compact ? 4 : 8)
   return (
-    <Card style={{ borderColor: `${policy.decision.color}55`, background: compact ? 'rgba(15,23,42,0.35)' : BRAND.bgCard }}>
+    <Card style={{ borderColor: `${withAlpha(policy.decision.color, '55')}`, background: compact ? 'var(--ax-c-r15-23-42-a350)' : BRAND.bgCard }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 800, color: BRAND.gold }}>Underwriting Policy Gate</div>
           <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>{policy.decision.reason}</div>
         </div>
-        <div style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${policy.decision.color}66`, background: `${policy.decision.color}18`, color: policy.decision.color, fontSize: 12, fontWeight: 800 }}>
+        <div style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${withAlpha(policy.decision.color, '66')}`, background: `${withAlpha(policy.decision.color, '18')}`, color: policy.decision.color, fontSize: 12, fontWeight: 800 }}>
           {policy.decision.status}
         </div>
       </div>
@@ -2694,10 +2695,10 @@ function PolicyGatePanel({ policy, compact = false }) {
 
       {visibleFlags.length > 0 && (
         <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#FCA5A5', marginBottom: 6 }}>Red flags</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ax-c-fca5a5)', marginBottom: 6 }}>Red flags</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {visibleFlags.map((flag) => (
-              <span key={flag.key} style={{ padding: '4px 8px', borderRadius: 8, background: 'rgba(239,68,68,0.09)', border: '1px solid rgba(239,68,68,0.3)', color: '#FCA5A5', fontSize: 11 }}>
+              <span key={flag.key} style={{ padding: '4px 8px', borderRadius: 8, background: 'rgba(239,68,68,0.09)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--ax-c-fca5a5)', fontSize: 11 }}>
                 {flag.label}
               </span>
             ))}
@@ -2719,7 +2720,7 @@ function PolicyGatePanel({ policy, compact = false }) {
 
 function Step3({ form, update, calc, policy }) {
   const { riskScore, riskBand } = calc
-  const scoreColor = riskScore <= 15 ? '#10B981' : riskScore <= 30 ? '#84CC16' : riskScore <= 50 ? '#F59E0B' : riskScore <= 70 ? '#F97316' : '#EF4444'
+  const scoreColor = riskScore <= 15 ? 'var(--ax-c-10b981)' : riskScore <= 30 ? 'var(--ax-c-84cc16)' : riskScore <= 50 ? 'var(--ax-c-f59e0b)' : riskScore <= 70 ? 'var(--ax-c-f97316)' : 'var(--ax-c-ef4444)'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
@@ -2754,19 +2755,19 @@ function Step3({ form, update, calc, policy }) {
           {RISK_FACTORS.map(rf => (
             <label key={rf.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', border: `1px solid ${form.risks[rf.key] ? 'rgba(239,68,68,0.4)' : BRAND.border}`, background: form.risks[rf.key] ? 'rgba(239,68,68,0.08)' : BRAND.bg }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input type="checkbox" checked={!!form.risks[rf.key]} onChange={e => update('risks', { ...form.risks, [rf.key]: e.target.checked })} style={{ width: 16, height: 16, accentColor: '#EF4444', cursor: 'pointer' }} />
+                <input type="checkbox" checked={!!form.risks[rf.key]} onChange={e => update('risks', { ...form.risks, [rf.key]: e.target.checked })} style={{ width: 16, height: 16, accentColor: 'var(--ax-c-ef4444)', cursor: 'pointer' }} />
                 <span style={{ fontSize: 13, color: BRAND.textPri }}>{rf.label}</span>
               </div>
-              <span style={{ fontSize: 11, color: '#F87171', fontWeight: 600 }}>+{rf.score} pts</span>
+              <span style={{ fontSize: 11, color: 'var(--ax-c-f87171)', fontWeight: 600 }}>+{rf.score} pts</span>
             </label>
           ))}
         </div>
-        <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: BRAND.bg, borderRadius: 12, border: `1px solid ${scoreColor}40` }}>
+        <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: BRAND.bg, borderRadius: 12, border: `1px solid ${withAlpha(scoreColor, '40')}` }}>
           <div>
             <div style={{ fontSize: 11, color: BRAND.textSec, marginBottom: 4 }}>Risk Score</div>
             <div style={{ fontSize: 36, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{riskScore}</div>
             <div style={{ fontSize: 12, color: BRAND.textSec }}>/100</div>
-            <div style={{ marginTop: 6, display: 'inline-block', padding: '2px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: `${scoreColor}20`, color: scoreColor, border: `1px solid ${scoreColor}50` }}>
+            <div style={{ marginTop: 6, display: 'inline-block', padding: '2px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: `${withAlpha(scoreColor, '20')}`, color: scoreColor, border: `1px solid ${withAlpha(scoreColor, '50')}` }}>
               ความเสี่ยง{riskBand.label}
             </div>
           </div>
@@ -2779,7 +2780,7 @@ function Step3({ form, update, calc, policy }) {
 
       <Card>
         <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>🏦 กำหนด LTV RATE</div>
-        <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: `${riskBand.color}18`, border: `1px solid ${riskBand.color}40`, fontSize: 12, display: 'flex', gap: 16 }}>
+        <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: `${withAlpha(riskBand.color, '18')}`, border: `1px solid ${withAlpha(riskBand.color, '40')}`, fontSize: 12, display: 'flex', gap: 16 }}>
           <span><span style={{ color: BRAND.textSec }}>LTV สูงสุด (Risk Band): </span><span style={{ fontWeight: 700, color: riskBand.color }}>{riskBand.ltvMax}%</span></span>
           <span><span style={{ color: BRAND.textSec }}>FSV Rate: </span><span style={{ fontWeight: 700, color: riskBand.color }}>{Math.round(calc.fsvRate * 100)}%</span></span>
         </div>
@@ -2789,7 +2790,7 @@ function Step3({ form, update, calc, policy }) {
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontWeight: 700, fontSize: 18, color: BRAND.gold }}>{form.ltvRate}%</div>
             {form.ltvRate > riskBand.ltvMax && (
-              <div style={{ fontSize: 10, color: '#F97316' }}>จะถูก cap ที่ {riskBand.ltvMax}%</div>
+              <div style={{ fontSize: 10, color: 'var(--ax-c-f97316)' }}>จะถูก cap ที่ {riskBand.ltvMax}%</div>
             )}
           </div>
           <span>75% — สูงสุด</span>
@@ -2810,7 +2811,7 @@ function PropertyImageGallery({ images = [], compact = false }) {
       <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.teal, marginBottom: 10 }}>📷 รูปภาพทรัพย์ ({images.length} รูป)</div>
       <div style={{ display: 'grid', gridTemplateColumns: compact ? 'repeat(4, 1fr)' : 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
         {visibleImages.map((image, idx) => (
-          <a key={image.path || image.url || idx} href={image.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', aspectRatio: '4 / 3', borderRadius: 8, overflow: 'hidden', border: `1px solid ${BRAND.border}`, background: '#050B18' }}>
+          <a key={image.path || image.url || idx} href={image.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block', aspectRatio: '4 / 3', borderRadius: 8, overflow: 'hidden', border: `1px solid ${BRAND.border}`, background: 'var(--ax-c-050b18)' }}>
             <img src={image.url} alt={`รูปทรัพย์ ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           </a>
         ))}
@@ -2826,7 +2827,7 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
   const reqLtv = calc.marketValue > 0 ? (reqLoan / calc.marketValue) * 100 : 0
   const reqLtvVsFsv = calc.fsv > 0 ? (reqLoan / calc.fsv) * 100 : 0
   const isOverLimit = reqLoan > calc.recommendedLoan
-  const reqColor = reqLoan === 0 ? BRAND.textSec : isOverLimit ? '#EF4444' : BRAND.success
+  const reqColor = reqLoan === 0 ? BRAND.textSec : isOverLimit ? 'var(--ax-c-ef4444)' : BRAND.success
   const formatLtv = (value, base) => base > 0 ? `${value.toFixed(2)}%` : '—'
   const formatCushion = (base) => {
     if (!reqLoan || !base) return '—'
@@ -2860,7 +2861,7 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
     <div id="print-area" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 48, height: 48, background: BRAND.teal, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: '#000' }}>X</div>
+          <div style={{ width: 48, height: 48, background: BRAND.teal, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: 'var(--ax-c-000)' }}>X</div>
           <div>
             <div style={{ fontWeight: 800, fontSize: 15, color: BRAND.textPri }}>บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด</div>
           </div>
@@ -2925,11 +2926,11 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
               <div style={{ fontSize: 28, fontWeight: 800, color: calc.riskBand?.color || BRAND.gold }}>Risk {calc.riskScore}</div>
               <div style={{ fontSize: 12, color: BRAND.textSec }}>/100</div>
             </div>
-            <div style={{ marginTop: 4, display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${calc.riskBand?.color || BRAND.gold}20`, color: calc.riskBand?.color || BRAND.gold, border: `1px solid ${calc.riskBand?.color || BRAND.gold}50` }}>ความเสี่ยง{calc.riskBand?.label}</div>
+            <div style={{ marginTop: 4, display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${withAlpha(calc.riskBand?.color || BRAND.gold, '20')}`, color: calc.riskBand?.color || BRAND.gold, border: `1px solid ${withAlpha(calc.riskBand?.color || BRAND.gold, '50')}` }}>ความเสี่ยง{calc.riskBand?.label}</div>
             <div style={{ marginTop: 6, fontSize: 11, color: BRAND.textSec }}>FSV Rate: {Math.round(calc.fsvRate * 100)}% | LTV Cap: {calc.riskBand?.ltvMax}%</div>
             {RISK_FACTORS.filter(rf => form.risks[rf.key]).length === 0 && !form.floodLevel?.includes('ท่วม') && form.titleType === 'โฉนด (Chanote) ปลอดภาระ'
               ? <div style={{ marginTop: 6, fontSize: 12, color: BRAND.success }}>ไม่พบปัจจัยเสี่ยง</div>
-              : <div style={{ marginTop: 6, fontSize: 11, color: '#FCA5A5' }}>{[form.floodLevel !== 'ไม่มีประวัติน้ำท่วม' ? form.floodLevel : null, form.titleType !== 'โฉนด (Chanote) ปลอดภาระ' ? form.titleType : null, ...RISK_FACTORS.filter(rf => form.risks[rf.key]).map(rf => rf.label)].filter(Boolean).join(', ')}</div>
+              : <div style={{ marginTop: 6, fontSize: 11, color: 'var(--ax-c-fca5a5)' }}>{[form.floodLevel !== 'ไม่มีประวัติน้ำท่วม' ? form.floodLevel : null, form.titleType !== 'โฉนด (Chanote) ปลอดภาระ' ? form.titleType : null, ...RISK_FACTORS.filter(rf => form.risks[rf.key]).map(rf => rf.label)].filter(Boolean).join(', ')}</div>
             }
           </Card>
           <Card>
@@ -2976,13 +2977,13 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
               </div>
             </div>
             {underwritingError && (
-              <div style={{ padding: 10, borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#FCA5A5', fontSize: 11, marginBottom: 10 }}>
+              <div style={{ padding: 10, borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--ax-c-fca5a5)', fontSize: 11, marginBottom: 10 }}>
                 {underwritingError}
               </div>
             )}
             {underwritingMemo ? (
               <>
-                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.65, maxHeight: 520, overflow: 'auto', padding: 12, borderRadius: 8, background: '#050B18', border: `1px solid ${BRAND.border}`, color: BRAND.textPri, fontSize: 12 }}>
+                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.65, maxHeight: 520, overflow: 'auto', padding: 12, borderRadius: 8, background: 'var(--ax-c-050b18)', border: `1px solid ${BRAND.border}`, color: BRAND.textPri, fontSize: 12 }}>
                   {underwritingMemo}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
@@ -3006,13 +3007,13 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
                 </div>
               </>
             ) : (
-              <div style={{ padding: 12, borderRadius: 8, background: '#050B18', border: `1px solid ${BRAND.border}`, color: BRAND.textSec, fontSize: 11 }}>
+              <div style={{ padding: 12, borderRadius: 8, background: 'var(--ax-c-050b18)', border: `1px solid ${BRAND.border}`, color: BRAND.textSec, fontSize: 11 }}>
                 กดปุ่มเพื่อให้ Hermes วิเคราะห์หลักประกันจากข้อมูลประเมินปัจจุบันและ nearby price points
               </div>
             )}
           </Card>
 
-          <Card style={{ borderColor: reqLoan > 0 ? `${reqColor}50` : BRAND.border }}>
+          <Card style={{ borderColor: reqLoan > 0 ? `${withAlpha(reqColor, '50')}` : BRAND.border }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>🙋 วงเงินที่ลูกค้าเสนอขอ</div>
             <Label>ระบุวงเงินที่ลูกค้าต้องการ (บาท)</Label>
             <input
@@ -3040,8 +3041,8 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
                         <div style={{ fontSize: 9, color: BRAND.textMut }}>{row.unit ? `${fmt(row.unit)} บาท/ตร.ว. · ${row.note}` : row.note}</div>
                       </div>
                       <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.textPri, textAlign: 'right' }}>฿{fmt(row.base)}</div>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: row.ltv > 75 ? '#EF4444' : row.ltv > 60 ? '#F59E0B' : BRAND.success, textAlign: 'right' }}>{formatLtv(row.ltv, row.base)}</div>
-                      <div style={{ fontSize: 10, color: row.base >= reqLoan ? BRAND.success : '#EF4444', textAlign: 'right' }}>{formatCushion(row.base)}</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: row.ltv > 75 ? 'var(--ax-c-ef4444)' : row.ltv > 60 ? 'var(--ax-c-f59e0b)' : BRAND.success, textAlign: 'right' }}>{formatLtv(row.ltv, row.base)}</div>
+                      <div style={{ fontSize: 10, color: row.base >= reqLoan ? BRAND.success : 'var(--ax-c-ef4444)', textAlign: 'right' }}>{formatCushion(row.base)}</div>
                     </div>
                   ))}
                   <div style={{ marginTop: 8, fontSize: 10, color: BRAND.textSec }}>
@@ -3405,7 +3406,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
     padding: '12px 20px', borderRadius: 10, border: ghost ? `1px solid ${BRAND.border}` : 'none',
     fontWeight: 700, fontSize: 13, cursor: 'pointer',
     background: primary ? BRAND.gold : ghost ? 'transparent' : BRAND.border,
-    color: primary ? '#000' : ghost ? BRAND.textSec : BRAND.textSec,
+    color: primary ? 'var(--ax-c-000)' : ghost ? BRAND.textSec : BRAND.textSec,
   })
 
   return (
@@ -3432,7 +3433,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
       <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px' }}>
         {/* Top Nav */}
         <div className="no-print" style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <button onClick={handleReset} style={{ ...btn(view === 'form'), background: view === 'form' ? BRAND.gold : BRAND.border, color: view === 'form' ? '#000' : BRAND.textSec }}>
+          <button onClick={handleReset} style={{ ...btn(view === 'form'), background: view === 'form' ? BRAND.gold : BRAND.border, color: view === 'form' ? 'var(--ax-c-000)' : BRAND.textSec }}>
             📋 ประเมินใหม่
           </button>
           <button onClick={() => setView('history')} style={{ ...btn(false), background: view === 'history' ? 'rgba(45,212,191,0.15)' : BRAND.border, color: view === 'history' ? BRAND.teal : BRAND.textSec, border: view === 'history' ? `1px solid ${BRAND.teal}` : 'none' }}>

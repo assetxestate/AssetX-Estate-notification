@@ -7,6 +7,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // โหมดสีก่อนหน้าแสดงผล (ไม่กะพริบ) — ชื่อคีย์และค่าเริ่มต้นต้องตรงกับ src/lib/theme.js
+      (function () {
+        var theme = 'light'
+        try { var saved = localStorage.getItem('assetx-theme'); if (saved === 'dark' || saved === 'light') theme = saved } catch (e) {}
+        document.documentElement.dataset.theme = theme
+        document.documentElement.style.colorScheme = theme
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

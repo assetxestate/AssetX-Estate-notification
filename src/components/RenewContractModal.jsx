@@ -60,10 +60,10 @@ export function RenewContractModal({ customer, onClose, onSaved }) {
     }
   };
 
-  const inp = { width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13, background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.border}`, color: BRAND.textPri, outline: "none", boxSizing: "border-box" };
+  const inp = { width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13, background: "var(--ax-c-r255-255-255-a50)", border: `1px solid ${BRAND.border}`, color: BRAND.textPri, outline: "none", boxSizing: "border-box" };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <div style={{ position: "fixed", inset: 0, background: "var(--ax-c-r0-0-0-a780)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 18, padding: 20, width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto" }}>
 
         {/* Header */}
@@ -88,7 +88,7 @@ export function RenewContractModal({ customer, onClose, onSaved }) {
               งวดที่ {lastPayment?.installment} · {formatThai(lastPayment?.dateStr)}
             </span>
             <span style={{ color: BRAND.textSec }}>ครบสัญญาเดิม</span>
-            <span style={{ color: "#FCA5A5", fontWeight: 600 }}>{formatThai(customer.contractEndDate)}</span>
+            <span style={{ color: "var(--ax-c-fca5a5)", fontWeight: 600 }}>{formatThai(customer.contractEndDate)}</span>
           </div>
         </div>
 
@@ -130,7 +130,7 @@ export function RenewContractModal({ customer, onClose, onSaved }) {
         )}
 
         {newEndDate && newPayments.length === 0 && (
-          <div style={{ marginBottom: 16, padding: "8px 12px", background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.3)", borderRadius: 8, fontSize: 12, color: "#FCA5A5" }}>
+          <div style={{ marginBottom: 16, padding: "8px 12px", background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.3)", borderRadius: 8, fontSize: 12, color: "var(--ax-c-fca5a5)" }}>
             วันที่เลือกต้องอยู่หลังงวดสุดท้าย ({formatThai(lastPayment?.dateStr)})
           </div>
         )}
@@ -141,7 +141,7 @@ export function RenewContractModal({ customer, onClose, onSaved }) {
             ยกเลิก
           </button>
           <button onClick={handleSave} disabled={saving || newPayments.length === 0}
-            style={{ flex: 2, padding: 10, borderRadius: 10, border: "none", background: newPayments.length > 0 ? "linear-gradient(135deg,#F59E0B,#D97706)" : "rgba(245,158,11,.3)", color: "#000", fontSize: 13, fontWeight: 700, cursor: newPayments.length > 0 ? "pointer" : "not-allowed", opacity: saving ? 0.7 : 1 }}>
+            style={{ flex: 2, padding: 10, borderRadius: 10, border: "none", background: newPayments.length > 0 ? "linear-gradient(135deg,var(--ax-c-f59e0b),var(--ax-c-d97706))" : "rgba(245,158,11,.3)", color: "var(--ax-c-000)", fontSize: 13, fontWeight: 700, cursor: newPayments.length > 0 ? "pointer" : "not-allowed", opacity: saving ? 0.7 : 1 }}>
             {saving ? "⏳ กำลังบันทึก..."
               : newPayments.length > 0
               ? `🔄 ต่ออายุ +${newPayments.length} งวด`

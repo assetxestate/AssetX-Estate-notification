@@ -91,7 +91,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
             <span
               style={{
                 fontSize: 13,
-                color: connectionStatus === true ? "#4ADE80" : connectionStatus === false ? "#FCA5A5" : "#F59E0B",
+                color: connectionStatus === true ? "var(--ax-c-4ade80)" : connectionStatus === false ? "var(--ax-c-fca5a5)" : "var(--ax-c-f59e0b)",
               }}
             >
               {connectionStatus === true ? "LINE API ตอบแล้ว" : connectionStatus === false ? "เชื่อมต่อไม่สำเร็จ" : "รอตรวจสอบ"}
@@ -107,7 +107,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
               background: "rgba(56,189,248,.1)",
               border: "1px solid rgba(56,189,248,.3)",
               borderRadius: 8,
-              color: "#38BDF8",
+              color: "var(--ax-c-38bdf8)",
               fontSize: 12,
             }}
           >
@@ -126,17 +126,17 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
                   <div style={{ fontWeight: 700, color: BRAND.textPri }}>User ID ผู้รับแจ้งเตือน</div>
                   {/* Sync badge */}
                   {syncStatus === "syncing" && (
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(56,189,248,.15)", border: "1px solid rgba(56,189,248,.3)", color: "#38BDF8", display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(56,189,248,.15)", border: "1px solid rgba(56,189,248,.3)", color: "var(--ax-c-38bdf8)", display: "flex", alignItems: "center", gap: 4 }}>
                       <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> กำลัง Sync...
                     </span>
                   )}
                   {syncStatus === "synced" && (
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(74,222,128,.15)", border: "1px solid rgba(74,222,128,.3)", color: "#4ADE80" }}>
+                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(74,222,128,.15)", border: "1px solid rgba(74,222,128,.3)", color: "var(--ax-c-4ade80)" }}>
                       ✅ Synced กับ Script
                     </span>
                   )}
                   {syncStatus === "error" && (
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.3)", color: "#FCA5A5" }}>
+                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 20, background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.3)", color: "var(--ax-c-fca5a5)" }}>
                       ❌ Sync ล้มเหลว
                     </span>
                   )}
@@ -195,7 +195,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
                   <div key={u.id} style={{
                     display: "flex", alignItems: "center", gap: 8,
                     padding: "10px 12px", borderRadius: 10,
-                    background: isActive ? "rgba(45,212,191,.1)" : "rgba(0,0,0,.2)",
+                    background: isActive ? "rgba(45,212,191,.1)" : "var(--ax-c-r0-0-0-a200)",
                     border: `1px solid ${isActive ? "rgba(45,212,191,.35)" : BRAND.border}`,
                     transition: "all .2s",
                   }}>
@@ -210,7 +210,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
                         transition: "all .2s",
                       }}
                     >
-                      {isActive && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#000" }} />}
+                      {isActive && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--ax-c-000)" }} />}
                     </div>
 
                     {/* Info */}
@@ -219,7 +219,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
                         {u.label}
                         {isActive && <span style={{
                           marginLeft: 6, fontSize: 9, fontWeight: 700, letterSpacing: .5,
-                          background: BRAND.teal, color: "#000", padding: "1px 6px", borderRadius: 10,
+                          background: BRAND.teal, color: "var(--ax-c-000)", padding: "1px 6px", borderRadius: 10,
                         }}>ACTIVE</span>}
                       </div>
                       <div style={{
@@ -243,8 +243,8 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
                       <button onClick={() => handleDelete(u.id)} className="btn" style={{
                         padding: "4px 9px", borderRadius: 7, fontSize: 11,
                         background: isDeleting ? "rgba(239,68,68,.2)" : "rgba(239,68,68,.06)",
-                        border: `1px solid ${isDeleting ? "#EF4444" : "rgba(239,68,68,.2)"}`,
-                        color: isDeleting ? "#FCA5A5" : "#EF444490",
+                        border: `1px solid ${isDeleting ? "var(--ax-c-ef4444)" : "rgba(239,68,68,.2)"}`,
+                        color: isDeleting ? "var(--ax-c-fca5a5)" : "#EF444490",
                         transition: "all .2s",
                       }}>
                         {isDeleting ? "ยืนยันลบ?" : "🗑️"}
@@ -274,7 +274,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
                 placeholder="ชื่อเรียก เช่น Admin, ทีมงาน..."
                 style={{
                   width: "100%", padding: "8px 10px",
-                  background: "rgba(0,0,0,.35)", border: "1px solid rgba(100,116,139,.4)",
+                  background: "var(--ax-c-r0-0-0-a350)", border: "1px solid rgba(100,116,139,.4)",
                   borderRadius: 8, color: BRAND.textPri, fontSize: 12, outline: "none",
                   fontFamily: "'Sarabun', sans-serif",
                 }}
@@ -286,7 +286,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
                 autoFocus
                 style={{
                   width: "100%", padding: "8px 10px",
-                  background: "rgba(0,0,0,.35)", border: "1px solid rgba(45,212,191,.35)",
+                  background: "var(--ax-c-r0-0-0-a350)", border: "1px solid rgba(45,212,191,.35)",
                   borderRadius: 8, color: BRAND.teal, fontSize: 12,
                   fontFamily: "monospace", outline: "none",
                 }}
@@ -294,8 +294,8 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={handleSaveUserId} disabled={!userIdInput.trim()} className="btn" style={{
                   flex: 1, padding: "8px 0", borderRadius: 8, fontWeight: 700, fontSize: 12,
-                  background: userIdInput.trim() ? "linear-gradient(135deg,#2DD4BF,#0E7490)" : "rgba(45,212,191,.1)",
-                  border: "none", color: userIdInput.trim() ? "#000" : BRAND.textMut,
+                  background: userIdInput.trim() ? "linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))" : "rgba(45,212,191,.1)",
+                  border: "none", color: userIdInput.trim() ? "var(--ax-c-000)" : BRAND.textMut,
                 }}>
                   💾 บันทึก &amp; ใช้งาน
                 </button>
@@ -354,7 +354,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
             <span
               style={{
                 fontSize: 13,
-                color: apiConnected ? "#4ADE80" : "#F59E0B",
+                color: apiConnected ? "var(--ax-c-4ade80)" : "var(--ax-c-f59e0b)",
               }}
             >
               {apiConnected ? "Deploy แล้ว" : "รอ Deploy"}
@@ -382,7 +382,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <span className={`status-dot ${triggerActive ? "success" : "warning"}`}></span>
-            <span style={{ fontSize: 13, color: triggerActive ? "#10B981" : "#F59E0B" }}>
+            <span style={{ fontSize: 13, color: triggerActive ? "var(--ax-c-10b981)" : "var(--ax-c-f59e0b)" }}>
               {triggerActive ? "✅ Trigger ทำงานอยู่ (8–9 AM)" : "รอตั้ง Trigger"}
             </span>
           </div>
@@ -396,7 +396,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
                 onSetTriggerActive && onSetTriggerActive(true)
               }}
               style={{
-                background: "#10B981", color: "#fff", border: "none",
+                background: "var(--ax-c-10b981)", color: "#fff", border: "none",
                 borderRadius: 8, padding: "7px 14px", fontSize: 12,
                 fontWeight: 600, cursor: "pointer", width: "100%"
               }}
@@ -410,7 +410,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
                 onSetTriggerActive && onSetTriggerActive(false)
               }}
               style={{
-                background: "transparent", color: "#9CA3AF", border: "1px solid #E5E7EB",
+                background: "transparent", color: "var(--ax-c-9ca3af)", border: "1px solid #E5E7EB",
                 borderRadius: 8, padding: "6px 14px", fontSize: 11,
                 cursor: "pointer", width: "100%"
               }}
@@ -472,7 +472,7 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
             style={{
               width: "100%",
               height: 100,
-              background: "rgba(0,0,0,.3)",
+              background: "var(--ax-c-r0-0-0-a300)",
               border: "1px solid " + BRAND.border,
               borderRadius: 10,
               padding: 12,
@@ -556,30 +556,30 @@ export function SystemStatusPage({ lineHook, apiConnected, lastFetch, targetUser
           }}
         >
           <div style={{ display: "flex", gap: 8 }}>
-            <span style={{ color: "#4ADE80" }}>✅</span>
+            <span style={{ color: "var(--ax-c-4ade80)" }}>✅</span>
             <span>LINE Channel Access Token - ตั้งค่าแล้ว</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <div style={{ display: "flex", gap: 8 }}>
-              <span style={{ color: targetUserId ? "#4ADE80" : "#F59E0B" }}>{targetUserId ? "✅" : "⏳"}</span>
+              <span style={{ color: targetUserId ? "var(--ax-c-4ade80)" : "var(--ax-c-f59e0b)" }}>{targetUserId ? "✅" : "⏳"}</span>
               <span>User ID ผู้รับแจ้งเตือน
                 {targetUserId
                   ? <span style={{ color: BRAND.teal, fontFamily: "monospace", marginLeft: 6, fontSize: 11 }}>
                       ({targetUserId.substring(0, 10)}...)
                     </span>
-                  : <span style={{ color: "#F59E0B", marginLeft: 6, fontSize: 11 }}> - ยังไม่ได้ตั้งค่า</span>
+                  : <span style={{ color: "var(--ax-c-f59e0b)", marginLeft: 6, fontSize: 11 }}> - ยังไม่ได้ตั้งค่า</span>
                 }
               </span>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <span style={{ color: apiConnected ? "#4ADE80" : "#F59E0B" }}>
+            <span style={{ color: apiConnected ? "var(--ax-c-4ade80)" : "var(--ax-c-f59e0b)" }}>
               {apiConnected ? "✅" : "⏳"}
             </span>
             <span>Deploy Apps Script เป็น Web App</span>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <span style={{ color: "#F59E0B" }}>⏳</span>
+            <span style={{ color: "var(--ax-c-f59e0b)" }}>⏳</span>
             <span>ตั้ง Trigger แจ้งเตือนอัตโนมัติ (8:00-9:00 น.)</span>
           </div>
         </div>

@@ -33,7 +33,7 @@ export function Logo({ size = 40 }) {
         width: size,
         height: size,
         borderRadius: 10,
-        background: "linear-gradient(135deg,#2DD4BF,#7C3AED)",
+        background: "linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-7c3aed))",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

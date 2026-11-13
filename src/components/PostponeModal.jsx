@@ -11,7 +11,7 @@ export function PostponeModal({ customer, payment, topup = null, onSave, onClose
   const [note, setNote] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
-  const inp = { width: "100%", background: "rgba(255,255,255,0.06)", border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: "8px 10px", outline: "none", boxSizing: "border-box" };
+  const inp = { width: "100%", background: "var(--ax-c-r255-255-255-a60)", border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: "8px 10px", outline: "none", boxSizing: "border-box" };
   const lbl = { fontSize: 11, color: BRAND.textSec, display: "block", marginBottom: 4, marginTop: 10 };
 
   const handleSave = async () => {
@@ -29,7 +29,7 @@ export function PostponeModal({ customer, payment, topup = null, onSave, onClose
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <div style={{ position: "fixed", inset: 0, background: "var(--ax-c-r0-0-0-a700)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 16, padding: 24, maxWidth: 380, width: "100%" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div style={{ fontWeight: 800, fontSize: 16, color: BRAND.textPri }}>{topup ? "📅 เลื่อนนัดชำระวงเงินเพิ่ม" : "📅 เลื่อนนัดชำระ"}</div>
@@ -46,7 +46,7 @@ export function PostponeModal({ customer, payment, topup = null, onSave, onClose
           <div style={{ fontSize: 12, color: BRAND.textSec, marginTop: 2 }}>
             งวดที่ {payment.installment} · กำหนดเดิม: <span style={{ color: BRAND.gold }}>{formatThai(payment.dateStr)}</span>
             {payment.balance?.state === "partial" && (
-              <div style={{ marginTop: 4, color: "#FDE68A" }}>
+              <div style={{ marginTop: 4, color: "var(--ax-c-fde68a)" }}>
                 ชำระแล้ว {Number(payment.balance.paid).toLocaleString("th-TH")} บาท{payment.balance.waived > 0 ? ` · ยกเว้น ${Number(payment.balance.waived).toLocaleString("th-TH")} บาท` : ""} · นัดวันชำระส่วนที่ขาด {Number(payment.balance.outstanding).toLocaleString("th-TH")} บาท
               </div>
             )}
@@ -77,7 +77,7 @@ export function PostponeModal({ customer, payment, topup = null, onSave, onClose
           <button
             onClick={handleSave}
             disabled={!newDate || saving}
-            style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", background: newDate ? BRAND.gold : "rgba(245,158,11,.3)", color: "#000", fontSize: 13, fontWeight: 700, cursor: newDate ? "pointer" : "not-allowed" }}
+            style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", background: newDate ? BRAND.gold : "rgba(245,158,11,.3)", color: "var(--ax-c-000)", fontSize: 13, fontWeight: 700, cursor: newDate ? "pointer" : "not-allowed" }}
           >
             {saving ? "⏳ กำลังบันทึก..." : "📅 บันทึกการเลื่อน"}
           </button>

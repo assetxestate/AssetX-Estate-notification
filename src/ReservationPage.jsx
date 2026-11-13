@@ -5,9 +5,10 @@ import {
   getReservations, createReservation,
   updateReservation, deleteReservation,
 } from "./lib/api";
+import { withAlpha } from './lib/theme.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
-const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981', danger: '#EF4444', blue: '#3B82F6' }
+const BRAND = { ...BASE_BRAND, bgCard: 'var(--ax-c-0d1b2e)', textMut: 'var(--ax-c-475569)', success: 'var(--ax-c-10b981)', danger: 'var(--ax-c-ef4444)', blue: 'var(--ax-c-3b82f6)' }
 
 const fmt = (n) => Number(n || 0).toLocaleString("th-TH");
 const fmtDate = (d) => {
@@ -38,11 +39,11 @@ const EMPTY_FORM = {
 };
 
 function StatusBadge({ status }) {
-  const cfg = STATUS_CONFIG[status] || { color: BRAND.textSec, bg: "#ffffff11" };
+  const cfg = STATUS_CONFIG[status] || { color: BRAND.textSec, bg: "var(--ax-c-ffffff11)" };
   return (
     <span style={{
       padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-      color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}44`,
+      color: cfg.color, background: cfg.bg, border: `1px solid ${withAlpha(cfg.color, '44')}`,
     }}>{status}</span>
   );
 }
@@ -70,7 +71,7 @@ function DeadlineChip({ date }) {
 
 function InputField({ label, name, form, onChange, type = "text", options, required }) {
   const style = {
-    width: "100%", background: "#060d1a", border: `1px solid ${BRAND.border}`,
+    width: "100%", background: "var(--ax-c-060d1a)", border: `1px solid ${BRAND.border}`,
     borderRadius: 8, padding: "8px 12px", color: BRAND.textPri, fontSize: 13,
     outline: "none", boxSizing: "border-box",
   };
@@ -130,7 +131,7 @@ function ReservationModal({ item, onClose, onSave }) {
 
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "#000000cc", zIndex: 1000,
+      position: "fixed", inset: 0, background: "var(--ax-c-000000cc)", zIndex: 1000,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
     }}>
       <div style={{
@@ -186,7 +187,7 @@ function ReservationModal({ item, onClose, onSave }) {
         {profit !== null && (
           <div style={{
             background: profit >= 0 ? "#10B98122" : "#EF444422",
-            border: `1px solid ${profit >= 0 ? BRAND.success : BRAND.danger}44`,
+            border: `1px solid ${withAlpha(profit >= 0 ? BRAND.success : BRAND.danger, '44')}`,
             borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13,
             color: profit >= 0 ? BRAND.success : BRAND.danger,
           }}>
@@ -204,7 +205,7 @@ function ReservationModal({ item, onClose, onSave }) {
           }}>ยกเลิก</button>
           <button onClick={handleSave} disabled={saving} style={{
             padding: "9px 20px", borderRadius: 8, border: "none",
-            background: BRAND.teal, color: "#000", fontWeight: 700, cursor: "pointer", fontSize: 13,
+            background: BRAND.teal, color: "var(--ax-c-000)", fontWeight: 700, cursor: "pointer", fontSize: 13,
             opacity: saving ? 0.6 : 1,
           }}>{saving ? "กำลังบันทึก..." : "บันทึก"}</button>
         </div>
@@ -223,7 +224,7 @@ function PnLModal({ item, onClose }) {
   const roi = totalCost > 0 ? ((profit / totalCost) * 100).toFixed(1) : 0;
 
   const row = (label, val, color) => (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${BRAND.border}44`, fontSize: 13 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${withAlpha(BRAND.border, '44')}`, fontSize: 13 }}>
       <span style={{ color: BRAND.textSec }}>{label}</span>
       <span style={{ color: color || BRAND.textPri, fontWeight: 600 }}>{val}</span>
     </div>
@@ -231,7 +232,7 @@ function PnLModal({ item, onClose }) {
 
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "#000000cc", zIndex: 1000,
+      position: "fixed", inset: 0, background: "var(--ax-c-000000cc)", zIndex: 1000,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
     }}>
       <div style={{
@@ -338,7 +339,7 @@ export default function ReservationPage() {
         </div>
         <button onClick={() => { setSelected(null); setModal("add"); }} style={{
           padding: "9px 18px", borderRadius: 8, border: "none",
-          background: BRAND.teal, color: "#000", fontWeight: 700, cursor: "pointer", fontSize: 13,
+          background: BRAND.teal, color: "var(--ax-c-000)", fontWeight: 700, cursor: "pointer", fontSize: 13,
         }}>+ เพิ่มใบจอง</button>
       </div>
 
@@ -359,8 +360,8 @@ export default function ReservationPage() {
           return (
             <button key={s} onClick={() => setFilterStatus(s)} style={{
               padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-              cursor: "pointer", border: `1px solid ${cfg ? cfg.color + "55" : BRAND.border}`,
-              background: active ? (cfg ? cfg.bg : "#ffffff11") : "transparent",
+              cursor: "pointer", border: `1px solid ${cfg ? withAlpha(cfg.color, '55') : BRAND.border}`,
+              background: active ? (cfg ? cfg.bg : "var(--ax-c-ffffff11)") : "transparent",
               color: cfg ? cfg.color : (active ? BRAND.textPri : BRAND.textSec),
             }}>{s}</button>
           );
@@ -388,7 +389,7 @@ export default function ReservationPage() {
 
             return (
               <div key={item.id} style={{
-                background: BRAND.bgCard, border: `1px solid ${urgent ? BRAND.danger + "88" : BRAND.border}`,
+                background: BRAND.bgCard, border: `1px solid ${urgent ? withAlpha(BRAND.danger, '88') : BRAND.border}`,
                 borderRadius: 12, padding: "16px 20px",
                 borderLeft: `3px solid ${STATUS_CONFIG[item.status]?.color || BRAND.border}`,
               }}>
@@ -398,7 +399,7 @@ export default function ReservationPage() {
                       <span style={{ fontSize: 15, fontWeight: 700, color: BRAND.textPri }}>{item.projectName}</span>
                       {item.unitNo && <span style={{ fontSize: 11, color: BRAND.textSec }}>#{item.unitNo}</span>}
                       <StatusBadge status={item.status} />
-                      <span style={{ fontSize: 11, color: BRAND.textSec, background: "#ffffff0a", padding: "2px 8px", borderRadius: 6 }}>
+                      <span style={{ fontSize: 11, color: BRAND.textSec, background: "var(--ax-c-ffffff0a)", padding: "2px 8px", borderRadius: 6 }}>
                         {item.propertyType}
                       </span>
                     </div>
@@ -429,7 +430,7 @@ export default function ReservationPage() {
                   <div style={{ display: "flex", gap: 6, marginLeft: 12, flexShrink: 0 }}>
                     {item.assignmentPrice > 0 && (
                       <button onClick={() => { setSelected(item); setModal("pnl"); }} style={{
-                        padding: "6px 12px", borderRadius: 7, border: `1px solid ${BRAND.purple}55`,
+                        padding: "6px 12px", borderRadius: 7, border: `1px solid ${withAlpha(BRAND.purple, '55')}`,
                         background: "#7C3AED22", color: BRAND.purple, cursor: "pointer", fontSize: 12, fontWeight: 600,
                       }}>P&L</button>
                     )}
@@ -438,7 +439,7 @@ export default function ReservationPage() {
                       background: "transparent", color: BRAND.textSec, cursor: "pointer", fontSize: 12,
                     }}>แก้ไข</button>
                     <button onClick={() => handleDelete(item.id)} disabled={deleting === item.id} style={{
-                      padding: "6px 12px", borderRadius: 7, border: `1px solid ${BRAND.danger}44`,
+                      padding: "6px 12px", borderRadius: 7, border: `1px solid ${withAlpha(BRAND.danger, '44')}`,
                       background: "#EF444411", color: BRAND.danger, cursor: "pointer", fontSize: 12,
                       opacity: deleting === item.id ? 0.5 : 1,
                     }}>ลบ</button>
@@ -452,7 +453,7 @@ export default function ReservationPage() {
 
       {/* Legal reminder */}
       <div style={{
-        marginTop: 24, background: "#3B82F611", border: `1px solid ${BRAND.blue}33`,
+        marginTop: 24, background: "#3B82F611", border: `1px solid ${withAlpha(BRAND.blue, '33')}`,
         borderRadius: 10, padding: "12px 16px", fontSize: 12, color: BRAND.blue,
       }}>
         ⚖️ <strong>ข้อควรระวัง:</strong> การโอนสิทธิ์ใบจองต้องทำเป็นหนังสือและบอกกล่าวโครงการ (ป.พ.พ. ม.306–315)

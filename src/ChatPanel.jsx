@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { BRAND as BASE_BRAND } from './lib/config.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
-const BRAND = { ...BASE_BRAND, bgGlass: 'rgba(8,15,30,0.92)' }
+const BRAND = { ...BASE_BRAND, bgGlass: 'var(--ax-c-r8-15-30-a920)' }
 
 const DEFAULT_QUICK_QUESTIONS = [
   "สรุปภาพรวมพอร์ตโฟลิโอทั้งหมด",
@@ -183,7 +183,7 @@ export default function ChatPanel({
             flexDirection: "column",
             zIndex: 299,
             backdropFilter: "blur(20px)",
-            boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
+            boxShadow: "0 8px 40px var(--ax-c-r0-0-0-a600)",
             overflow: "hidden",
           }}
         >
@@ -213,7 +213,7 @@ export default function ChatPanel({
               <button
                 onClick={clearChat}
                 style={{
-                  background: "rgba(255,255,255,0.05)",
+                  background: "var(--ax-c-r255-255-255-a50)",
                   border: `1px solid ${BRAND.border}`,
                   borderRadius: 8,
                   color: BRAND.textSec,
@@ -286,7 +286,7 @@ export default function ChatPanel({
                     background:
                       m.role === "user"
                         ? `linear-gradient(135deg, rgba(45,212,191,0.25), rgba(124,58,237,0.2))`
-                        : "rgba(255,255,255,0.04)",
+                        : "var(--ax-c-r255-255-255-a40)",
                     border: `1px solid ${m.role === "user" ? "rgba(45,212,191,0.3)" : BRAND.border}`,
                     color: BRAND.textPri,
                     fontSize: 13,
@@ -309,7 +309,7 @@ export default function ChatPanel({
                     maxWidth: "85%",
                     padding: "9px 13px",
                     borderRadius: "14px 14px 14px 4px",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "var(--ax-c-r255-255-255-a40)",
                     border: `1px solid ${BRAND.border}`,
                     color: BRAND.textPri,
                     fontSize: 13,
@@ -339,7 +339,7 @@ export default function ChatPanel({
                   style={{
                     padding: "10px 14px",
                     borderRadius: "14px 14px 14px 4px",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "var(--ax-c-r255-255-255-a40)",
                     border: `1px solid ${BRAND.border}`,
                     display: "flex",
                     gap: 5,
@@ -371,7 +371,7 @@ export default function ChatPanel({
                   borderRadius: 10,
                   background: "rgba(239,68,68,0.1)",
                   border: "1px solid rgba(239,68,68,0.3)",
-                  color: "#FCA5A5",
+                  color: "var(--ax-c-fca5a5)",
                   fontSize: 12,
                 }}
               >
@@ -401,7 +401,7 @@ export default function ChatPanel({
               disabled={loading}
               style={{
                 flex: 1,
-                background: "rgba(255,255,255,0.05)",
+                background: "var(--ax-c-r255-255-255-a50)",
                 border: `1px solid rgba(45,212,191,0.2)`,
                 borderRadius: 10,
                 color: BRAND.textPri,

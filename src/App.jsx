@@ -55,6 +55,8 @@ import { DisbursementModal } from "./components/DisbursementModal.jsx";
 import { TopupModal } from "./components/TopupModal.jsx";
 import { AdvancePaymentModal } from "./components/AdvancePaymentModal.jsx";
 import { RenewContractModal } from "./components/RenewContractModal.jsx";
+import { withAlpha } from './lib/theme.js'
+import { ThemeToggle } from './components/ThemeToggle.jsx'
 
 
 // ── Code splitting: โหลดแต่ละหน้าเมื่อเปิดใช้จริง ลด bundle แรกเข้า ──
@@ -62,7 +64,7 @@ const lazyPage = (loader) => {
   const C = React.lazy(loader);
   return function LazyPage(props) {
     return (
-      <React.Suspense fallback={<div style={{ padding: 60, textAlign: "center", color: "#64748B" }}>กำลังโหลด...</div>}>
+      <React.Suspense fallback={<div style={{ padding: 60, textAlign: "center", color: "var(--ax-c-64748b)" }}>กำลังโหลด...</div>}>
         <C {...props} />
       </React.Suspense>
     );
@@ -775,7 +777,7 @@ export default function App({ initialView = "main", onLogout }) {
       <div
         style={{
           minHeight: "100vh",
-          background: `radial-gradient(ellipse at 20% 0%, rgba(45,212,191,.06) 0%, transparent 50%), radial-gradient(ellipse at 80% 100%, rgba(124,58,237,.07) 0%, transparent 50%), ${BRAND.bg}`,
+          background: "var(--ax-app-bg)",
           paddingBottom: 72,
         }}
       >
@@ -809,7 +811,7 @@ export default function App({ initialView = "main", onLogout }) {
                     fontFamily: "'Kanit',sans-serif",
                     fontSize: 15,
                     fontWeight: 700,
-                    background: "linear-gradient(90deg,#2DD4BF,#A78BFA)",
+                    background: "linear-gradient(90deg,var(--ax-c-2dd4bf),var(--ax-c-a78bfa))",
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
                   }}
@@ -819,6 +821,9 @@ export default function App({ initialView = "main", onLogout }) {
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, overflowX: "auto", whiteSpace: "nowrap", paddingBottom: 2 }}>
+
+              {/* สลับโหมดมืด/สว่าง — ไว้ต้นแถว มือถือเห็นทันทีโดยไม่ต้องเลื่อนแถบ */}
+              <ThemeToggle />
 
               {/* วันที่ + เวลา real-time */}
               <div style={{
@@ -852,7 +857,7 @@ export default function App({ initialView = "main", onLogout }) {
                     apiConnected ? "success" : "warning"
                   }`}
                 ></span>
-                <span style={{ color: apiConnected ? "#4ADE80" : "#F59E0B" }}>
+                <span style={{ color: apiConnected ? "var(--ax-c-4ade80)" : "var(--ax-c-f59e0b)" }}>
                   {apiConnected ? "Online" : "Offline"}
                 </span>
               </div>
@@ -875,10 +880,10 @@ export default function App({ initialView = "main", onLogout }) {
                 onClick={() => openView(currentView === "cases" ? "main" : "cases")}
                 style={{
                   background: currentView === "cases" ? "rgba(45,212,191,0.15)" : "rgba(59,130,246,0.12)",
-                  border: `1px solid ${currentView === "cases" ? BRAND.teal : "#3B82F6"}`,
+                  border: `1px solid ${currentView === "cases" ? BRAND.teal : "var(--ax-c-3b82f6)"}`,
                   padding: "6px 14px",
                   borderRadius: 8,
-                  color: currentView === "cases" ? BRAND.teal : "#93C5FD",
+                  color: currentView === "cases" ? BRAND.teal : "var(--ax-c-93c5fd)",
                   fontSize: 12,
                   fontWeight: 700,
                   cursor: "pointer",
@@ -910,7 +915,7 @@ export default function App({ initialView = "main", onLogout }) {
                   border: "1px solid rgba(239,68,68,0.35)",
                   padding: "6px 12px",
                   borderRadius: 8,
-                  color: "#FCA5A5",
+                  color: "var(--ax-c-fca5a5)",
                   fontSize: 11,
                   fontWeight: 700,
                   cursor: "pointer",
@@ -953,7 +958,7 @@ export default function App({ initialView = "main", onLogout }) {
             <button
               className={`tab ${mainTab === "dashboard" ? "active" : ""}`}
               onClick={() => setMainTab("dashboard")}
-              style={mainTab === "dashboard" ? { borderColor: '#7C3AED', background: 'rgba(124,58,237,0.1)', color: '#A78BFA' } : {}}
+              style={mainTab === "dashboard" ? { borderColor: 'var(--ax-c-7c3aed)', background: 'rgba(124,58,237,0.1)', color: 'var(--ax-c-a78bfa)' } : {}}
             >
               📊 Dashboard
             </button>
@@ -985,35 +990,35 @@ export default function App({ initialView = "main", onLogout }) {
             <button
               className={`tab ${mainTab === "map" ? "active" : ""}`}
               onClick={() => setMainTab("map")}
-              style={mainTab === "map" ? { borderColor: '#2DD4BF', background: 'rgba(45,212,191,0.1)', color: '#2DD4BF' } : {}}
+              style={mainTab === "map" ? { borderColor: 'var(--ax-c-2dd4bf)', background: 'rgba(45,212,191,0.1)', color: 'var(--ax-c-2dd4bf)' } : {}}
             >
               🗺️ แผนที่ทรัพย์
             </button>
             <button
               className={`tab ${mainTab === "investor" ? "active" : ""}`}
               onClick={() => setMainTab("investor")}
-              style={mainTab === "investor" ? { borderColor: '#F59E0B', background: 'rgba(245,158,11,0.1)', color: '#F59E0B' } : {}}
+              style={mainTab === "investor" ? { borderColor: 'var(--ax-c-f59e0b)', background: 'rgba(245,158,11,0.1)', color: 'var(--ax-c-f59e0b)' } : {}}
             >
               💼 นายทุน
             </button>
             <button
               className={`tab ${mainTab === "tax" ? "active" : ""}`}
               onClick={() => setMainTab("tax")}
-              style={mainTab === "tax" ? { borderColor: '#10B981', background: 'rgba(16,185,129,0.1)', color: '#10B981' } : {}}
+              style={mainTab === "tax" ? { borderColor: 'var(--ax-c-10b981)', background: 'rgba(16,185,129,0.1)', color: 'var(--ax-c-10b981)' } : {}}
             >
               🧮 ภาษี
             </button>
             <button
               className={`tab ${mainTab === "legal" ? "active" : ""}`}
               onClick={() => setMainTab("legal")}
-              style={mainTab === "legal" ? { borderColor: '#3B82F6', background: 'rgba(59,130,246,0.1)', color: '#3B82F6' } : {}}
+              style={mainTab === "legal" ? { borderColor: 'var(--ax-c-3b82f6)', background: 'rgba(59,130,246,0.1)', color: 'var(--ax-c-3b82f6)' } : {}}
             >
               ⚖️ กฎหมาย
             </button>
             <button
               className={`tab ${mainTab === "reservation" ? "active" : ""}`}
               onClick={() => setMainTab("reservation")}
-              style={mainTab === "reservation" ? { borderColor: '#F59E0B', background: 'rgba(245,158,11,0.1)', color: '#F59E0B' } : {}}
+              style={mainTab === "reservation" ? { borderColor: 'var(--ax-c-f59e0b)', background: 'rgba(245,158,11,0.1)', color: 'var(--ax-c-f59e0b)' } : {}}
             >
               🏷️ ใบจอง
             </button>
@@ -1065,7 +1070,7 @@ export default function App({ initialView = "main", onLogout }) {
             <>
               {(additionsState === "error" || additionsState === "unauthorized") && (
                 <div className="card" style={{ marginBottom: 16, borderColor: "rgba(239,68,68,.45)", background: "rgba(239,68,68,.06)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ color: "#FCA5A5", fontSize: 13, fontWeight: 600, flex: 1, minWidth: 220 }}>
+                  <span style={{ color: "var(--ax-c-fca5a5)", fontSize: 13, fontWeight: 600, flex: 1, minWidth: 220 }}>
                     {additionsState === "unauthorized"
                       ? "⚠️ เซสชันหมดอายุ — ออกจากระบบแล้วเข้าใหม่ ระบบจึงจะตรวจยอดชำระเพิ่มได้"
                       : "⚠️ โหลดรายการชำระเพิ่มไม่สำเร็จ — งวดที่ลูกค้าจ่ายไม่ครบจะยังไม่แสดง และยังไม่ส่งข้อความทวงส่วนที่ขาด"}
@@ -1074,7 +1079,7 @@ export default function App({ initialView = "main", onLogout }) {
                     <button
                       onClick={() => loadAdditions({ showLoading: true })}
                       className="btn"
-                      style={{ padding: "6px 14px", borderRadius: 8, fontSize: 12, border: "1px solid rgba(239,68,68,.5)", background: "rgba(239,68,68,.1)", color: "#FCA5A5", cursor: "pointer" }}
+                      style={{ padding: "6px 14px", borderRadius: 8, fontSize: 12, border: "1px solid rgba(239,68,68,.5)", background: "rgba(239,68,68,.1)", color: "var(--ax-c-fca5a5)", cursor: "pointer" }}
                     >
                       ลองใหม่
                     </button>
@@ -1135,7 +1140,7 @@ export default function App({ initialView = "main", onLogout }) {
                     textAlign: "center",
                     background:
                       payAlerts.length > 0 ? "rgba(239,68,68,.08)" : undefined,
-                    borderColor: payAlerts.length > 0 ? "#EF4444" : undefined,
+                    borderColor: payAlerts.length > 0 ? "var(--ax-c-ef4444)" : undefined,
                   }}
                 >
                   <div
@@ -1151,7 +1156,7 @@ export default function App({ initialView = "main", onLogout }) {
                     style={{
                       fontSize: 24,
                       fontWeight: 700,
-                      color: payAlerts.length > 0 ? "#FCA5A5" : "#4ADE80",
+                      color: payAlerts.length > 0 ? "var(--ax-c-fca5a5)" : "var(--ax-c-4ade80)",
                     }}
                   >
                     {payAlerts.length}
@@ -1166,7 +1171,7 @@ export default function App({ initialView = "main", onLogout }) {
                   style={{
                     padding: 16,
                     marginBottom: 20,
-                    borderColor: "#EF4444",
+                    borderColor: "var(--ax-c-ef4444)",
                     background: "rgba(239,68,68,.05)",
                   }}
                 >
@@ -1181,7 +1186,7 @@ export default function App({ initialView = "main", onLogout }) {
                     <div
                       style={{
                         fontWeight: 700,
-                        color: "#FCA5A5",
+                        color: "var(--ax-c-fca5a5)",
                         fontSize: 14,
                       }}
                     >
@@ -1211,9 +1216,9 @@ export default function App({ initialView = "main", onLogout }) {
                             alignItems: "center",
                             justifyContent: "space-between",
                             padding: "10px 14px",
-                            background: "rgba(0,0,0,.3)",
+                            background: "var(--ax-c-r0-0-0-a300)",
                             borderRadius: 10,
-                            border: `1px solid ${st.border}40`,
+                            border: `1px solid ${withAlpha(st.border, '40')}`,
                             flexWrap: "wrap",
                             gap: 8,
                           }}
@@ -1288,12 +1293,12 @@ export default function App({ initialView = "main", onLogout }) {
                             ) : inGroup ? (
                               <span style={{ fontSize: 11, color: BRAND.teal }}>รวมส่งกับงวด {leader.installment}</span>
                             ) : (
-                              <span style={{ fontSize: 11, color: "#FCA5A5" }}>ยังทวงส่วนที่ขาดไม่ได้ (รอรันไฟล์ SQL)</span>
+                              <span style={{ fontSize: 11, color: "var(--ax-c-fca5a5)" }}>ยังทวงส่วนที่ขาดไม่ได้ (รอรันไฟล์ SQL)</span>
                             )}
                             <button
                               onClick={() => setPostponeModal({ customer: c, payment: p })}
                               className="btn"
-                              style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(251,146,60,.4)", background: "rgba(251,146,60,.08)", color: "#FB923C", cursor: "pointer" }}
+                              style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(251,146,60,.4)", background: "rgba(251,146,60,.08)", color: "var(--ax-c-fb923c)", cursor: "pointer" }}
                             >
                               📅 เลื่อน
                             </button>
@@ -1309,7 +1314,7 @@ export default function App({ initialView = "main", onLogout }) {
               {overdueAlerts.length > 0 && (
                 <div className="card" style={{ borderColor: "rgba(251,146,60,.4)", background: "rgba(251,146,60,.05)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                    <div style={{ fontWeight: 700, color: "#FB923C", fontSize: 14 }}>
+                    <div style={{ fontWeight: 700, color: "var(--ax-c-fb923c)", fontSize: 14 }}>
                       ⏰ ค้างชำระ ({overdueAlerts.length} งวด)
                     </div>
                     <span style={{ fontSize: 11, color: BRAND.textSec }}>เลยกำหนดแล้วยังไม่ได้บันทึก</span>
@@ -1318,7 +1323,7 @@ export default function App({ initialView = "main", onLogout }) {
                     {overdueAlerts.map(({ c, p }, i) => (
                       <div
                         key={i}
-                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,0,0,.3)", borderRadius: 10, border: "1px solid rgba(251,146,60,.3)", flexWrap: "wrap", gap: 8 }}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "var(--ax-c-r0-0-0-a300)", borderRadius: 10, border: "1px solid rgba(251,146,60,.3)", flexWrap: "wrap", gap: 8 }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 180 }}>
                           <span style={{ fontSize: 18 }}>{c.icon || "🏠"}</span>
@@ -1327,13 +1332,13 @@ export default function App({ initialView = "main", onLogout }) {
                             <div style={{ fontSize: 11, color: BRAND.textSec }}>
                               งวด {p.installment} • {formatThai(p.dateStr)}
                               {p.postponedFrom && (
-                                <span style={{ color: "#FB923C", marginLeft: 6 }}>(เลื่อนจาก {formatThai(p.postponedFrom)})</span>
+                                <span style={{ color: "var(--ax-c-fb923c)", marginLeft: 6 }}>(เลื่อนจาก {formatThai(p.postponedFrom)})</span>
                               )}
                             </div>
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <span style={{ padding: "3px 10px", borderRadius: 20, background: "rgba(251,146,60,.15)", border: "1px solid rgba(251,146,60,.5)", color: "#FB923C", fontSize: 11, fontWeight: 600 }}>
+                          <span style={{ padding: "3px 10px", borderRadius: 20, background: "rgba(251,146,60,.15)", border: "1px solid rgba(251,146,60,.5)", color: "var(--ax-c-fb923c)", fontSize: 11, fontWeight: 600 }}>
                             เลย {Math.abs(p.diff)} วัน
                           </span>
                           <span style={{ fontWeight: 700, color: BRAND.gold, fontSize: 13 }}>
@@ -1344,7 +1349,7 @@ export default function App({ initialView = "main", onLogout }) {
                           <button
                             onClick={() => setPostponeModal({ customer: c, payment: p })}
                             className="btn"
-                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: p.postponedFrom ? "1px solid rgba(251,146,60,.6)" : "1px solid rgba(251,146,60,.4)", background: p.postponedFrom ? "rgba(251,146,60,.18)" : "rgba(251,146,60,.08)", color: "#FB923C", cursor: "pointer" }}
+                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: p.postponedFrom ? "1px solid rgba(251,146,60,.6)" : "1px solid rgba(251,146,60,.4)", background: p.postponedFrom ? "rgba(251,146,60,.18)" : "rgba(251,146,60,.08)", color: "var(--ax-c-fb923c)", cursor: "pointer" }}
                           >
                             {p.postponedFrom ? "🔄 เลื่อนแล้ว" : "📅 เลื่อนนัด"}
                           </button>
@@ -1355,7 +1360,7 @@ export default function App({ initialView = "main", onLogout }) {
                               disabled={additionsState !== "ready"}
                               title={additionsState === "missing" ? "ต้องรันไฟล์ supabase_payment_additions.sql ใน Supabase ก่อน" : additionsState !== "ready" ? "ระบบชำระเพิ่มยังไม่พร้อม" : undefined}
                               className="btn"
-                              style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(245,158,11,.5)", background: "rgba(245,158,11,.12)", color: "#FBBF24", cursor: additionsState === "ready" ? "pointer" : "not-allowed", opacity: additionsState === "ready" ? 1 : 0.5 }}
+                              style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(245,158,11,.5)", background: "rgba(245,158,11,.12)", color: "var(--ax-c-fbbf24)", cursor: additionsState === "ready" ? "pointer" : "not-allowed", opacity: additionsState === "ready" ? 1 : 0.5 }}
                             >
                               ＋ ชำระเพิ่ม
                             </button>
@@ -1379,7 +1384,7 @@ export default function App({ initialView = "main", onLogout }) {
               {partialAlerts.length > 0 && (
                 <div className="card" style={{ borderColor: "rgba(245,158,11,.45)", background: "rgba(245,158,11,.05)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
-                    <div style={{ fontWeight: 700, color: "#FBBF24", fontSize: 14 }}>
+                    <div style={{ fontWeight: 700, color: "var(--ax-c-fbbf24)", fontSize: 14 }}>
                       ⚠️ ชำระไม่ครบ ({partialAlerts.length} งวด)
                     </div>
                     <span style={{ fontSize: 11, color: BRAND.textSec }}>
@@ -1392,7 +1397,7 @@ export default function App({ initialView = "main", onLogout }) {
                     {partialAlerts.map(({ c, p, topup }) => (
                       <div
                         key={`${c.id}|${topup?.id || ""}|${p.installment}`}
-                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "rgba(0,0,0,.3)", borderRadius: 10, border: "1px solid rgba(245,158,11,.3)", flexWrap: "wrap", gap: 8 }}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "var(--ax-c-r0-0-0-a300)", borderRadius: 10, border: "1px solid rgba(245,158,11,.3)", flexWrap: "wrap", gap: 8 }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 180 }}>
                           <span style={{ fontSize: 18 }}>{c.icon || "🏠"}</span>
@@ -1401,7 +1406,7 @@ export default function App({ initialView = "main", onLogout }) {
                             <div style={{ fontSize: 11, color: BRAND.textSec }}>
                               {topup ? `วงเงินเพิ่ม +${formatMoney(topup.topupAmount)} ฿ · ` : ""}งวด {p.installment} • {formatThai(p.dateStr)}
                               {p.postponedFrom && (
-                                <span style={{ color: "#FB923C", marginLeft: 6 }}>(เลื่อนจาก {formatThai(p.postponedFrom)})</span>
+                                <span style={{ color: "var(--ax-c-fb923c)", marginLeft: 6 }}>(เลื่อนจาก {formatThai(p.postponedFrom)})</span>
                               )}
                             </div>
                             <div style={{ fontSize: 11, color: BRAND.textSec }}>
@@ -1411,16 +1416,16 @@ export default function App({ initialView = "main", onLogout }) {
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <span style={{ padding: "3px 10px", borderRadius: 20, background: p.diff < 0 ? "rgba(251,146,60,.15)" : "rgba(245,158,11,.12)", border: `1px solid ${p.diff < 0 ? "rgba(251,146,60,.5)" : "rgba(245,158,11,.45)"}`, color: p.diff < 0 ? "#FB923C" : "#FBBF24", fontSize: 11, fontWeight: 600 }}>
+                          <span style={{ padding: "3px 10px", borderRadius: 20, background: p.diff < 0 ? "rgba(251,146,60,.15)" : "rgba(245,158,11,.12)", border: `1px solid ${p.diff < 0 ? "rgba(251,146,60,.5)" : "rgba(245,158,11,.45)"}`, color: p.diff < 0 ? "var(--ax-c-fb923c)" : "var(--ax-c-fbbf24)", fontSize: 11, fontWeight: 600 }}>
                             {p.diff < 0 ? `เลย ${Math.abs(p.diff)} วัน` : p.diff === 0 ? "ครบวันนี้" : `อีก ${p.diff} วัน`}
                           </span>
-                          <span style={{ fontWeight: 700, color: "#FBBF24", fontSize: 13 }}>
+                          <span style={{ fontWeight: 700, color: "var(--ax-c-fbbf24)", fontSize: 13 }}>
                             ขาด {formatMoney(p.balance.outstanding)} ฿
                           </span>
                           <button
                             onClick={() => setPostponeModal(topup ? { customer: c, payment: p, topup } : { customer: c, payment: p })}
                             className="btn"
-                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(251,146,60,.4)", background: "rgba(251,146,60,.08)", color: "#FB923C", cursor: "pointer" }}
+                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(251,146,60,.4)", background: "rgba(251,146,60,.08)", color: "var(--ax-c-fb923c)", cursor: "pointer" }}
                           >
                             📅 นัดวันชำระ
                           </button>
@@ -1428,7 +1433,7 @@ export default function App({ initialView = "main", onLogout }) {
                             onClick={() => openAdditionModal(topup ? { customer: c, payment: p, topup } : { customer: c, payment: p })}
                             disabled={additionsState !== "ready"}
                             className="btn"
-                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(245,158,11,.5)", background: "rgba(245,158,11,.12)", color: "#FBBF24", cursor: additionsState === "ready" ? "pointer" : "not-allowed", opacity: additionsState === "ready" ? 1 : 0.5 }}
+                            style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, border: "1px solid rgba(245,158,11,.5)", background: "rgba(245,158,11,.12)", color: "var(--ax-c-fbbf24)", cursor: additionsState === "ready" ? "pointer" : "not-allowed", opacity: additionsState === "ready" ? 1 : 0.5 }}
                           >
                             ＋ ชำระเพิ่ม
                           </button>
@@ -1447,7 +1452,7 @@ export default function App({ initialView = "main", onLogout }) {
                   <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
                   <div
                     style={{
-                      color: "#4ADE80",
+                      color: "var(--ax-c-4ade80)",
                       fontWeight: 600,
                       marginBottom: 4,
                     }}
@@ -1471,7 +1476,7 @@ export default function App({ initialView = "main", onLogout }) {
                   style={{ padding: 40, textAlign: "center" }}
                 >
                   <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-                  <div style={{ color: "#4ADE80", fontWeight: 600 }}>
+                  <div style={{ color: "var(--ax-c-4ade80)", fontWeight: 600 }}>
                     ไม่มีสัญญาที่ใกล้ครบกำหนดใน 6 เดือน
                   </div>
                 </div>
@@ -1598,7 +1603,7 @@ export default function App({ initialView = "main", onLogout }) {
               ) : error ? (
                 <div
                   className="card"
-                  style={{ padding: 32, textAlign: "center", color: "#FCA5A5" }}
+                  style={{ padding: 32, textAlign: "center", color: "var(--ax-c-fca5a5)" }}
                 >
                   <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
                   <div>{error}</div>
@@ -1611,7 +1616,7 @@ export default function App({ initialView = "main", onLogout }) {
                       background: BRAND.teal,
                       border: "none",
                       borderRadius: 8,
-                      color: "#000",
+                      color: "var(--ax-c-000)",
                       fontWeight: 600,
                     }}
                   >
@@ -1691,7 +1696,7 @@ export default function App({ initialView = "main", onLogout }) {
                                   width: 44,
                                   height: 44,
                                   borderRadius: 12,
-                                  background: c.isVoided ? '#7C2D12' : (c.isClosed ? '#334155' : (c.color || BRAND.teal)),
+                                  background: c.isVoided ? '#7C2D12' : (c.isClosed ? 'var(--ax-c-334155)' : (c.color || BRAND.teal)),
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -1720,21 +1725,21 @@ export default function App({ initialView = "main", onLogout }) {
                                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
                                   <TypeBadge type={c.type} />
                                   {c.isClosed && (
-                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(100,116,139,0.2)', color: '#94A3B8', border: '1px solid rgba(100,116,139,0.4)' }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(100,116,139,0.2)', color: 'var(--ax-c-94a3b8)', border: '1px solid rgba(100,116,139,0.4)' }}>
                                       🔒 ปิดแล้ว
                                     </span>
                                   )}
                                   {c.isVoided && (
-                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(180,83,9,0.2)', color: '#FB923C', border: '1px solid rgba(180,83,9,0.4)' }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(180,83,9,0.2)', color: 'var(--ax-c-fb923c)', border: '1px solid rgba(180,83,9,0.4)' }}>
                                       🚫 ยกเลิกสัญญา
                                     </span>
                                   )}
                                   {c.lineUserId ? (
-                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(6,199,85,0.15)', color: '#06C755', border: '1px solid rgba(6,199,85,0.4)' }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(6,199,85,0.15)', color: 'var(--ax-line-green)', border: '1px solid rgba(6,199,85,0.4)' }}>
                                       ✅ LINE
                                     </span>
                                   ) : (
-                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(251,191,36,0.15)', color: '#FBBF24', border: '1px solid rgba(251,191,36,0.4)' }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(251,191,36,0.15)', color: 'var(--ax-c-fbbf24)', border: '1px solid rgba(251,191,36,0.4)' }}>
                                       ⚠️ ยังไม่มี LINE
                                     </span>
                                   )}
@@ -1860,7 +1865,7 @@ export default function App({ initialView = "main", onLogout }) {
                                     style={{
                                       padding: '3px 10px', borderRadius: 6,
                                       background: 'rgba(6,199,85,.1)', border: '1px solid rgba(6,199,85,.3)',
-                                      color: '#06C755', fontSize: 11, cursor: 'pointer',
+                                      color: BRAND.lineGreen, fontSize: 11, cursor: 'pointer',
                                     }}
                                   >
                                     {lineTokens[c.id]?.loading ? '⏳' : '📲 สร้างรหัส LINE'}
@@ -1871,7 +1876,7 @@ export default function App({ initialView = "main", onLogout }) {
                                   style={{
                                     padding: '3px 10px', borderRadius: 6,
                                     background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)',
-                                    color: '#FCA5A5', fontSize: 11, cursor: 'pointer',
+                                    color: 'var(--ax-c-fca5a5)', fontSize: 11, cursor: 'pointer',
                                   }}
                                 >🚫 ยกเลิกสัญญา</button>
                               </div>
@@ -1879,16 +1884,16 @@ export default function App({ initialView = "main", onLogout }) {
                                 const tk = lineTokens[c.id];
                                 if (!tk || tk.loading) return null;
                                 if (tk.error) return (
-                                  <div style={{ marginTop: 6, fontSize: 11, color: '#F87171', textAlign: 'right' }}>❌ {tk.error}</div>
+                                  <div style={{ marginTop: 6, fontSize: 11, color: 'var(--ax-c-f87171)', textAlign: 'right' }}>❌ {tk.error}</div>
                                 );
                                 return (
                                   <div onClick={e => e.stopPropagation()} style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(6,199,85,0.08)', border: '1px solid rgba(6,199,85,0.3)', textAlign: 'right' }}>
                                     <div style={{ fontSize: 10, color: BRAND.textSec, marginBottom: 4 }}>รหัสลงทะเบียน LINE (หมดอายุ {tk.expiresAt})</div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-                                      <span style={{ fontSize: 16, fontWeight: 800, color: '#06C755', letterSpacing: 2 }}>{tk.token}</span>
+                                      <span style={{ fontSize: 16, fontWeight: 800, color: BRAND.lineGreen, letterSpacing: 2 }}>{tk.token}</span>
                                       <button
                                         onClick={() => { navigator.clipboard.writeText(tk.token); }}
-                                        style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(6,199,85,.2)', border: '1px solid rgba(6,199,85,.4)', color: '#06C755', fontSize: 10, cursor: 'pointer' }}
+                                        style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(6,199,85,.2)', border: '1px solid rgba(6,199,85,.4)', color: 'var(--ax-line-green)', fontSize: 10, cursor: 'pointer' }}
                                       >คัดลอก</button>
                                     </div>
                                     <div style={{ fontSize: 10, color: BRAND.textSec, marginTop: 4 }}>
@@ -1905,7 +1910,7 @@ export default function App({ initialView = "main", onLogout }) {
                               style={{
                                 borderTop: `1px solid ${BRAND.border}`,
                                 padding: 16,
-                                background: "rgba(0,0,0,.2)",
+                                background: "var(--ax-c-r0-0-0-a200)",
                               }}
                             >
                               {/* ── โฉนดที่ดิน ── */}
@@ -1941,7 +1946,7 @@ export default function App({ initialView = "main", onLogout }) {
                                         const a = customerAssessment(c.deeds);
                                         if (!a.pricedCount) return null;
                                         return (
-                                          <span style={{ background: a.complete ? "rgba(45,212,191,.12)" : "rgba(245,158,11,.15)", color: a.complete ? BRAND.teal : "#FCD34D", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
+                                          <span style={{ background: a.complete ? "rgba(45,212,191,.12)" : "rgba(245,158,11,.15)", color: a.complete ? BRAND.teal : "var(--ax-c-fcd34d)", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
                                             {a.complete ? `ประเมินราชการ ${formatMoney(a.total)} ฿` : `ประเมินราชการ ${a.pricedCount}/${a.count} แปลง`}
                                           </span>
                                         );
@@ -1973,7 +1978,7 @@ export default function App({ initialView = "main", onLogout }) {
                                       {c.deeds.map((d, idx) => (
                                         <div key={idx} style={{
                                           padding: "12px 14px",
-                                          background: idx % 2 === 0 ? "rgba(45,212,191,.03)" : "rgba(0,0,0,.15)",
+                                          background: idx % 2 === 0 ? "rgba(45,212,191,.03)" : "var(--ax-c-r0-0-0-a150)",
                                           borderTop: idx > 0 ? "1px solid rgba(45,212,191,.1)" : "none",
                                           display: "grid",
                                           gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
@@ -2031,12 +2036,12 @@ export default function App({ initialView = "main", onLogout }) {
                                 const timing = !Number.isFinite(daysLeft)
                                   ? { color: BRAND.textSec, bg: "rgba(100,116,139,.06)", border: "rgba(100,116,139,.3)", title: "ยังไม่ได้ระบุวันครบกำหนดไถ่", detail: "กรอกวันครบกำหนดสัญญาก่อนสร้างร่างหนังสือ" }
                                   : daysLeft > 180
-                                    ? { color: "#93C5FD", bg: "rgba(59,130,246,.06)", border: "rgba(59,130,246,.3)", title: `ครบกำหนดไถ่ใน ${daysLeft} วัน`, detail: "ยังไม่ถึงช่วงส่งหนังสือตามกำหนด สามารถร่างเพื่อตรวจสอบล่วงหน้าได้" }
+                                    ? { color: "var(--ax-c-93c5fd)", bg: "rgba(59,130,246,.06)", border: "rgba(59,130,246,.3)", title: `ครบกำหนดไถ่ใน ${daysLeft} วัน`, detail: "ยังไม่ถึงช่วงส่งหนังสือตามกำหนด สามารถร่างเพื่อตรวจสอบล่วงหน้าได้" }
                                     : daysLeft >= 90
-                                      ? { color: "#6EE7B7", bg: "rgba(16,185,129,.06)", border: "rgba(16,185,129,.3)", title: `อยู่ในช่วงส่งหนังสือ เหลือ ${daysLeft} วัน`, detail: "ช่วงแจ้งล่วงหน้า 3-6 เดือน ตามข้อมูลแม่แบบของระบบ" }
+                                      ? { color: "var(--ax-c-6ee7b7)", bg: "rgba(16,185,129,.06)", border: "rgba(16,185,129,.3)", title: `อยู่ในช่วงส่งหนังสือ เหลือ ${daysLeft} วัน`, detail: "ช่วงแจ้งล่วงหน้า 3-6 เดือน ตามข้อมูลแม่แบบของระบบ" }
                                       : daysLeft >= 0
-                                        ? { color: "#FCA5A5", bg: "rgba(239,68,68,.06)", border: "rgba(239,68,68,.3)", title: `ใกล้ครบกำหนดไถ่ เหลือ ${daysLeft} วัน`, detail: "เหลือน้อยกว่า 3 เดือน ควรตรวจสอบการส่งหนังสือและข้อกฎหมายทันที" }
-                                        : { color: "#FCA5A5", bg: "rgba(239,68,68,.06)", border: "rgba(239,68,68,.3)", title: `พ้นวันครบกำหนดไถ่ ${Math.abs(daysLeft)} วัน`, detail: "ร่างเอกสารได้ แต่ควรให้ผู้เชี่ยวชาญตรวจสอบสถานะสิทธิและกำหนดเวลา" };
+                                        ? { color: "var(--ax-c-fca5a5)", bg: "rgba(239,68,68,.06)", border: "rgba(239,68,68,.3)", title: `ใกล้ครบกำหนดไถ่ เหลือ ${daysLeft} วัน`, detail: "เหลือน้อยกว่า 3 เดือน ควรตรวจสอบการส่งหนังสือและข้อกฎหมายทันที" }
+                                        : { color: "var(--ax-c-fca5a5)", bg: "rgba(239,68,68,.06)", border: "rgba(239,68,68,.3)", title: `พ้นวันครบกำหนดไถ่ ${Math.abs(daysLeft)} วัน`, detail: "ร่างเอกสารได้ แต่ควรให้ผู้เชี่ยวชาญตรวจสอบสถานะสิทธิและกำหนดเวลา" };
                                 return (
                                   <div style={{ marginBottom: 16 }}>
                                     <CustomerExtraInfoSection
@@ -2061,7 +2066,7 @@ export default function App({ initialView = "main", onLogout }) {
                                           onClick={() => printNotice(c, customerExtraInfo[c.id] || {})}
                                           style={{
                                             padding: "8px 16px", borderRadius: 7, cursor: "pointer",
-                                            background: BRAND.teal, border: "none", color: "#062723",
+                                            background: BRAND.teal, border: "none", color: "var(--ax-c-062723)",
                                             fontWeight: 700, fontSize: 12, whiteSpace: "nowrap",
                                           }}
                                         >
@@ -2096,9 +2101,9 @@ export default function App({ initialView = "main", onLogout }) {
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 12 }}>
                                     {[
                                       ['วงเงินอนุมัติ', c.disbursement.approvedAmount, BRAND.textPri],
-                                      c.disbursement.existingDebts?.length > 0 && ['ทุนเก่า', -c.disbursement.existingDebts.reduce((s, d) => s + (d.amount || 0), 0), '#FCA5A5'],
-                                      c.disbursement.advanceTotal > 0 && ['หักล่วงหน้าวันทำสัญญา', -c.disbursement.advanceTotal, '#FCA5A5'],
-                                      c.disbursement.externalBrokerAmount > 0 && ['ค่านายหน้าภายนอก', -c.disbursement.externalBrokerAmount, '#FCA5A5'],
+                                      c.disbursement.existingDebts?.length > 0 && ['ทุนเก่า', -c.disbursement.existingDebts.reduce((s, d) => s + (d.amount || 0), 0), 'var(--ax-c-fca5a5)'],
+                                      c.disbursement.advanceTotal > 0 && ['หักล่วงหน้าวันทำสัญญา', -c.disbursement.advanceTotal, 'var(--ax-c-fca5a5)'],
+                                      c.disbursement.externalBrokerAmount > 0 && ['ค่านายหน้าภายนอก', -c.disbursement.externalBrokerAmount, 'var(--ax-c-fca5a5)'],
                                       c.disbursement.companyFeeAmount > 0 && ['ค่านายหน้าบริษัท', c.disbursement.companyFeeAmount, BRAND.gold],
                                     ].filter(Boolean).map(([label, val, color]) => (
                                       <React.Fragment key={label}>
@@ -2135,7 +2140,7 @@ export default function App({ initialView = "main", onLogout }) {
                                   {(detailTabs[c.id] || 'schedule') === 'schedule' && (
                                     <>
                                       <button onClick={e => { e.stopPropagation(); setDisbursementModal({ customer: c, focusAdvance: true }); }} title="บันทึกจำนวนเดือนและวันที่หักจากยอดเบิกจ่ายก่อนตารางชำระ"
-                                        style={{ padding: "5px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(22,163,74,.15)", border: "1px solid rgba(74,222,128,.4)", color: "#86EFAC" }}>
+                                        style={{ padding: "5px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(22,163,74,.15)", border: "1px solid rgba(74,222,128,.4)", color: "var(--ax-c-86efac)" }}>
                                         หักชำระล่วงหน้า
                                       </button>
                                       <button onClick={e => { e.stopPropagation(); setAdvancePaymentModal(c); }}
@@ -2166,25 +2171,25 @@ export default function App({ initialView = "main", onLogout }) {
                               >
                                 {upfrontEntries.length > 0 && (
                                   <>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 11, color: '#86EFAC', fontWeight: 700 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 11, color: 'var(--ax-c-86efac)', fontWeight: 700 }}>
                                       <span>ค่าตอบแทนหักล่วงหน้าก่อนตารางชำระ</span>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                         <span>รวม {formatMoney(c.disbursement.advanceTotal)} ฿</span>
-                                        <button onClick={e => { e.stopPropagation(); setDisbursementModal({ customer: c, focusAdvance: true }); }} title="แก้ไขวันที่และจำนวนเดือนที่หักล่วงหน้า" style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid rgba(74,222,128,.45)', background: 'transparent', color: '#86EFAC', fontSize: 10, cursor: 'pointer' }}>แก้ไข</button>
+                                        <button onClick={e => { e.stopPropagation(); setDisbursementModal({ customer: c, focusAdvance: true }); }} title="แก้ไขวันที่และจำนวนเดือนที่หักล่วงหน้า" style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid rgba(74,222,128,.45)', background: 'transparent', color: 'var(--ax-c-86efac)', fontSize: 10, cursor: 'pointer' }}>แก้ไข</button>
                                       </div>
                                     </div>
                                     {upfrontEntries.map(entry => (
                                       <div key={`upfront-${entry.index}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 14px', background: 'rgba(22,163,74,.10)', border: '1px solid rgba(74,222,128,.35)', borderRadius: 8 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                                          <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(74,222,128,.18)', color: '#86EFAC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700 }}>✓</span>
+                                          <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(74,222,128,.18)', color: 'var(--ax-c-86efac)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700 }}>✓</span>
                                           <div>
                                             <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri }}>หักชำระล่วงหน้า งวดที่ {entry.index}</div>
                                             <div style={{ fontSize: 11, color: BRAND.textSec }}>{entry.deductedAt ? `วันที่รับ/หัก ${formatThai(entry.deductedAt)}` : 'วันที่รับ/หักยังไม่ระบุ'} · ก่อนตารางชำระปกติ{c.payments.length > 0 ? ` (ไม่รวมในงวดที่ 1–${c.payments.length})` : ''}</div>
                                           </div>
                                         </div>
                                         <div style={{ textAlign: 'right' }}>
-                                          <div style={{ fontSize: 10, color: '#86EFAC' }}>หักจากยอดเบิกจ่ายแล้ว</div>
-                                          <div style={{ fontSize: 13, fontWeight: 700, color: '#86EFAC' }}>{formatMoney(entry.amount)} ฿</div>
+                                          <div style={{ fontSize: 10, color: 'var(--ax-c-86efac)' }}>หักจากยอดเบิกจ่ายแล้ว</div>
+                                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ax-c-86efac)' }}>{formatMoney(entry.amount)} ฿</div>
                                         </div>
                                       </div>
                                     ))}
@@ -2215,7 +2220,7 @@ export default function App({ initialView = "main", onLogout }) {
                                         padding: "10px 14px",
                                         background: pSt.bg,
                                         borderRadius: 10,
-                                        border: `1px solid ${pSt.border}40`,
+                                        border: `1px solid ${withAlpha(pSt.border, '40')}`,
                                         gap: 8,
                                       }}
                                     >
@@ -2233,7 +2238,7 @@ export default function App({ initialView = "main", onLogout }) {
                                             width: 28,
                                             height: 28,
                                             borderRadius: "50%",
-                                            background: pSt.border + "30",
+                                            background: withAlpha(pSt.border, '30'),
                                             display: "flex",
                                             alignItems: "center",
                                             justifyContent: "center",
@@ -2258,7 +2263,7 @@ export default function App({ initialView = "main", onLogout }) {
                                             {formatThai(p.dateStr)}
                                           </div>
                                           {p.postponedFrom && (
-                                            <div style={{ fontSize: 10, color: "#FB923C", marginTop: 1 }}>
+                                            <div style={{ fontSize: 10, color: "var(--ax-c-fb923c)", marginTop: 1 }}>
                                               เลื่อนจาก {formatThai(p.postponedFrom)}
                                             </div>
                                           )}
@@ -2301,7 +2306,7 @@ export default function App({ initialView = "main", onLogout }) {
                                             background: p.record
                                               ? "rgba(34,197,94,.12)"
                                               : "rgba(45,212,191,.08)",
-                                            color: p.record ? "#86EFAC" : BRAND.teal,
+                                            color: p.record ? "var(--ax-c-86efac)" : BRAND.teal,
                                           }}
                                         >
                                           {p.record ? "🧾 ดูสลิป" : "💳 บันทึก"}
@@ -2322,7 +2327,7 @@ export default function App({ initialView = "main", onLogout }) {
                                               background: p.postponedFrom
                                                 ? "rgba(251,146,60,.18)"
                                                 : "rgba(251,146,60,.07)",
-                                              color: "#FB923C",
+                                              color: "var(--ax-c-fb923c)",
                                             }}
                                           >
                                             {p.postponedFrom ? "🔄 เลื่อนแล้ว" : "📅 เลื่อน"}
@@ -2343,7 +2348,7 @@ export default function App({ initialView = "main", onLogout }) {
                                         ) : inGroup ? (
                                           <span style={{ fontSize: 10, color: BRAND.teal }}>รวมส่งกับงวด {groupLeader.installment}</span>
                                         ) : (
-                                          <span style={{ fontSize: 10, color: "#FCA5A5" }}>ยังทวงส่วนที่ขาดไม่ได้</span>
+                                          <span style={{ fontSize: 10, color: "var(--ax-c-fca5a5)" }}>ยังทวงส่วนที่ขาดไม่ได้</span>
                                         ))}
                                         {msg && <button
                                           onClick={(e) => {
@@ -2356,7 +2361,7 @@ export default function App({ initialView = "main", onLogout }) {
                                             borderRadius: 7,
                                             border: "1px solid rgba(245,158,11,.3)",
                                             background: "rgba(245,158,11,.08)",
-                                            color: "#F59E0B",
+                                            color: "var(--ax-c-f59e0b)",
                                             fontSize: 10,
                                           }}
                                         >
@@ -2371,7 +2376,7 @@ export default function App({ initialView = "main", onLogout }) {
                                             borderRadius: 7,
                                             border: "1px solid rgba(56,189,248,.3)",
                                             background: "rgba(56,189,248,.08)",
-                                            color: "#38BDF8",
+                                            color: "var(--ax-c-38bdf8)",
                                             fontSize: 10,
                                             textDecoration: "none",
                                           }}
@@ -2390,7 +2395,7 @@ export default function App({ initialView = "main", onLogout }) {
                                           borderRadius: 7, fontSize: 11,
                                           display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
                                         }}>
-                                          <span style={{ color: p.balance?.state === "partial" ? "#FDE68A" : "#86EFAC" }}>{p.balance?.state === "partial" ? "ชำระครั้งแรก" : "✓ ชำระ"} {(p.record.amountPaid||0).toLocaleString("th-TH")} บาท</span>
+                                          <span style={{ color: p.balance?.state === "partial" ? "var(--ax-c-fde68a)" : "var(--ax-c-86efac)" }}>{p.balance?.state === "partial" ? "ชำระครั้งแรก" : "✓ ชำระ"} {(p.record.amountPaid||0).toLocaleString("th-TH")} บาท</span>
                                           <span style={{ color: BRAND.textSec }}>วันที่ {formatThai(p.record.paidDate)}</span>
                                           {p.record.note && <span style={{ color: BRAND.textSec }}>| {p.record.note}</span>}
                                           {(p.record.slipUrl || p.record.slipImage) && (
@@ -2430,7 +2435,7 @@ export default function App({ initialView = "main", onLogout }) {
                                               style={{
                                                 padding: '3px 8px', borderRadius: 7, fontSize: 10,
                                                 background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.4)',
-                                                color: '#2DD4BF', fontWeight: 700, cursor: 'pointer',
+                                                color: 'var(--ax-c-2dd4bf)', fontWeight: 700, cursor: 'pointer',
                                               }}
                                             >
                                               🔓 เปิดสัญญา
@@ -2442,7 +2447,7 @@ export default function App({ initialView = "main", onLogout }) {
                                               style={{
                                                 padding: '3px 8px', borderRadius: 7, fontSize: 10,
                                                 background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)',
-                                                color: '#FCA5A5', fontWeight: 700, cursor: 'pointer',
+                                                color: 'var(--ax-c-fca5a5)', fontWeight: 700, cursor: 'pointer',
                                               }}
                                             >
                                               🔒 ปิดสัญญา
@@ -2492,8 +2497,8 @@ export default function App({ initialView = "main", onLogout }) {
                                     const dayHasOthers = Boolean(dayGroup) && (dayGroup.mains.length > 0 || dayGroup.extras.some(e => e.topup.id !== topup.id));
                                     const alertMessage = dayGroup && (dayGroup.mains.length || dayGroup.extras.length) ? msgPaymentGroup(c, dayGroup, alertType) : "";
                                     const alertTone = alertType === "overdue" || alertType === "due"
-                                      ? { color: "#FCA5A5", background: "rgba(239,68,68,.08)", border: "rgba(239,68,68,.4)" }
-                                      : { color: "#FDE68A", background: "rgba(245,158,11,.08)", border: "rgba(245,158,11,.4)" };
+                                      ? { color: "var(--ax-c-fca5a5)", background: "rgba(239,68,68,.08)", border: "rgba(239,68,68,.4)" }
+                                      : { color: "var(--ax-c-fde68a)", background: "rgba(245,158,11,.08)", border: "rgba(245,158,11,.4)" };
                                     return (
                                       <div key={topup.id} style={{ border: "1px solid rgba(245,158,11,.25)", borderRadius: 12, overflow: "hidden" }}>
                                         {/* Topup Header */}
@@ -2514,7 +2519,7 @@ export default function App({ initialView = "main", onLogout }) {
                                           </div>
                                           <button
                                             onClick={e => { e.stopPropagation(); handleDeleteTopup(topup.id, c.id); }}
-                                            style={{ padding: "3px 8px", borderRadius: 6, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.3)", color: "#FCA5A5", fontSize: 10, cursor: "pointer", flexShrink: 0, marginLeft: 8 }}
+                                            style={{ padding: "3px 8px", borderRadius: 6, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.3)", color: "var(--ax-c-fca5a5)", fontSize: 10, cursor: "pointer", flexShrink: 0, marginLeft: 8 }}
                                           >🗑️ ลบ</button>
                                         </div>
                                         {alertType && (
@@ -2534,9 +2539,9 @@ export default function App({ initialView = "main", onLogout }) {
                                               </div>
                                               <div style={{ color: BRAND.textSec, fontSize: 11, marginTop: 2 }}>
                                                 กำหนด {formatThai(nextOutstanding.dateStr)}
-                                                {nextOutstanding.postponedFrom && <span style={{ color: "#FB923C", marginLeft: 6 }}>(เลื่อนจาก {formatThai(nextOutstanding.postponedFrom)})</span>}
+                                                {nextOutstanding.postponedFrom && <span style={{ color: "var(--ax-c-fb923c)", marginLeft: 6 }}>(เลื่อนจาก {formatThai(nextOutstanding.postponedFrom)})</span>}
                                                 {" · "}ยอดชำระ {formatMoney(sameDayUnpaid.reduce((sum, tp) => sum + amountDue(topup.interestAmount, tp.balance), 0))} บาท
-                                                {sameDayUnpaid.some(tp => tp.balance?.state === "partial") && <span style={{ color: "#FDE68A", marginLeft: 6 }}>(ส่วนที่ยังขาด)</span>}
+                                                {sameDayUnpaid.some(tp => tp.balance?.state === "partial") && <span style={{ color: "var(--ax-c-fde68a)", marginLeft: 6 }}>(ส่วนที่ยังขาด)</span>}
                                                 {sameDayUnpaid.length > 1 && <span style={{ color: BRAND.gold, marginLeft: 6 }}>(งวดที่ {sameDayUnpaid.map(tp => tp.installment).join(", ")} ครบวันเดียวกัน)</span>}
                                                 {dayHasOthers && <span style={{ color: BRAND.textSec, marginLeft: 6 }}>· รวมทั้งวัน {formatMoney(groupTotal(c.amount, dayGroup))} บาท</span>}
                                               </div>
@@ -2549,7 +2554,7 @@ export default function App({ initialView = "main", onLogout }) {
                                                 onSend={(ok) => handleLineSend(ok, c.name)}
                                                 destinationId={c.lineUserId || customerLineIds[c.id] || ''}
                                               />}
-                                              {!ownInGroup && <span style={{ fontSize: 11, color: "#FCA5A5" }}>ยังทวงส่วนที่ขาดไม่ได้ (รอรันไฟล์ SQL)</span>}
+                                              {!ownInGroup && <span style={{ fontSize: 11, color: "var(--ax-c-fca5a5)" }}>ยังทวงส่วนที่ขาดไม่ได้ (รอรันไฟล์ SQL)</span>}
                                               {ownInGroup && matchingMain && <span style={{ fontSize: 11, color: BRAND.teal }}>รวมส่งกับงวดหลัก {matchingMain.installment}</span>}
                                               {ownInGroup && !matchingMain && !sendsHere && leadTopup && <span style={{ fontSize: 11, color: BRAND.teal }}>รวมส่งกับวงเงินเพิ่ม +{formatMoney(leadTopup.topupAmount)} ฿</span>}
                                               {alertMessage && <button
@@ -2564,7 +2569,7 @@ export default function App({ initialView = "main", onLogout }) {
                                                 rel="noreferrer"
                                                 title="เพิ่มวันครบกำหนดลง Google Calendar"
                                                 onClick={event => event.stopPropagation()}
-                                                style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid rgba(56,189,248,.35)", background: "rgba(56,189,248,.08)", color: "#38BDF8", textDecoration: "none" }}
+                                                style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid rgba(56,189,248,.35)", background: "rgba(56,189,248,.08)", color: "var(--ax-c-38bdf8)", textDecoration: "none" }}
                                               >📅</a>
                                             </div>
                                           </div>
@@ -2577,17 +2582,17 @@ export default function App({ initialView = "main", onLogout }) {
                                           {tPays.map(tp => {
                                             const pSt = P_STATUS[tp.status];
                                             return (
-                                              <div key={tp.installment} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", background: pSt.bg, borderRadius: 8, border: `1px solid ${pSt.border}40` }}>
+                                              <div key={tp.installment} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", background: pSt.bg, borderRadius: 8, border: `1px solid ${withAlpha(pSt.border, '40')}` }}>
                                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                                  <span style={{ width: 24, height: 24, borderRadius: "50%", background: pSt.border + "30", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: pSt.text, flexShrink: 0 }}>
+                                                  <span style={{ width: 24, height: 24, borderRadius: "50%", background: withAlpha(pSt.border, '30'), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: pSt.text, flexShrink: 0 }}>
                                                     {tp.installment}
                                                   </span>
                                                   <div>
                                                     <div style={{ fontSize: 12, fontWeight: 600, color: pSt.text }}>งวดที่ {tp.installment}</div>
                                                     <div style={{ fontSize: 11, color: BRAND.textSec }}>{formatThai(tp.dateStr)}</div>
                                                     {tp.postponedFrom && (
-                                                      <div style={{ fontSize: 10, color: "#FB923C", marginTop: 1 }}>เลื่อนจาก {formatThai(tp.postponedFrom)}</div>
+                                                      <div style={{ fontSize: 10, color: "var(--ax-c-fb923c)", marginTop: 1 }}>เลื่อนจาก {formatThai(tp.postponedFrom)}</div>
                                                     )}
                                                     <div style={{ fontSize: 10, color: pSt.text, marginTop: 1 }}>
                                                       {tp.status === "paid"
@@ -2605,7 +2610,7 @@ export default function App({ initialView = "main", onLogout }) {
                                                   {tp.status !== "paid" && (
                                                     <button
                                                       onClick={e => { e.stopPropagation(); setPostponeModal({ customer: c, payment: tp, topup }); }}
-                                                      style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", border: tp.postponedFrom ? "1px solid rgba(251,146,60,.6)" : "1px solid rgba(251,146,60,.3)", background: tp.postponedFrom ? "rgba(251,146,60,.18)" : "rgba(251,146,60,.07)", color: "#FB923C" }}
+                                                      style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", border: tp.postponedFrom ? "1px solid rgba(251,146,60,.6)" : "1px solid rgba(251,146,60,.3)", background: tp.postponedFrom ? "rgba(251,146,60,.18)" : "rgba(251,146,60,.07)", color: "var(--ax-c-fb923c)" }}
                                                     >{tp.postponedFrom ? "🔄 เลื่อนแล้ว" : "📅 เลื่อน"}</button>
                                                   )}
                                                   <button
@@ -2617,7 +2622,7 @@ export default function App({ initialView = "main", onLogout }) {
                                                 {/* แสดงข้อมูลสลิปถ้าชำระแล้ว — แบบเดียวกับตารางชำระหลัก */}
                                                 {tp.record && (
                                                   <div style={{ padding: "6px 10px", background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 7, fontSize: 11, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                                                    <span style={{ color: tp.balance?.state === "partial" ? "#FDE68A" : "#86EFAC" }}>{tp.balance?.state === "partial" ? "ชำระครั้งแรก" : "✓ ชำระ"} {(tp.record.amountPaid || 0).toLocaleString("th-TH")} บาท</span>
+                                                    <span style={{ color: tp.balance?.state === "partial" ? "var(--ax-c-fde68a)" : "var(--ax-c-86efac)" }}>{tp.balance?.state === "partial" ? "ชำระครั้งแรก" : "✓ ชำระ"} {(tp.record.amountPaid || 0).toLocaleString("th-TH")} บาท</span>
                                                     <span style={{ color: BRAND.textSec }}>วันที่ {formatThai(tp.record.paidDate)}</span>
                                                     {tp.record.note && <span style={{ color: BRAND.textSec }}>| {tp.record.note}</span>}
                                                     {tp.record.slipUrl
@@ -2812,11 +2817,11 @@ export default function App({ initialView = "main", onLogout }) {
 
       {/* Cancel Contract Confirmation */}
       {cancelConfirm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'var(--ax-c-r0-0-0-a700)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: BRAND.bgCard, border: '1px solid rgba(239,68,68,.4)', borderRadius: 16, padding: 24, maxWidth: 360, width: '100%' }}>
             <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 8 }}>🚫</div>
             <div style={{ fontWeight: 700, fontSize: 16, color: BRAND.textPri, textAlign: 'center', marginBottom: 6 }}>ยืนยันยกเลิกสัญญา</div>
-            <div style={{ fontSize: 13, color: '#FCA5A5', textAlign: 'center', marginBottom: 4 }}>{cancelConfirm.fullLabel || cancelConfirm.name}</div>
+            <div style={{ fontSize: 13, color: 'var(--ax-c-fca5a5)', textAlign: 'center', marginBottom: 4 }}>{cancelConfirm.fullLabel || cancelConfirm.name}</div>
             <div style={{ fontSize: 12, color: BRAND.textSec, textAlign: 'center', marginBottom: 20 }}>
               ลูกค้ารายนี้จะถูกซ่อนออกจากระบบทั้งหมด<br/>ข้อมูลยังคงอยู่ในฐานข้อมูล
             </div>
@@ -2842,7 +2847,7 @@ export default function App({ initialView = "main", onLogout }) {
                     setCancelling(false);
                   }
                 }}
-                style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: '#EF4444', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: 'var(--ax-c-ef4444)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
               >
                 {cancelling ? '⏳ กำลังยกเลิก...' : '🚫 ยืนยันยกเลิก'}
               </button>

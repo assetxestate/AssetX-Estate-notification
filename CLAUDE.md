@@ -61,6 +61,7 @@ AssetX-Estate-notification/
 - ใช้ภาษาอังกฤษสำหรับ function names และ technical code
 - ใช้ const และ let แทน var เสมอ
 - ใช้ async/await แทน .then() สำหรับ async operations
+- สีหน้าเว็บมี 2 โหมด (สว่าง = ค่าเริ่มต้น · มืด · ปุ่ม 🌙/☀️ บนแถบหัว · 13 พ.ย. 2569): ห้ามเขียนรหัสสีตรงในสไตล์ — ใช้ `BRAND` (`src/lib/config.js` เป็นตัวแปร CSS) หรือตัวแปรใน `src/theme.css` (เพิ่มคู่สว่าง/มืดทั้งสองบล็อก) · ต่อความโปร่งใสกับสีใช้ `withAlpha(สี, 'HH')` จาก `src/lib/theme.js` (ต่อสตริง `${BRAND.x}33` ไม่ได้แล้ว) · หน้า /marketing ใช้โทเค็น `--mx-*` ของตัวเอง (บล็อก `:root[data-theme="dark"] .mx-page`) · หน้าพิมพ์/หน้าต่างใหม่/PDF/ข้อความ LINE ใช้รหัสสีจริง (`BRAND_HEX`) เพราะไม่มีตัวแปร · ตัวหนังสือต้องอ่านได้ ≥ 4.5:1 ทั้งสองโหมด
 
 ## Important Notes
 

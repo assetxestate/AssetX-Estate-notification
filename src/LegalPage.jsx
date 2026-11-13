@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { BRAND as BASE_BRAND } from './lib/config.js'
+import { withAlpha } from './lib/theme.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
-const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981', danger: '#EF4444', blue: '#3B82F6', indigo: '#6366F1' }
+const BRAND = { ...BASE_BRAND, bgCard: 'var(--ax-c-0d1b2e)', textMut: 'var(--ax-c-475569)', success: 'var(--ax-c-10b981)', danger: 'var(--ax-c-ef4444)', blue: 'var(--ax-c-3b82f6)', indigo: 'var(--ax-c-6366f1)' }
 
 const card = {
   background: BRAND.bgCard,
@@ -30,9 +31,9 @@ const badge = (color) => ({
   borderRadius: 6,
   fontSize: 11,
   fontWeight: 700,
-  background: `${color}22`,
+  background: `${withAlpha(color, '22')}`,
   color,
-  border: `1px solid ${color}44`,
+  border: `1px solid ${withAlpha(color, '44')}`,
 })
 
 const TABLE_STYLE = {
@@ -42,8 +43,8 @@ const TABLE_STYLE = {
   color: BRAND.textPri,
 }
 
-const TH = { padding: '8px 12px', background: '#0a1628', color: BRAND.textSec, fontWeight: 600, fontSize: 11, textAlign: 'left', borderBottom: `1px solid ${BRAND.border}` }
-const TD = { padding: '8px 12px', borderBottom: `1px solid ${BRAND.border}44`, verticalAlign: 'top' }
+const TH = { padding: '8px 12px', background: 'var(--ax-c-0a1628)', color: BRAND.textSec, fontWeight: 600, fontSize: 11, textAlign: 'left', borderBottom: `1px solid ${BRAND.border}` }
+const TD = { padding: '8px 12px', borderBottom: `1px solid ${withAlpha(BRAND.border, '44')}`, verticalAlign: 'top' }
 
 function LegalTable({ headers, rows }) {
   return (
@@ -53,7 +54,7 @@ function LegalTable({ headers, rows }) {
       </thead>
       <tbody>
         {rows.map((row, i) => (
-          <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : '#060d1a' }}>
+          <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--ax-c-060d1a)' }}>
             {row.map((cell, j) => <td key={j} style={TD}>{cell}</td>)}
           </tr>
         ))}
@@ -64,10 +65,10 @@ function LegalTable({ headers, rows }) {
 
 function AlertBox({ type, children }) {
   const colors = {
-    warning: { bg: '#F59E0B22', border: '#F59E0B55', color: '#FCD34D', icon: '⚠️' },
-    danger:  { bg: '#EF444422', border: '#EF444455', color: '#FCA5A5', icon: '❌' },
-    info:    { bg: '#3B82F622', border: '#3B82F655', color: '#93C5FD', icon: 'ℹ️' },
-    success: { bg: '#10B98122', border: '#10B98155', color: '#6EE7B7', icon: '✅' },
+    warning: { bg: '#F59E0B22', border: '#F59E0B55', color: 'var(--ax-c-fcd34d)', icon: '⚠️' },
+    danger:  { bg: '#EF444422', border: '#EF444455', color: 'var(--ax-c-fca5a5)', icon: '❌' },
+    info:    { bg: '#3B82F622', border: '#3B82F655', color: 'var(--ax-c-93c5fd)', icon: 'ℹ️' },
+    success: { bg: '#10B98122', border: '#10B98155', color: 'var(--ax-c-6ee7b7)', icon: '✅' },
   }
   const c = colors[type] || colors.info
   return (
@@ -224,7 +225,7 @@ function InterestSection() {
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 12, color: BRAND.textSec, fontWeight: 700, marginBottom: 8 }}>สูตรคำนวณ</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div style={{ background: '#060d1a', borderRadius: 8, padding: 14, border: `1px solid ${BRAND.border}` }}>
+          <div style={{ background: 'var(--ax-c-060d1a)', borderRadius: 8, padding: 14, border: `1px solid ${BRAND.border}` }}>
             <div style={{ fontSize: 11, color: BRAND.success, fontWeight: 700, marginBottom: 6 }}>ดอกเบี้ยรายเดือน</div>
             <div style={{ fontFamily: 'monospace', fontSize: 12, color: BRAND.textPri }}>
               เงินต้น × อัตรา% ÷ 12
@@ -233,7 +234,7 @@ function InterestSection() {
               เช่น 1,000,000 × 1.25% = <span style={{ color: BRAND.gold }}>12,500 บาท/เดือน</span>
             </div>
           </div>
-          <div style={{ background: '#060d1a', borderRadius: 8, padding: 14, border: `1px solid ${BRAND.border}` }}>
+          <div style={{ background: 'var(--ax-c-060d1a)', borderRadius: 8, padding: 14, border: `1px solid ${BRAND.border}` }}>
             <div style={{ fontSize: 11, color: BRAND.danger, fontWeight: 700, marginBottom: 6 }}>ดอกเบี้ยผิดนัด</div>
             <div style={{ fontFamily: 'monospace', fontSize: 12, color: BRAND.textPri }}>
               ยอดค้าง × 5% ÷ 365 × วัน
@@ -349,7 +350,7 @@ function SpecialCasesSection() {
     <Section id="special" icon="🔍" title="สถานการณ์พิเศษ" color={BRAND.gold}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {cases.map((c, i) => (
-          <div key={i} style={{ background: '#060d1a', borderRadius: 8, padding: 14, border: `1px solid ${BRAND.border}` }}>
+          <div key={i} style={{ background: 'var(--ax-c-060d1a)', borderRadius: 8, padding: 14, border: `1px solid ${BRAND.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 8 }}>
               {c.icon} {c.title}
             </div>
@@ -424,7 +425,7 @@ function ChecklistSection() {
     <Section id="checklist" icon="✅" title="Checklist กฎหมาย AssetX" color={BRAND.teal}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         {groups.map((g, i) => (
-          <div key={i} style={{ background: '#060d1a', borderRadius: 8, padding: 14, border: `1px solid ${g.color}44` }}>
+          <div key={i} style={{ background: 'var(--ax-c-060d1a)', borderRadius: 8, padding: 14, border: `1px solid ${withAlpha(g.color, '44')}` }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: g.color, marginBottom: 10 }}>{g.title}</div>
             {g.items.map((item, j) => (
               <div key={j} style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 6, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
@@ -479,8 +480,8 @@ export default function LegalPage() {
             style={{
               padding: '6px 14px',
               borderRadius: 20,
-              border: `1px solid ${n.color}55`,
-              background: activeSection === n.id ? `${n.color}22` : 'transparent',
+              border: `1px solid ${withAlpha(n.color, '55')}`,
+              background: activeSection === n.id ? `${withAlpha(n.color, '22')}` : 'transparent',
               color: n.color,
               fontSize: 12,
               fontWeight: 600,

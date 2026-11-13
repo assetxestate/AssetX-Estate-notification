@@ -36,27 +36,27 @@ export function InstallmentBalance({ balance, additions = [], availability = "re
       {partial && (
         <div style={{
           padding: "8px 10px", borderRadius: 8, fontSize: 12,
-          background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.45)", color: "#FDE68A",
+          background: "rgba(245,158,11,.10)", border: "1px solid rgba(245,158,11,.45)", color: "var(--ax-c-fde68a)",
           display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8,
         }}>
           <span style={{ fontWeight: 700 }}>⚠️ ชำระไม่ครบ · ขาด {formatMoney(balance.outstanding)} บาท</span>
           <span style={{ color: BRAND.textSec }}>ชำระแล้ว {formatMoney(balance.paid)}{balance.waived > 0 ? ` · ยกเว้น ${formatMoney(balance.waived)}` : ""} / {formatMoney(balance.due)} บาท</span>
           <span style={{ display: "flex", gap: 6, marginLeft: "auto", flexWrap: "wrap" }}>
             {button("＋ ชำระเพิ่ม", onAddPayment)}
-            {button("ยกเว้นส่วนที่ขาด", onWaive, "#FCD34D")}
+            {button("ยกเว้นส่วนที่ขาด", onWaive, "var(--ax-c-fcd34d)")}
           </span>
           {availability === "missing" && (
-            <span style={{ flexBasis: "100%", fontSize: 11, color: "#FCA5A5" }}>
+            <span style={{ flexBasis: "100%", fontSize: 11, color: "var(--ax-c-fca5a5)" }}>
               ยังบันทึกชำระเพิ่มไม่ได้: ต้องรันไฟล์ supabase_payment_additions.sql ใน Supabase ก่อน (ใช้ปุ่มเลื่อนนัดเพื่อกำหนดวันชำระส่วนที่ขาดได้เลย)
             </span>
           )}
           {(availability === "error" || availability === "unauthorized") && (
-            <span style={{ flexBasis: "100%", fontSize: 11, color: "#FCA5A5" }}>โหลดรายการชำระเพิ่มไม่สำเร็จ รีเฟรชหน้าเพื่อลองใหม่</span>
+            <span style={{ flexBasis: "100%", fontSize: 11, color: "var(--ax-c-fca5a5)" }}>โหลดรายการชำระเพิ่มไม่สำเร็จ รีเฟรชหน้าเพื่อลองใหม่</span>
           )}
         </div>
       )}
       {showDone && (
-        <div style={{ fontSize: 11, color: "#86EFAC" }}>
+        <div style={{ fontSize: 11, color: "var(--ax-c-86efac)" }}>
           ✓ ชำระครบ {formatMoney(balance.paid)} บาท
           {balance.paymentCount > 1 ? ` · ${balance.paymentCount} ครั้ง` : ""}
           {balance.waived > 0 ? ` · ยกเว้น ${formatMoney(balance.waived)} บาท` : ""}
@@ -73,7 +73,7 @@ export function InstallmentBalance({ balance, additions = [], availability = "re
             display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
             color: voided ? BRAND.textSec : undefined,
           }}>
-            <span style={{ color: voided ? BRAND.textSec : a.kind === "waiver" ? "#FCD34D" : "#86EFAC", textDecoration: voided ? "line-through" : "none" }}>
+            <span style={{ color: voided ? BRAND.textSec : a.kind === "waiver" ? "var(--ax-c-fcd34d)" : "var(--ax-c-86efac)", textDecoration: voided ? "line-through" : "none" }}>
               {a.kind === "waiver" ? "ยกเว้น" : "+ ชำระเพิ่ม"} {formatMoney(a.amount)} บาท
             </span>
             <span style={{ color: BRAND.textSec }}>{a.kind === "waiver" ? "บันทึก" : "วันที่"} {formatThai(a.paidAt)}</span>
@@ -82,10 +82,10 @@ export function InstallmentBalance({ balance, additions = [], availability = "re
               <a href={a.slipUrl} target="_blank" rel="noreferrer" style={{ color: BRAND.teal, textDecoration: "none" }}>🖼️ ดูสลิป</a>
             )}
             {voided
-              ? <span style={{ color: "#FCA5A5" }}>ยกเลิกแล้ว{a.voidReason ? `: ${a.voidReason}` : ""}</span>
+              ? <span style={{ color: "var(--ax-c-fca5a5)" }}>ยกเลิกแล้ว{a.voidReason ? `: ${a.voidReason}` : ""}</span>
               : (
                 <button type="button" disabled={!canWrite} onClick={(e) => { e.stopPropagation(); onVoid?.(a); }}
-                  style={{ marginLeft: "auto", background: "none", border: "none", color: "#FCA5A5", fontSize: 11, cursor: canWrite ? "pointer" : "not-allowed", padding: 0 }}>
+                  style={{ marginLeft: "auto", background: "none", border: "none", color: "var(--ax-c-fca5a5)", fontSize: 11, cursor: canWrite ? "pointer" : "not-allowed", padding: 0 }}>
                   ยกเลิกรายการ
                 </button>
               )}

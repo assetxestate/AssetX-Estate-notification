@@ -69,7 +69,7 @@ export function CustomerLineIdSection({ customer, customerLineIds, savedUserIds,
                   onClick={() => handleSelect(u.id)}
                   style={{
                     textAlign: "left", padding: "6px 10px",
-                    background: input === u.id ? "rgba(45,212,191,.15)" : "rgba(255,255,255,.04)",
+                    background: input === u.id ? "rgba(45,212,191,.15)" : "var(--ax-c-r255-255-255-a40)",
                     border: `1px solid ${input === u.id ? "rgba(45,212,191,.4)" : BRAND.border}`,
                     borderRadius: 7, cursor: "pointer", color: BRAND.textPri, fontSize: 12,
                   }}
@@ -90,7 +90,7 @@ export function CustomerLineIdSection({ customer, customerLineIds, savedUserIds,
               onChange={e => setInput(e.target.value)}
               placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
               style={{
-                flex: 1, background: "rgba(255,255,255,.05)",
+                flex: 1, background: "var(--ax-c-r255-255-255-a50)",
                 border: "1px solid rgba(45,212,191,.2)", borderRadius: 8,
                 color: BRAND.textPri, fontSize: 12, padding: "7px 10px",
                 outline: "none", fontFamily: "monospace",
@@ -101,8 +101,8 @@ export function CustomerLineIdSection({ customer, customerLineIds, savedUserIds,
               disabled={!input.trim()}
               style={{
                 padding: "7px 14px", borderRadius: 8,
-                background: input.trim() ? "linear-gradient(135deg,#2DD4BF,#0E7490)" : "rgba(45,212,191,.1)",
-                border: "none", color: input.trim() ? "#000" : BRAND.textSec,
+                background: input.trim() ? "linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))" : "rgba(45,212,191,.1)",
+                border: "none", color: input.trim() ? "var(--ax-c-000)" : BRAND.textSec,
                 fontWeight: 600, fontSize: 12, cursor: input.trim() ? "pointer" : "not-allowed",
               }}
             >

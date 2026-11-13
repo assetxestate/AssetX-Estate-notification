@@ -202,7 +202,7 @@ const styles = {
     fontSize: "16px",
     fontWeight: "700",
     color: "#ffffff",
-    background: "linear-gradient(135deg, #4facfe 0%, #6c63ff 100%)",
+    background: "linear-gradient(135deg, #2563eb 0%, #5b4bdb 100%)", // เข้มขึ้นให้ตัวขาวอ่านได้ ≥ 4.5:1 (เดิมฟ้าอ่อน 2.4:1)
     border: "none",
     borderRadius: "8px",
     cursor: "pointer",

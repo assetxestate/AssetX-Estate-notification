@@ -53,7 +53,7 @@ export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSav
 
   const inputStyle = {
     width: '100%', boxSizing: 'border-box',
-    background: 'rgba(255,255,255,.05)', border: '1px solid rgba(45,212,191,.2)',
+    background: 'var(--ax-c-r255-255-255-a50)', border: '1px solid rgba(45,212,191,.2)',
     borderRadius: 7, color: BRAND.textPri, fontSize: 13, padding: '8px 10px', outline: 'none',
   };
   const labelStyle = { fontSize: 11, color: BRAND.textSec, marginBottom: 4, display: 'block' };
@@ -61,10 +61,10 @@ export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSav
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      background: 'var(--ax-c-r0-0-0-a700)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }} onClick={onClose}>
       <div style={{
-        background: BRAND.card, border: `1px solid rgba(45,212,191,.3)`, borderRadius: 16,
+        background: BRAND.bgCard, border: `1px solid rgba(45,212,191,.3)`, borderRadius: 16,
         padding: 24, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto',
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -95,7 +95,7 @@ export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSav
             </div>
           </div>
           {shortAfterEdit > 0 && (
-            <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.4)', color: '#FBBF24', fontSize: 12, lineHeight: 1.5 }}>
+            <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.4)', color: 'var(--ax-c-fbbf24)', fontSize: 12, lineHeight: 1.5 }}>
               ⚠️ ถ้าเพิ่มดอกเบี้ย/งวดเป็น {newAmount.toLocaleString('th-TH')} บาท งวดที่บันทึกชำระไว้แล้ว {shortAfterEdit} งวดจะขึ้นว่า "ชำระไม่ครบ" เพราะระบบคิดยอดของทุกงวดจากตัวเลขนี้ — ถ้ายอดที่รับไว้ถูกต้องแล้ว อย่าแก้ตรงนี้
             </div>
           )}
@@ -124,18 +124,18 @@ export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSav
           </div>
         </div>
 
-        {error && <div style={{ color: '#F87171', fontSize: 12, marginTop: 12 }}>{error}</div>}
+        {error && <div style={{ color: 'var(--ax-c-f87171)', fontSize: 12, marginTop: 12 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button onClick={onClose} style={{
             flex: 1, padding: '10px 0', borderRadius: 8,
-            background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.1)',
+            background: 'var(--ax-c-r255-255-255-a70)', border: '1px solid var(--ax-c-r255-255-255-a100)',
             color: BRAND.textSec, fontSize: 13, cursor: 'pointer',
           }}>ยกเลิก</button>
           <button onClick={handleSave} disabled={saving} style={{
             flex: 2, padding: '10px 0', borderRadius: 8,
-            background: saving ? 'rgba(45,212,191,.3)' : 'linear-gradient(135deg,#2DD4BF,#0E7490)',
-            border: 'none', color: '#000', fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer',
+            background: saving ? 'rgba(45,212,191,.3)' : 'linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))',
+            border: 'none', color: 'var(--ax-c-000)', fontWeight: 700, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer',
           }}>
             {saving ? 'กำลังบันทึก...' : 'บันทึกลง Sheet'}
           </button>

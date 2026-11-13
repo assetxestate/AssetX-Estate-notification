@@ -84,14 +84,14 @@ export function TopupModal({ customer, onClose, onSaved }) {
 
   const inp = {
     width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13,
-    background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.border}`,
+    background: "var(--ax-c-r255-255-255-a50)", border: `1px solid ${BRAND.border}`,
     color: BRAND.textPri, outline: "none", boxSizing: "border-box",
   };
   const lbl = { fontSize: 11, color: BRAND.textSec, marginBottom: 4, display: "block" };
   const row2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px 12px" }}>
+    <div style={{ position: "fixed", inset: 0, background: "var(--ax-c-r0-0-0-a780)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px 12px" }}>
       <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 18, padding: 20, width: "100%", maxWidth: 500, maxHeight: "92vh", overflowY: "auto" }}>
 
         {/* Header */}
@@ -228,7 +228,7 @@ export function TopupModal({ customer, onClose, onSaved }) {
           <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 10, border: `1px solid ${BRAND.border}`, background: "transparent", color: BRAND.textSec, fontSize: 13, cursor: "pointer" }}>
             ยกเลิก
           </button>
-          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: 10, borderRadius: 10, border: "none", background: "linear-gradient(135deg,#2DD4BF,#0E7490)", color: "#000", fontSize: 13, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: 10, borderRadius: 10, border: "none", background: "linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))", color: "var(--ax-c-000)", fontSize: 13, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
             {saving ? "⏳ กำลังบันทึก..." : "💾 บันทึกสัญญาเพิ่มวงเงิน"}
           </button>
         </div>

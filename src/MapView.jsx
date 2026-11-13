@@ -3,9 +3,10 @@ import { BRAND as BASE_BRAND } from './lib/config.js'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getValuations as apiGetValuations } from './lib/api.js'
+import { withAlpha } from './lib/theme.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
-const BRAND = { ...BASE_BRAND, bgCard: '#0D1B2E', textMut: '#475569', success: '#10B981' }
+const BRAND = { ...BASE_BRAND, bgCard: 'var(--ax-c-0d1b2e)', textMut: 'var(--ax-c-475569)', success: 'var(--ax-c-10b981)' }
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('th-TH')
 
@@ -26,7 +27,7 @@ function makeCustomerIcon(color, icon) {
       width:36px;height:36px;border-radius:50%;
       background:${color};border:3px solid #fff;
       display:flex;align-items:center;justify-content:center;
-      font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.5);
+      font-size:16px;box-shadow:0 2px 8px var(--ax-c-r0-0-0-a500);
     ">${icon}</div>`,
     iconSize: [36, 36],
     iconAnchor: [18, 18],
@@ -41,7 +42,7 @@ function makeValuationIcon(color) {
     html: `<div style="
       width:28px;height:28px;border-radius:50% 50% 50% 0;
       background:${color};border:3px solid #fff;
-      transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.4);
+      transform:rotate(-45deg);box-shadow:0 2px 8px var(--ax-c-r0-0-0-a400);
     "></div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 28],
@@ -50,12 +51,12 @@ function makeValuationIcon(color) {
 }
 
 const TYPE_COLOR = {
-  'ขายฝาก': '#F59E0B',
-  'จำนอง': '#60A5FA',
-  'ซื้อขาย': '#A78BFA',
-  'ประเมินเพื่อสินเชื่อ': '#10B981',
-  'ประเมินมูลค่าทรัพย์สิน': '#34D399',
-  'อื่นๆ': '#64748B',
+  'ขายฝาก': 'var(--ax-c-f59e0b)',
+  'จำนอง': 'var(--ax-c-60a5fa)',
+  'ซื้อขาย': 'var(--ax-c-a78bfa)',
+  'ประเมินเพื่อสินเชื่อ': 'var(--ax-c-10b981)',
+  'ประเมินมูลค่าทรัพย์สิน': 'var(--ax-c-34d399)',
+  'อื่นๆ': 'var(--ax-c-64748b)',
 }
 
 function formatThaiDate(dateStr) {
@@ -137,17 +138,17 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
 
         const nextPayment = (c.payments || []).find(p => p.status !== 'paid')
         const contractColor = c.contractDiff !== null
-          ? (c.contractDiff <= 30 ? '#EF4444' : c.contractDiff <= 90 ? '#F59E0B' : BRAND.success)
+          ? (c.contractDiff <= 30 ? 'var(--ax-c-ef4444)' : c.contractDiff <= 90 ? 'var(--ax-c-f59e0b)' : BRAND.success)
           : BRAND.textSec
 
-        const marker = L.marker([lat, lng], { icon: makeCustomerIcon(c.color || '#60A5FA', c.icon || '👤') }).addTo(map)
+        const marker = L.marker([lat, lng], { icon: makeCustomerIcon(c.color || 'var(--ax-c-60a5fa)', c.icon || '👤') }).addTo(map)
         marker.bindPopup(`
           <div style="font-family:'Sarabun',sans-serif;min-width:220px;padding:4px">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
               <span style="font-size:20px">${c.icon || '👤'}</span>
               <div>
                 <div style="font-weight:700;font-size:14px;color:#111">คุณ${c.name}</div>
-                <span style="background:${c.color || '#60A5FA'}22;border:1px solid ${c.color || '#60A5FA'}66;border-radius:12px;padding:2px 8px;font-size:11px;color:${c.color || '#60A5FA'};font-weight:600">${c.type}</span>
+                <span style="background:${withAlpha(c.color || '#60A5FA', '22')};border:1px solid ${withAlpha(c.color || '#60A5FA', '66')};border-radius:12px;padding:2px 8px;font-size:11px;color:${c.color || '#60A5FA'};font-weight:600">${c.type}</span>
               </div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
@@ -182,7 +183,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
         if (String(row['สถานะ'] || '').trim().includes('สร้างสัญญา')) return  // ลูกค้าแสดงหมุดอยู่แล้ว
         if (filterType !== 'ทั้งหมด' && row['ประเภทการประเมิน'] !== filterType) return
 
-        const color = TYPE_COLOR[row['ประเภทการประเมิน']] || '#64748B'
+        const color = TYPE_COLOR[row['ประเภทการประเมิน']] || 'var(--ax-c-64748b)'
         const assessType = row['ประเภทการประเมิน'] || ''
         const loanLabel = assessType === 'ขายฝาก' ? 'วงเงินขายฝาก'
           : assessType === 'จำนอง' ? 'วงเงินจำนอง'
@@ -192,7 +193,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
         const requestedLoan = parseFloat(row['วงเงินที่ลูกค้าขอ']) || 0
         const marketValue = parseFloat(row['มูลค่าตลาดรวม']) || 0
         const ltv = marketValue > 0 ? ((requestedLoan / marketValue) * 100).toFixed(1) : null
-        const ltvColor = ltv === null ? '#888' : ltv <= 50 ? '#10B981' : ltv <= 70 ? '#F59E0B' : '#EF4444'
+        const ltvColor = ltv === null ? 'var(--ax-c-888)' : ltv <= 50 ? 'var(--ax-c-10b981)' : ltv <= 70 ? 'var(--ax-c-f59e0b)' : 'var(--ax-c-ef4444)'
         const govPrice = parseFloat(row['ราคาประเมินรัฐ (บ./ตร.ว.)']) || 0
         const totalSqw = parseFloat(row['ตร.ว.รวม']) || 0
         const govTotal = govPrice * totalSqw
@@ -225,7 +226,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
           }
         }
 
-        const pinColor = linkedCustomer ? (linkedCustomer.color || '#60A5FA') : color
+        const pinColor = linkedCustomer ? (linkedCustomer.color || 'var(--ax-c-60a5fa)') : color
         const pinIcon = linkedCustomer ? (linkedCustomer.icon || '🏠') : (assessType === 'ขายฝาก' ? '🔒' : assessType === 'จำนอง' ? '🏛️' : '📍')
         const icon = hasContract
           ? makeCustomerIcon(pinColor, pinIcon)
@@ -238,7 +239,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
           const c = linkedCustomer
           const nextPayment = (c.payments || []).find(p => p.status !== 'paid')
           const contractColor = c.contractDiff !== null
-            ? (c.contractDiff <= 30 ? '#EF4444' : c.contractDiff <= 90 ? '#F59E0B' : BRAND.success)
+            ? (c.contractDiff <= 30 ? 'var(--ax-c-ef4444)' : c.contractDiff <= 90 ? 'var(--ax-c-f59e0b)' : BRAND.success)
             : BRAND.textSec
           marker.bindPopup(`
             <div style="font-family:'Sarabun',sans-serif;min-width:220px;padding:4px">
@@ -246,7 +247,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
                 <span style="font-size:20px">${c.icon || '🏠'}</span>
                 <div>
                   <div style="font-weight:700;font-size:14px;color:#111">คุณ${c.name}</div>
-                  <span style="background:${c.color || '#60A5FA'}22;border:1px solid ${c.color || '#60A5FA'}66;border-radius:12px;padding:2px 8px;font-size:11px;color:${c.color || '#60A5FA'};font-weight:600">${c.type}</span>
+                  <span style="background:${withAlpha(c.color || '#60A5FA', '22')};border:1px solid ${withAlpha(c.color || '#60A5FA', '66')};border-radius:12px;padding:2px 8px;font-size:11px;color:${c.color || '#60A5FA'};font-weight:600">${c.type}</span>
                 </div>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
@@ -277,7 +278,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
                 <span style="font-size:20px">${assessType === 'ขายฝาก' ? '🏡' : '🏦'}</span>
                 <div>
                   <div style="font-weight:700;font-size:14px;color:#111">${row['รหัส/ชื่อทรัพย์'] || '—'}</div>
-                  <span style="background:${color}22;border:1px solid ${color}66;border-radius:12px;padding:2px 8px;font-size:11px;color:${color};font-weight:600">${assessType}</span>
+                  <span style="background:${withAlpha(color, '22')};border:1px solid ${withAlpha(color, '66')};border-radius:12px;padding:2px 8px;font-size:11px;color:${color};font-weight:600">${assessType}</span>
                 </div>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
@@ -373,7 +374,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
           {[
             { label: 'ลูกค้า', value: custWithLoc, color: BRAND.teal, icon: '👤' },
             { label: `ประเมิน (${valWithLoc}/${valTotal})`, value: valWithLoc, color: BRAND.gold, icon: '📍' },
-            { label: 'รวมบนแผนที่', value: custWithLoc + valWithLoc, color: '#A78BFA', icon: '🗺️' },
+            { label: 'รวมบนแผนที่', value: custWithLoc + valWithLoc, color: 'var(--ax-c-a78bfa)', icon: '🗺️' },
           ].map(s => (
             <div key={s.label} style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 10, padding: '7px 12px', textAlign: 'center', minWidth: 64 }}>
               <div style={{ fontSize: 10, color: BRAND.textMut }}>{s.icon} {s.label}</div>
@@ -394,7 +395,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
       {/* Legend */}
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: BRAND.textSec }}>
-          <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#60A5FA', border: '2px solid #fff' }} />
+          <div style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--ax-c-60a5fa)', border: '2px solid #fff' }} />
           หมุดลูกค้า (วงกลม)
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: BRAND.textSec }}>
@@ -402,7 +403,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
           <span style={{ marginLeft: 4 }}>หมุดประเมิน (หยดน้ำ)</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: BRAND.textSec }}>
-          <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#A78BFA', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8 }}>📋</div>
+          <div style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--ax-c-a78bfa)', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8 }}>📋</div>
           <span>ประเมิน + สร้างสัญญาแล้ว (วงกลม)</span>
         </div>
         {Object.entries(TYPE_COLOR).slice(0, 3).map(([t, c]) => (
@@ -429,7 +430,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
           <button key={t} onClick={() => setFilterType(t)} style={{
             padding: '4px 10px', borderRadius: 20, fontSize: 10, cursor: 'pointer', fontWeight: filterType === t ? 700 : 400,
             border: `1px solid ${filterType === t ? (TYPE_COLOR[t] || BRAND.gold) : BRAND.border}`,
-            background: filterType === t ? `${TYPE_COLOR[t] || BRAND.gold}20` : 'transparent',
+            background: filterType === t ? `${withAlpha(TYPE_COLOR[t] || BRAND.gold, '20')}` : 'transparent',
             color: filterType === t ? (TYPE_COLOR[t] || BRAND.gold) : BRAND.textSec,
           }}>{t}</button>
         ))}
@@ -440,8 +441,8 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
         <div ref={mapRef} style={{ width: '100%', height: mapHeight, borderRadius: 14 }} />
         <div className="map-gesture-hint" style={{
           position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
-          background: 'rgba(5,11,24,0.75)', borderRadius: 20, padding: '5px 12px',
-          fontSize: 11, color: '#94A3B8', whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 500,
+          background: 'var(--ax-c-r5-11-24-a750)', borderRadius: 20, padding: '5px 12px',
+          fontSize: 11, color: 'var(--ax-c-94a3b8)', whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 500,
         }}>
           👆 ใช้ 2 นิ้วเพื่อเลื่อนหน้า / 1 นิ้วเพื่อขยับแผนที่
         </div>
@@ -449,7 +450,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', gap: 8,
-            background: 'rgba(5,11,24,0.72)', borderRadius: 14, pointerEvents: 'none', zIndex: 400,
+            background: 'var(--ax-c-r5-11-24-a720)', borderRadius: 14, pointerEvents: 'none', zIndex: 400,
           }}>
             <div style={{ fontSize: 32 }}>📍</div>
             <div style={{ color: BRAND.textPri, fontWeight: 700 }}>ยังไม่มีข้อมูลพิกัด</div>
@@ -482,7 +483,7 @@ export default function MapView({ appsScriptUrl, customers = [] }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
             {valuations.map((r, i) => {
               const hasLoc = !isNaN(parseFloat(r['lat'])) && !isNaN(parseFloat(r['lng']))
-              const color = TYPE_COLOR[r['ประเภทการประเมิน']] || '#64748B'
+              const color = TYPE_COLOR[r['ประเภทการประเมิน']] || 'var(--ax-c-64748b)'
               return (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'center', gap: 8,

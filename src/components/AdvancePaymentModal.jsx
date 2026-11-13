@@ -47,11 +47,11 @@ export function AdvancePaymentModal({ customer, onClose, onSaved }) {
     }
   };
 
-  const inp = { width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13, background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.border}`, color: BRAND.textPri, outline: "none", boxSizing: "border-box" };
+  const inp = { width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13, background: "var(--ax-c-r255-255-255-a50)", border: `1px solid ${BRAND.border}`, color: BRAND.textPri, outline: "none", boxSizing: "border-box" };
   const lbl = { fontSize: 11, color: BRAND.textSec, marginBottom: 4, display: "block" };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px 12px" }}>
+    <div style={{ position: "fixed", inset: 0, background: "var(--ax-c-r0-0-0-a780)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 12px 12px" }}>
       <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 18, padding: 20, width: "100%", maxWidth: 500, maxHeight: "92vh", overflowY: "auto" }}>
 
         {/* Header */}
@@ -109,19 +109,19 @@ export function AdvancePaymentModal({ customer, onClose, onSaved }) {
                 const isSoon = p.diff > 0 && p.diff <= 7;
                 return (
                   <div key={p.installment} onClick={() => toggle(p.installment)}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, cursor: "pointer", background: on ? "rgba(45,212,191,.1)" : "rgba(255,255,255,.03)", border: `1px solid ${on ? "rgba(45,212,191,.4)" : BRAND.border}`, transition: "all .15s" }}>
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, cursor: "pointer", background: on ? "rgba(45,212,191,.1)" : "var(--ax-c-r255-255-255-a30)", border: `1px solid ${on ? "rgba(45,212,191,.4)" : BRAND.border}`, transition: "all .15s" }}>
                     {/* Checkbox */}
                     <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${on ? BRAND.teal : BRAND.textMut}`, background: on ? BRAND.teal : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .15s" }}>
-                      {on && <span style={{ color: "#000", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                      {on && <span style={{ color: "var(--ax-c-000)", fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
                     </div>
                     <div style={{ flex: 1 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: on ? BRAND.teal : BRAND.textPri }}>
                         งวดที่ {p.installment}
                       </span>
                       <span style={{ fontSize: 11, color: BRAND.textSec, marginLeft: 8 }}>{formatThai(p.dateStr)}</span>
-                      {isOverdue && <span style={{ fontSize: 10, color: "#FCA5A5", marginLeft: 6 }}>เกิน {Math.abs(p.diff)} วัน</span>}
-                      {isToday && <span style={{ fontSize: 10, color: "#FCA5A5", marginLeft: 6 }}>วันนี้!</span>}
-                      {isSoon && <span style={{ fontSize: 10, color: "#FCD34D", marginLeft: 6 }}>อีก {p.diff} วัน</span>}
+                      {isOverdue && <span style={{ fontSize: 10, color: "var(--ax-c-fca5a5)", marginLeft: 6 }}>เกิน {Math.abs(p.diff)} วัน</span>}
+                      {isToday && <span style={{ fontSize: 10, color: "var(--ax-c-fca5a5)", marginLeft: 6 }}>วันนี้!</span>}
+                      {isSoon && <span style={{ fontSize: 10, color: "var(--ax-c-fcd34d)", marginLeft: 6 }}>อีก {p.diff} วัน</span>}
                     </div>
                     <span style={{ fontSize: 13, fontWeight: 600, color: BRAND.gold }}>{formatMoney(customer.amount || 0)} ฿</span>
                   </div>
@@ -158,7 +158,7 @@ export function AdvancePaymentModal({ customer, onClose, onSaved }) {
             ยกเลิก
           </button>
           <button onClick={handleSave} disabled={saving || selected.size === 0}
-            style={{ flex: 2, padding: 10, borderRadius: 10, border: "none", background: selected.size > 0 ? "linear-gradient(135deg,#2DD4BF,#0E7490)" : "rgba(45,212,191,.25)", color: "#000", fontSize: 13, fontWeight: 700, cursor: selected.size > 0 ? "pointer" : "not-allowed", opacity: saving ? 0.7 : 1 }}>
+            style={{ flex: 2, padding: 10, borderRadius: 10, border: "none", background: selected.size > 0 ? "linear-gradient(135deg,var(--ax-c-2dd4bf),var(--ax-c-0e7490))" : "rgba(45,212,191,.25)", color: "var(--ax-c-000)", fontSize: 13, fontWeight: 700, cursor: selected.size > 0 ? "pointer" : "not-allowed", opacity: saving ? 0.7 : 1 }}>
             {saving ? "⏳ กำลังบันทึก..."
               : selected.size > 0
               ? `💰 บันทึก ${selected.size} งวด · ${formatMoney(totalAmount)} ฿`

@@ -7,9 +7,10 @@ import { openContractSummaryForPrint } from './lib/contractSummaryReport.js'
 import { amountDue } from './lib/combinedPayment.js'
 import { showToast } from './lib/toast.js'
 import NoticeTracking from './components/NoticeTracking.jsx'
+import { withAlpha } from './lib/theme.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
-const BRAND = { ...BASE_BRAND, success: '#10B981', danger: '#EF4444' }
+const BRAND = { ...BASE_BRAND, success: 'var(--ax-c-10b981)', danger: 'var(--ax-c-ef4444)' }
 
 const fmt = (n) => {
   if (!n || isNaN(n)) return '0'
@@ -354,7 +355,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '4px 0 32px' }}>
 
       {(additionsState === 'error' || additionsState === 'unauthorized') && (
-        <div style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(239,68,68,.45)', background: 'rgba(239,68,68,.06)', color: '#FCA5A5', fontSize: 13, fontWeight: 600 }}>
+        <div style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(239,68,68,.45)', background: 'rgba(239,68,68,.06)', color: 'var(--ax-c-fca5a5)', fontSize: 13, fontWeight: 600 }}>
           {additionsState === 'unauthorized'
             ? '⚠️ เซสชันหมดอายุ — ยอดรับชำระและค้างชำระด้านล่างยังไม่รวมเงินที่ลูกค้ามาจ่ายเพิ่ม (ออกจากระบบแล้วเข้าใหม่)'
             : '⚠️ โหลดรายการชำระเพิ่มไม่สำเร็จ — ยอดรับชำระและค้างชำระด้านล่างอาจยังไม่รวมเงินที่ลูกค้ามาจ่ายเพิ่ม (ลองใหม่ได้ที่แท็บการชำระ)'}
@@ -390,7 +391,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
       </div>
 
       {upfrontCases.length > 0 && (
-        <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.teal}44`, borderRadius: 8, padding: '14px 18px' }}>
+        <div style={{ background: BRAND.bgCard, border: `1px solid ${withAlpha(BRAND.teal, '44')}`, borderRadius: 8, padding: '14px 18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri }}>ค่าตอบแทนหักล่วงหน้า</div>
@@ -481,11 +482,11 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {liquidationRiskProfiles.map(c => (
-                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '12px 14px', borderRadius: 10, background: BRAND.bg, border: `1px solid ${c.color}55` }}>
+                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '12px 14px', borderRadius: 10, background: BRAND.bg, border: `1px solid ${withAlpha(c.color, '55')}` }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri }}>{c.name}</span>
-                      <span style={{ fontSize: 10, color: c.color, padding: '2px 7px', borderRadius: 999, border: `1px solid ${c.color}66`, background: `${c.color}18` }}>{c.label}</span>
+                      <span style={{ fontSize: 10, color: c.color, padding: '2px 7px', borderRadius: 999, border: `1px solid ${withAlpha(c.color, '66')}`, background: `${withAlpha(c.color, '18')}` }}>{c.label}</span>
                     </div>
                     <div style={{ fontSize: 11, color: BRAND.textSec }}>
                       {c.placeLabel} · วงเงิน ฿{fmtFull(principalWithTopups(c))} · ค้าง {c.overdueCount} งวด · เลื่อน {c.postponedCount} งวด
@@ -498,7 +499,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
                     <div style={{ fontSize: 10, color: BRAND.textSec }}>ครบกำหนดไถ่ถอน</div>
                     <div style={{ fontSize: 12, color: BRAND.textPri }}>{c.contractEndDate ? new Date(c.contractEndDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}</div>
                     <div style={{ fontSize: 11, color: c.color, marginTop: 4 }}>{c.diffDays === null ? 'รอตรวจวันครบกำหนด' : `อีก ${Math.max(c.diffDays, 0)} วัน`}</div>
-                    <div style={{ marginTop: 8, padding: '4px 8px', borderRadius: 8, background: `${c.color}18`, border: `1px solid ${c.color}44`, fontSize: 10, fontWeight: 700, color: c.color }}>
+                    <div style={{ marginTop: 8, padding: '4px 8px', borderRadius: 8, background: `${withAlpha(c.color, '18')}`, border: `1px solid ${withAlpha(c.color, '44')}`, fontSize: 10, fontWeight: 700, color: c.color }}>
                       {c.action === 'เร่งรวมเอกสารและเตรียม Notice' ? 'ติดตามเอกสารและสถานะ Notice' : c.action}
                     </div>
                   </div>
@@ -507,7 +508,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
               ))}
             </div>
 
-            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(15,23,42,.45)', border: `1px solid ${BRAND.border}` }}>
+            <div style={{ padding: 14, borderRadius: 10, background: 'var(--ax-c-r15-23-42-a450)', border: `1px solid ${BRAND.border}` }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.textPri, marginBottom: 10 }}>Checklist เตรียมระบายทรัพย์</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {riskWorkItems.map((item, i) => (
@@ -543,7 +544,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
             {riskContracts.map(c => {
               const urgColor = c.diffDays <= 30 ? BRAND.danger : c.diffDays <= 60 ? BRAND.gold : BRAND.textSec
               return (
-                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 12, alignItems: 'center', padding: '10px 14px', borderRadius: 10, background: BRAND.bg, border: `1px solid ${urgColor}33` }}>
+                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 12, alignItems: 'center', padding: '10px 14px', borderRadius: 10, background: BRAND.bg, border: `1px solid ${withAlpha(urgColor, '33')}` }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: BRAND.textPri }}>{c.name}</div>
                     <div style={{ fontSize: 11, color: BRAND.textSec }}>{c.type} · {c.fullLabel?.split('(')[1]?.replace(')', '') || ''}</div>
@@ -556,7 +557,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
                     <div style={{ fontSize: 10, color: BRAND.textSec }}>ครบกำหนด</div>
                     <div style={{ fontSize: 12, color: BRAND.textPri }}>{new Date(c.contractEndDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</div>
                   </div>
-                  <div style={{ padding: '4px 10px', borderRadius: 8, background: urgColor + '22', border: `1px solid ${urgColor}55`, textAlign: 'center' }}>
+                  <div style={{ padding: '4px 10px', borderRadius: 8, background: withAlpha(urgColor, '22'), border: `1px solid ${withAlpha(urgColor, '55')}`, textAlign: 'center' }}>
                     <div style={{ fontSize: 13, fontWeight: 800, color: urgColor }}>{c.diffDays}</div>
                     <div style={{ fontSize: 9, color: urgColor }}>วัน</div>
                   </div>
@@ -568,7 +569,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
       </div>
 
       {/* Advance 2% Breakdown */}
-      <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.purple}44`, borderRadius: 14, padding: 20 }}>
+      <div style={{ background: BRAND.bgCard, border: `1px solid ${withAlpha(BRAND.purple, '44')}`, borderRadius: 14, padding: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: expandedSections.advance ? 16 : 0 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri, marginBottom: 4 }}>🏦 Advance 2% รายเคส</div>
@@ -598,7 +599,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: `${BRAND.purple}18`, border: `1px solid ${BRAND.purple}44`, display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: `${withAlpha(BRAND.purple, '18')}`, border: `1px solid ${withAlpha(BRAND.purple, '44')}`, display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 12, color: BRAND.textSec }}>รวม Advance ทั้งหมด</span>
               <span style={{ fontSize: 14, fontWeight: 800, color: BRAND.purple }}>฿{fmtFull(Math.round(totalAdvance))}</span>
             </div>
@@ -619,7 +620,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
                     <div style={{ fontSize: 10, color: BRAND.gold }}>ดอกเบี้ย/งวด</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold }}>฿{fmtFull(c.amount)}</div>
                   </div>
-                  <div style={{ padding: '3px 8px', borderRadius: 6, background: `${BRAND.gold}22`, border: `1px solid ${BRAND.gold}55` }}>
+                  <div style={{ padding: '3px 8px', borderRadius: 6, background: `${withAlpha(BRAND.gold, '22')}`, border: `1px solid ${withAlpha(BRAND.gold, '55')}` }}>
                     <div style={{ fontSize: 10, color: BRAND.gold, whiteSpace: 'nowrap' }}>รับดอกเบี้ย</div>
                   </div>
                 </div>
@@ -633,7 +634,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
             <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.textMut, marginBottom: 8 }}>ปิดสัญญาแล้ว (เก็บไว้ตรวจย้อนหลัง)</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {closedCommissionCases.map(c => (
-                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: 'rgba(15,23,42,.45)', border: `1px solid ${BRAND.border}`, opacity: .72 }}>
+                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: 'var(--ax-c-r15-23-42-a450)', border: `1px solid ${BRAND.border}`, opacity: .72 }}>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: BRAND.textSec, textDecoration: 'line-through' }}>{c.name}</div>
                     <div style={{ fontSize: 11, color: BRAND.textMut }}>{c.type} · วงเงิน ฿{fmtFull(principalWithTopups(c))}</div>

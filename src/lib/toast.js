@@ -4,8 +4,8 @@
 // ============================================================
 
 const COLORS = {
-  info:    { bg: "#0E7490", icon: "ℹ️" },
-  success: { bg: "#059246", icon: "✅" },
+  info:    { bg: "var(--ax-c-0e7490)", icon: "ℹ️" },
+  success: { bg: "var(--ax-line-green-dk)", icon: "✅" },
   error:   { bg: "#B91C1C", icon: "⚠️" },
 };
 
@@ -32,7 +32,7 @@ export function showToast(message, type) {
   const el = document.createElement("div");
   el.style.cssText =
     `background:${c.bg};color:#fff;padding:12px 16px;border-radius:10px;` +
-    "font-size:14px;line-height:1.5;box-shadow:0 4px 20px rgba(0,0,0,0.35);" +
+    "font-size:14px;line-height:1.5;box-shadow:0 4px 20px var(--ax-c-r0-0-0-a350);" +
     "font-family:'Segoe UI','Noto Sans Thai',sans-serif;white-space:pre-line;word-break:break-word;" +
     "opacity:0;transform:translateX(12px);transition:opacity .25s,transform .25s;cursor:pointer;";
   el.textContent = `${c.icon} ${message}`;

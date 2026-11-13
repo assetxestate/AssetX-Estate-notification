@@ -125,8 +125,8 @@ export default function RefinanceCalculator({ customers = [], valuation = null }
   </>
 
   return <div className="tx-grid" aria-label="คำนวณย้ายทุนขายฝาก">
-    <style>{`.tx-field.rf-invalid>div,.tx-field.rf-invalid>select{border:1px solid #f87171!important;background:#301b24!important}.tx-field.rf-invalid>span,.tx-field .rf-error-text{color:#fca5a5!important}.tx-field [aria-invalid=true]:focus{outline:2px solid #f87171;outline-offset:2px}`}</style>
-    <style>{`.rf-mode{display:flex;gap:6px;margin:0 0 18px}.rf-mode button{flex:1;min-width:0}.rf-mode button.active{color:#2dd4bf;border-color:#2dd4bf;background:#102d31}.tx-basis strong{color:#2dd4bf;display:block;margin-top:8px}@media(max-width:520px){.rf-mode{flex-wrap:wrap}.rf-mode button{flex-basis:100%}}`}</style>
+    <style>{`.tx-field.rf-invalid>div,.tx-field.rf-invalid>select{border:1px solid var(--ax-c-f87171)!important;background:var(--ax-c-301b24)!important}.tx-field.rf-invalid>span,.tx-field .rf-error-text{color:var(--ax-c-fca5a5)!important}.tx-field [aria-invalid=true]:focus{outline:2px solid var(--ax-c-f87171);outline-offset:2px}`}</style>
+    <style>{`.rf-mode{display:flex;gap:6px;margin:0 0 18px}.rf-mode button{flex:1;min-width:0}.rf-mode button.active{color:var(--ax-c-2dd4bf);border-color:var(--ax-c-2dd4bf);background:var(--ax-c-102d31)}.tx-basis strong{color:var(--ax-c-2dd4bf);display:block;margin-top:8px}@media(max-width:520px){.rf-mode{flex-wrap:wrap}.rf-mode button{flex-basis:100%}}`}</style>
     <section className="tx-form">
       <p role="status" className="tx-note">{saved === false ? 'บันทึกร่างไม่สำเร็จ เบราว์เซอร์ไม่อนุญาตหรือพื้นที่เต็ม' : saved ? 'บันทึกร่างในเบราว์เซอร์นี้แล้ว' : 'กำลังกู้คืนร่าง'}</p>
       <button type="button" onClick={clearDraft}>ล้างร่างคำนวณ</button>
