@@ -1,3 +1,5 @@
+import { deedPolicyFlags, deedChecks } from './deedTypes.js'
+
 export const POLICY_TAGS = [
   'assetx',
   'underwriting',
@@ -57,18 +59,20 @@ export const MORTGAGE_CHECKLIST = [
   'ตรวจเจ้าของกรรมสิทธิ์ ผู้ให้ความยินยอม และเอกสารแนบท้ายสัญญา',
 ]
 
+// สีผลพิจารณาใช้ตัวแปรธีม (โหมดสว่างเข้มขึ้นให้อ่านได้ · โหมดมืดค่าเดิม)
 function severityRank(severity) {
   return { low: 1, medium: 2, high: 3, critical: 4 }[severity] || 1
 }
 
-function pickDecision({ criticalCount, highCount, riskScore, requestedLoan, recommendedLoan, missingFields }) {
-  if (criticalCount > 0) return { status: 'Hold / Legal DD', color: '#EF4444', reason: 'พบ red flag ระดับ critical ต้องหยุดเพื่อ DD ก่อน' }
+function pickDecision({ blockers = [], criticalCount, highCount, riskScore, requestedLoan, recommendedLoan, missingFields }) {
+  if (blockers.length > 0) return { status: 'Decline / เอกสารทำธุรกรรมนี้ไม่ได้', color: 'var(--ax-danger-text)', reason: `${blockers.map((flag) => flag.label).join(' · ')} — ไม่ต้องประเมินวงเงินต่อ จนกว่าจะเปลี่ยนเป็นเอกสารที่จดทะเบียนได้` }
+  if (criticalCount > 0) return { status: 'Hold / Legal DD', color: 'var(--ax-danger-text)', reason: 'พบ red flag ระดับ critical ต้องหยุดเพื่อ DD ก่อน' }
   if (requestedLoan > 0 && recommendedLoan > 0 && requestedLoan > recommendedLoan) {
-    return { status: 'Reduce Exposure', color: '#F97316', reason: 'วงเงินที่ขอสูงกว่าวงเงินแนะนำจาก FSV/LTV' }
+    return { status: 'Reduce Exposure', color: 'var(--ax-c-f97316)', reason: 'วงเงินที่ขอสูงกว่าวงเงินแนะนำจาก FSV/LTV' }
   }
-  if (riskScore >= 70 || highCount > 1) return { status: 'Decline / Committee Review', color: '#EF4444', reason: 'ความเสี่ยงสูงมาก ต้องเข้าคณะพิจารณาหรือปฏิเสธ' }
-  if (riskScore >= 50 || highCount > 0 || missingFields.length >= 3) return { status: 'Conditional Approve', color: '#F59E0B', reason: 'อนุมัติได้เฉพาะเมื่อปิดเงื่อนไขสำคัญครบ' }
-  return { status: 'Proceed with Conditions', color: '#10B981', reason: 'ความเสี่ยงอยู่ในกรอบ แต่ยังต้องตรวจเอกสารมาตรฐาน' }
+  if (riskScore >= 70 || highCount > 1) return { status: 'Decline / Committee Review', color: 'var(--ax-danger-text)', reason: 'ความเสี่ยงสูงมาก ต้องเข้าคณะพิจารณาหรือปฏิเสธ' }
+  if (riskScore >= 50 || highCount > 0 || missingFields.length >= 3) return { status: 'Conditional Approve', color: 'var(--ax-c-f59e0b)', reason: 'อนุมัติได้เฉพาะเมื่อปิดเงื่อนไขสำคัญครบ' }
+  return { status: 'Proceed with Conditions', color: 'var(--ax-c-10b981)', reason: 'ความเสี่ยงอยู่ในกรอบ แต่ยังต้องตรวจเอกสารมาตรฐาน' }
 }
 
 export function buildUnderwritingPolicy(form = {}, calc = {}, nearbyPricePoints = []) {
@@ -91,21 +95,16 @@ export function buildUnderwritingPolicy(form = {}, calc = {}, nearbyPricePoints 
     })
   }
 
-  if (form.titleType && form.titleType !== 'โฉนด (Chanote) ปลอดภาระ') {
-    activeFlags.push({
-      key: 'titleType',
-      label: form.titleType,
-      severity: form.titleType.includes('พิพาท') || form.titleType.includes('ภาระ') ? 'high' : 'medium',
-      condition: 'ต้องตรวจเอกสารสิทธิ์และข้อจำกัดการโอน/บังคับหลักประกัน',
-    })
-  }
+  // ประเภทเอกสารสิทธิ์รายแปลง + ภาระ (deedTypes.js) — เอกสารที่ทำธุรกรรมนี้ไม่ได้ตามกฎหมาย (ส.ป.ก. ส.ค.1 ห้ามโอน ฯลฯ) ได้ธง blocks
+  activeFlags.push(...deedPolicyFlags(form))
 
   const requestedLoan = Number(form.requestedLoan) || 0
   const recommendedLoan = Number(calc.recommendedLoan) || 0
   const riskScore = Number(calc.riskScore) || 0
+  const blockers = activeFlags.filter((flag) => flag.blocks)
   const criticalCount = activeFlags.filter((flag) => flag.severity === 'critical').length
   const highCount = activeFlags.filter((flag) => flag.severity === 'high').length
-  const decision = pickDecision({ criticalCount, highCount, riskScore, requestedLoan, recommendedLoan, missingFields })
+  const decision = pickDecision({ blockers, criticalCount, highCount, riskScore, requestedLoan, recommendedLoan, missingFields })
 
   const safeExposure = Math.round(Math.min(
     Number(calc.fsv || 0) * 0.35,
@@ -130,6 +129,7 @@ export function buildUnderwritingPolicy(form = {}, calc = {}, nearbyPricePoints 
   const conditions = [
     ...baseConditions,
     ...contractChecklist,
+    ...deedChecks(form),
     ...activeFlags.map((flag) => flag.condition),
     ...missingFields.map((field) => `เติมข้อมูลที่ยังขาด: ${field}`),
   ]

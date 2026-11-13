@@ -333,7 +333,10 @@ export async function saveValuation(data) {
     nuisance: "ติดสิ่งรบกวน", incompleteDeed: "โฉนดไม่สมบูรณ์",
   };
   const risks = data.risks || {};
-  const riskText = Object.keys(riskLabels).filter((k) => risks[k]).map((k) => riskLabels[k]).join(", ") || "ไม่มี";
+  const riskText = [
+    ...Object.keys(riskLabels).filter((k) => risks[k]).map((k) => riskLabels[k]),
+    data.deedRiskText || "", // ข้อจำกัดเอกสารสิทธิ์จาก deedTypes.js (ว่าง = โฉนดปลอดภาระ)
+  ].filter(Boolean).join(", ") || "ไม่มี";
 
   const requestedLoan = parseFloat(data.requestedLoan) || 0;
   const marketValue = parseFloat(data.marketValue) || 0;

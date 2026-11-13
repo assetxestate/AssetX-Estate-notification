@@ -24,6 +24,7 @@
     "test:refinance-prefill": "node --test src/lib/refinanceFromCustomer.test.mjs",
     "test:payments": "node --test src/lib/installmentBalance.test.mjs src/lib/paymentReminderPlan.test.mjs src/lib/partialPaymentMessages.test.mjs src/lib/refinancePartialPayments.test.mjs src/lib/combinedPayment.test.mjs src/lib/advanceDeduction.test.mjs server/paymentAdditions.test.mjs",
     "test:deed-assessment": "node --test src/lib/deedAssessment.test.mjs",
+    "test:deed-types": "node --test src/lib/deedTypes.test.mjs",
     "test:diary": "node --test server/diary.test.mjs tests/telegram-diary.test.mjs",
     "test:research": "node --test server/research/*.test.mjs server/marketing-ideas.test.mjs server/marketing-content-jobs.test.mjs src/lib/hookOptions.test.mjs src/lib/freshContentJob.test.mjs src/lib/captionEmoji.test.mjs src/lib/ideaChannels.test.mjs",
     "diary": "node scripts/diary-sync.mjs",

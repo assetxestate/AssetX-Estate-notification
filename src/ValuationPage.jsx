@@ -28,6 +28,8 @@ import {
 } from './lib/valuationOptions.js'
 import { ADDRESS_PROVINCES, getDistrictsByProvince, getSubdistrictsByDistrict } from './lib/thaiAddress.js'
 import { buildUnderwritingPolicy } from './lib/underwritingPolicy.js'
+import { TITLE_ENCUMBRANCES, legacyTitleType, deedTypeKeyFor, deedVerdict, formDeedTypeKeys, strictestDeedType, formEncumbrance, deedTypeOf, deedRiskText } from './lib/deedTypes.js'
+import { DeedTypeSelect, DeedTypeCard, DeedStatusChip, DEED_STATUS_COLOR } from './components/DeedTypeCard.jsx'
 import {
   VALUATION_IMAGE_LIMIT,
   deleteValuationPropertyImage,
@@ -1213,6 +1215,23 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                     )}
                   </div>
                 </div>
+
+                {/* ประเภทเอกสารสิทธิ์ของแปลง (deedTypes.js) — บันทึกไปกับ deeds[] */}
+                {(() => {
+                  const deedKey = deedTypeKeyFor(deed, form)
+                  const verdict = deedVerdict(deedKey, form.assessmentType)
+                  return (
+                    <div style={{ marginBottom: 10 }}>
+                      <Label>ประเภทเอกสารสิทธิ์</Label>
+                      <DeedTypeSelect value={deedKey} onChange={v => updateDeed(idx, 'docType', v)} style={inputBase} />
+                      {verdict && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: DEED_STATUS_COLOR[verdict.status], lineHeight: 1.5 }}>
+                          {verdict.icon} {verdict.txLabel}{verdict.statusLabel} — <span style={{ color: BRAND.textSec }}>{verdict.note}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* Deed fields grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -2675,7 +2694,7 @@ function PolicyGatePanel({ policy, compact = false }) {
           <div style={{ fontSize: 13, fontWeight: 800, color: BRAND.gold }}>Underwriting Policy Gate</div>
           <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>{policy.decision.reason}</div>
         </div>
-        <div style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${withAlpha(policy.decision.color, '66')}`, background: `${withAlpha(policy.decision.color, '18')}`, color: policy.decision.color, fontSize: 12, fontWeight: 800 }}>
+        <div style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${withAlpha(policy.decision.color, '66')}`, background: `${withAlpha(policy.decision.color, '0c')}`, color: policy.decision.color, fontSize: 12, fontWeight: 800 }}>
           {policy.decision.status}
         </div>
       </div>
@@ -2740,14 +2759,30 @@ function Step3({ form, update, calc, policy }) {
         </Card>
         <Card>
           <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>📄 เอกสารสิทธิ์</div>
-          <Label>ประเภทโฉนด / สิทธิ์ที่ดิน</Label>
-          <Sel value={form.titleType} onChange={e => update('titleType', e.target.value)}>
-            {TITLE_TYPES.map(t => (
-              <option key={t.value} value={t.value}>{t.value}{t.score > 0 ? ` (+${t.score} pts)` : ''}</option>
-            ))}
+          <Label>ประเภทเอกสาร (เลือกรายแปลงในขั้นที่ 1)</Label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+            {formDeedTypeKeys(form).map(key => {
+              const verdict = deedVerdict(key, form.assessmentType)
+              return verdict
+                ? <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: BRAND.textPri }}>{deedTypeOf(key).code} <DeedStatusChip tx={verdict.tx} status={verdict.status} active /></span>
+                : <span key={key} style={{ fontSize: 12, color: BRAND.textPri }}>{deedTypeOf(key).code}</span>
+            })}
+          </div>
+          <Label>ภาระในสารบัญจดทะเบียน</Label>
+          <Sel value={formEncumbrance(form)} onChange={e => update('titleEncumbrance', e.target.value)}>
+            {TITLE_ENCUMBRANCES.map(e => {
+              const score = TITLE_TYPES.find(t => t.value === legacyTitleType('chanote', e.value))?.score || 0
+              return <option key={e.value} value={e.value}>{e.label}{score > 0 ? ` (+${score} pts)` : ''}</option>
+            })}
           </Sel>
         </Card>
       </div>
+
+      <Card>
+        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 10 }}>📜 ข้อจำกัดของเอกสารสิทธิ์</div>
+        <DeedTypeCard typeKey={strictestDeedType(formDeedTypeKeys(form), form.assessmentType)} assessmentType={form.assessmentType} compact />
+        <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 8 }}>รายละเอียดทุกประเภท ที่มาของกฎหมาย และข้อจำกัดอื่น (สินสมรส ผู้เยาว์ อายัด ฯลฯ) ดูที่แท็บ ⚖️ กฎหมาย → เอกสารสิทธิ์</div>
+      </Card>
 
       <Card>
         <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.gold, marginBottom: 12 }}>🚩 ปัจจัยเสี่ยงเพิ่มเติม</div>
@@ -2885,6 +2920,14 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
 
       <PropertyImageGallery images={form.propertyImages} />
 
+      {/* เอกสารที่ทำธุรกรรมนี้ไม่ได้ตามกฎหมาย (deedTypes.js) — ตัวเลขด้านล่างใช้อ้างอิงมูลค่าเท่านั้น */}
+      {(policy?.activeFlags || []).some(f => f.blocks) && (
+        <div style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid var(--ax-c-ef4444)', background: withAlpha('var(--ax-c-ef4444)', '14') }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--ax-c-ef4444)' }}>⛔ {policy.activeFlags.filter(f => f.blocks).map(f => f.label).join(' · ')}</div>
+          <div style={{ fontSize: 12, color: BRAND.textPri, marginTop: 4, lineHeight: 1.55 }}>{policy.activeFlags.find(f => f.blocks)?.condition} — วงเงินด้านล่างใช้อ้างอิงมูลค่าเท่านั้น จนกว่าจะเปลี่ยนเป็นเอกสารที่จดทะเบียนได้</div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
         {[
           { icon: '🏛️', label: 'ราคาประเมินรัฐ', value: `฿${fmt(calc.govPriceTotal)}`, sub: `${fmt(calc.weightedGovPrice)} บาท/ตร.ว. (ถัวเฉลี่ย)` },
@@ -2928,9 +2971,9 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
             </div>
             <div style={{ marginTop: 4, display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${withAlpha(calc.riskBand?.color || BRAND.gold, '20')}`, color: calc.riskBand?.color || BRAND.gold, border: `1px solid ${withAlpha(calc.riskBand?.color || BRAND.gold, '50')}` }}>ความเสี่ยง{calc.riskBand?.label}</div>
             <div style={{ marginTop: 6, fontSize: 11, color: BRAND.textSec }}>FSV Rate: {Math.round(calc.fsvRate * 100)}% | LTV Cap: {calc.riskBand?.ltvMax}%</div>
-            {RISK_FACTORS.filter(rf => form.risks[rf.key]).length === 0 && !form.floodLevel?.includes('ท่วม') && form.titleType === 'โฉนด (Chanote) ปลอดภาระ'
+            {RISK_FACTORS.filter(rf => form.risks[rf.key]).length === 0 && (!form.floodLevel || form.floodLevel === 'ไม่มีประวัติน้ำท่วม') && !deedRiskText(form)
               ? <div style={{ marginTop: 6, fontSize: 12, color: BRAND.success }}>ไม่พบปัจจัยเสี่ยง</div>
-              : <div style={{ marginTop: 6, fontSize: 11, color: 'var(--ax-c-fca5a5)' }}>{[form.floodLevel !== 'ไม่มีประวัติน้ำท่วม' ? form.floodLevel : null, form.titleType !== 'โฉนด (Chanote) ปลอดภาระ' ? form.titleType : null, ...RISK_FACTORS.filter(rf => form.risks[rf.key]).map(rf => rf.label)].filter(Boolean).join(', ')}</div>
+              : <div style={{ marginTop: 6, fontSize: 11, color: 'var(--ax-c-fca5a5)' }}>{[form.floodLevel !== 'ไม่มีประวัติน้ำท่วม' ? form.floodLevel : null, deedRiskText(form) || null, ...RISK_FACTORS.filter(rf => form.risks[rf.key]).map(rf => rf.label)].filter(Boolean).join(', ')}</div>
             }
           </Card>
           <Card>
@@ -3335,6 +3378,8 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
         areaNgan: primaryDeed.areaNgan || 0,
         areaSqw: primaryDeed.areaSqw || 0,
         govPrice: calc.weightedGovPrice,
+        // ข้อจำกัดเอกสารสิทธิ์ (เช่น "น.ส.3: ขายฝากได้แบบมีเงื่อนไข") ต่อท้ายคอลัมน์ปัจจัยเสี่ยง — ประเภทรายแปลงอยู่ใน deeds[].docType
+        deedRiskText: deedRiskText(form),
       })
       setSaved(true)
     } catch (e) {

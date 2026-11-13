@@ -1,5 +1,6 @@
 // ── ตาราง options + สูตรคำนวณสำหรับการประเมินทรัพย์ ─────────────────
 // ใช้ร่วมกันระหว่าง ValuationPage.jsx (หน้าประเมินภายใน) และ AssessPage.jsx (หน้าประเมินออนไลน์สาธารณะ)
+import { effectiveTitleType } from './deedTypes.js'
 
 export const ASSESSMENT_TYPES = [
   { value: 'ขายฝาก', icon: '🔒', desc: 'รับซื้อฝาก / ได้ผลตอบแทนหลัง' },
@@ -251,12 +252,13 @@ export const BASE_FSV_RATE = {
   'ที่ดินพร้อมสิ่งปลูกสร้าง': 0.70, 'คอนโดมิเนียม': 0.73, 'อาคารชุด': 0.70,
   'อาคารพาณิชย์': 0.70, 'โกดัง': 0.65, 'โรงงาน': 0.60,
 }
+// สีใช้ตัวแปรธีม (โหมดสว่างเข้มขึ้นให้อ่านได้ · โหมดมืดค่าเดิม)
 export const RISK_BANDS = [
-  { maxScore: 15,  label: 'ต่ำมาก',  color: '#10B981', fsvAdj: 1.00, ltvMax: 75 },
-  { maxScore: 30,  label: 'ต่ำ',     color: '#84CC16', fsvAdj: 0.98, ltvMax: 70 },
-  { maxScore: 50,  label: 'กลาง',    color: '#F59E0B', fsvAdj: 0.95, ltvMax: 65 },
-  { maxScore: 70,  label: 'สูง',     color: '#F97316', fsvAdj: 0.88, ltvMax: 55 },
-  { maxScore: 100, label: 'สูงมาก',  color: '#EF4444', fsvAdj: 0.78, ltvMax: 45 },
+  { maxScore: 15,  label: 'ต่ำมาก',  color: 'var(--ax-c-10b981)', fsvAdj: 1.00, ltvMax: 75 },
+  { maxScore: 30,  label: 'ต่ำ',     color: 'var(--ax-c-84cc16)', fsvAdj: 0.98, ltvMax: 70 },
+  { maxScore: 50,  label: 'กลาง',    color: 'var(--ax-c-f59e0b)', fsvAdj: 0.95, ltvMax: 65 },
+  { maxScore: 70,  label: 'สูง',     color: 'var(--ax-c-f97316)', fsvAdj: 0.88, ltvMax: 55 },
+  { maxScore: 100, label: 'สูงมาก',  color: 'var(--ax-c-ef4444)', fsvAdj: 0.78, ltvMax: 45 },
 ]
 export const COMP_ADJ = {
   size:      { '< 200 ตร.ว.': 0.05, '200–500 ตร.ว.': 0, '500–1,000 ตร.ว.': -0.10, '> 1,000 ตร.ว.': -0.20 },
@@ -284,7 +286,8 @@ export function computeValuation(form) {
   const marketValue = effectiveMarketPrice * totalSqw
   const govPriceTotal = weightedGovPrice * totalSqw
   const floodScore = FLOOD_LEVELS.find(f => f.value === form.floodLevel)?.score ?? 0
-  const titleScore = TITLE_TYPES.find(t => t.value === form.titleType)?.score ?? 0
+  // คะแนนเอกสารคิดจากประเภทเอกสารรายแปลง + ภาระ (deedTypes.js) — ข้อมูลเก่าที่มีแค่ titleType ได้คะแนนเท่าเดิม
+  const titleScore = TITLE_TYPES.find(t => t.value === effectiveTitleType(form))?.score ?? 0
   const flagScore = RISK_FACTORS.reduce((s, rf) => s + (form.risks?.[rf.key] ? rf.score : 0), 0)
   const riskScore = Math.min(100, floodScore + titleScore + flagScore)
   const riskBand = RISK_BANDS.find(b => riskScore <= b.maxScore) || RISK_BANDS[RISK_BANDS.length - 1]

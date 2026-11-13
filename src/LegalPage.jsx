@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { BRAND as BASE_BRAND } from './lib/config.js'
 import { withAlpha } from './lib/theme.js'
+import { DEED_TYPES, DEED_RIGHTS, GENERAL_RESTRICTIONS, DEED_SOURCES, DEED_KNOWLEDGE_CHECKED } from './lib/deedTypes.js'
+import { DeedStatusChip, DeedTypeCard, DeedRefs } from './components/DeedTypeCard.jsx'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
 const BRAND = { ...BASE_BRAND, bgCard: 'var(--ax-c-0d1b2e)', textMut: 'var(--ax-c-475569)', success: 'var(--ax-c-10b981)', danger: 'var(--ax-c-ef4444)', blue: 'var(--ax-c-3b82f6)', indigo: 'var(--ax-c-6366f1)' }
@@ -205,6 +207,76 @@ function SalePledgeSection() {
   )
 }
 
+// ── เอกสารสิทธิ์ — ข้อมูลจาก src/lib/deedTypes.js (เจ้าของขอ 13 พ.ย. 2569) ─────────────
+const EFFECT_LABEL = {
+  block: { text: 'สำนักงานที่ดินไม่รับจด', color: 'var(--ax-c-ef4444)' },
+  consent: { text: 'ต้องมีความยินยอม/คำสั่งศาล', color: BRAND.gold },
+  risk: { text: 'จดได้ แต่เสี่ยง', color: 'var(--ax-c-3b82f6)' },
+}
+
+function DeedTypesSection() {
+  const checkedThai = new Date(`${DEED_KNOWLEDGE_CHECKED}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  return (
+    <Section id="deeds" icon="📜" title="ประเภทเอกสารสิทธิ์และข้อจำกัดการทำธุรกรรม" color={BRAND.teal}>
+      <p style={{ color: BRAND.textSec, fontSize: 13, marginTop: 0, marginBottom: 12, lineHeight: 1.6 }}>
+        ขายฝากและจำนองต้องจดทะเบียนที่สำนักงานที่ดิน จึงรับได้เฉพาะเอกสารที่จดทะเบียนได้ ตารางนี้บอกว่าเอกสารแต่ละแบบให้สิทธิแค่ไหน และทำธุรกรรมอะไรได้บ้าง
+        ข้อที่ยังไม่พบหนังสือกรมที่ดินยืนยันเขียนกำกับว่า "ตีความ" หรือ "ยังไม่พบ" ไว้ — ยืนยันกับสำนักงานที่ดินก่อนนัดจด
+      </p>
+
+      <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+        <LegalTable
+          headers={['เอกสาร', 'สิทธิ์ที่ได้', 'ขาย', 'ขายฝาก', 'จำนอง']}
+          rows={DEED_TYPES.map((t) => [
+            <span><strong>{t.code}</strong><br /><span style={{ fontSize: 11, color: BRAND.textSec }}>{t.name}</span></span>,
+            <span style={{ fontSize: 12 }}>{DEED_RIGHTS[t.right]}</span>,
+            <DeedStatusChip tx="sell" status={t.tx.sell.s} />,
+            <DeedStatusChip tx="khaifak" status={t.tx.khaifak.s} />,
+            <DeedStatusChip tx="jamnong" status={t.tx.jamnong.s} />,
+          ])}
+        />
+      </div>
+
+      <div style={{ fontSize: 12, color: BRAND.textSec, fontWeight: 700, marginBottom: 8 }}>รายละเอียดรายประเภท (กดเพื่อเปิด)</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
+        {DEED_TYPES.map((t) => (
+          <details key={t.key} style={{ border: `1px solid ${BRAND.border}`, borderRadius: 10, padding: '8px 12px', background: BRAND.bg }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700, color: BRAND.textPri }}>
+              {t.code} — <span style={{ fontWeight: 400, color: BRAND.textSec }}>{t.name}</span>
+            </summary>
+            <div style={{ marginTop: 10 }}><DeedTypeCard typeKey={t.key} /></div>
+          </details>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 12, color: BRAND.textSec, fontWeight: 700, marginBottom: 8 }}>ข้อจำกัดที่มาจากสารบัญจดทะเบียนหรือตัวเจ้าของ (ใช้กับเอกสารทุกแบบ)</div>
+      <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+        <LegalTable
+          headers={['เรื่อง', 'กฎ', 'ผล', 'ตรวจก่อนวันจด']}
+          rows={GENERAL_RESTRICTIONS.map((g) => [
+            <strong>{g.title}</strong>,
+            <span style={{ fontSize: 12, lineHeight: 1.55 }}>{g.rule}<DeedRefs refs={g.refs} /></span>,
+            <span style={{ ...badge(EFFECT_LABEL[g.effect].color) }}>{EFFECT_LABEL[g.effect].text}</span>,
+            <span style={{ fontSize: 12, lineHeight: 1.55 }}>{g.check}</span>,
+          ])}
+        />
+      </div>
+
+      <details style={{ fontSize: 12, color: BRAND.textSec }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>แหล่งที่มาทั้งหมด ({Object.keys(DEED_SOURCES).length} แหล่ง · ตรวจล่าสุด {checkedThai})</summary>
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {Object.entries(DEED_SOURCES).map(([id, s]) => (
+            <div key={id} style={{ lineHeight: 1.5 }}>
+              <span style={{ fontWeight: 700, color: s.official ? 'var(--ax-c-10b981)' : BRAND.gold }}>{s.official ? 'ทางการ' : 'แหล่งรอง'}</span>
+              {' · '}<a href={s.url} target="_blank" rel="noopener noreferrer" style={{ color: BRAND.teal }}>{s.title}</a>
+              {s.note ? <span style={{ color: BRAND.textMut }}> — {s.note}</span> : null}
+            </div>
+          ))}
+        </div>
+      </details>
+    </Section>
+  )
+}
+
 function InterestSection() {
   return (
     <Section id="interest" icon="💰" title="กฎหมายดอกเบี้ยและอัตรา" color={BRAND.success}>
@@ -396,6 +468,7 @@ function ChecklistSection() {
       title: 'ก่อนทำสัญญา', color: BRAND.blue,
       items: [
         'ตรวจสอบโฉนด/เอกสารสิทธิ์ไม่ติดภาระใด',
+        'ตรวจประเภทเอกสารสิทธิ์ว่าจดทะเบียนธุรกรรมนี้ได้ (หัวข้อเอกสารสิทธิ์)',
         'ตรวจสอบอัตราดอกเบี้ยไม่เกิน 15% ต่อปี',
         'ระบุวันครบกำหนดชำระชัดเจน',
         'จดทะเบียน ณ สำนักงานที่ดิน',
@@ -447,6 +520,7 @@ export default function LegalPage() {
   const navItems = [
     { id: 'mortgage',   label: 'จำนอง',        color: BRAND.blue },
     { id: 'salepledge', label: 'ขายฝาก',       color: BRAND.orange },
+    { id: 'deeds',      label: 'เอกสารสิทธิ์',  color: BRAND.teal },
     { id: 'interest',   label: 'ดอกเบี้ย',     color: BRAND.success },
     { id: 'tax',        label: 'ภาษีอสังหาฯ',  color: BRAND.purple },
     { id: 'special',    label: 'สถานการณ์พิเศษ', color: BRAND.gold },
@@ -496,6 +570,7 @@ export default function LegalPage() {
       {/* Sections */}
       <MortgageSection />
       <SalePledgeSection />
+      <DeedTypesSection />
       <InterestSection />
       <TaxLegalSection />
       <SpecialCasesSection />
@@ -504,7 +579,7 @@ export default function LegalPage() {
 
       {/* Footer */}
       <div style={{ fontSize: 11, color: BRAND.textMut, textAlign: 'center', marginTop: 24 }}>
-        อ้างอิง: ป.พ.พ. มาตรา 224, 491–502, 654, 702–746 · พ.ร.บ. ขายฝาก 2562 · พ.ร.บ. ห้ามเรียกดอกเบี้ยเกินอัตรา 2560 · พ.ร.บ. ที่ดินและสิ่งปลูกสร้าง 2562 · ประมวลรัษฎากร
+        อ้างอิง: ป.พ.พ. มาตรา 224, 491–502, 654, 702–746 · ประมวลกฎหมายที่ดิน · พ.ร.บ.อาคารชุด 2522 · พ.ร.บ.การปฏิรูปที่ดินฯ 2518 · พ.ร.บ. ขายฝาก 2562 · พ.ร.บ. ห้ามเรียกดอกเบี้ยเกินอัตรา 2560 · พ.ร.บ. ที่ดินและสิ่งปลูกสร้าง 2562 · ประมวลรัษฎากร
       </div>
     </div>
   )
