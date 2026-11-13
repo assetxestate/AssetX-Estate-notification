@@ -97,6 +97,7 @@
     "social_fb": { "max_age_days": 21, "audience": [], "cap": 20, "_note": "โพสต์แรงกว่าปกติจากตัวเฝ้าเพจ Facebook (source social) · cap ที่นี่เท่ากับ max_social_in_queue ใน social_watch.json — ตัวเฝ้าเพจคุมคิวเองก่อนใส่ · ห้ามอ้างชื่อเพจในโพสต์" },
     "ad_library": { "max_age_days": 28, "audience": [], "cap": 6, "_note": "แอดคู่แข่งที่รันนานและให้ความรู้ จาก Meta Ad Library (source social · scripts/research-ads.mjs สัปดาห์ละครั้ง · 7 พ.ย. 2569) · cap เท่ากับ max_in_queue ใน ads_library.json · ห้ามอ้างชื่อเพจ ลอกได้แค่แบบแผน เรต/ข้อเสนอเป็นโฆษณา" },
     "internal": { "max_age_days": 7, "audience": [], "cap": 3 },
+    "offer": { "max_age_days": 30, "audience": ["A"], "cap": 4, "_note": "หัวข้อโปสเตอร์ประกาศบริการของเราเอง (source internal · research/offer_topics.json · server/research/offers.js · 13 พ.ย. 2569) · ไม่ผ่านตัวเก็บ — รอบรีเสิร์ชเติมเองตาม cadence_days" },
     "calendar": { "max_age_days": 400, "audience": ["A", "B", "C", "D"], "cap": 6 }
   },
 

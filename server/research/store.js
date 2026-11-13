@@ -54,6 +54,10 @@ export function createSupabaseStore({ url = process.env.SUPABASE_URL || process.
 
   return {
     kind: 'supabase',
+    // ไอเดียโปสเตอร์ประกาศบริการทุกสถานะ (offers.js หมุนหัวข้อจากวันที่สร้างล่าสุด)
+    async offerRows() {
+      return all(ideas().select('id,external_key,status,created_at').eq('subtype', 'offer').limit(2000))
+    },
     async existing({ eventWindowDays = 7, now = new Date() } = {}) {
       const keys = new Set()
       const eventKeys = new Map()

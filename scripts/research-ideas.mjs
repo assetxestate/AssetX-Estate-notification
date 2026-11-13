@@ -7,6 +7,7 @@
 // node scripts/research-ideas.mjs collect [--dry-run]       เก็บอย่างเดียว (--dry-run เขียน .local/research/dry-run.json ไม่แตะ DB)
 // node scripts/research-ideas.mjs enrich [--limit N] [--retry]  ดึงหน้าต้นทางของไอเดียที่ยังไม่มีข้อเท็จจริง (📌) แล้วให้ AI สรุป ≤ 7 ข้อ · --retry ลองซ้ำที่เคยดึงไม่ได้ · ใน run ใช้ --enrich-limit / --no-enrich
 // node scripts/research-ideas.mjs angles [--limit N]        เขียนมุมเล่าให้ไอเดียที่ยังไม่มี (Hermes → Ollama ในเครื่อง → Gemini)
+// node scripts/research-ideas.mjs offers [--add khaifak-condo,khaifak-house | --all | --force] [--dry-run]  หัวข้อโปสเตอร์ประกาศบริการของเรา (research/offer_topics.json · ชิป "บริการของเรา") · ใน run เติมเองเมื่อคิวไม่มีหัวข้อค้างและหัวข้อล่าสุดเก่ากว่า cadence_days · --add = หัวข้อที่ระบุ · ไอเดียใหม่มีมุมเล่าแล้ว ร่างต่อด้วย drafts --id
 // node scripts/research-ideas.mjs drafts [--limit N] [--include-no-facts] [--id 32,33]  ร่างโพสต์เต็มให้ทุกมุมเล่าของไอเดียที่ "มีข้อเท็จจริง" (📌) · ค่าเริ่มต้น 8 ไอเดีย/รอบ ~1.5–2 นาที/มุมบน Ollama 14b · ใน run ใช้ --drafts-limit · --id = ไอเดียที่ระบุเอง ไม่สนสถานะ (ร่างใหม่ให้ไอเดียที่เจ้าของเลือกไปแล้วได้ หลังลบร่างเดิมด้วย .local/reset-drafts.mjs)
 //     ไอเดียที่ไม่มีข้อเท็จจริง (คลิปยังไม่ถอดคำบรรยาย · ดึงเนื้อข่าวไม่ได้) ไม่ร่างให้ — ผู้ตรวจอิสระ 6 พ.ย. 2569 พบว่า AI เดาเอกสาร/ขั้นตอนผิดบริบทไทย · --include-no-facts เปิดได้ถ้าเจ้าของยอมรับ
 //     ยกเว้น: เรื่องมิจฉาชีพ (subtype scam) และไอเดียที่คลังความรู้ AssetX (research/knowledge_base.json) จับคู่ได้ ≥ 2 ข้อ — ร่างจากข้อกฎหมาย/ค่าธรรมเนียมที่ตรวจแล้วแทนการเดา (7 พ.ย. 2569)
@@ -30,6 +31,7 @@ import { createSupabaseStore, createDryRunStore, missingTable } from '../server/
 import { createAsk, NO_PROVIDER_MESSAGE } from '../server/research/llm.js'
 import { generateAngles } from '../server/research/angles.js'
 import { generateDrafts, hasResearchFacts, isInternalSourceLabel, NO_FACTS_DRAFT_SUBTYPES } from '../server/research/drafts.js'
+import { planOfferIdeas, offerIdeaRow, offerTopics } from '../server/research/offers.js'
 import { loadKnowledgeBase, knowledgeForIdea, KB_MIN_MATCHES } from '../server/research/knowledge.js'
 import { loadHookPatterns, loadHookLessons, DEFAULT_LESSONS_FILE } from '../server/research/hooks.js'
 import { collectHookSamples, summarizeHookLessons, mergeSamples, lessonsHeadline, LESSONS_MAX_AGE_DAYS } from '../server/research/hook-lessons.js'
@@ -134,6 +136,19 @@ async function doCollect({ cfg, brand, calendar, store, state }) {
   out(text)
   out(`[ideas] fetch ${fetcher.stats.requests} ครั้ง · บล็อก ${fetcher.stats.blocked} · error ${fetcher.stats.errors} · กุญแจเดิมในฐาน ${existing.total}${store.kind === 'dry-run' ? ` · dry-run → ${store.file}` : ''}`)
   return { rows, report, saved, text }
+}
+
+// หัวข้อโปสเตอร์ประกาศบริการ (offers.js) — รอบรีเสิร์ชเติมเมื่อถึงรอบ · คำสั่ง offers ใส่เองได้
+async function doOffers({ brand, store, force = false, keys = [] }) {
+  const config = readJson(path.join(RESEARCH_DIR, 'offer_topics.json'), { topics: [] })
+  const existing = store.offerRows ? await store.offerRows() : []
+  const now = new Date()
+  const topics = planOfferIdeas(config, existing, { now, force, keys })
+  if (!topics.length) { out('[offers] คิวมีหัวข้อโปสเตอร์บริการพอแล้ว หรือยังไม่ถึงรอบ — ข้าม'); return { inserted: 0, ids: [] } }
+  const rows = topics.map((t) => offerIdeaRow(t, brand, { now }))
+  const saved = await store.insertIdeas(rows)
+  out(`[offers] เพิ่ม ${saved.inserted}/${rows.length} หัวข้อ: ${topics.map((t) => t.key).join(', ')}${saved.inserted < rows.length ? ' (หัวข้อที่มีในสัปดาห์นี้แล้วถูกข้าม)' : ''}`)
+  return { inserted: saved.inserted, keys: topics.map((t) => t.key) }
 }
 
 async function doAngles({ brand, store, limit }) {
@@ -364,6 +379,11 @@ async function cmdRun() {
       return
     }
 
+    // หัวข้อโปสเตอร์ประกาศบริการ — ก่อนขั้นร่าง จะได้ร่างในรอบเดียวกัน
+    if (!dryRun) {
+      try { await doOffers({ brand, store }) } catch (error) { warnings.push(`⚠️ หัวข้อโปสเตอร์บริการล้ม: ${error.message}`); out(warnings.at(-1)) }
+    }
+
     let enrich = null
     let angles = null
     let drafts = null
@@ -428,6 +448,16 @@ async function cmdDrafts() {
   const store = makeStore(flags.has('--dry-run'))
   const ids = String(flagValue('--id', '')).split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0)
   await doDrafts({ brand, store, limit: Number(flagValue('--limit', 8)), includeNoFacts: flags.has('--include-no-facts'), ids })
+}
+
+async function cmdOffers() {
+  const { brand } = loadConfig()
+  const store = makeStore(flags.has('--dry-run'))
+  const config = readJson(path.join(RESEARCH_DIR, 'offer_topics.json'), { topics: [] })
+  const keys = flags.has('--all') ? offerTopics(config).map((t) => t.key) : String(flagValue('--add', '')).split(',').map((k) => k.trim()).filter(Boolean)
+  const unknown = keys.filter((k) => !offerTopics(config).some((t) => t.key === k))
+  if (unknown.length) { out(`[offers] ไม่รู้จักหัวข้อ: ${unknown.join(', ')} — มี: ${offerTopics(config).map((t) => t.key).join(', ')}`); process.exitCode = 2; return }
+  await doOffers({ brand, store, force: flags.has('--force'), keys })
 }
 
 async function cmdEnrich() {
@@ -501,7 +531,7 @@ function help() {
   out(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).slice(1).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'))
 }
 
-const commands = { run: cmdRun, collect: cmdCollect, enrich: cmdEnrich, angles: cmdAngles, drafts: cmdDrafts, hooks: cmdHooks, library: cmdLibrary, expire: cmdExpire, stats: cmdStats, report: cmdReport, probe: cmdProbe, help }
+const commands = { run: cmdRun, collect: cmdCollect, offers: cmdOffers, enrich: cmdEnrich, angles: cmdAngles, drafts: cmdDrafts, hooks: cmdHooks, library: cmdLibrary, expire: cmdExpire, stats: cmdStats, report: cmdReport, probe: cmdProbe, help }
 const fn = commands[command]
 if (!fn) { out(`ไม่รู้จักคำสั่ง "${command}"`); help(); process.exit(2) }
 Promise.resolve(fn()).catch((error) => {

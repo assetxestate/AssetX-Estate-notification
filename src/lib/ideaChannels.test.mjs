@@ -14,6 +14,8 @@ test('ช่องทางจากแหล่งที่ตัวเก็�
   assert.equal(channelOfIdea({ source: 'auction', subtype: 'auction_npa' }), 'auction')
   assert.equal(channelOfIdea({ source: 'community', subtype: 'community_q' }), 'community')
   assert.equal(channelOfIdea({ source: 'internal', subtype: 'internal' }), 'internal')
+  assert.equal(channelOfIdea({ source: 'internal', subtype: 'offer' }), 'offer', 'โปสเตอร์ประกาศบริการของเราแยกจากลีด')
+  assert.equal(CHANNEL_ORDER[0], 'offer', 'ชิปบริการของเราขึ้นก่อน')
 })
 
 test('ไอเดียที่วางเอง: ดูโดเมนลิงก์ (TikTok · Instagram · X · YouTube · Facebook) · ไม่รู้จัก = วางเอง', () => {

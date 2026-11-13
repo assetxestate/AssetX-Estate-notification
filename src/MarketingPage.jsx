@@ -26,9 +26,9 @@ const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 const researchSubtypeLabels = {
   rate: 'ดอกเบี้ย/กนง.', fee_measure: 'ค่าโอน/มาตรการรัฐ', valuation: 'ราคาประเมิน', law: 'กฎหมาย', scam: 'เตือนภัยมิจฉาชีพ',
   credit_market: 'สินเชื่อ', market: 'ตลาด', auction_npa: 'ขายทอดตลาด/NPA', community_q: 'คำถามจากชุมชน', competitor: 'คู่แข่ง', internal: 'ลีดของเรา', calendar: 'ปฏิทิน',
-  social_fb: 'โพสต์แรงของเพจ', ad_library: 'แอดคู่แข่ง',
+  social_fb: 'โพสต์แรงของเพจ', ad_library: 'แอดคู่แข่ง', offer: 'โปสเตอร์รับงาน',
 }
-const researchSourceLabels = { news: 'ข่าว', official: 'ทางการ', community: 'ชุมชน', auction: 'ขายทอดตลาด', youtube: 'YouTube', social: 'โซเชียล', internal: 'ลีดของเรา', manual: 'วางเอง' }
+const researchSourceLabels = { news: 'ข่าว', official: 'ทางการ', community: 'ชุมชน', auction: 'ขายทอดตลาด', youtube: 'YouTube', social: 'โซเชียล', internal: 'ข้อมูลเราเอง', manual: 'วางเอง' }
 // เพจพูดกับเจ้าของทรัพย์ที่ต้องการเงินอย่างเดียว (เจ้าของเลือก 9 พ.ย. 2569 · server/research/audience.js) — ทุกมุมเล่าและร่าง AI ของไอเดียรีเสิร์ชเขียนถึงกลุ่มนี้
 // การ์ดจึงบอกคนอ่านกลุ่มเดียว ไม่ใช่ป้ายกลุ่มของไอเดีย (เดิมขึ้น "ทุกกลุ่ม" แล้วร่างพูดปนกับนักลงทุน)
 const RESEARCH_READER_LABEL = 'เจ้าของทรัพย์ที่ต้องการเงิน'
@@ -40,7 +40,7 @@ function researchIdeaToCard(row) {
     id: `research-${row.id}`,
     dbId: row.id,
     kind: 'research',
-    source: cite ? `${researchSourceLabels[row.source] || row.source} · ${row.source_label}` : (researchSourceLabels[row.source] || 'ตลาด'),
+    source: cite ? `${researchSourceLabels[row.source] || row.source} · ${row.source_label}` : (row.subtype === 'offer' ? 'บริการของเรา' : (researchSourceLabels[row.source] || 'ตลาด')),
     type: researchSubtypeLabels[row.subtype] || 'ตลาด',
     subtype: row.subtype || null,
     // ช่องทางต้นทาง (ชิปกรอง + โลโก้บนการ์ด · src/lib/ideaChannels.js ตัวเดียวกับที่ API นับ) — คนละอย่างกับ channel ด้านล่าง (ช่องทางที่จะโพสต์)
@@ -4347,7 +4347,7 @@ const styles = `
     --mx-ok: #4ade80; --mx-ok-ink: #bbf7d0; --mx-warn: #fbbf24; --mx-warn-ink: #fde68a; --mx-err: #fb7185; --mx-err-soft: #ffd1d6;
     --mx-glow: 0 0 0 1px rgba(66,199,216,.35), 0 0 24px rgba(66,199,216,.22);
     --mx-shadow: 0 18px 44px rgba(2, 8, 24, .45);
-    --mx-ch-facebook: #4C8DFF; --mx-ch-meta_ads: #4C8DFF; --mx-ch-youtube: #FF3B30; --mx-ch-tiktok: #F2F5F8; --mx-ch-instagram: #FF4F8B; --mx-ch-x: #F2F5F8;
+    --mx-ch-offer: #5EEAD4; --mx-ch-facebook: #4C8DFF; --mx-ch-meta_ads: #4C8DFF; --mx-ch-youtube: #FF3B30; --mx-ch-tiktok: #F2F5F8; --mx-ch-instagram: #FF4F8B; --mx-ch-x: #F2F5F8;
     --mx-ch-news: #8AB4F8; --mx-ch-official: #70D7E8; --mx-ch-auction: #F2B866; --mx-ch-community: #B9A3E3; --mx-ch-internal: #7FE3B0; --mx-ch-manual: #C9D4DE; --mx-ch-radar: #C9D4DE;
     color-scheme: dark;
   }

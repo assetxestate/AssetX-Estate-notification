@@ -23,6 +23,11 @@ test('draftFormatFor: เลือกโครงจากชื่อ/คำอ
   assert.equal(draftFormatFor({ label: 'ข้อมูลใหม่ ธปท.', brief: 'อธิบายประกาศ' }, { hasFacts: true }), 'news')
   assert.equal(draftFormatFor({ label: 'ข้อมูลใหม่ ธปท.', brief: 'อธิบายประกาศ' }, { hasFacts: false }), 'explain')
   assert.equal(draftFormatFor({ label: 'วงเงินจำนองคอนโด', brief: 'อธิบายปัจจัย' }), 'explain')
+  // ประกาศบริการ (โปสเตอร์รับงาน) ใช้ได้เฉพาะไอเดียบริการของเรา — มุมของไอเดียอื่นที่บังเอิญมีคำนี้ไม่เปลี่ยนโครง
+  assert.equal(draftFormatFor({ label: 'ประกาศบริการ: รับขายฝากคอนโด', brief: 'x' }, { subtype: 'offer' }), 'offer')
+  assert.notEqual(draftFormatFor({ label: 'ประกาศบริการ: รับขายฝากคอนโด', brief: 'x' }, { subtype: 'social_fb' }), 'offer')
+  assert.equal(draftFormatFor({ label: 'เช็กก่อนจำนองคอนโด', brief: 'ให้ผู้รับจำนองแจ้งเงื่อนไข' }, { subtype: 'offer' }), 'explain', '"ผู้รับจำนอง" ไม่ใช่ป้ายประกาศบริการ')
+  assert.equal(pickDraftFormat({ label: 'ประกาศบริการ: รับขายฝากบ้าน', brief: 'x' }, { subtype: 'offer', usedFormats: ['offer'] }), 'offer', 'ประกาศบริการไม่หมุนไปโครงอื่น')
 })
 
 test('hasResearchFacts / needsDraft / cleanTitleForPrompt', () => {

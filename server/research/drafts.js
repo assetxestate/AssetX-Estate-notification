@@ -187,6 +187,14 @@ export function repeatedLinePrefix(caption, { minLines = 3, prefixLen = 18 } = {
 
 // รูปแบบโพสต์ — เลือกจากชื่อ/คำอธิบายมุมเล่า ความต่างของโครงนี่แหละที่ทำให้ 3 มุมของไอเดียเดียวไม่ออกมาหน้าตาเดียวกัน
 export const DRAFT_FORMATS = {
+  // โพสต์ประกาศบริการ = โปสเตอร์รับงาน (เจ้าของขอ 13 พ.ย. 2569 หลังเห็นโพสต์รับจำนองคอนโดของคู่แข่งแรง 48 เท่า แต่เรายังไม่มีโปสเตอร์รับขายฝาก)
+  // ใช้เฉพาะไอเดีย subtype offer (research/offer_topics.json) และมุมที่ชื่อขึ้นต้น "ประกาศบริการ" — คู่แข่งขายเรต/ความเร็ว เราขายความชัดเจนที่เป็นจริง
+  offer: {
+    label: 'ประกาศบริการ',
+    test: /ประกาศบริการ|โปสเตอร์รับงาน/,
+    subtypes: ['offer'],
+    guide: 'โพสต์ประกาศบริการของเรา (ใช้ทำโปสเตอร์รับงาน) — บรรทัดแรกเป็น hook ตามที่กำหนด ต้องมีบริการ + ประเภททรัพย์ + พื้นที่ตามข้อเท็จจริงที่มี อยู่ในครึ่งแรกของประโยค → ย่อหน้าสั้น 1–2 ประโยคบอกว่าบริการนี้คืออะไรสำหรับทรัพย์ประเภทนี้แบบถูกต้องตามข้อเท็จจริง (ขายฝาก = จดทะเบียนโอนกรรมสิทธิ์ที่สำนักงานที่ดิน และมีสิทธิไถ่คืนภายในกำหนดเวลาในสัญญา · จำนอง = กรรมสิทธิ์ยังเป็นของเจ้าของ) → รายการ "1. … 2. … 3." 3–4 ข้อ ว่าเจ้าของทรัพย์จะได้อะไรจากการทำกับเรา ทุกข้อต้องมาจากความจริงของแบรนด์หรือข้อเท็จจริงที่มีเท่านั้น (เช่น แจ้งวงเงิน เงื่อนไข และค่าใช้จ่ายรวมเป็นลายลักษณ์อักษรก่อนตกลง · จดทะเบียนที่สำนักงานที่ดินและรับเงินวันเดียวกัน · บอกสิทธิไถ่ถอนและกำหนดเวลาให้ชัดก่อนเซ็น · แจ้งกำหนดชำระล่วงหน้าทุกรอบ) → ย่อหน้าเอกสารที่ใช้สำหรับทรัพย์ประเภทนี้ตามข้อเท็จจริง → ขั้นตอนสั้น 3–4 ขั้นในประโยคเดียวตามลำดับจริง → ชวนทัก · ห้ามระบุดอกเบี้ย วงเงิน เปอร์เซ็นต์ ระยะเวลาอนุมัติ หรือคำว่า "ไม่ดูเครดิต" "ได้เงินทันที" "ได้เงินเต็ม" "ไม่มีหัก" ถ้าไม่อยู่ในข้อเท็จจริง · ห้ามเทียบกับเจ้าอื่น · ห้ามคำว่า "ที่สุด" · พื้นที่เขียนตามข้อเท็จจริง ห้ามเขียนว่ารับเฉพาะพื้นที่นี้ · น้ำเสียงตรงและสุภาพแบบประกาศบริการ ไม่ใช่บทความสอน',
+  },
   checklist: {
     label: 'เช็กลิสต์',
     test: /เช็กลิสต์|เช็คลิสต์|รายการตรวจ|checklist/i,
@@ -221,20 +229,22 @@ export const DRAFT_FORMATS = {
   },
 }
 
-export function draftFormatFor(angle = {}, { hasFacts = true } = {}) {
+export function draftFormatFor(angle = {}, { hasFacts = true, subtype = '' } = {}) {
   const text = `${angle.label || ''} ${angle.brief || ''}`
   for (const [key, spec] of Object.entries(DRAFT_FORMATS)) {
     if (key === 'explain') continue
+    if (spec.subtypes && !spec.subtypes.includes(subtype)) continue // ประกาศบริการใช้ได้เฉพาะไอเดียบริการของเรา
     if (spec.test.test(text)) return spec.needsFacts && !hasFacts ? 'explain' : key
   }
   return 'explain'
 }
 
 // โครงที่จะใช้จริง: โครงตามมุม แต่ถ้ามุมอื่นของเรื่องเดียวกันใช้โครงนั้นไปแล้ว หยิบโครงถัดไปที่ยังว่าง (news/warning ไม่อยู่ในรอบสำรอง)
-export function pickDraftFormat(angle = {}, { hasFacts = true, usedFormats = [] } = {}) {
-  const natural = draftFormatFor(angle, { hasFacts })
+// ประกาศบริการไม่หมุน: ไอเดียบริการมีโปสเตอร์รับงานได้หลายแบบ (คนละประเภททรัพย์/พื้นที่)
+export function pickDraftFormat(angle = {}, { hasFacts = true, usedFormats = [], subtype = '' } = {}) {
+  const natural = draftFormatFor(angle, { hasFacts, subtype })
   const used = new Set(usedFormats)
-  if (!used.has(natural)) return natural
+  if (natural === 'offer' || !used.has(natural)) return natural
   return FORMAT_ROTATION.find((key) => !used.has(key)) || natural
 }
 
@@ -341,7 +351,7 @@ export function buildDraftPrompt({ idea, angle = {}, brand = {}, avoidOpenings =
   }
   const facts = hasResearchFacts(idea)
   // โครง "อัปเดตพร้อมที่มา" ต้องปิดด้วย "ที่มา: …" — ใช้ได้เฉพาะแหล่งที่อ้างได้ (cite) · แหล่งที่ห้ามอ้าง (เพจ/คลิป/กระทู้) แม้มีข้อเท็จจริงก็ถอยเป็นให้ความรู้
-  const format = pickDraftFormat(angle, { hasFacts: facts && ctx.policy === 'cite', usedFormats })
+  const format = pickDraftFormat(angle, { hasFacts: facts && ctx.policy === 'cite', usedFormats, subtype: idea.subtype })
   const spec = DRAFT_FORMATS[format]
   const hookLibrary = hooks ? (hooks.library || loadHookPatterns()) : null
   // สูตร "ความเข้าใจผิด" ต้องมีข้อเท็จจริงไว้หักความเชื่อ — ข้อจากคลังความรู้นับด้วย
@@ -735,7 +745,8 @@ export function parseDraft(data, { policy = 'no_cite', sourceLabel = '', maxChar
       if (usedHook.score < HOOK_WEAK) warningsExtra.push(`ประโยคเปิดยังอ่อน (คะแนน ${usedHook.score}/100): ${usedHook.bad.join(' · ') || 'ไม่ชวนอ่านต่อ'}`)
       if (best !== usedHook && best.score >= usedHook.score + 15) warningsExtra.push(`มีประโยคเปิดทางเลือกที่คะแนนสูงกว่า (${best.score} เทียบ ${usedHook.score}) — ดูในช่อง "ประโยคเปิดทางเลือก"`)
     }
-    if (headlineIsLabel(headline)) warningsExtra.push(`พาดหัว "${headline}" ยังเป็นป้ายชื่อเรื่อง — ลองใช้พาดหัวของประโยคเปิดทางเลือก หรือเขียนเป็นคำถาม/ความขัดแย้ง`)
+    // ประกาศบริการ: พาดหัวแบบป้าย "รับขายฝาก<ทรัพย์> <พื้นที่>" คือสิ่งที่โปสเตอร์รับงานต้องการ ไม่เตือน
+    if (format !== 'offer' && headlineIsLabel(headline)) warningsExtra.push(`พาดหัว "${headline}" ยังเป็นป้ายชื่อเรื่อง — ลองใช้พาดหัวของประโยคเปิดทางเลือก หรือเขียนเป็นคำถาม/ความขัดแย้ง`)
     hookFields = {
       hooks: parsedHooks.hooks.map(({ pattern, name, line, headline: h, score, good, bad, used, from }) => ({ pattern, name, line, headline: h, score, good: good.slice(0, 3), bad: bad.slice(0, 3), used, ...(from ? { from } : {}) })),
       hook_pattern: usedHook?.pattern || null,

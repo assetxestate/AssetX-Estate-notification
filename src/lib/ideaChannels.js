@@ -8,9 +8,11 @@
 // โลโก้โซเชียล: path จาก Simple Icons (CC0 · simpleicons.org) ชุดเดียวกับ DivisionX · ช่องที่ไม่ใช่โซเชียลใช้ไอคอนเส้นที่วาดเอง
 // สีโลโก้ = สีแบรนด์ทางการบนพื้นขาวของหน้า /marketing (13 พ.ย. 2569 เปลี่ยนจากพื้นเข้ม) · ช่องที่ไม่ใช่โซเชียลใช้สีเข้มพอให้เห็นบนขาว
 
-export const CHANNEL_ORDER = ['facebook', 'meta_ads', 'youtube', 'tiktok', 'instagram', 'x', 'news', 'official', 'auction', 'community', 'internal', 'manual', 'radar']
+export const CHANNEL_ORDER = ['offer', 'facebook', 'meta_ads', 'youtube', 'tiktok', 'instagram', 'x', 'news', 'official', 'auction', 'community', 'internal', 'manual', 'radar']
 
 export const CHANNELS = {
+  // โปสเตอร์ประกาศบริการของเราเอง (13 พ.ย. 2569 · source internal + subtype offer · research/offer_topics.json)
+  offer: { label: 'บริการของเรา', hint: 'หัวข้อโปสเตอร์รับขายฝาก/รับจำนองจากบริการจริงของเรา', color: '#0F766E', icon: 'M3 11l9-7 9 7M5 10v10h14V10M9 20v-6h6v6' },
   facebook: { label: 'Facebook', hint: 'โพสต์จากเพจที่ระบบเฝ้าดู', color: '#1877F2', path: 'M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z' },
   meta_ads: { label: 'แอดคู่แข่ง', hint: 'โฆษณาของคู่แข่งจาก Meta Ad Library (รายสัปดาห์)', color: '#0866FF', icon: 'M3 10v4h3l6 4.5V5.5L6 10H3zM15.5 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12' },
   youtube: { label: 'YouTube', hint: 'คลิปจากช่องที่ระบบเฝ้าดู', color: '#FF0000', path: 'M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z' },
@@ -53,6 +55,7 @@ export function channelOfIdea(row = {}) {
   if (source === 'youtube') return 'youtube'
   if (source === 'social') return row.subtype === 'ad_library' ? 'meta_ads' : (channelOfUrl(row.url) || 'facebook')
   if (source === 'news') return 'news'
+  if (source === 'internal' && row.subtype === 'offer') return 'offer'
   if (['official', 'auction', 'community', 'internal'].includes(source)) return source
   return channelOfUrl(row.url) || 'manual'
 }
