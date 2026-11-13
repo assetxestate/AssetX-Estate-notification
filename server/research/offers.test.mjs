@@ -10,8 +10,8 @@ const brand = JSON.parse(fs.readFileSync(new URL('../../research/brand_facts.jso
 const now = new Date('2026-11-13T09:00:00Z')
 
 test('offer_topics.json: ทุกหัวข้อครบ · มุมแรกเป็นประกาศบริการ · ไม่มีเรต ตัวเลขเงิน เบอร์ หรือคำต้องห้าม', () => {
-  const topics = offerTopics(config)
-  assert.ok(topics.length >= 4)
+  const topics = offerTopics(config, { includeDisabled: true }) // ตรวจหัวข้อที่ปิดอยู่ด้วย (รับจำนอง)
+  assert.ok(topics.length >= 8)
   const allowedTypes = ['ที่ดิน', 'บ้านเดี่ยว', 'ทาวน์โฮม', 'ตึกแถว', 'คอนโด', 'อื่น']
   for (const t of topics) {
     assert.ok(allowedTypes.includes(t.property_type), `${t.key}: property_type ต้องตรงกับ CHECK ของตาราง`)
@@ -68,6 +68,22 @@ test('planOfferIdeas: เติมเมื่อคิวว่างและ�
   assert.equal(planOfferIdeas(config, old, { now })[0].key, 'khaifak-land', 'หัวข้อที่ยังไม่เคยสร้างมาก่อน')
   assert.deepEqual(planOfferIdeas(config, pending, { now, keys: ['khaifak-house', 'khaifak-land'] }).map((t) => t.key), ['khaifak-house', 'khaifak-land'])
   assert.equal(planOfferIdeas(config, pending, { now, force: true }).length, 1, '--force ข้ามรอบเวลา')
+})
+
+test('รับจำนอง: มีหัวข้อเตรียมไว้แต่ปิดอยู่ — ไม่เข้าคิว ไม่หมุน · เปิดเมื่อเพิ่มใน services_enabled', () => {
+  const all = offerTopics(config, { includeDisabled: true })
+  assert.ok(all.some((t) => t.service === 'จำนอง'), 'มีหัวข้อรับจำนองเตรียมไว้')
+  assert.ok(offerTopics(config).every((t) => t.service === 'ขายฝาก'), 'ค่าตอนนี้: ขายฝากอย่างเดียว')
+  const old = offerTopics(config).map((t, i) => ({ external_key: `offer:${t.key}:2026-W4${i}`, status: 'picked', created_at: new Date(now.getTime() - (30 - i) * 86400000).toISOString() }))
+  assert.equal(planOfferIdeas(config, old, { now })[0].service, 'ขายฝาก', 'หมุนครบแล้วก็ยังไม่หยิบรับจำนอง')
+  assert.deepEqual(planOfferIdeas(config, [], { now, keys: ['jamnong-condo'] }), [], 'สั่งเองก็ไม่ได้ขณะปิด')
+  const opened = { ...config, services_enabled: ['ขายฝาก', 'จำนอง'] }
+  assert.equal(planOfferIdeas(opened, [], { now, keys: ['jamnong-condo'] })[0].key, 'jamnong-condo')
+  const row = offerIdeaRow(offerTopics(opened).find((t) => t.key === 'jamnong-condo'), brand, { now })
+  assert.match(row.summary, /กรรมสิทธิ์ยังเป็นของผู้จำนอง/, 'นิยามจำนองถูก')
+  assert.doesNotMatch(row.summary, /โอนไปผู้รับซื้อฝาก/, 'ไม่ปนนิยามขายฝาก')
+  const prompt = buildDraftPrompt({ idea: { id: 901, ...row }, angle: row.angles[0], brand })
+  assert.equal(prompt.format, 'offer')
 })
 
 test('offerSummary: พื้นที่ไม่เขียนว่า "เฉพาะ" · ขั้นตอนตามลำดับของแบรนด์', () => {

@@ -455,7 +455,10 @@ async function cmdOffers() {
   const store = makeStore(flags.has('--dry-run'))
   const config = readJson(path.join(RESEARCH_DIR, 'offer_topics.json'), { topics: [] })
   const keys = flags.has('--all') ? offerTopics(config).map((t) => t.key) : String(flagValue('--add', '')).split(',').map((k) => k.trim()).filter(Boolean)
-  const unknown = keys.filter((k) => !offerTopics(config).some((t) => t.key === k))
+  const all = offerTopics(config, { includeDisabled: true })
+  const disabled = keys.filter((k) => all.some((t) => t.key === k) && !offerTopics(config).some((t) => t.key === k))
+  if (disabled.length) { out(`[offers] หัวข้อของบริการที่ยังปิดอยู่: ${disabled.join(', ')} — เปิดได้โดยเพิ่มบริการนั้นใน services_enabled ของ research/offer_topics.json (รับจำนอง: รอคำสั่งจากนายทุน)`); process.exitCode = 2; return }
+  const unknown = keys.filter((k) => !all.some((t) => t.key === k))
   if (unknown.length) { out(`[offers] ไม่รู้จักหัวข้อ: ${unknown.join(', ')} — มี: ${offerTopics(config).map((t) => t.key).join(', ')}`); process.exitCode = 2; return }
   await doOffers({ brand, store, force: flags.has('--force'), keys })
 }

@@ -9,9 +9,17 @@ export const OFFER_SUBTYPE = 'offer'
 export const OFFER_SOURCE_LABEL = 'บริการของเรา'
 const DAY_MS = 86400000
 
-export function offerTopics(config = {}) {
+// บริการที่เปิดใช้ในโปสเตอร์ (config.services_enabled · ไม่ระบุ = ขายฝากอย่างเดียว) — รับจำนองทำหัวข้อไว้แต่ปิดจนกว่านายทุนจะสั่ง (เจ้าของ 13 พ.ย. 2569)
+export function enabledServices(config = {}) {
+  return Array.isArray(config.services_enabled) && config.services_enabled.length ? config.services_enabled : ['ขายฝาก']
+}
+
+// includeDisabled = รวมหัวข้อของบริการที่ปิดอยู่ (ใช้บอกเหตุผลตอนปฏิเสธ --add)
+export function offerTopics(config = {}, { includeDisabled = false } = {}) {
+  const enabled = enabledServices(config)
   return (Array.isArray(config.topics) ? config.topics : [])
     .filter((t) => t && t.key && t.title && Array.isArray(t.facts) && t.facts.length && Array.isArray(t.angles) && t.angles.length)
+    .filter((t) => includeDisabled || enabled.includes(t.service || 'ขายฝาก'))
 }
 
 // ขั้นตอนขายฝาก/จำนองของแบรนด์ (ข้อเท็จจริง ไม่ใช่โครงโพสต์)
