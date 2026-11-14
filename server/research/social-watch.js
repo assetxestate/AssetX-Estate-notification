@@ -761,7 +761,9 @@ export async function runFacebookWatch({ cfg = {}, targets = [], scoring = DEFAU
   const manual = Boolean(limit || targetFilter)
   // บัญชี AssetX: นับรอบตามเวลาที่จบแล้ววันนี้ (แถวสรุป round=scheduled · หนึ่งรอบมีได้หลายชุด จึงนับตาม run) เทียบกับ rounds_per_day
   const runId = `${today}-${Math.round(now())}`
-  const roundsDone = () => new Set(usageRows(acctBase).filter((r) => r.date === today && r.round === 'scheduled').map((r) => r.run || r.start)).size
+  //   รอบที่หน้าต่างถูกซ่อนทั้งรอบ (แถวสรุป hidden:facebook) ไม่นับ — ไม่ได้อ่านอะไร รอบถัดไปวันเดียวกันต้องอ่านได้ (เพจที่เปิดไปยังนับเข้าเพดานรายวันตามแถว open)
+  //   (14 พ.ย. 2569: Chrome เปิดจากไอคอนแถบงานที่ไม่มีค่า → 21:00 และ 23:00 ถูกซ่อนทั้งคู่ แล้วรอบเก็บตกที่เจ้าของสั่งโดนข้ามว่า "อ่านแล้ววันนี้")
+  const roundsDone = () => new Set(usageRows(acctBase).filter((r) => r.date === today && r.round === 'scheduled' && !String(r.result || '').includes('hidden:')).map((r) => r.run || r.start)).size
   const roundDoneToday = () => (own ? roundsDone() >= acct.roundsPerDay : q.own > 0)
   if (roundDoneToday() && !targetFilter) {
     out.status = 'already_today'

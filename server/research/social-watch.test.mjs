@@ -813,6 +813,31 @@ test('บัญชีแยก วันละ 2 รอบ: แบ่งเพ�
   assert.equal(readState(accountDir(b.storeDir)).last_blocked, TODAY)
 })
 
+test('บัญชีแยก: รอบที่ถูกซ่อนทั้งรอบไม่นับเป็นรอบที่ทำแล้ว — ซ่อน 2 รอบ แล้วรอบที่ 3 ยังอ่านได้ · เพจที่เปิดตอนซ่อนนับเข้าเพดาน', async () => {
+  const cfg = { ...OWN_CFG, own_account: { ...OWN_CFG.own_account, daily_cap: { facebook: 12 }, max_targets_per_run: { facebook: 12 }, rounds_per_day: 2 } }
+  const many = Array.from({ length: 14 }, (_, i) => ({ name: `เพจ ${i}`, url: `https://www.facebook.com/HidePage${i}`, group: 'competitor', every_days: 2 }))
+  let hide = true
+  const h = harness({ aliases: ['research', 'assetx'], vis: () => (hide ? 'hidden' : 'visible'), posts: () => (hide ? [domPost(1, 5, 'ที่ดิน')] : fixturePosts()) }, { deps: { resolveChromeDir: () => 'Profile 12', chromeFlagsActive: async () => false } })
+  const r1 = await h.run({ cfg, targets: many })
+  assert.equal(r1.status, 'hidden')
+  h.clock.t += 2 * 3600e3
+  const r2 = await h.run({ cfg, targets: many })
+  assert.equal(r2.status, 'hidden', 'รอบ 23:00 ก็ถูกซ่อน')
+  hide = false
+  h.clock.t += 600e3
+  const r3 = await h.run({ cfg, targets: many })
+  assert.equal(r3.status, 'ok', 'รอบเก็บตกยังอ่านได้ — สองรอบที่ซ่อนไม่นับ')
+  assert.ok(r3.opened.facebook > 0)
+  const opened = usageRows(accountDir(h.storeDir)).filter((r) => r.result === 'open').length
+  assert.equal(opened, 2 + r3.opened.facebook, 'เพจที่เปิดตอนซ่อน (รอบละ 1) ยังนับเข้าเพดาน')
+  h.clock.t += 600e3
+  const r4 = await h.run({ cfg, targets: many })
+  assert.equal(r4.status, 'ok', 'ยังเหลืออีก 1 รอบตามเวลา (วันละ 2)')
+  h.clock.t += 600e3
+  const r5 = await h.run({ cfg, targets: many })
+  assert.equal(r5.status, 'already_today', 'ครบ 2 รอบที่อ่านจริงแล้ว')
+})
+
 test('แท็บ Reels (เพจ reels: true · บัญชี AssetX): เปิดเพิ่ม 1 เพจ นับเพดาน · เก็บยอดวิวต่อคลิป · คลิปแรง ≥ 2 เท่าของค่ากลาง + ≥ 1,000 วิว รายงานครั้งเดียว', async () => {
   const { parseCount } = await import('./social-watch.js')
   assert.equal(parseCount('642'), 642); assert.equal(parseCount('1.2K'), 1200); assert.equal(parseCount('3,456'), 3456); assert.equal(parseCount('1.5M'), 1500000); assert.equal(parseCount(''), null)
