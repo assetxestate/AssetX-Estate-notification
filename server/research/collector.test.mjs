@@ -182,3 +182,40 @@ test('planExpiry: อายุต่อ subtype · event_date ยังไม่
   assert.deepEqual(planExpiry(byAudience, { subtypes, purgeDays: 14, now }), [])
   assert.deepEqual(planExpiry(byAudience, { subtypes, purgeDays: 14, now, pageAudience: ['A', 'B'] }), [12])
 })
+
+test('รายงานรอบเก็บ: YouTube ล่มรวมเป็นบรรทัดเดียว และคำเตือนไม่ซ้ำสองรอบ (เทเลแกรม 14 พ.ย. 2569)', () => {
+  const lane = (l, label, status, note = '') => ({ lane: l, key: label, label, status, fetched: 0, kept: 0, note })
+  const report = {
+    lanes: [
+      lane('news', 'Google News "จำนองบ้าน"', 'ok'),
+      lane('youtube', 'YouTube A', 'error', 'HTTP 404'),
+      lane('youtube', 'YouTube B', 'error', 'HTTP 500'),
+      lane('youtube', 'YouTube C', 'error', 'HTTP 404'),
+      lane('youtube', 'YouTube D', 'ok'),
+      lane('rss', 'ฟีดหนึ่ง', 'blocked', 'HTTP 500 (บล็อก/จำกัด — ข้ามรอบนี้ ห้ามลองเลี่ยง)'),
+    ],
+    warnings: ['⚠️ YouTube A: HTTP 404', '⚠️ YouTube B: HTTP 500', '⚠️ YouTube C: HTTP 404', '⚠️ ฟีดหนึ่ง: ถูกบล็อก 500', '⚠️ subtype "x" ไม่อยู่ในคอนฟิก (ข่าว)'],
+    candidates: 0, accepted: 0, skipped: { duplicate: 0, event: 0, cap: 0, score: 0, subtype: 1, gate: 0, stale: 0, audience: 0 }, ranLanes: [],
+  }
+  const text = formatCollectReport({ rows: [], report })
+  const yt = text.split('\n').filter((l) => /YouTube/.test(l))
+  assert.equal(yt.length, 1, text)
+  assert.match(yt[0], /YouTube RSS ไม่ตอบ 3\/4 ช่อง \(404 ×2 · 500 ×1\)/)
+  assert.match(yt[0], /A · B · C/)
+  assert.equal(text.split('\n').filter((l) => /ฟีดหนึ่ง/.test(l)).length, 1, text)
+  assert.match(text, /⛔ ฟีดหนึ่ง/)
+  assert.match(text, /subtype "x" ไม่อยู่ในคอนฟิก/)
+})
+
+test('เลนที่ subtype ไม่มีกลุ่มคนอ่านของเพจถูกปิดในคอนฟิก และตัวเก็บไม่ยิงคำค้นที่ enabled: false', async () => {
+  const page = brand.page_audience || ['A']
+  const lanes = [...(cfg.news_queries.items || []), ...(cfg.feeds.items || []), ...(cfg.youtube.channels || [])]
+  for (const l of lanes) {
+    const aud = cfg.subtypes[l.subtype]?.audience || []
+    if (l.subtype && aud.length && !aud.some((c) => page.includes(c))) assert.equal(l.enabled, false, `${l.q || l.key || l.label} (${l.subtype}) ยิงไปก็ไม่เข้าคิว`)
+  }
+  const fetcher = fakeFetcher({})
+  const one = { ...cfg, news_queries: { items: [{ q: 'ปิดอยู่', when_days: 14, cadence: 'daily', enabled: false }] }, feeds: { items: [] }, youtube: { channels: [] } }
+  await collectIdeas({ cfg: one, brand, calendar: { events: [] }, fetcher, now })
+  assert.equal(fetcher.calls.length, 0)
+})

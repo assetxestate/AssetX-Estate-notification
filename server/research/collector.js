@@ -117,6 +117,7 @@ export async function collectIdeas({
   const newsQueries = listOf(cfg.news_queries)
   const maxPerQuery = Number(cfg.news_queries?.max_items_per_query || 8)
   for (const q of newsQueries) {
+    if (q.enabled === false) continue
     const key = `gnews:${q.q}`
     await lane('news', key, `Google News "${q.q}"`, async (entry) => {
       if (decisions.google_news_rss?.allowed !== true) { entry.note = 'ยังไม่ได้รับอนุมัติ'; return 'skipped' }
@@ -402,11 +403,31 @@ export function formatCollectReport({ rows, report }, { topTitles = 5, inserted 
   lines.push(`[ideas] เลนที่รัน ${ran.length} (สำเร็จ ${okLanes}) · ผู้สมัคร ${report.candidates} · เข้าคิว ${inserted ?? rows.length}`)
   const s = report.skipped
   lines.push(`[ideas] ตัดออก: ซ้ำ ${s.duplicate} · เหตุการณ์ซ้ำ ${s.event} · เกิน cap ${s.cap} · คะแนนต่ำ ${s.score} · ไม่ผ่าน gate ${s.gate} · เก่า ${s.stale} · ไม่ใช่กลุ่มคนอ่านของเพจ ${s.audience || 0}`)
-  for (const l of ran.filter((x) => x.status !== 'ok')) lines.push(`[ideas] ${l.status === 'blocked' ? '⛔' : l.status === 'empty' ? '∅' : '⚠️'} ${l.label}: ${l.note}`)
+  const failed = ran.filter((x) => x.status !== 'ok')
+  // YouTube RSS ล่มฝั่ง YouTube เป็นช่วง ๆ (404/500 แม้ช่องของ Google เอง · เจอ 9, 14 พ.ย. 2569) → รวมเป็นบรรทัดเดียว ไม่ท่วมเทเลแกรม
+  const ytRan = ran.filter((x) => x.lane === 'youtube')
+  const ytErr = failed.filter((x) => x.lane === 'youtube' && x.status === 'error')
+  if (ytErr.length) {
+    const codes = {}
+    for (const l of ytErr) codes[l.note] = (codes[l.note] || 0) + 1
+    const codeText = Object.entries(codes).map(([k, v]) => `${k.replace(/^HTTP /, '')} ×${v}`).join(' · ')
+    const names = ytErr.map((l) => l.label.replace(/^YouTube /, ''))
+    const who = ytErr.length === ytRan.length ? 'ทุกช่อง' : names.length > 8 ? `${names.slice(0, 8).join(' · ')} · อีก ${names.length - 8} ช่อง` : names.join(' · ')
+    lines.push(`[ideas] ⚠️ YouTube RSS ไม่ตอบ ${ytErr.length}/${ytRan.length} ช่อง (${codeText}) — ปัญหาฝั่ง YouTube ล่มเป็นช่วง ๆ ไม่ใช่รหัสช่องผิด: ${who}`)
+  }
+  for (const l of failed) {
+    if (ytErr.includes(l)) continue
+    lines.push(`[ideas] ${l.status === 'blocked' ? '⛔' : l.status === 'empty' ? '∅' : '⚠️'} ${l.label}: ${l.note}`)
+  }
   const bySource = {}
   for (const r of rows) bySource[r.source] = (bySource[r.source] || 0) + 1
   if (rows.length) lines.push(`[ideas] ตามแหล่ง: ${Object.entries(bySource).map(([k, v]) => `${k} ${v}`).join(' · ')}`)
   for (const r of rows.slice().sort((a, b) => b.score - a.score).slice(0, topTitles)) lines.push(`  • ${r.score} ${r.subtype} — ${r.title.slice(0, 90)}`)
-  for (const w of report.warnings.slice(0, 10)) if (!lines.includes(w)) lines.push(w)
+  // คำเตือนของเลนที่รายงานไปแล้วข้างบนไม่ต้องซ้ำ (เดิมขึ้นสองรอบ: "[ideas] ⚠️ X" + "⚠️ X" · เทเลแกรม 14 พ.ย. 2569)
+  const covered = failed.map((l) => `⚠️ ${l.label}:`)
+  for (const w of report.warnings.slice(0, 10)) {
+    if (lines.includes(w) || covered.some((c) => w.startsWith(c))) continue
+    lines.push(w)
+  }
   return lines.join('\n')
 }

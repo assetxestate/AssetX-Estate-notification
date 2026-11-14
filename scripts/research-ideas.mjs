@@ -134,7 +134,7 @@ async function doCollect({ cfg, brand, calendar, store, state }) {
   }
   const text = formatCollectReport({ rows, report }, { topTitles: cfg.report?.top_titles ?? 5, inserted: saved.inserted })
   out(text)
-  out(`[ideas] fetch ${fetcher.stats.requests} ครั้ง · บล็อก ${fetcher.stats.blocked} · error ${fetcher.stats.errors} · กุญแจเดิมในฐาน ${existing.total}${store.kind === 'dry-run' ? ` · dry-run → ${store.file}` : ''}`)
+  out(`[ideas] fetch ${fetcher.stats.requests} ครั้ง · บล็อก ${fetcher.stats.blocked} · HTTP ไม่สำเร็จ ${fetcher.stats.httpErrors} · ต่อไม่ติด ${fetcher.stats.errors} · กุญแจเดิมในฐาน ${existing.total}${store.kind === 'dry-run' ? ` · dry-run → ${store.file}` : ''}`)
   return { rows, report, saved, text }
 }
 
@@ -514,7 +514,7 @@ async function cmdProbe() {
   }
   out(`probe ${now.toISOString().slice(0, 16)} · UA ${cfg.user_agent} · หน้าต่าง กนง.: ${inMpcWindow(calendar, now) ? 'เปิด' : 'ปิด'}`)
   if (cfg.owner_decisions?.google_news_rss?.allowed === true) {
-    for (const q of cfg.news_queries?.items || []) await probe(`gnews "${q.q}"`, googleNewsRssUrl(q.q, q.when_days), parseRss)
+    for (const q of cfg.news_queries?.items || []) if (q.enabled !== false) await probe(`gnews "${q.q}"`, googleNewsRssUrl(q.q, q.when_days), parseRss)
   } else out('(ข้าม Google News — ยังไม่ได้รับอนุมัติ)')
   const parsers = { rss: parseRss, gnews_sitemap: parseGnewsSitemap, html_bot_mpc: parseBotMpc, html_dol: parseDolNews, pantip_tag: parsePantipTagNextData, ckan: (t) => { const r = parseCkanPackage(t); return r ? [r] : [] } }
   for (const feed of cfg.feeds?.items || []) {
@@ -526,7 +526,7 @@ async function cmdProbe() {
   }
   const bad = rows.filter((r) => r.status !== 'ok')
   out(`\nสรุป: ${rows.length - bad.length}/${rows.length} แหล่งตอบปกติ${bad.length ? ` · มีปัญหา: ${bad.map((b) => b.label).join(', ')}` : ''}`)
-  out(`fetch ${fetcher.stats.requests} ครั้ง · บล็อก ${fetcher.stats.blocked} · error ${fetcher.stats.errors}`)
+  out(`fetch ${fetcher.stats.requests} ครั้ง · บล็อก ${fetcher.stats.blocked} · HTTP ไม่สำเร็จ ${fetcher.stats.httpErrors} · ต่อไม่ติด ${fetcher.stats.errors}`)
   if (flags.has('--json')) writeJson(path.join(LOCAL_DIR, `probe-${today()}.json`), rows)
 }
 

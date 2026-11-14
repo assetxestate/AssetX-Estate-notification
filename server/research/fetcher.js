@@ -9,6 +9,8 @@ import zlib from 'node:zlib'
 const DEFAULT_UA = 'AssetXResearchBot/1.0 (+https://assetx-estate.vercel.app)'
 const BLOCKED_STATUS = new Set([401, 403, 429, 503])
 const CHALLENGE_RE = /cf-chl|challenge-platform|Just a moment|Attention Required|cf-browser-verification|__cf_chl/i
+// หน้าปฏิเสธของไฟร์วอลล์เว็บ (WAF) ที่ส่งมากับ HTTP 4xx/5xx — SAM ตอบ 500 + "The URL you requested has been blocked" ทุกวันตั้งแต่ 8 พ.ย. 2569
+const WAF_BLOCK_RE = /The URL you requested has been blocked|The requested URL was rejected|Request Rejected|Access Denied - Sucuri|You have been blocked/i
 
 export function hostOf(url) {
   try { return new URL(url).hostname.toLowerCase().replace(/^www\./, '') } catch { return '' }
@@ -37,7 +39,8 @@ export function createFetcher({
   log = () => {},
 } = {}) {
   const lastHit = new Map()
-  const stats = { requests: 0, blocked: 0, errors: 0 }
+  // errors = ต่อไม่ติด/หมดเวลา · httpErrors = ตอบกลับแต่ไม่ใช่ 2xx และไม่ใช่การบล็อก (เดิมรายงาน "error 0" ทั้งที่ 10 เลนได้ 404/500)
+  const stats = { requests: 0, blocked: 0, errors: 0, httpErrors: 0 }
 
   async function politeFetch(url, { headers = {}, accept = 'application/rss+xml, application/atom+xml, application/xml, text/xml, text/html, application/json;q=0.9, */*;q=0.5' } = {}) {
     const host = hostOf(url)
@@ -64,8 +67,10 @@ export function createFetcher({
       }
       const text = bytes.toString('utf8')
       const contentType = response.headers.get('content-type') || ''
-      const blocked = BLOCKED_STATUS.has(response.status) || (!response.ok && CHALLENGE_RE.test(text.slice(0, 4000))) || (response.ok && /text\/html/i.test(contentType) && CHALLENGE_RE.test(text.slice(0, 4000)) && /cf-chl|__cf_chl/i.test(text))
+      const head = text.slice(0, 4000)
+      const blocked = BLOCKED_STATUS.has(response.status) || (!response.ok && (CHALLENGE_RE.test(head) || WAF_BLOCK_RE.test(head))) || (response.ok && /text\/html/i.test(contentType) && CHALLENGE_RE.test(head) && /cf-chl|__cf_chl/i.test(text))
       if (blocked) stats.blocked += 1
+      else if (!response.ok) stats.httpErrors += 1
       if (!response.ok) log(`[fetch] ${response.status} ${url}`)
       return { ok: response.ok && !blocked, status: response.status, text, blocked, url: response.url || url, contentType, error: response.ok ? null : `HTTP ${response.status}` }
     } catch (error) {
