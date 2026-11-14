@@ -219,3 +219,10 @@ test('เลนที่ subtype ไม่มีกลุ่มคนอ่า�
   await collectIdeas({ cfg: one, brand, calendar: { events: [] }, fetcher, now })
   assert.equal(fetcher.calls.length, 0)
 })
+
+test('title_drop ตัดข่าวโปรสินเชื่อของผู้ซื้อบ้าน แต่ไม่ตัดเรื่องของเจ้าของบ้านที่ต้องการเงิน (14 พ.ย. 2569)', async () => {
+  const { titleDropped } = await import('./classify.js')
+  const drop = cfg.scoring.title_drop
+  for (const t of ['ธอส. ปล่อยสินเชื่อบ้านคนละหลัง PLUS ดอกเบี้ย 2.60% ลุย Money Expo เชียงใหม่', '5 อันดับดอกเบี้ยสินเชื่อบ้าน แบงก์ไหนถูกสุด !', 'MMM ชี้“สินเชื่อบ้านคนละหลัง PLUS”ปลุกยอดโอน Q4', 'KTB บุกเชียงใหม่! อัดโปรฯ ครบวงจร ชูสินเชื่อบ้านดอกเบี้ยเริ่ม 1.33%']) assert.equal(titleDropped(t, drop), true, t)
+  for (const t of ['‘ธอส.’ เปิดตัวสินเชื่อบ้านแลกเงินสำหรับผู้สูงอายุ', 'รวบยกแก๊ง! ปลอมโฉนดที่ดิน ตุ๋นเหยื่อ', 'เอาคอนโดไปจำนอง ทำไมบางห้องถึงกู้เงินไม่ผ่าน?']) assert.equal(titleDropped(t, drop), false, t)
+})
