@@ -3,6 +3,7 @@ import { showToast } from "../lib/toast.js";
 import { BRAND } from "../lib/config.js";
 import { formatMoney, formatThai } from "../lib/utils.js";
 import { createTopup } from "../lib/api.js";
+import { interestRateOf, rateText } from "../lib/interestRate.js";
 
 function generateSchedule(startDateStr, freq, endDateStr) {
   const payments = [];
@@ -111,6 +112,12 @@ export function TopupModal({ customer, onClose, onSaved }) {
             <span style={{ color: BRAND.textPri, fontWeight: 700 }}>{formatMoney(customer.principal || 0)} ฿</span>
             <span style={{ color: BRAND.textSec }}>ดอกเบี้ย/งวดเดิม</span>
             <span style={{ color: BRAND.gold, fontWeight: 700 }}>{formatMoney(customer.amount || 0)} ฿/{customer.freq}</span>
+            {interestRateOf(customer.amount, customer.freq, customer.principal) && (
+              <>
+                <span style={{ color: 'var(--ax-c-94a3b8)' }}>อัตราเดิม</span>
+                <span style={{ color: BRAND.textPri, fontWeight: 700 }}>{rateText(interestRateOf(customer.amount, customer.freq, customer.principal))}</span>
+              </>
+            )}
             {customer.contractEndDate && (
               <>
                 <span style={{ color: BRAND.textSec }}>ครบสัญญา</span>
@@ -175,6 +182,11 @@ export function TopupModal({ customer, onClose, onSaved }) {
                 onChange={e => set("topupEndDate", e.target.value)} />
             </div>
           </div>
+          {interestRateOf(form.interestAmount, form.freq, topupAmt) && (
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ax-c-94a3b8)' }}>
+              = ดอกเบี้ยส่วนที่เพิ่ม <b style={{ color: BRAND.textPri }}>{rateText(interestRateOf(form.interestAmount, form.freq, topupAmt))}</b>
+            </div>
+          )}
           {schedule.length > 0 && (
             <div style={{ marginTop: 8, padding: "7px 12px", background: "rgba(45,212,191,.05)", border: "1px solid rgba(45,212,191,.15)", borderRadius: 8, fontSize: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
               <span style={{ color: BRAND.textSec }}>จำนวน: <span style={{ color: BRAND.teal, fontWeight: 700 }}>{schedule.length} งวด</span></span>

@@ -40,6 +40,7 @@ import { indexAdditions, additionsFor, installmentBalance, bangkokToday, install
 import { postponeTopupInstallment, nearestDue } from "./lib/topupSchedule.js";
 import { customerAssessment } from "./lib/deedAssessment.js";
 import { sumTopupPrincipal, sumTopupMonthlyInterest, groupTopupsByCustomer } from "./lib/topupTotals.js";
+import { interestRateOf, topupInterestRate, rateText } from "./lib/interestRate.js";
 import { APPS_SCRIPT_URL, LOGO_CONFIG, BRAND } from "./lib/config.js";
 import { MOCK_DATA } from "./lib/mockData.js";
 import { useLineNotification } from "./hooks/useLineNotification.js";
@@ -1781,6 +1782,12 @@ export default function App({ initialView = "main", onLogout }) {
                               >
                                 {formatMoney(c.amount)} ฿/{c.freq}
                               </div>
+                              {/* อัตราที่คิดจริง = ดอกเบี้ย/งวด ÷ เงินต้น ตามรอบชำระ (ระบบไม่ได้เก็บ % ไว้) */}
+                              {interestRateOf(c.amount, c.freq, c.principal) && (
+                                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ax-c-94a3b8)', marginTop: 2 }}>
+                                  ดอกเบี้ย {rateText(interestRateOf(c.amount, c.freq, c.principal))}
+                                </div>
+                              )}
                               <div
                                 style={{
                                   fontSize: 10,
@@ -1794,11 +1801,17 @@ export default function App({ initialView = "main", onLogout }) {
                                 const tops = customerTopups[c.id] || [];
                                 const extraPrincipal = tops.reduce((s, t) => s + (t.topupAmount || 0), 0);
                                 const extraInterest = tops.reduce((s, t) => s + (t.interestAmount || 0), 0);
+                                const topupRate = topupInterestRate(tops);
                                 return (
                                   <>
                                     <div style={{ fontSize: 10, color: BRAND.gold, marginTop: 2, fontWeight: 600 }}>
                                       💵 +{formatMoney(extraPrincipal)} ฿ · ดอกเบี้ยรวม {formatMoney((c.amount || 0) + extraInterest)} ฿/{c.freq}
                                     </div>
+                                    {topupRate && (
+                                      <div style={{ fontSize: 10, color: 'var(--ax-c-94a3b8)', marginTop: 2, fontWeight: 600 }}>
+                                        วงเงินเพิ่ม{topupRate.mixed ? "เฉลี่ย" : ""} {rateText(topupRate)}
+                                      </div>
+                                    )}
                                     {/* นับถอยหลังของแต่ละยอดเพิ่มวง แยกจากยอดเดิม กันสับสน/ลืม */}
                                     {tops.map(topup => {
                                       const tPays = topupPaymentsWithStatus(topup, c.id, today, additionIndex, additionsKnown);
@@ -2513,6 +2526,9 @@ export default function App({ initialView = "main", onLogout }) {
                                             <div style={{ fontSize: 12, marginTop: 4, display: "flex", gap: 12, flexWrap: "wrap" }}>
                                               <span style={{ color: BRAND.textSec }}>วงเงินรวม: <span style={{ color: BRAND.textPri, fontWeight: 700 }}>{formatMoney(topup.totalPrincipal)} ฿</span></span>
                                               <span style={{ color: BRAND.textSec }}>ดอกเบี้ย/งวด: <span style={{ color: BRAND.gold, fontWeight: 700 }}>{formatMoney(topup.interestAmount)} ฿/{topup.freq}</span></span>
+                                              {interestRateOf(topup.interestAmount, topup.freq, topup.topupAmount) && (
+                                                <span style={{ color: 'var(--ax-c-94a3b8)' }}>อัตรา: <span style={{ color: BRAND.textPri, fontWeight: 700 }}>{rateText(interestRateOf(topup.interestAmount, topup.freq, topup.topupAmount))}</span></span>
+                                              )}
                                             </div>
                                             {topup.reason && <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 2 }}>เหตุผล: {topup.reason}</div>}
                                             <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 4 }}>ชำระแล้ว {paidCount}/{tPays.length} งวด</div>

@@ -2,6 +2,7 @@ import React from "react";
 import { BRAND } from "../lib/config.js";
 import { updateCustomer as apiUpdateCustomer } from "../lib/api.js";
 import { isAdvanceDeductionRecord } from "../lib/advanceDeduction.js";
+import { interestRateOf, rateText } from "../lib/interestRate.js";
 
 // ── แก้ไขข้อมูลหลักลูกค้าจาก Sheet DATA ────────────────────────
 export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSaved }) {
@@ -94,6 +95,11 @@ export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSav
               <input style={inputStyle} type="number" value={form.amount} onChange={e => up('amount', e.target.value)} />
             </div>
           </div>
+          {interestRateOf(form.amount, form.freq, form.principal) && (
+            <div style={{ marginTop: -6, fontSize: 12, color: 'var(--ax-c-94a3b8)' }}>
+              = ดอกเบี้ย <b style={{ color: BRAND.textPri }}>{rateText(interestRateOf(form.amount, form.freq, form.principal))}</b> (ดอกเบี้ย/งวด ÷ เงินต้น ตามรอบชำระ)
+            </div>
+          )}
           {shortAfterEdit > 0 && (
             <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.4)', color: 'var(--ax-c-fbbf24)', fontSize: 12, lineHeight: 1.5 }}>
               ⚠️ ถ้าเพิ่มดอกเบี้ย/งวดเป็น {newAmount.toLocaleString('th-TH')} บาท งวดที่บันทึกชำระไว้แล้ว {shortAfterEdit} งวดจะขึ้นว่า "ชำระไม่ครบ" เพราะระบบคิดยอดของทุกงวดจากตัวเลขนี้ — ถ้ายอดที่รับไว้ถูกต้องแล้ว อย่าแก้ตรงนี้
