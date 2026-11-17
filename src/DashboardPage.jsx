@@ -3,6 +3,7 @@ import { BRAND as BASE_BRAND } from './lib/config.js'
 import { getDiff, formatThai } from './lib/utils.js'
 import { getRecordedUpfrontDeductions, getAdvanceDeductionRecordCases, isAdvanceDeductionRecord } from './lib/advanceDeduction.js'
 import { principalWithTopups, toMonthlyAmount } from './lib/topupTotals.js'
+import { splitInterestByFunding } from './lib/fundingSplit.js'
 import { openContractSummaryForPrint } from './lib/contractSummaryReport.js'
 import { amountDue } from './lib/combinedPayment.js'
 import { showToast } from './lib/toast.js'
@@ -213,7 +214,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
 
   // ค่านายหน้า Advance 2% (จ่ายล่วงหน้าเข้าบริษัท) — เฉพาะเคสประเภท commission เท่านั้น
   const commissionCases = active.filter(c => (c.incomeType || 'commission') === 'commission')
-  const interestCases = active.filter(c => c.incomeType === 'interest')
+  const interestCases = active.filter(c => c.incomeType === 'interest' || c.incomeType === 'company')
   const totalAdvance = commissionCases.reduce((s, c) => s + (c.principal || 0) * 0.02, 0)
   const closedCommissionCases = customers.filter(c => c.isClosed && !c.isVoided && (c.incomeType || 'commission') === 'commission')
   const closedAdvance = closedCommissionCases.reduce((s, c) => s + (c.principal || 0) * 0.02, 0)
@@ -227,6 +228,13 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
     ...getAdvanceDeductionRecordCases(customers, paymentRecords),
   ]
   const upfrontTotal = upfrontCases.reduce((sum, c) => sum + c.total, 0)
+
+  // รายรับดอกเบี้ยแยกตามเจ้าของเงินทุน: สัญญาของบริษัท (ประเภทรายได้ = เงินทุนของบริษัท) กับสัญญาของนายทุน (ประเภทอื่นทั้งหมด)
+  const funding = splitInterestByFunding({ customers, paymentRecords, paymentAdditions, upfrontCases })
+  const fundingColumns = [
+    { key: 'company', title: 'สัญญาของบริษัท', note: 'บริษัทปล่อยเงินเอง · ดอกเบี้ยเข้าบัญชีบริษัท', color: BRAND.gold, g: funding.company },
+    { key: 'investor', title: 'สัญญาของนายทุน', note: 'เงินของนายทุน · ดอกเบี้ยเข้าบัญชีนายทุน', color: BRAND.teal, g: funding.investor },
+  ]
 
   // ── กราฟรายได้ 6 เดือนย้อนหลัง ──────────────────────────
   const monthlyChart = useMemo(() => {
@@ -388,6 +396,40 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
         <KpiCard icon="⚠️" label="ค้างชำระ" value={`฿${fmtFull(overdueAmount)}`} sub={overduePayments.length > 0 ? `${overduePayments.length} งวด · ${overduePayments.map(x => x.c.name).filter((v,i,a)=>a.indexOf(v)===i).length} ราย` : 'ไม่มีค้างชำระ'} color={overduePayments.length > 0 ? BRAND.danger : BRAND.success} />
         <KpiCard icon="🏦" label="Advance 2%" value={`฿${fmtFull(Math.round(stackedAdvance))}`} sub={`${commissionCases.length} active + ${closedCommissionCases.length} ปิดแล้ว · 2% ของวงเงินรวม`} color={BRAND.purple} />
         <KpiCard icon="💵" label="ค่าตอบแทนหักล่วงหน้าที่บันทึก" value={`฿${fmtFull(upfrontTotal)}`} sub={`${upfrontCases.length} เคส · หักจากยอดเบิกจ่าย ไม่นับในดอกเบี้ยที่ชำระแล้ว`} color={BRAND.teal} />
+      </div>
+
+      {/* รายรับดอกเบี้ยแยกตามเจ้าของเงินทุน */}
+      <div style={{ background: BRAND.bgCard, border: `1px solid ${BRAND.border}`, borderRadius: 14, padding: '16px 18px' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.textPri }}>💼 รายรับดอกเบี้ย แยกตามเจ้าของเงินทุน</div>
+        <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 3 }}>
+          สัญญาของบริษัท = สัญญาที่ตั้ง "ประเภทรายได้บริษัท" เป็น "เงินทุนของบริษัท" ในหน้าแก้ไขข้อมูลลูกค้า · สัญญาอื่นทั้งหมดเป็นของนายทุน · ยอดสองฝั่งรวมกันเท่ากับการ์ดด้านบน
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginTop: 12 }}>
+          {fundingColumns.map(({ key, title, note, color, g }) => (
+            <div key={key} style={{ border: `1px solid ${withAlpha(color, '55')}`, borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color }}>{title}</div>
+                <div style={{ fontSize: 11, color: BRAND.textSec }}>{g.activeCount} สัญญา active · วงเงิน ฿{fmtFull(Math.round(g.principal))}</div>
+              </div>
+              <div style={{ fontSize: 11, color: BRAND.textSec, marginTop: 2 }}>{note}</div>
+              <div style={{ marginTop: 10, fontSize: 11, color: BRAND.textSec }}>ดอกเบี้ยที่ชำระแล้ว</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: BRAND.textPri }}>฿{fmtFull(g.collected)}</div>
+              <div style={{ fontSize: 11, color: BRAND.textSec }}>{g.collectedCount} งวด · เฉพาะเงินโอนตามสลิป ไม่รวมหักล่วงหน้า</div>
+              <div style={{ marginTop: 10, borderTop: `1px solid ${BRAND.border}` }}>
+                {[
+                  ['ดอกเบี้ยตามสัญญา/เดือน', `฿${fmtFull(Math.round(g.monthly))}`],
+                  ['ดอกเบี้ยตามสัญญา/ปี', `฿${fmtFull(Math.round(g.monthly * 12))}`],
+                  ['หักล่วงหน้าวันทำสัญญา', `฿${fmtFull(g.upfront)}`],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderBottom: `1px solid ${BRAND.border}`, fontSize: 12 }}>
+                    <span style={{ color: BRAND.textSec }}>{label}</span>
+                    <span style={{ color: BRAND.textPri, fontWeight: 700 }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {upfrontCases.length > 0 && (
@@ -608,7 +650,7 @@ export default function DashboardPage({ customers = [], paymentRecords = {}, pay
 
         {interestCases.length > 0 && (
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.gold, marginBottom: 8 }}>รับดอกเบี้ยแทน (ไม่มี Advance)</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.gold, marginBottom: 8 }}>รับดอกเบี้ย (ไม่มี Advance) · รวมสัญญาเงินทุนของบริษัท</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {interestCases.map(c => (
                 <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: BRAND.bg, border: `1px solid ${BRAND.border}` }}>

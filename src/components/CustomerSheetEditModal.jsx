@@ -126,6 +126,7 @@ export function CustomerSheetEditModal({ customer, appsScriptUrl, onClose, onSav
             <select style={inputStyle} value={form.incomeType} onChange={e => up('incomeType', e.target.value)}>
               <option value="commission">รับค่าคอมมิชชั่น (มี Advance 2%)</option>
               <option value="interest">รับดอกเบี้ยแทน (ไม่มี Advance)</option>
+              <option value="company">เงินทุนของบริษัท · ดอกเบี้ยเข้าบัญชีบริษัท (ไม่มี Advance)</option>
             </select>
           </div>
         </div>
