@@ -43,7 +43,7 @@
     },
     {
       "id": "fb-pages-zero-posts",
-      "done": false,
+      "done": true,
       "text": "เพจ Facebook 2 เพจ (SmartLiving · กรมที่ดิน) อ่านได้ 0 โพสต์ทุกครั้งที่ตัวเฝ้าเปิด จะทำอย่างไร",
       "owner": "decide",
       "options": [
@@ -58,7 +58,8 @@
           "label": "เจ้าของเปิดลิงก์ดูก่อน"
         }
       ],
-      "recommended": "a"
+      "recommended": "a",
+      "done_at": "2026-11-18T01:22:49.771Z"
     }
   ],
   "stories": [
