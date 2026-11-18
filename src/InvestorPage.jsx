@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { showToast } from "./lib/toast.js";
+import { leadSourceLabel, leadTicketNo } from "./lib/leadSource.js";
 import { buildAdvanceDeduction } from "./lib/advanceDeduction.js";
 import {
   getValuations as apiGetValuations,
@@ -676,11 +677,14 @@ export default function InvestorPage({ appsScriptUrl }) {
                 </div>
 
                 {/* ข้อมูลติดต่อ — เฉพาะ lead ที่มาจากหน้าประเมินออนไลน์ */}
-                {(row.contactName || row.contactPhone || row.contactLine) && (
+                {(row.contactName || row.contactPhone || row.contactLine || row.leadSource) && (
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12, padding: '8px 12px', borderRadius: 10, background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.2)', fontSize: 12 }}>
+                    {row.leadSource && <span style={{ color: BRAND.textSec, fontWeight: 700 }}>{leadTicketNo(row._rowIndex)}</span>}
+                    {leadSourceLabel(row.leadSource, row.leadRef) && <span style={{ color: BRAND.gold, fontWeight: 700 }}>{leadSourceLabel(row.leadSource, row.leadRef)}</span>}
                     {row.contactName && <span style={{ color: BRAND.textPri }}>👤 {row.contactName}</span>}
                     {row.contactPhone && <span style={{ color: 'var(--ax-c-38bdf8)', fontWeight: 700 }}>📞 {row.contactPhone}</span>}
                     {row.contactLine && <span style={{ color: BRAND.textSec }}>💬 LINE: {row.contactLine}</span>}
+                    {row.leadSource && row['หมายเหตุ'] && <span style={{ flexBasis: '100%', color: BRAND.textPri, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>📝 {row['หมายเหตุ']}</span>}
                   </div>
                 )}
 

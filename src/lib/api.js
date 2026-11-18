@@ -322,6 +322,8 @@ export async function getValuations() {
     contactName: v.contact_name || "",
     contactPhone: v.contact_phone || "",
     contactLine: v.contact_line || "",
+    leadSource: v.lead_source || "",
+    leadRef: v.lead_ref || "",
   }));
 }
 
@@ -342,7 +344,7 @@ export async function saveValuation(data) {
   const marketValue = parseFloat(data.marketValue) || 0;
   const reqLtvPct = marketValue > 0 ? ((requestedLoan / marketValue) * 100).toFixed(2) : 0;
 
-  const { data: inserted, error } = await supabase.from("valuations").insert({
+  const row = {
     recorded_at: new Date().toLocaleString("th-TH"),
     assessment_date: data.assessmentDate || null,
     assessor_name: data.assessorName || "",
@@ -389,7 +391,17 @@ export async function saveValuation(data) {
     contact_name: data.contactName || "",
     contact_phone: data.contactPhone || "",
     contact_line: data.contactLine || "",
-  }).select("id").single();
+  };
+  // ที่มาของ lead (หน้า /assess เท่านั้น) — คอลัมน์จาก supabase_valuation_lead_source.sql
+  const leadFields = data.leadSource
+    ? { lead_source: data.leadSource, lead_ref: data.leadRef || "" }
+    : null;
+  let { data: inserted, error } = await supabase.from("valuations")
+    .insert(leadFields ? { ...row, ...leadFields } : row).select("id").single();
+  // ยังไม่ได้รัน SQL เพิ่มคอลัมน์ → บันทึก lead ไว้ก่อนโดยไม่มีที่มา ดีกว่าทำให้ฟอร์มสาธารณะส่งไม่ได้
+  if (error && leadFields && /lead_(source|ref)/.test(`${error.message || ""} ${error.details || ""}`)) {
+    ({ data: inserted, error } = await supabase.from("valuations").insert(row).select("id").single());
+  }
   if (error) throw error;
   await saveAreaPricePointFromValuation(inserted.id, data).catch(() => {});
   return { success: true, rowIndex: inserted.id };
@@ -459,7 +471,17 @@ export async function getNearbyAreaPricePoints({ lat, lng, province, propertyTyp
 // รับ lead จากหน้าประเมินออนไลน์สาธารณะ (/assess) — ใช้ insert path เดียวกับ saveValuation
 // แค่บังคับ status ให้แยกจากงานประเมินภายในของพนักงาน เพื่อให้ทีมงานคัดกรองก่อนเข้า pipeline ปกติ
 export async function submitPublicAssessment(data) {
-  return saveValuation({ ...data, status: "Lead จากเว็บ" });
+  const saved = await saveValuation({ ...data, status: "Lead จากเว็บ", leadSource: data.leadSource || "owner" });
+  // แจ้งเจ้าของทาง Telegram ทันที (เซิร์ฟเวอร์อ่านแถวเองจากเลขที่ ไม่รับข้อความจากหน้าเว็บ) — แจ้งไม่สำเร็จไม่ถือว่าส่งฟอร์มล้มเหลว
+  try {
+    await fetch("/api/assess-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "lead-notify", id: saved.rowIndex }),
+      keepalive: true,
+    });
+  } catch { /* เงียบไว้: lead บันทึกแล้ว เจ้าของยังเห็นในแอป */ }
+  return saved;
 }
 
 export async function updateValuation(rowIndex, data) {

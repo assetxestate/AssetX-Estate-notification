@@ -1,5 +1,44 @@
 import { isHermesEnabled, streamHermesChat } from './_hermes.js'
 import { setSseHeaders, streamGeminiChat } from './_gemini.js'
+import { isOllamaChatEnabled, askOllamaChat } from './_ollama.js'
+import { buildAssessSystemPrompt, looksBroken, fallbackAnswer } from './_assess-knowledge.js'
+import { POSTER_CONTACT } from '../src/lib/posterDesignSystem.js'
+import { createClient } from '@supabase/supabase-js'
+import { leadNotifyText } from '../src/lib/leadSource.js'
+
+const LEAD_FRESH_MS = 10 * 60 * 1000
+const notifiedLeads = new Set() // กันแจ้งซ้ำภายใน instance เดียวกัน (พอสำหรับการกดซ้ำ ไม่ใช่ด่านความปลอดภัย)
+
+// endpoint นี้เปิดสาธารณะ จึงไม่รับข้อความจากผู้เรียกเลย: รับแค่เลขที่ แล้วอ่านแถวเองด้วย service key
+// แจ้งเฉพาะแถวที่เป็น lead จากเว็บและเพิ่งสร้างไม่เกิน 10 นาที → คนนอกสั่งให้บอทส่งข้อความตามใจไม่ได้
+// ข้อความไม่มีชื่อ เบอร์ หรือ LINE (leadNotifyText) และไม่ log ข้อมูลผู้ติดต่อ
+async function notifyNewLead(rawId) {
+  const id = Number(rawId)
+  if (!Number.isInteger(id) || id <= 0) return { sent: false }
+  if (notifiedLeads.has(id)) return { sent: false }
+
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const token = process.env.ASSETX_TELEGRAM_BOT_TOKEN
+  const chatId = String(process.env.ASSETX_TELEGRAM_ALLOWED_CHAT_ID || '').trim()
+  if (!url || !key || !token || !chatId) return { sent: false }
+
+  const admin = createClient(url, key, { auth: { persistSession: false } })
+  const { data: row, error } = await admin.from('valuations').select('*').eq('id', id).maybeSingle()
+  if (error || !row) return { sent: false }
+  if (row.status !== 'Lead จากเว็บ') return { sent: false }
+  const age = Date.now() - new Date(row.created_at).getTime()
+  if (!(age >= 0 && age <= LEAD_FRESH_MS)) return { sent: false }
+
+  notifiedLeads.add(id)
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: leadNotifyText(row), disable_web_page_preview: true }),
+  })
+  if (!response.ok) { notifiedLeads.delete(id); throw new Error(`Telegram ${response.status}`) }
+  return { sent: true }
+}
 
 // Endpoint สาธารณะสำหรับหน้าประเมินออนไลน์ /assess — ไม่ต้องล็อกอิน (ตั้งใจ)
 // ห้ามส่งข้อมูลลูกค้าภายในระบบ (customerData) เข้ามาที่นี่เด็ดขาด — ต่างจาก api/chat.js
@@ -15,6 +54,16 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' })
   }
 
+  // แจ้งเตือน lead ใหม่จากหน้า /assess — อยู่ในไฟล์นี้เพราะโปรเจกต์ใช้ฟังก์ชัน Vercel ครบโควตาแล้ว
+  if (req.body?.mode === 'lead-notify') {
+    try {
+      return res.status(200).json(await notifyNewLead(req.body.id))
+    } catch (err) {
+      console.error('lead-notify failed:', err.message)
+      return res.status(200).json({ sent: false })
+    }
+  }
+
   try {
     const { messages } = req.body
 
@@ -26,43 +75,36 @@ export default async function handler(req, res) {
     const today = new Date().toLocaleDateString('th-TH', {
       year: 'numeric', month: 'long', day: 'numeric'
     })
+    const phone = POSTER_CONTACT.phone
+    // ผู้ช่วยตอบจากคลังความรู้ที่ตรวจแหล่งแล้วเท่านั้น (เลือกข้อตามคำถาม) — ดู api/_assess-knowledge.js
+    const systemPrompt = buildAssessSystemPrompt({ messages, today, phone })
+    const sendText = (text) => {
+      setSseHeaders(res)
+      res.write(`data: ${JSON.stringify({ text })}\n\n`)
+      res.write('data: [DONE]\n\n')
+      return res.end()
+    }
 
-    const systemPrompt = `คุณเป็นที่ปรึกษาทางการเงินและกฎหมายของ AssetX Estate มืออาชีพและเป็นมิตร
-วันที่ปัจจุบัน: ${today}
-
-หน้าที่ของคุณ: ช่วยผู้สนใจที่กำลังกรอกแบบฟอร์มประเมินทรัพย์สินออนไลน์ (จำนอง/ขายฝาก) ให้เข้าใจขั้นตอนและตัดสินใจได้ง่ายขึ้น
-
-ความรู้ที่ตอบได้:
-- ความแตกต่างระหว่าง "จำนอง" (ยังครอบครองทรัพย์สินได้ จดจำนองที่กรมที่ดิน) กับ "ขายฝาก" (โอนกรรมสิทธิ์ชั่วคราว มีสิทธิ์ไถ่คืนภายในกำหนด)
-- ขั้นตอนทั่วไปของการขอสินเชื่อ/ขายฝากกับทางบริษัท
-- คำอธิบายฟิลด์ในฟอร์ม (เช่น LTV, ราคาประเมิน, FSV คืออะไร) แบบเข้าใจง่าย ไม่ใช้ศัพท์เทคนิคเกินจำเป็น
-- ตอบคำถามที่พบบ่อย เช่น "จะถูกยึดที่ดินไหม" "ไถ่คืนได้กี่ครั้ง" "เอกสารที่ต้องเตรียม"
-
-กฎการตอบ (สำคัญมาก):
-- ตอบเป็นภาษาไทยเสมอ กระชับ เป็นมิตร ไม่ใช้ศัพท์กฎหมายจ๋าเกินไป
-- ให้ข้อมูลทั่วไปเท่านั้น ไม่ใช่คำแนะนำทางกฎหมายที่ผูกพัน — ถ้าคำถามเจาะจงกรณีของผู้ถามเอง ให้แนะนำให้กรอกฟอร์มให้ครบแล้วทีมงานจะติดต่อกลับ
-- ห้ามเดาหรือฟันธงวงเงิน/ราคาประเมินที่แน่นอน ให้บอกว่าต้องรอทีมงานประเมินจริง
-- ห้ามขอหรือพูดถึงข้อมูลลูกค้ารายอื่นในระบบ (คุณไม่มีสิทธิ์เข้าถึงข้อมูลนั้น)`
-
-    if (isHermesEnabled()) {
+    // เจ้าของเลือกให้ Ollama บนเครื่องของเราตอบ (ASSESS_CHAT_PROVIDER=ollama)
+    // คำตอบต้องผ่านด่านตรวจก่อนแสดง (ภาษาอื่นหลุด/คำมั่ว) ลองได้ 2 ครั้ง · ไม่ผ่านหรือต่อไม่ติด = ใช้ Gemini ด้านล่าง
+    if (isOllamaChatEnabled()) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const answer = await askOllamaChat({ messages, systemPrompt })
+          if (!looksBroken(answer)) return sendText(answer.replace(/\*\*|^#+\s*/gm, ''))
+          console.error(`assess-chat ollama: คำตอบไม่ผ่านด่านตรวจ (ครั้งที่ ${attempt})`)
+        } catch (ollamaError) {
+          console.error('assess-chat ollama failed:', ollamaError.message)
+          break
+        }
+      }
+    } else if (isHermesEnabled()) {
       setSseHeaders(res)
       try {
-        await streamHermesChat({
-          res,
-          messages,
-          systemPrompt,
-          context: {},
-          mode: 'public-assessment',
-        })
+        await streamHermesChat({ res, messages, systemPrompt, context: {}, mode: 'public-assessment' })
         return res.end()
       } catch (hermesError) {
-        await streamGeminiChat({
-          res,
-          messages,
-          systemPrompt,
-          completionNote: `\n\nหมายเหตุระบบ: ใช้ Gemini fallback เพราะ Hermes ล้ม/timeout: ${hermesError.message.split('\n')[0]}`,
-        })
-        return res.end()
+        console.error('assess-chat hermes failed:', hermesError.message.split('\n')[0])
       }
     }
 
@@ -70,11 +112,14 @@ export default async function handler(req, res) {
     res.end()
 
   } catch (err) {
-    if (res.headersSent) {
-      res.write(`data: ${JSON.stringify({ text: `\n\nระบบ AI ตอบกลับไม่สำเร็จ: ${err.message}` })}\n\n`)
-      res.write('data: [DONE]\n\n')
-      return res.end()
-    }
-    res.status(500).json({ error: err.message })
+    // หน้าสาธารณะ: ไม่แสดงข้อความผิดพลาดของระบบให้ผู้ใช้เห็น ให้ทางติดต่อแทน
+    console.error('assess-chat failed:', err.message)
+    const text = fallbackAnswer(POSTER_CONTACT.phone)
+    const partial = res.headersSent // มีคำตอบบางส่วนออกไปแล้ว → ต่อท้ายด้วยบรรทัดใหม่
+    if (!partial) setSseHeaders(res)
+    res.write(`data: ${JSON.stringify({ text: partial ? `\n\n${text}` : text })}\n\n`)
+    res.write('data: [DONE]\n\n')
+    return res.end()
   }
+
 }
