@@ -56,7 +56,7 @@ export function buildLeadNote({ mapLink = '', note = '' } = {}) {
 }
 
 // ข้อความเตือนเข้า Telegram เมื่อมีทรัพย์เข้าใหม่ — ไม่ใส่ชื่อ เบอร์ หรือ LINE ของผู้ส่ง (ดูในแอปหลังล็อกอิน)
-export function leadNotifyText(row = {}) {
+export function leadNotifyText(row = {}, { files = 0 } = {}) {
   const source = normalizeLeadSource(row.lead_source)
   const ref = cleanRef(row.lead_ref)
   const head = source === 'broker'
@@ -71,9 +71,80 @@ export function leadNotifyText(row = {}) {
     `${row.assessment_type || 'ไม่ระบุประเภท'} · ${row.property_subtype || row.property_type || 'ไม่ระบุทรัพย์'}`,
     place || 'ไม่ระบุที่ตั้ง',
     requested > 0 ? `วงเงินที่ขอ ${requested.toLocaleString('th-TH')} บาท` : 'ยังไม่ระบุวงเงินที่ขอ',
+    ...(Number(files) > 0 ? [`แนบรูป ${Number(files)} รูป`] : []),
     '',
     source === 'broker' ? 'รับปากนายหน้าไว้: ตอบผลเบื้องต้นภายในวัน' : 'รับปากไว้: ติดต่อกลับภายใน 24 ชั่วโมง',
     'เปิดดูข้อมูลติดต่อ: แอป → นายทุน → Lead จากเว็บ',
   ]
   return lines.join('\n')
+}
+
+// ── ข้อความตอบผลประเมินเบื้องต้นกลับผู้ส่ง (เจ้าของคัดลอกไปส่งเองทาง LINE/โทรศัพท์) ──
+// ไม่มีอัตราดอกเบี้ยหรือค่าธรรมเนียมในข้อความ · วงเงินมาจากที่เจ้าของพิมพ์เองเท่านั้น และกำกับว่ายังไม่ใช่วงเงินอนุมัติ
+export const REPLY_RESULTS = {
+  interested: { label: 'รับพิจารณา', short: 'รับพิจารณา' },
+  'need-info': { label: 'ขอข้อมูลเพิ่ม', short: 'ขอข้อมูลเพิ่ม' },
+  declined: { label: 'ไม่รับรายการนี้', short: 'ไม่รับ' },
+}
+
+export const REPLY_NEEDS = [
+  { key: 'deed', label: 'รูปเอกสารสิทธิ์หน้า-หลังที่อ่านชัด' },
+  { key: 'photos', label: 'รูปถ่ายทรัพย์และทางเข้า' },
+  { key: 'map', label: 'หมุดที่ตั้งบน Google Maps' },
+  { key: 'burden', label: 'ภาระเดิมและยอดที่ต้องไถ่ถอน' },
+  { key: 'owner', label: 'ชื่อผู้ถือกรรมสิทธิ์และสถานะสมรส' },
+]
+
+const money = (n) => (Number(n) > 0 ? `${Math.round(Number(n)).toLocaleString('th-TH')} บาท` : '')
+
+function areaOf(lead) {
+  const sqw = Number(lead.totalSqw) || 0
+  if (sqw <= 0) return ''
+  const rai = Math.floor(sqw / 400)
+  const ngan = Math.floor((sqw % 400) / 100)
+  const rest = Math.round((sqw % 100) * 10) / 10
+  return `${rai}-${ngan}-${rest} ไร่`
+}
+
+// lead: { ticketNo, name, isBroker, assessmentType, propertySubtype, subdistrict, district, province, totalSqw, requestedLoan }
+// reply: { result, amount, needs: [key], note }
+export function buildBrokerReply(lead = {}, reply = {}, { phone = '', line = '' } = {}) {
+  const result = Object.hasOwn(REPLY_RESULTS, reply.result) ? reply.result : 'interested'
+  const place = [lead.subdistrict, lead.district, lead.province].map((s) => String(s || '').trim()).filter(Boolean).join(' ')
+  const property = [lead.assessmentType, lead.propertySubtype, place, areaOf(lead) && `เนื้อที่ ${areaOf(lead)}`].filter(Boolean).join(' · ')
+  const note = String(reply.note || '').trim().slice(0, 600)
+  const lines = [
+    `เรียนคุณ${String(lead.name || '').trim() || 'ลูกค้า'}`,
+    `ผลประเมินเบื้องต้น${lead.ticketNo ? ` เลขรับเรื่อง ${lead.ticketNo}` : ''}`,
+    '',
+    property && `ทรัพย์: ${property}`,
+    money(lead.requestedLoan) && `วงเงินที่ขอ: ${money(lead.requestedLoan)}`,
+    '',
+  ]
+  if (result === 'interested') {
+    lines.push('ผล: รับพิจารณา')
+    if (money(reply.amount)) lines.push(`วงเงินเบื้องต้น: ${money(reply.amount)} (ยังไม่ใช่วงเงินอนุมัติ ขึ้นกับการตรวจเอกสารสิทธิ์และดูทรัพย์จริง)`)
+    lines.push('ขั้นต่อไป: นัดดูทรัพย์และตรวจเอกสารสิทธิ์ตัวจริง ทีมงานจะแจ้งค่าใช้จ่ายรวมก่อนวันทำสัญญาที่สำนักงานที่ดิน')
+  } else if (result === 'need-info') {
+    const needs = REPLY_NEEDS.filter((n) => (reply.needs || []).includes(n.key))
+    lines.push('ผล: ขอข้อมูลเพิ่มเพื่อประเมินต่อ')
+    if (needs.length) lines.push('ขอรบกวนส่ง:', ...needs.map((n, i) => `${i + 1}. ${n.label}`))
+  } else {
+    lines.push('ผล: ขออนุญาตไม่รับรายการนี้ครับ', 'ขอบคุณที่ส่งทรัพย์ให้พิจารณา หากมีทรัพย์รายการอื่นยินดีรับพิจารณาครับ')
+  }
+  if (note) lines.push('', note)
+  const contact = [phone && `โทร ${phone}`, line && `LINE ${line}`].filter(Boolean).join(' · ')
+  lines.push('', `AssetX Estate${contact ? ` · ${contact}` : ''}`)
+  // ตัดค่าว่างที่มาจากข้อมูลไม่ครบ และบรรทัดว่างซ้อน
+  return lines.filter((l) => l !== false && l != null && l !== undefined)
+    .filter((l, i, all) => !(l === '' && (i === 0 || all[i - 1] === '')))
+    .join('\n').trim()
+}
+
+// เวลาที่ใช้ตอบ (ชั่วโมง ทศนิยม 1 ตำแหน่ง) จากเวลาที่ทรัพย์เข้าและเวลาที่กดบันทึกว่าตอบแล้ว
+export function replyHours(createdAt, repliedAt) {
+  const a = new Date(createdAt).getTime()
+  const b = new Date(repliedAt).getTime()
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null
+  return Math.round(((b - a) / 3600000) * 10) / 10
 }

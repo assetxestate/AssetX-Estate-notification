@@ -10,6 +10,7 @@ import diaryHandler from '../server/diary.js'
 import paymentAdditionsHandler from '../server/paymentAdditions.js'
 import imageJobsHandler from '../server/marketing-image-jobs.js'
 import contentJobsHandler from '../server/marketing-content-jobs.js'
+import leadFilesHandler from '../server/leadFiles.js'
 
 const handlers = {
   notices: noticesHandler,
@@ -29,6 +30,8 @@ const handlers = {
   facebook: facebookHandler,
   // คิวไอเดียจากระบบรีเสิร์ช (research/ + scripts/research-ideas.mjs) — ตาราง marketing_ideas
   ideas: ideasHandler,
+  // รูปแนบของ lead จากหน้า /assess (bucket ปิด lead-files) — เปิดดูได้เฉพาะผู้ล็อกอิน
+  'lead-files': leadFilesHandler,
 }
 
 function inferFeature(req) {
@@ -49,6 +52,7 @@ function inferFeature(req) {
   if (path.endsWith('/marketing-knowledge-save')) return 'knowledge-save'
   if (path.endsWith('/marketing-facebook')) return 'facebook'
   if (path.endsWith('/marketing-ideas')) return 'ideas'
+  if (path.endsWith('/lead-files')) return 'lead-files'
   return ''
 }
 

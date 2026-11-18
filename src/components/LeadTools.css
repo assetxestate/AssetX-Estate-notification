@@ -1,0 +1,25 @@
+/* เครื่องมือบนการ์ด lead (หน้า นายทุน → Lead จากเว็บ) — ใช้ตัวแปรสีชุดเดียวกับการ์ดใน InvestorPage (มีคู่สว่าง/มืดใน theme.css) */
+.lt { margin-bottom: 14px; font-size: 13px; color: var(--ax-c-e2e8f0); }
+.lt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lt-status { flex: 1 1 180px; color: var(--ax-c-f59e0b); font-weight: 600; }
+.lt-status[data-done="true"] { color: var(--ax-c-2dd4bf); }
+.lt-tab, .lt-btn, .lt-choice { min-height: 36px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: transparent; color: var(--ax-c-e2e8f0); font: inherit; font-weight: 600; cursor: pointer; }
+.lt-tab[aria-expanded="true"], .lt-choice[aria-checked="true"] { border-color: var(--ax-c-2dd4bf); color: var(--ax-c-2dd4bf); }
+.lt-btn[data-kind="primary"] { background: var(--ax-c-2dd4bf); border-color: var(--ax-c-2dd4bf); color: var(--ax-c-000); }
+.lt-btn:disabled { opacity: 0.55; cursor: default; }
+.lt-tab:focus-visible, .lt-btn:focus-visible, .lt-choice:focus-visible { outline: 2px solid var(--ax-c-2dd4bf); outline-offset: 2px; }
+.lt-panel { margin-top: 10px; padding: 12px; border: 1px solid var(--ax-border-lt); border-radius: 10px; background: var(--ax-c-050b18); display: grid; gap: 10px; }
+.lt-note { margin: 0; font-size: 12px; color: var(--ax-c-94a3b8); }
+.lt-note[data-tone="error"] { color: var(--ax-c-f87171); }
+.lt-files { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.lt-files a { display: block; border: 1px solid var(--ax-border-lt); border-radius: 8px; overflow: hidden; color: var(--ax-c-e2e8f0); text-decoration: none; }
+.lt-files img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.lt-files span { display: block; padding: 4px 8px; font-size: 12px; }
+.lt-choices, .lt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.lt-field { display: grid; gap: 4px; }
+.lt-field small { color: var(--ax-c-94a3b8); font-weight: 400; }
+.lt-field input, .lt-field textarea { box-sizing: border-box; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: var(--ax-c-111d35); color: var(--ax-c-e2e8f0); font: inherit; font-size: 14px; }
+.lt-field textarea { resize: vertical; }
+.lt-needs { display: grid; gap: 6px; }
+.lt-needs label { display: flex; align-items: center; gap: 8px; }
+.lt-preview { margin: 0; padding: 12px; border-radius: 8px; border: 1px dashed var(--ax-border-lt); background: var(--ax-c-111d35); color: var(--ax-c-e2e8f0); font: inherit; font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }

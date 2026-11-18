@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react'
 import './assess.css'
 import { showToast } from './lib/toast.js'
 import { formatMoney } from './lib/utils.js'
-import { submitPublicAssessment } from './lib/api.js'
+import { submitPublicAssessment, uploadPublicLeadFile, notifyPublicLead } from './lib/api.js'
+import { compressImage, isImageFile, MAX_FILES } from './lib/leadImage.js'
 import AssessChat from './AssessChat.jsx'
 import { parseLeadParams, LEAD_SOURCES, leadTicketNo, buildLeadNote } from './lib/leadSource.js'
 import { POSTER_CONTACT } from './lib/posterDesignSystem.js'
@@ -90,6 +91,37 @@ export default function AssessPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [ticketNo, setTicketNo] = useState('')
+  // รูปแนบ (เอกสารสิทธิ์/รูปทรัพย์): ย่อในเบราว์เซอร์ก่อน แล้วส่งทีละรูปหลังบันทึกฟอร์ม → เก็บในที่เก็บแบบปิด
+  const [photos, setPhotos] = useState([])
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [sendNote, setSendNote] = useState('')
+  const [photoFailed, setPhotoFailed] = useState(0)
+
+  const addPhotos = async (kind, fileList) => {
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+    setPhotoBusy(true)
+    let room = MAX_FILES - photos.length
+    let skipped = 0
+    const added = []
+    for (const file of files) {
+      if (room <= 0) { skipped += 1; continue }
+      if (!isImageFile(file)) { skipped += 1; continue }
+      try {
+        const image = await compressImage(file)
+        added.push({ id: `${Date.now()}-${added.length}-${Math.random().toString(36).slice(2, 8)}`, kind, ...image })
+        room -= 1
+      } catch { skipped += 1 }
+    }
+    setPhotos(prev => [...prev, ...added].slice(0, MAX_FILES))
+    setPhotoBusy(false)
+    if (skipped) showToast(`เพิ่มไม่ได้ ${skipped} ไฟล์ (รับเฉพาะรูปภาพ ไม่เกิน ${MAX_FILES} รูป)`)
+  }
+  const removePhoto = (id) => setPhotos(prev => {
+    const gone = prev.find(p => p.id === id)
+    if (gone?.previewUrl) URL.revokeObjectURL(gone.previewUrl)
+    return prev.filter(p => p.id !== id)
+  })
 
   const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
   const updateDeed = (idx, key, val) => setForm(prev => ({ ...prev, deeds: prev.deeds.map((d, i) => i === idx ? { ...d, [key]: val } : d) }))
@@ -121,6 +153,14 @@ export default function AssessPage() {
         customerName: form.contactName,
         locationNote: buildLeadNote({ mapLink: form.mapLink, note: form.note }),
       })
+      // ส่งรูปทีละรูป: รูปที่ส่งไม่ผ่านไม่ทำให้รายการหาย แจ้งผู้ส่งให้ส่งทาง LINE แทน
+      let failed = 0
+      for (let i = 0; i < photos.length; i++) {
+        setSendNote(`กำลังส่งรูป ${i + 1} จาก ${photos.length}…`)
+        try { await uploadPublicLeadFile(saved.rowIndex, { kind: photos[i].kind, base64: photos[i].base64 }) } catch { failed += 1 }
+      }
+      setPhotoFailed(failed)
+      await notifyPublicLead(saved.rowIndex)
       setTicketNo(leadTicketNo(saved?.rowIndex))
       setSubmitted(true)
       window.scrollTo({ top: 0 })
@@ -128,12 +168,16 @@ export default function AssessPage() {
       showToast('ส่งข้อมูลไม่สำเร็จ กรุณาลองใหม่: ' + e.message)
     } finally {
       setSubmitting(false)
+      setSendNote('')
     }
   }
 
   // นายหน้าส่งทรัพย์ต่อได้เลยโดยไม่ต้องกรอกข้อมูลตัวเองซ้ำ
   const startNext = () => {
     setForm(prev => ({ ...INITIAL_FORM, deeds: [EMPTY_DEED()], leadSource: prev.leadSource, leadRef: prev.leadRef, contactName: prev.contactName, contactPhone: prev.contactPhone, contactLine: prev.contactLine }))
+    photos.forEach(p => p.previewUrl && URL.revokeObjectURL(p.previewUrl))
+    setPhotos([])
+    setPhotoFailed(0)
     setTicketNo('')
     setSubmitted(false)
     goto(2)
@@ -161,6 +205,9 @@ export default function AssessPage() {
                 <small>แจ้งเลขนี้เมื่อสอบถามความคืบหน้า</small>
               </div>
             )}
+            {photoFailed > 0 && (
+              <p className="as-warn">รูป {photoFailed} รูปส่งไม่สำเร็จ กรุณาส่งทาง LINE {POSTER_CONTACT.line} พร้อมแจ้งเลขรับเรื่อง</p>
+            )}
             {isBroker && <button type="button" className="as-btn as-btn-ghost" onClick={startNext}>ส่งทรัพย์รายการถัดไป</button>}
           </div>
         </main>
@@ -176,6 +223,7 @@ export default function AssessPage() {
     ['ที่ตั้ง', step >= 3 ? place : ''],
     ['เนื้อที่', areaText(form.deeds)],
     ['วงเงินที่ขอ', form.requestedLoan ? `${formatMoney(Math.round(+form.requestedLoan))} บาท` : ''],
+    ['รูปแนบ', photos.length ? `${photos.length} รูป` : ''],
   ]
 
   return (
@@ -397,6 +445,30 @@ export default function AssessPage() {
                 <Field label="รายละเอียดเพิ่มเติม" hint="ถ้ามี">
                   <textarea className="as-input" value={form.note} maxLength={1000} rows={3} onChange={e => update('note', e.target.value)} placeholder={isBroker ? 'เช่น ภาระเดิมที่ต้องไถ่ถอน ระยะเวลาที่ลูกค้าต้องการ ความเร่งด่วน' : 'เช่น ภาระเดิมที่มีอยู่ ระยะเวลาที่ต้องการ'} />
                 </Field>
+                <div className="as-section">
+                  <span>รูปประกอบ <small className="as-opt">ถ้ามี · ไม่เกิน {MAX_FILES} รูป</small></span>
+                </div>
+                <p className="as-hint" style={{ marginTop: 0 }}>รูปเอกสารสิทธิ์และรูปทรัพย์ช่วยให้ประเมินได้เร็วขึ้น รูปจะถูกเก็บแบบปิด เปิดดูได้เฉพาะทีมงาน</p>
+                <div className="as-photo-pick">
+                  {[['deed', 'เพิ่มรูปเอกสารสิทธิ์'], ['property', 'เพิ่มรูปทรัพย์']].map(([kind, text]) => (
+                    <label key={kind} className="as-btn as-btn-ghost as-file" data-off={photoBusy || photos.length >= MAX_FILES}>
+                      {text}
+                      <input type="file" accept="image/*" multiple disabled={photoBusy || photos.length >= MAX_FILES} onChange={e => { addPhotos(kind, e.target.files); e.target.value = '' }} />
+                    </label>
+                  ))}
+                  {photoBusy && <span className="as-need" style={{ margin: 0 }}>กำลังเตรียมรูป…</span>}
+                </div>
+                {photos.length > 0 && (
+                  <ul className="as-photos">
+                    {photos.map(p => (
+                      <li key={p.id}>
+                        <img src={p.previewUrl} alt={p.kind === 'deed' ? 'รูปเอกสารสิทธิ์' : 'รูปทรัพย์'} />
+                        <span>{p.kind === 'deed' ? 'เอกสารสิทธิ์' : 'รูปทรัพย์'}</span>
+                        <button type="button" className="as-link" data-tone="danger" onClick={() => removePhoto(p.id)}>ลบ</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {hasMarketEstimate && (
                   <div className="as-estimate">
                     <div className="as-estimate-label">วงเงินโดยประมาณจากข้อมูลที่กรอก (ยังไม่ใช่ผลประเมินจริง)</div>
@@ -412,8 +484,8 @@ export default function AssessPage() {
               {step < STEPS.length ? (
                 <button type="button" className="as-btn as-btn-primary" disabled={!!need} onClick={() => goto(step + 1)}>ถัดไป</button>
               ) : (
-                <button type="button" className="as-btn as-btn-primary" disabled={submitting || !!need} onClick={handleSubmit}>
-                  {submitting ? 'กำลังส่งข้อมูล…' : 'ส่งข้อมูลให้ทีมงาน'}
+                <button type="button" className="as-btn as-btn-primary" disabled={submitting || photoBusy || !!need} onClick={handleSubmit}>
+                  {submitting ? (sendNote || 'กำลังส่งข้อมูล…') : 'ส่งข้อมูลให้ทีมงาน'}
                 </button>
               )}
             </div>

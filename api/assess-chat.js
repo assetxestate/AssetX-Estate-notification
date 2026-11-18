@@ -3,38 +3,33 @@ import { setSseHeaders, streamGeminiChat } from './_gemini.js'
 import { isOllamaChatEnabled, askOllamaChat } from './_ollama.js'
 import { buildAssessSystemPrompt, looksBroken, fallbackAnswer } from './_assess-knowledge.js'
 import { POSTER_CONTACT } from '../src/lib/posterDesignSystem.js'
-import { createClient } from '@supabase/supabase-js'
 import { leadNotifyText } from '../src/lib/leadSource.js'
+import { serviceDb, freshLead, listLeadFiles, uploadLeadFile, leadIdOf } from '../server/leadFiles.js'
 
-const LEAD_FRESH_MS = 10 * 60 * 1000
 const notifiedLeads = new Set() // กันแจ้งซ้ำภายใน instance เดียวกัน (พอสำหรับการกดซ้ำ ไม่ใช่ด่านความปลอดภัย)
 
 // endpoint นี้เปิดสาธารณะ จึงไม่รับข้อความจากผู้เรียกเลย: รับแค่เลขที่ แล้วอ่านแถวเองด้วย service key
-// แจ้งเฉพาะแถวที่เป็น lead จากเว็บและเพิ่งสร้างไม่เกิน 10 นาที → คนนอกสั่งให้บอทส่งข้อความตามใจไม่ได้
+// แจ้งเฉพาะแถวที่เป็น lead จากเว็บและเพิ่งสร้าง (freshLead) → คนนอกสั่งให้บอทส่งข้อความตามใจไม่ได้
 // ข้อความไม่มีชื่อ เบอร์ หรือ LINE (leadNotifyText) และไม่ log ข้อมูลผู้ติดต่อ
 async function notifyNewLead(rawId) {
-  const id = Number(rawId)
-  if (!Number.isInteger(id) || id <= 0) return { sent: false }
-  if (notifiedLeads.has(id)) return { sent: false }
+  const id = leadIdOf(rawId)
+  if (!id || notifiedLeads.has(id)) return { sent: false }
 
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   const token = process.env.ASSETX_TELEGRAM_BOT_TOKEN
   const chatId = String(process.env.ASSETX_TELEGRAM_ALLOWED_CHAT_ID || '').trim()
-  if (!url || !key || !token || !chatId) return { sent: false }
+  const admin = serviceDb()
+  if (!admin || !token || !chatId) return { sent: false }
 
-  const admin = createClient(url, key, { auth: { persistSession: false } })
-  const { data: row, error } = await admin.from('valuations').select('*').eq('id', id).maybeSingle()
-  if (error || !row) return { sent: false }
-  if (row.status !== 'Lead จากเว็บ') return { sent: false }
-  const age = Date.now() - new Date(row.created_at).getTime()
-  if (!(age >= 0 && age <= LEAD_FRESH_MS)) return { sent: false }
+  const row = await freshLead(admin, id)
+  if (!row) return { sent: false }
+  // หน้าเว็บส่งรูปให้ครบก่อนแล้วจึงเรียกแจ้งเตือน จึงนับรูปแนบได้ตรงนี้ (นับไม่ได้ = ไม่บอกจำนวน ไม่ขวางการแจ้ง)
+  const files = await listLeadFiles(admin, id).then((list) => list.length).catch(() => 0)
 
   notifiedLeads.add(id)
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: leadNotifyText(row), disable_web_page_preview: true }),
+    body: JSON.stringify({ chat_id: chatId, text: leadNotifyText(row, { files }), disable_web_page_preview: true }),
   })
   if (!response.ok) { notifiedLeads.delete(id); throw new Error(`Telegram ${response.status}`) }
   return { sent: true }
@@ -61,6 +56,17 @@ export default async function handler(req, res) {
     } catch (err) {
       console.error('lead-notify failed:', err.message)
       return res.status(200).json({ sent: false })
+    }
+  }
+
+  // รูปแนบของ lead (เอกสารสิทธิ์/รูปทรัพย์) ทีละรูป → bucket ปิด · ด่านตรวจอยู่ใน server/leadFiles.js
+  if (req.body?.mode === 'lead-upload') {
+    try {
+      const result = await uploadLeadFile({ id: req.body.id, file: req.body.file })
+      return res.status(result.ok ? 200 : 400).json(result)
+    } catch (err) {
+      console.error('lead-upload failed:', err.message)
+      return res.status(500).json({ ok: false, error: 'ส่งรูปไม่สำเร็จ' })
     }
   }
 

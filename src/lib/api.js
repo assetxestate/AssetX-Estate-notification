@@ -324,6 +324,10 @@ export async function getValuations() {
     contactLine: v.contact_line || "",
     leadSource: v.lead_source || "",
     leadRef: v.lead_ref || "",
+    leadRepliedAt: v.lead_replied_at || "",
+    leadReplyResult: v.lead_reply_result || "",
+    createdAt: v.created_at || "",
+    totalSqw: v.total_sqw || 0,
   }));
 }
 
@@ -471,17 +475,49 @@ export async function getNearbyAreaPricePoints({ lat, lng, province, propertyTyp
 // รับ lead จากหน้าประเมินออนไลน์สาธารณะ (/assess) — ใช้ insert path เดียวกับ saveValuation
 // แค่บังคับ status ให้แยกจากงานประเมินภายในของพนักงาน เพื่อให้ทีมงานคัดกรองก่อนเข้า pipeline ปกติ
 export async function submitPublicAssessment(data) {
-  const saved = await saveValuation({ ...data, status: "Lead จากเว็บ", leadSource: data.leadSource || "owner" });
-  // แจ้งเจ้าของทาง Telegram ทันที (เซิร์ฟเวอร์อ่านแถวเองจากเลขที่ ไม่รับข้อความจากหน้าเว็บ) — แจ้งไม่สำเร็จไม่ถือว่าส่งฟอร์มล้มเหลว
+  // ผู้เรียกส่งรูปแนบ (ถ้ามี) แล้วเรียก notifyPublicLead เอง — เซิร์ฟเวอร์อ่านแถวจากเลขที่ ไม่รับข้อความจากหน้าเว็บ
+  return saveValuation({ ...data, status: "Lead จากเว็บ", leadSource: data.leadSource || "owner" });
+}
+
+// แจ้งเจ้าของทาง Telegram ว่ามี lead ใหม่ — เรียกหลังส่งรูปแนบครบ เพื่อให้ข้อความบอกจำนวนรูปได้
+export async function notifyPublicLead(id) {
   try {
     await fetch("/api/assess-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "lead-notify", id: saved.rowIndex }),
+      body: JSON.stringify({ mode: "lead-notify", id }),
       keepalive: true,
     });
   } catch { /* เงียบไว้: lead บันทึกแล้ว เจ้าของยังเห็นในแอป */ }
-  return saved;
+}
+
+// ส่งรูปแนบของ lead ทีละรูป (หน้า /assess) — file = { kind: 'deed' | 'property', base64 }
+export async function uploadPublicLeadFile(id, file) {
+  const res = await fetch("/api/assess-chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "lead-upload", id, file }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || "ส่งรูปไม่สำเร็จ");
+  return data;
+}
+
+// รูปแนบของ lead พร้อมลิงก์ชั่วคราว (ต้องล็อกอิน)
+export async function getLeadFiles(id) {
+  const res = await fetch(`/api/lead-files?id=${encodeURIComponent(id)}`, { credentials: "same-origin", cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "เปิดรูปแนบไม่สำเร็จ");
+  return Array.isArray(data.files) ? data.files : [];
+}
+
+// บันทึกว่าตอบผลเบื้องต้นกลับผู้ส่งแล้ว (คอลัมน์จาก supabase_lead_files_reply.sql)
+export async function markLeadReplied(rowIndex, result) {
+  const repliedAt = new Date().toISOString();
+  const { error } = await supabase.from("valuations")
+    .update({ lead_replied_at: repliedAt, lead_reply_result: result || "" }).eq("id", rowIndex);
+  if (error) throw error;
+  return repliedAt;
 }
 
 export async function updateValuation(rowIndex, data) {

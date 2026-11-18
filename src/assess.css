@@ -142,6 +142,21 @@ textarea.as-input { resize: vertical; min-height: 92px; }
 .as-btn-ghost:hover { background: var(--as-surface-2); }
 .as-need { font-size: 14px; color: var(--as-ink-3); margin-top: 10px; }
 
+/* รูปแนบ */
+.as-opt { font-weight: 400; font-size: 13px; color: var(--as-ink-3); margin-left: 4px; }
+.as-photo-pick { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.as-file { display: inline-flex; align-items: center; position: relative; overflow: hidden; font-size: 15px; }
+.as-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.as-file:focus-within { outline: 3px solid color-mix(in srgb, var(--as-focus) 55%, transparent); outline-offset: 2px; }
+.as-file[data-off="true"] { background: var(--as-disabled-bg); color: var(--as-disabled-ink); border-color: transparent; }
+.as-file[data-off="true"] input { cursor: not-allowed; }
+.as-photos { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.as-photos li { border: 1px solid var(--as-line); border-radius: 10px; overflow: hidden; background: var(--as-surface-2); display: grid; grid-template-columns: 1fr auto; align-items: center; }
+.as-photos img { grid-column: 1 / -1; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.as-photos span { padding: 6px 8px; font-size: 13px; color: var(--as-ink-2); }
+.as-photos .as-link { margin: 0 4px 0 0; }
+.as-warn { margin: 16px 0 0 !important; padding: 12px 14px; border-radius: 8px; background: var(--as-danger-soft); color: var(--as-danger) !important; font-size: 14px; text-align: left; }
+
 /* กล่องผลเบื้องต้น */
 .as-estimate { margin-top: 20px; padding: 16px; border-radius: 10px; background: var(--as-accent-soft); border: 1px solid color-mix(in srgb, var(--as-accent) 30%, transparent); }
 .as-estimate-label { font-size: 14px; color: var(--as-ink-2); }

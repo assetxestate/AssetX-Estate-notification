@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { showToast } from "./lib/toast.js";
 import { leadSourceLabel, leadTicketNo } from "./lib/leadSource.js";
+import LeadTools from "./components/LeadTools.jsx";
 import { buildAdvanceDeduction } from "./lib/advanceDeduction.js";
 import {
   getValuations as apiGetValuations,
@@ -686,6 +687,14 @@ export default function InvestorPage({ appsScriptUrl }) {
                     {row.contactLine && <span style={{ color: BRAND.textSec }}>💬 LINE: {row.contactLine}</span>}
                     {row.leadSource && row['หมายเหตุ'] && <span style={{ flexBasis: '100%', color: BRAND.textPri, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>📝 {row['หมายเหตุ']}</span>}
                   </div>
+                )}
+
+                {/* รูปแนบและข้อความตอบผล — เฉพาะ lead จากหน้าประเมินออนไลน์ */}
+                {row.leadSource && (
+                  <LeadTools
+                    row={row}
+                    onReplied={(leadRepliedAt, leadReplyResult) => setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, leadRepliedAt, leadReplyResult } : r))}
+                  />
                 )}
 
                 {/* Stats grid */}
