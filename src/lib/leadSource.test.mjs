@@ -43,6 +43,7 @@ test('ข้อความเตือน Telegram ไม่มีชื่อ 
   assert.match(text, /บางเขน · กรุงเทพมหานคร/)
   assert.match(text, /2,500,000/)
   assert.match(text, /ภายในวัน/)
+  assert.match(text, /แอป → นายทุน → Lead จากเว็บ/) // ต้องตรงกับชื่อเมนูจริงในแอป
   assert.doesNotMatch(text, /ชื่อทดสอบ|0800000000|lineid/)
 })
 
