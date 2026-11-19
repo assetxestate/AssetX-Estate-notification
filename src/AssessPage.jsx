@@ -155,6 +155,9 @@ export default function AssessPage() {
   // ข้อความบอกว่ายังขาดอะไร (ว่าง = ไปต่อได้) — ปุ่มที่กดไม่ได้ต้องบอกเหตุผลเสมอ
   const missing = () => {
     if (step === 1 && !(form.contactName.trim() && form.contactPhone.trim())) return 'กรอกชื่อและเบอร์โทรศัพท์ก่อน'
+    // เลขโฉนด + จังหวัด + อำเภอ คือสามอย่างที่ทีมงานใช้ค้นแปลงในระบบกรมที่ดิน — นายหน้าต้องพิมพ์เอง ไม่อ่านจากรูป (รูปโฉนดเก่าอ่านเลขผิดได้)
+    if (step === 3 && !form.district.trim()) return 'เลือกอำเภอ/เขตก่อน'
+    if (step === 3 && isBroker && !form.deeds.every(d => String(d.titleDeedNo || '').trim())) return 'กรอกเลขโฉนดของทุกแปลงก่อน'
     if (step === 3 && !form.deeds.every(d => d.areaRai || d.areaNgan || d.areaSqw)) return 'กรอกเนื้อที่โดยประมาณของทุกแปลงก่อน'
     if (step === STEPS.length && !form.requestedLoan) return 'กรอกจำนวนเงินที่ต้องการก่อน'
     return ''
@@ -374,14 +377,14 @@ export default function AssessPage() {
                   <span>เอกสารสิทธิ์ {form.deeds.length} แปลง</span>
                   <button type="button" className="as-link" onClick={addDeed}>+ เพิ่มแปลง</button>
                 </div>
-                <p className="as-hint" style={{ marginTop: 0 }}>ถ้าไม่ทราบเลขโฉนด กรอกเฉพาะเนื้อที่โดยประมาณได้ ทีมงานจะตรวจสอบอีกครั้ง</p>
+                <p className="as-hint" style={{ marginTop: 0 }}>{isBroker ? 'กรอกเลขโฉนดตามตัวเลขบนเอกสารจริงทุกแปลง ทีมงานใช้เลขโฉนด จังหวัด และอำเภอค้นข้อมูลแปลง รูปถ่ายโฉนดอย่างเดียวอาจอ่านเลขผิดได้' : 'ถ้าไม่ทราบเลขโฉนด กรอกเฉพาะเนื้อที่โดยประมาณได้ ทีมงานจะตรวจสอบอีกครั้ง'}</p>
                 {form.deeds.map((deed, idx) => (
                   <div key={deed.id} className="as-parcel">
                     <div className="as-parcel-head">
                       <span>แปลงที่ {idx + 1}</span>
                       {form.deeds.length > 1 && <button type="button" className="as-link" data-tone="danger" onClick={() => removeDeed(idx)}>ลบแปลงนี้</button>}
                     </div>
-                    <Field label="เลขโฉนด" hint="ถ้าทราบ">
+                    <Field label="เลขโฉนด" hint={isBroker ? 'จำเป็น · พิมพ์ตามเอกสารจริง' : 'ถ้าทราบ'}>
                       <Inp value={deed.titleDeedNo} inputMode="numeric" onChange={e => updateDeed(idx, 'titleDeedNo', e.target.value)} />
                     </Field>
                     <div className="as-row3" data-keep="true">

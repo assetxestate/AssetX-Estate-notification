@@ -57,7 +57,17 @@ export function buildLeadNote({ mapLink = '', note = '' } = {}) {
   return [link && `แผนที่: ${link}`, text].filter(Boolean).join('\n')
 }
 
+// เลขโฉนดของทุกแปลงตามที่ผู้ส่งกรอก (ไม่ซ้ำ สูงสุด 6 แปลง) — เจ้าของใช้คู่กับจังหวัดและอำเภอค้นแปลงใน LandsMaps
+export function leadDeedNumbers(row = {}) {
+  const fromDeeds = Array.isArray(row.deeds) ? row.deeds.map((d) => d?.titleDeedNo) : []
+  const all = [...fromDeeds, ...String(row.title_deed_no ?? '').split(',')]
+    .map((v) => String(v ?? '').replace(/[^\p{L}\p{N} ./-]/gu, '').trim().slice(0, 20))
+    .filter(Boolean)
+  return [...new Set(all)].slice(0, 6)
+}
+
 // ข้อความเตือนเข้า Telegram เมื่อมีทรัพย์เข้าใหม่ — ไม่ใส่ชื่อ เบอร์ หรือ LINE ของผู้ส่ง (ดูในแอปหลังล็อกอิน)
+// มีเลขโฉนด จังหวัด อำเภอ (เจ้าของขอ 19 พ.ย. 2569: สามอย่างนี้ใช้ค้นแปลงใน LandsMaps ได้ทันทีจากข้อความ)
 // extra = บรรทัดเสริมจากทะเบียนนายหน้าและการตรวจทรัพย์ซ้ำ (ไม่มีชื่อ เบอร์ เลขโฉนด)
 export function leadNotifyText(row = {}, { files = 0, extra = [] } = {}) {
   const source = normalizeLeadSource(row.lead_source)
@@ -68,11 +78,13 @@ export function leadNotifyText(row = {}, { files = 0, extra = [] } = {}) {
   const place = [row.subdistrict, row.district, row.province].map((s) => String(s || '').trim()).filter(Boolean).join(' · ')
   const requested = Number(row.requested_loan) || 0
   const ticket = leadTicketNo(row.id)
+  const deeds = leadDeedNumbers(row)
   const lines = [
     head,
     ...(ticket ? [`เลขรับเรื่อง ${ticket}`] : []),
     `${row.assessment_type || 'ไม่ระบุประเภท'} · ${row.property_subtype || row.property_type || 'ไม่ระบุทรัพย์'}`,
     place || 'ไม่ระบุที่ตั้ง',
+    deeds.length ? `เลขโฉนด ${deeds.join(', ')}` : 'ยังไม่ระบุเลขโฉนด',
     requested > 0 ? `วงเงินที่ขอ ${requested.toLocaleString('th-TH')} บาท` : 'ยังไม่ระบุวงเงินที่ขอ',
     ...(Number(files) > 0 ? [`แนบรูป ${Number(files)} รูป`] : []),
     ...(Array.isArray(extra) && extra.length ? ['', ...extra.map((line) => String(line))] : []),

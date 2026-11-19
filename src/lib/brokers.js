@@ -121,7 +121,8 @@ export function brokerStats(brokers = [], rows = []) {
   const order = (a, b) => String(b.lastAt).localeCompare(String(a.lastAt)) || b.count - a.count
   return {
     registered: [...stats.values()].map((s) => ({ ...s, phones: [...s.phones] })).sort(order),
-    unregistered: [...loose.values()].sort(order),
+    // คนที่มีแต่รายการที่ยกเลิก (เช่น รายการทดสอบ) ไม่ต้องชวนเข้าทะเบียน
+    unregistered: [...loose.values()].filter((entry) => entry.count > 0).sort(order),
   }
 }
 
@@ -161,7 +162,7 @@ const agoText = (from, to) => {
   return hours < 24 ? `${hours} ชั่วโมง` : `${Math.floor(hours / 24)} วัน`
 }
 
-// ข้อความเตือนทรัพย์ซ้ำหนึ่งบรรทัดต่อรายการ (ไม่มีชื่อ เบอร์ เลขโฉนด) — ใช้บนการ์ด lead และในข้อความเทเลแกรม
+// ข้อความเตือนทรัพย์ซ้ำหนึ่งบรรทัดต่อรายการ (ไม่มีชื่อหรือเบอร์) — ใช้บนการ์ด lead และในข้อความเทเลแกรม
 export function duplicateLines(row, duplicates = []) {
   const me = leadFacts(row)
   return duplicates.map((d) => {

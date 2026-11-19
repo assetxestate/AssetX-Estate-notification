@@ -115,7 +115,7 @@ export function createBrokersHandler({ authorized = verifySession, database = de
         const added = []
         for (const lead of [...await recentLeads(db)].reverse()) {
           const facts = leadFacts(lead)
-          if (!facts.isBroker || !facts.phone || seen.has(facts.phone)) continue
+          if (!facts.isBroker || !facts.phone || facts.status === CANCELLED_STATUS || seen.has(facts.phone)) continue
           seen.add(facts.phone)
           added.push(await insertBroker(db, { name: text(lead.contact_name, 120), phone: text(lead.contact_phone, 30), phone_key: facts.phone, line_id: text(lead.contact_line, 60), status: 'new', first_lead_id: facts.id }))
         }

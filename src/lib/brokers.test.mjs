@@ -70,6 +70,7 @@ test('brokerStats: นับงานต่อคนจาก lead จริง 
     lead(4, { contact_phone: '0800000002' }),
     lead(5, { contact_phone: '0822222222', contact_name: 'คนใหม่' }),
     lead(6, { lead_source: 'owner', contact_phone: '0833333333' }),
+    lead(7, { contact_phone: '0844444444', status: 'ยกเลิก' }),
   ]
   const stats = brokerStats(brokers, rows)
   const one = stats.registered.find((s) => s.broker.id === 1)
@@ -115,7 +116,7 @@ test('ทรัพย์ซ้ำ: ไม่มีเลขโฉนดให้
   assert.deepEqual(findDuplicateLeads(lead(6, { total_sqw: 0, subdistrict: '' }), [a, b]), [])
 })
 
-test('ข้อความเทเลแกรม: บอกว่านายหน้าใหม่หรือเดิมด้วยรหัส ไม่มีชื่อ เบอร์ หรือเลขโฉนด', () => {
+test('ข้อความเทเลแกรม: บอกว่านายหน้าใหม่หรือเดิมด้วยรหัส มีเลขโฉนดไว้ค้นแปลง ไม่มีชื่อหรือเบอร์', () => {
   assert.deepEqual(brokerNotifyLines(null), [])
   assert.match(brokerNotifyLines({ code: 'N004', isNew: true, priorCount: 0 })[0], /นายหน้าใหม่ \(รหัส N004\)/)
   assert.match(brokerNotifyLines({ code: 'N001', isNew: false, priorCount: 3 })[0], /นายหน้าเดิม รหัส N001 · ส่งมาแล้ว 3 ทรัพย์/)
@@ -127,7 +128,10 @@ test('ข้อความเทเลแกรม: บอกว่านาย
   const text = leadNotifyText(row, { extra: [...brokerNotifyLines({ code: 'N002', isNew: true, priorCount: 0 }), ...duplicateLines(row, dups)] })
   assert.match(text, /นายหน้าใหม่ \(รหัส N002\)/)
   assert.match(text, /ทรัพย์ซ้ำกับ AX-00001/)
-  assert.doesNotMatch(text, /0800000002|ชื่อ นามสกุล|11111/)
+  assert.match(text, /\nเลขโฉนด 11111\n/)
+  assert.match(leadNotifyText({ id: 3, lead_source: 'broker', deeds: [{ titleDeedNo: ' 123 ' }, { titleDeedNo: '456<b>' }], title_deed_no: '123, 456b' }), /\nเลขโฉนด 123, 456b\n/)
+  assert.match(leadNotifyText({ id: 4, lead_source: 'owner', deeds: [{}] }), /\nยังไม่ระบุเลขโฉนด\n/)
+  assert.doesNotMatch(text, /0800000002|ชื่อ นามสกุล/)
 })
 
 test('leadFacts: อ่านเลขโฉนดจากทุกช่อง และตัดคำนำหน้าของชื่อเขต', () => {

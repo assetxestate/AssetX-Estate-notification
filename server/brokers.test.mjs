@@ -136,7 +136,7 @@ test('แก้ไข เปลี่ยนสถานะ รวมและแ
 test('sync: เพิ่มเฉพาะคนที่เคยส่งงานและยังไม่อยู่ในทะเบียน คนละเบอร์ละหนึ่งรายชื่อ', async () => {
   const db = fakeDb({
     brokers: [{ id: 1, code: 'N001', name: 'หนึ่ง', phone: '0800000001', phone_key: '0800000001', status: 'active', merged_into: null }],
-    valuations: [lead(1), lead(2, { contact_phone: '0800000002' }), lead(3, { contact_phone: '080 000 0002' }), lead(4, { lead_source: 'owner', contact_phone: '0800000009' }), lead(5, { contact_phone: 'ไม่มี' })],
+    valuations: [lead(1), lead(2, { contact_phone: '0800000002' }), lead(3, { contact_phone: '080 000 0002' }), lead(4, { lead_source: 'owner', contact_phone: '0800000009' }), lead(5, { contact_phone: 'ไม่มี' }), lead(6, { contact_phone: '0800000007', status: 'ยกเลิก' })],
   })
   const result = await call(handlerFor(db), { method: 'POST', body: { action: 'sync' } })
   assert.equal(result.data.added, 1)
