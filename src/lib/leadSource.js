@@ -27,6 +27,8 @@ export function parseLeadParams(search) {
   const ref = cleanRef(params.get('ref'))
   const src = cleanRef(params.get('src'))
   if (ref) return { leadSource: 'broker', leadRef: ref, locked: true }
+  // ลิงก์สาธารณะสำหรับโพสต์หานายหน้า (?role=broker): ตั้งบทบาทเป็นนายหน้าไว้ให้ ผู้เปิดยังเปลี่ยนเองได้ · ตัวตนแยกจากเบอร์โทรที่กรอก (src/lib/brokers.js)
+  if (params.get('role') === 'broker') return { leadSource: 'broker', leadRef: src, locked: false }
   return { leadSource: 'owner', leadRef: src, locked: false }
 }
 
@@ -56,11 +58,12 @@ export function buildLeadNote({ mapLink = '', note = '' } = {}) {
 }
 
 // ข้อความเตือนเข้า Telegram เมื่อมีทรัพย์เข้าใหม่ — ไม่ใส่ชื่อ เบอร์ หรือ LINE ของผู้ส่ง (ดูในแอปหลังล็อกอิน)
-export function leadNotifyText(row = {}, { files = 0 } = {}) {
+// extra = บรรทัดเสริมจากทะเบียนนายหน้าและการตรวจทรัพย์ซ้ำ (ไม่มีชื่อ เบอร์ เลขโฉนด)
+export function leadNotifyText(row = {}, { files = 0, extra = [] } = {}) {
   const source = normalizeLeadSource(row.lead_source)
   const ref = cleanRef(row.lead_ref)
   const head = source === 'broker'
-    ? `🤝 ทรัพย์เข้าใหม่จากนายหน้า${ref ? ` (${ref})` : ''}`
+    ? `🤝 ทรัพย์เข้าใหม่จากนายหน้า${ref ? ` (ลิงก์ ${ref})` : ''}`
     : `🏠 ทรัพย์เข้าใหม่จากหน้าประเมินออนไลน์${ref ? ` (ช่องทาง ${ref})` : ''}`
   const place = [row.subdistrict, row.district, row.province].map((s) => String(s || '').trim()).filter(Boolean).join(' · ')
   const requested = Number(row.requested_loan) || 0
@@ -72,6 +75,7 @@ export function leadNotifyText(row = {}, { files = 0 } = {}) {
     place || 'ไม่ระบุที่ตั้ง',
     requested > 0 ? `วงเงินที่ขอ ${requested.toLocaleString('th-TH')} บาท` : 'ยังไม่ระบุวงเงินที่ขอ',
     ...(Number(files) > 0 ? [`แนบรูป ${Number(files)} รูป`] : []),
+    ...(Array.isArray(extra) && extra.length ? ['', ...extra.map((line) => String(line))] : []),
     '',
     source === 'broker' ? 'รับปากนายหน้าไว้: ตอบผลเบื้องต้นภายในวัน' : 'รับปากไว้: ติดต่อกลับภายใน 24 ชั่วโมง',
     'เปิดดูข้อมูลติดต่อ: แอป → นายทุน → Lead จากเว็บ',

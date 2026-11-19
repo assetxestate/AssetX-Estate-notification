@@ -234,3 +234,9 @@ textarea.as-input { resize: vertical; min-height: 92px; }
   .as-contact a[data-kind="line"] { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .as-page * { transition: none !important; } }
+
+/* ลิงก์ส่วนตัวของนายหน้าในหน้าส่งสำเร็จ */
+.as-mylink { margin: 20px 0 0; padding: 16px; border: 1px solid var(--as-line-strong); border-radius: 10px; background: var(--as-surface-2); text-align: left; }
+.as-mylink small { display: block; font-size: 14px; color: var(--as-ink-3); }
+.as-mylink code { display: block; margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--as-surface); border: 1px solid var(--as-line); color: var(--as-ink); font-size: 14px; overflow-wrap: anywhere; user-select: all; }
+.as-done .as-mylink .as-btn { margin: 12px 0 10px; }

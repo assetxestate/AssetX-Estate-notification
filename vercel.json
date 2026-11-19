@@ -13,6 +13,7 @@
     { "source": "/api/payment-additions", "destination": "/api/marketing?feature=payment-additions" },
     { "source": "/api/lead-files", "destination": "/api/marketing?feature=lead-files" },
     { "source": "/api/market-survey", "destination": "/api/marketing?feature=market-survey" },
+    { "source": "/api/brokers", "destination": "/api/marketing?feature=brokers" },
     { "source": "/api/chat", "destination": "/api/chat" },
     { "source": "/api/line-webhook", "destination": "/api/line-webhook" },
     { "source": "/api/marketing-image", "destination": "/api/marketing?feature=image" },

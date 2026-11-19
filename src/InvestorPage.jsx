@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { showToast } from "./lib/toast.js";
 import { leadSourceLabel, leadTicketNo } from "./lib/leadSource.js";
 import LeadTools from "./components/LeadTools.jsx";
+import BrokerRegistry from "./components/BrokerRegistry.jsx";
+import { BROKER_STATUS, brokerIndex, brokerOfLead, duplicateLines, findDuplicateLeads } from "./lib/brokers.js";
 import { buildAdvanceDeduction } from "./lib/advanceDeduction.js";
 import {
   getValuations as apiGetValuations,
@@ -10,6 +12,7 @@ import {
   cancelCustomer as apiCancelCustomer,
   approveValuation as apiApproveValuation,
   linkValuationCustomer as apiLinkValuationCustomer,
+  getBrokers as apiGetBrokers,
 } from "./lib/api.js";
 import { contractPrefill, returnStatusOf } from "./lib/valuationWorkflow.js";
 
@@ -19,6 +22,8 @@ const BRAND = {
   teal: "var(--ax-c-2dd4bf)", gold: "var(--ax-c-f59e0b)", success: "var(--ax-c-10b981)",
 };
 
+const BROKER_TAB = 'นายหน้า';
+
 const STATUS_CONFIG = {
   'Lead จากเว็บ':   { bg: 'rgba(56,189,248,0.12)',  border: 'rgba(56,189,248,0.4)', text: 'var(--ax-c-38bdf8)', label: '🌐 Lead จากเว็บ' },
   'รอการพิจารณา': { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.4)', text: 'var(--ax-c-f59e0b)', label: '⏳ รอการพิจารณา' },
@@ -26,6 +31,8 @@ const STATUS_CONFIG = {
   'ปฏิเสธ':         { bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.4)',  text: 'var(--ax-c-f87171)', label: '❌ ปฏิเสธ' },
   'สร้างสัญญาแล้ว': { bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.4)', text: 'var(--ax-c-a5b4fc)', label: '📋 สร้างสัญญาแล้ว' },
   'ยกเลิก':         { bg: 'rgba(100,116,139,0.12)', border: 'rgba(100,116,139,0.4)', text: 'var(--ax-c-94a3b8)', label: '🚫 ยกเลิก' },
+  // แท็บทะเบียนนายหน้า (ไม่ใช่สถานะของรายการ)
+  [BROKER_TAB]:     { bg: 'rgba(45,212,191,0.12)',  border: 'rgba(45,212,191,0.4)', text: 'var(--ax-c-2dd4bf)', label: '🤝 นายหน้า' },
 };
 
 const TABS = [
@@ -35,6 +42,7 @@ const TABS = [
   { key: 'ปฏิเสธ',         label: '❌ ปฏิเสธ' },
   { key: 'สร้างสัญญาแล้ว', label: '📋 สร้างสัญญา' },
   { key: 'ยกเลิก',         label: '🚫 ยกเลิก' },
+  { key: BROKER_TAB,       label: '🤝 นายหน้า' },
 ];
 
 const FREQ_OPTIONS = ['รายเดือน', 'ราย 2 สัปดาห์', '2 ครั้ง/เดือน'];
@@ -563,8 +571,23 @@ export default function InvestorPage({ appsScriptUrl, onAssess }) {
     }
   };
 
+  // ทะเบียนนายหน้า: null = ยังโหลดไม่ได้ (การ์ด lead ยังใช้งานได้ แค่ไม่มีป้ายนายหน้า)
+  const [brokers, setBrokers] = useState(null);
+  const [brokerError, setBrokerError] = useState({ message: '', missingTable: false });
+  const loadBrokers = async () => {
+    try {
+      setBrokers(await apiGetBrokers());
+      setBrokerError({ message: '', missingTable: false });
+    } catch (e) {
+      setBrokers(null);
+      setBrokerError({ message: e.message, missingTable: !!e.missingTable });
+    }
+  };
+  const bIndex = useMemo(() => brokerIndex(brokers || []), [brokers]);
+
   const load = () => {
     setLoading(true);
+    loadBrokers();
     apiGetValuations()
       .then(data => { setRows(data); setLoading(false); })
       .catch(() => setLoading(false));
@@ -624,6 +647,8 @@ export default function InvestorPage({ appsScriptUrl, onAssess }) {
     acc[t.key] = rows.filter(r => r['สถานะ'] === t.key).length;
     return acc;
   }, {});
+  // ตัวเลขบนแท็บนายหน้า = คนใหม่ที่ยังไม่ได้คุย
+  counts[BROKER_TAB] = (brokers || []).filter(b => b.status === 'new' && b.merged_into == null).length;
 
   return (
     <div style={{ padding: '0 0 80px' }}>
@@ -678,6 +703,8 @@ export default function InvestorPage({ appsScriptUrl, onAssess }) {
       <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         {loading ? (
           <div style={{ textAlign: 'center', color: BRAND.textSec, padding: 40 }}>⏳ กำลังโหลด...</div>
+        ) : activeTab === BROKER_TAB ? (
+          <BrokerRegistry rows={rows} brokers={brokers} error={brokerError.message} missingTable={brokerError.missingTable} onChanged={loadBrokers} />
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', color: BRAND.textMut, padding: 40 }}>ไม่มีรายการใน "{activeTab}"</div>
         ) : (
@@ -690,6 +717,16 @@ export default function InvestorPage({ appsScriptUrl, onAssess }) {
               row['จังหวัด'] || '',
             ].filter(Boolean).join(' ');
             const ltv = row['LTV ลูกค้า (% ต่อตลาด)'];
+            // ป้ายนายหน้า (ตัวตนจากเบอร์โทร) และทรัพย์ซ้ำ — เฉพาะรายการที่ยังต้องตัดสินใจ
+            const open = activeTab === 'Lead จากเว็บ' || activeTab === 'รอการพิจารณา';
+            const who = open && brokers ? brokerOfLead(row, bIndex) : null;
+            const dupNotes = open ? duplicateLines(row, findDuplicateLeads(row, rows)) : [];
+            const whoNotes = !who ? [] : [
+              who.sender && { tone: who.sender.status === 'new' ? 'warn' : 'ok', text: `นายหน้า: ${who.sender.name || 'ไม่ระบุชื่อ'} · รหัส ${who.sender.code} · ${BROKER_STATUS[who.sender.status]?.label || ''}${who.sender.status === 'new' ? ' ควรโทรคุยก่อนรับงาน' : ''}` },
+              who.unregistered && { tone: 'warn', text: 'นายหน้ารายนี้ยังไม่อยู่ในทะเบียน (เพิ่มได้ที่แท็บ นายหน้า)' },
+              who.unidentified && { tone: 'warn', text: 'เบอร์ที่กรอกไม่ครบ ระบุตัวนายหน้าไม่ได้' },
+              who.mismatch && { tone: 'warn', text: `ลิงก์ที่ใช้เป็นของ ${who.linkOwner.name || 'นายหน้าอีกคน'} (${who.linkOwner.code}) แต่เบอร์ผู้ส่งเป็นของอีกคน ระบบยึดเบอร์เป็นหลัก` },
+            ].filter(Boolean);
 
             return (
               <Card key={row['_rowIndex'] || i} style={{ borderTop: `4px solid ${st.text}` }}>
@@ -720,6 +757,13 @@ export default function InvestorPage({ appsScriptUrl, onAssess }) {
                     {row.leadSource && row['หมายเหตุ'] && <span style={{ flexBasis: '100%', color: BRAND.textPri, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>📝 {String(row['หมายเหตุ']).split(/(https?:\/\/[^\s]+)/).map((part, i) => /^https?:\/\//.test(part)
                       ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--ax-c-38bdf8)', fontWeight: 700, textDecoration: 'underline' }}>{part}</a>
                       : part)}</span>}
+                  </div>
+                )}
+
+                {(whoNotes.length > 0 || dupNotes.length > 0) && (
+                  <div style={{ display: 'grid', gap: 4, marginBottom: 12, fontSize: 12, fontWeight: 600 }}>
+                    {whoNotes.map((n, k) => <div key={'w' + k} style={{ color: n.tone === 'warn' ? BRAND.gold : BRAND.teal }}>{n.text}</div>)}
+                    {dupNotes.map((line, k) => <div key={'d' + k} style={{ color: BRAND.gold }}>⚠️ {line} · กติกาตั้งต้น: ส่งก่อนได้ก่อน</div>)}
                   </div>
                 )}
 

@@ -6,6 +6,7 @@ import { submitPublicAssessment, uploadPublicLeadFile, notifyPublicLead } from '
 import { compressImage, isImageFile, MAX_FILES } from './lib/leadImage.js'
 import AssessChat from './AssessChat.jsx'
 import { parseLeadParams, LEAD_SOURCES, leadTicketNo, buildLeadNote } from './lib/leadSource.js'
+import { brokerLink } from './lib/brokers.js'
 import { formSnapshotOf } from './lib/valuationWorkflow.js'
 import { POSTER_CONTACT } from './lib/posterDesignSystem.js'
 import {
@@ -73,11 +74,29 @@ function Shell({ children }) {
   )
 }
 
+// นายหน้าที่เคยส่งงานจากเครื่องนี้ไม่ต้องกรอกชื่อ เบอร์ LINE ซ้ำ (เก็บในเบราว์เซอร์ของเขาเอง ไม่ได้ดึงจากเซิร์ฟเวอร์)
+const BROKER_MEMORY_KEY = 'assetx_assess_broker'
+function rememberedBroker() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BROKER_MEMORY_KEY) || 'null')
+    if (!saved || typeof saved !== 'object') return {}
+    return { contactName: String(saved.name || '').slice(0, 120), contactPhone: String(saved.phone || '').slice(0, 30), contactLine: String(saved.line || '').slice(0, 60) }
+  } catch { return {} }
+}
+function rememberBroker(form) {
+  try { localStorage.setItem(BROKER_MEMORY_KEY, JSON.stringify({ name: form.contactName, phone: form.contactPhone, line: form.contactLine })) } catch { /* ไม่จำก็ยังส่งได้ */ }
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); showToast('คัดลอกลิงก์แล้ว') } catch { showToast('คัดลอกไม่สำเร็จ กรุณากดค้างที่ลิงก์แล้วคัดลอกเอง') }
+}
+
 export default function AssessPage() {
   const [step, setStep] = useState(1)
   // ที่มาของผู้ส่ง: ลิงก์นายหน้า ?ref=รหัส ล็อกเป็นนายหน้า · ลิงก์ช่องทาง ?src= หรือไม่มี ให้เลือกเองในขั้นแรก
   const lead = useMemo(() => parseLeadParams(window.location.search), [])
-  const [form, setForm] = useState(() => ({ ...INITIAL_FORM, leadSource: lead.leadSource, leadRef: lead.leadRef }))
+  const [form, setForm] = useState(() => ({ ...INITIAL_FORM, leadSource: lead.leadSource, leadRef: lead.leadRef, ...(lead.leadSource === 'broker' ? rememberedBroker() : {}) }))
+  // รหัสในทะเบียนนายหน้าของผู้ส่ง (ได้หลังส่งสำเร็จ) → ลิงก์ส่วนตัวสำหรับส่งทรัพย์ครั้งต่อไป
+  const [brokerCode, setBrokerCode] = useState('')
   const isBroker = form.leadSource === 'broker'
   // รายชื่ออำเภอ/ตำบลทั้งประเทศ (ราว 215 KB) โหลดแยกหลังเปิดหน้า ไม่ถ่วงการโหลดครั้งแรก
   const [geo, setGeo] = useState(null)
@@ -163,7 +182,11 @@ export default function AssessPage() {
         try { await uploadPublicLeadFile(saved.rowIndex, { kind: photos[i].kind, base64: photos[i].base64 }) } catch { failed += 1 }
       }
       setPhotoFailed(failed)
-      await notifyPublicLead(saved.rowIndex)
+      const notice = await notifyPublicLead(saved.rowIndex)
+      if (form.leadSource === 'broker') {
+        setBrokerCode(notice?.brokerCode || '')
+        rememberBroker(form)
+      }
       setTicketNo(leadTicketNo(saved?.rowIndex))
       setSubmitted(true)
       window.scrollTo({ top: 0 })
@@ -210,6 +233,14 @@ export default function AssessPage() {
             )}
             {photoFailed > 0 && (
               <p className="as-warn">รูป {photoFailed} รูปส่งไม่สำเร็จ กรุณาส่งทาง LINE {POSTER_CONTACT.line} พร้อมแจ้งเลขรับเรื่อง</p>
+            )}
+            {isBroker && brokerCode && (
+              <div className="as-mylink">
+                <small>ลิงก์ส่งทรัพย์ของคุณ (รหัส {brokerCode})</small>
+                <code>{brokerLink(window.location.origin, brokerCode)}</code>
+                <button type="button" className="as-btn as-btn-ghost" onClick={() => copyText(brokerLink(window.location.origin, brokerCode))}>คัดลอกลิงก์</button>
+                <small>เก็บลิงก์นี้ไว้ใช้ส่งทรัพย์ครั้งต่อไป ทีมงานจะรู้ทันทีว่างานมาจากคุณ</small>
+              </div>
             )}
             {isBroker && <button type="button" className="as-btn as-btn-ghost" onClick={startNext}>ส่งทรัพย์รายการถัดไป</button>}
           </div>

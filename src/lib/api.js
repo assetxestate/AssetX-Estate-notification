@@ -516,16 +516,28 @@ export async function submitPublicAssessment(data) {
 }
 
 // แจ้งเจ้าของทาง Telegram ว่ามี lead ใหม่ — เรียกหลังส่งรูปแนบครบ เพื่อให้ข้อความบอกจำนวนรูปได้
+// คืน { sent, brokerCode } — brokerCode = รหัสในทะเบียนนายหน้าของผู้ส่ง (ใช้ทำลิงก์ส่วนตัวในหน้าส่งสำเร็จ)
 export async function notifyPublicLead(id) {
   try {
-    await fetch("/api/assess-chat", {
+    const res = await fetch("/api/assess-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "lead-notify", id }),
       keepalive: true,
     });
-  } catch { /* เงียบไว้: lead บันทึกแล้ว เจ้าของยังเห็นในแอป */ }
+    return await res.json().catch(() => ({}));
+  } catch { return {}; /* เงียบไว้: lead บันทึกแล้ว เจ้าของยังเห็นในแอป */ }
 }
+
+// ทะเบียนนายหน้า (server/brokers.js · ต้องล็อกอิน) — error.missingTable = ยังไม่ได้รัน supabase_brokers.sql
+async function brokersCall(method, body) {
+  const res = await fetch("/api/brokers", { method, credentials: "same-origin", cache: "no-store", ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || "ติดต่อทะเบียนนายหน้าไม่สำเร็จ"), { missingTable: Boolean(data.missingTable) });
+  return data;
+}
+export const getBrokers = async () => (await brokersCall("GET")).brokers || [];
+export const brokerAction = (action, payload = {}) => brokersCall("POST", { action, ...payload });
 
 // ส่งรูปแนบของ lead ทีละรูป (หน้า /assess) — file = { kind: 'deed' | 'property', base64 }
 export async function uploadPublicLeadFile(id, file) {

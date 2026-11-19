@@ -12,6 +12,7 @@ import imageJobsHandler from '../server/marketing-image-jobs.js'
 import contentJobsHandler from '../server/marketing-content-jobs.js'
 import leadFilesHandler from '../server/leadFiles.js'
 import marketSurveyHandler from '../server/market-survey-jobs.js'
+import brokersHandler from '../server/brokers.js'
 
 const handlers = {
   notices: noticesHandler,
@@ -35,6 +36,8 @@ const handlers = {
   'lead-files': leadFilesHandler,
   // คิวสำรวจราคาตลาดจากประกาศขาย (หน้าประเมิน ขั้นที่ 2 · ตัวรับงานเดียวกับภาพ) — ตาราง market_survey_jobs
   'market-survey': marketSurveyHandler,
+  // ทะเบียนนายหน้า (ตาราง brokers) — ระบุตัวตนด้วยเบอร์โทร ดูได้เฉพาะผู้ล็อกอิน
+  brokers: brokersHandler,
 }
 
 function inferFeature(req) {
@@ -57,6 +60,7 @@ function inferFeature(req) {
   if (path.endsWith('/marketing-ideas')) return 'ideas'
   if (path.endsWith('/lead-files')) return 'lead-files'
   if (path.endsWith('/market-survey')) return 'market-survey'
+  if (path.endsWith('/brokers')) return 'brokers'
   return ''
 }
 

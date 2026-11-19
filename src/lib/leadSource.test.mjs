@@ -38,7 +38,7 @@ test('ข้อความเตือน Telegram ไม่มีชื่อ 
     province: 'กรุงเทพมหานคร', district: 'บางเขน', requested_loan: 2500000,
     contact_name: 'ชื่อทดสอบ', contact_phone: '0800000000', contact_line: 'lineid',
   })
-  assert.match(text, /นายหน้า \(a1\)/)
+  assert.match(text, /นายหน้า \(ลิงก์ a1\)/)
   assert.match(text, /ขายฝาก · บ้านเดี่ยว/)
   assert.match(text, /บางเขน · กรุงเทพมหานคร/)
   assert.match(text, /2,500,000/)

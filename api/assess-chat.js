@@ -5,23 +5,31 @@ import { buildAssessSystemPrompt, looksBroken, fallbackAnswer } from './_assess-
 import { POSTER_CONTACT } from '../src/lib/posterDesignSystem.js'
 import { leadNotifyText } from '../src/lib/leadSource.js'
 import { serviceDb, freshLead, listLeadFiles, uploadLeadFile, leadIdOf } from '../server/leadFiles.js'
+import { registerLeadBroker } from '../server/brokers.js'
+import { brokerNotifyLines, duplicateLines } from '../src/lib/brokers.js'
 
 const notifiedLeads = new Set() // กันแจ้งซ้ำภายใน instance เดียวกัน (พอสำหรับการกดซ้ำ ไม่ใช่ด่านความปลอดภัย)
 
 // endpoint นี้เปิดสาธารณะ จึงไม่รับข้อความจากผู้เรียกเลย: รับแค่เลขที่ แล้วอ่านแถวเองด้วย service key
 // แจ้งเฉพาะแถวที่เป็น lead จากเว็บและเพิ่งสร้าง (freshLead) → คนนอกสั่งให้บอทส่งข้อความตามใจไม่ได้
 // ข้อความไม่มีชื่อ เบอร์ หรือ LINE (leadNotifyText) และไม่ log ข้อมูลผู้ติดต่อ
+// นายหน้า: ลงทะเบียนจากเบอร์ที่กรอก (server/brokers.js) แล้วคืนรหัสให้หน้าเว็บทำลิงก์ส่วนตัว · ตรวจทรัพย์ซ้ำแล้วเตือนในข้อความ
 async function notifyNewLead(rawId) {
   const id = leadIdOf(rawId)
   if (!id || notifiedLeads.has(id)) return { sent: false }
 
-  const token = process.env.ASSETX_TELEGRAM_BOT_TOKEN
-  const chatId = String(process.env.ASSETX_TELEGRAM_ALLOWED_CHAT_ID || '').trim()
   const admin = serviceDb()
-  if (!admin || !token || !chatId) return { sent: false }
-
+  if (!admin) return { sent: false }
   const row = await freshLead(admin, id)
   if (!row) return { sent: false }
+
+  const { broker, duplicates } = await registerLeadBroker(admin, row).catch(() => ({ broker: null, duplicates: [] }))
+  const brokerCode = broker?.code || ''
+  const extra = [...brokerNotifyLines(broker), ...duplicateLines(row, duplicates).map((line) => `⚠️ ${line}`)]
+
+  const token = process.env.ASSETX_TELEGRAM_BOT_TOKEN
+  const chatId = String(process.env.ASSETX_TELEGRAM_ALLOWED_CHAT_ID || '').trim()
+  if (!token || !chatId) return { sent: false, brokerCode }
   // หน้าเว็บส่งรูปให้ครบก่อนแล้วจึงเรียกแจ้งเตือน จึงนับรูปแนบได้ตรงนี้ (นับไม่ได้ = ไม่บอกจำนวน ไม่ขวางการแจ้ง)
   const files = await listLeadFiles(admin, id).then((list) => list.length).catch(() => 0)
 
@@ -29,10 +37,10 @@ async function notifyNewLead(rawId) {
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: leadNotifyText(row, { files }), disable_web_page_preview: true }),
+    body: JSON.stringify({ chat_id: chatId, text: leadNotifyText(row, { files, extra }), disable_web_page_preview: true }),
   })
   if (!response.ok) { notifiedLeads.delete(id); throw new Error(`Telegram ${response.status}`) }
-  return { sent: true }
+  return { sent: true, brokerCode }
 }
 
 // Endpoint สาธารณะสำหรับหน้าประเมินออนไลน์ /assess — ไม่ต้องล็อกอิน (ตั้งใจ)

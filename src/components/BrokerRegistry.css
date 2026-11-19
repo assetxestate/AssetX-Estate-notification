@@ -1,0 +1,34 @@
+/* ทะเบียนนายหน้า (หน้านายทุน → แท็บ นายหน้า) — ตัวแปรสีชุดเดียวกับ LeadTools (มีคู่สว่าง/มืดใน theme.css) */
+.br { display: grid; gap: 14px; font-size: 13px; color: var(--ax-c-e2e8f0); }
+.br h3 { margin: 0; font-size: 15px; }
+.br-box { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--ax-border-lt); border-radius: 12px; background: var(--ax-c-111d35); }
+.br-note { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ax-c-94a3b8); }
+.br-note[data-tone="warn"] { color: var(--ax-c-f59e0b); font-weight: 600; }
+.br-alert { margin: 0; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--ax-c-f59e0b); color: var(--ax-c-f59e0b); font-weight: 600; line-height: 1.6; }
+.br-empty { margin: 0; padding: 28px 12px; text-align: center; color: var(--ax-c-94a3b8); }
+.br-link { display: block; padding: 10px 12px; border-radius: 8px; border: 1px dashed var(--ax-border-lt); background: var(--ax-c-050b18); color: var(--ax-c-e2e8f0); font-size: 13px; overflow-wrap: anywhere; user-select: all; }
+.br-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.br-btn { min-height: 36px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: transparent; color: var(--ax-c-e2e8f0); font: inherit; font-weight: 600; cursor: pointer; }
+.br-btn[data-kind="primary"] { background: var(--ax-c-2dd4bf); border-color: var(--ax-c-2dd4bf); color: var(--ax-c-000); }
+.br-btn[aria-expanded="true"] { border-color: var(--ax-c-2dd4bf); color: var(--ax-c-2dd4bf); }
+.br-btn:disabled { opacity: 0.55; cursor: default; }
+.br-btn:focus-visible, .br-linkbtn:focus-visible { outline: 2px solid var(--ax-c-2dd4bf); outline-offset: 2px; }
+.br-linkbtn { padding: 0; border: 0; background: none; color: var(--ax-c-2dd4bf); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+.br-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.br-wide { grid-column: 1 / -1; }
+.br-field { display: grid; gap: 4px; }
+.br-field span { font-size: 12px; color: var(--ax-c-94a3b8); }
+.br-field input, .br-field select { box-sizing: border-box; width: 100%; min-height: 38px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: var(--ax-c-050b18); color: var(--ax-c-e2e8f0); font: inherit; font-size: 14px; }
+.br-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.br-card { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--ax-border-lt); border-left: 4px solid var(--ax-c-2dd4bf); border-radius: 12px; background: var(--ax-c-111d35); }
+.br-card[data-status="new"], .br-card[data-status="loose"] { border-left-color: var(--ax-c-f59e0b); }
+.br-card[data-status="paused"] { border-left-color: var(--ax-c-64748b); }
+.br-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15px; }
+.br-code { padding: 1px 8px; border-radius: 6px; border: 1px solid var(--ax-border-lt); font-size: 12px; font-weight: 700; color: var(--ax-c-94a3b8); }
+.br-tag { padding: 1px 8px; border-radius: 10px; border: 1px solid var(--ax-c-2dd4bf); font-size: 11px; font-weight: 700; color: var(--ax-c-2dd4bf); }
+.br-tag[data-status="new"] { border-color: var(--ax-c-f59e0b); color: var(--ax-c-f59e0b); }
+.br-tag[data-status="paused"] { border-color: var(--ax-c-64748b); color: var(--ax-c-94a3b8); }
+.br-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--ax-c-94a3b8); }
+.br-tickets, .br-merged { font-size: 12px; color: var(--ax-c-94a3b8); overflow-wrap: anywhere; }
+.br-merged span { margin-right: 12px; }
+@media (max-width: 640px) { .br-form { grid-template-columns: minmax(0, 1fr); } }
