@@ -531,6 +531,24 @@ export function deedVerdict(key, assessmentType) {
 const SUBTYPE_DEED = { 'ที่ดินเปล่า (น.ส.3)': 'ns3', 'ที่ดินเปล่า (ส.ค.1)': 'sk1', 'คอนโดมิเนียม': 'condo', 'อาคารชุด': 'condo' }
 export const deedTypeForSubtype = (subtype) => SUBTYPE_DEED[subtype] || null
 
+// ที่ดินเปล่า: ประเภทย่อย (ตัวคิดอัตรา FSV) ตามประเภทเอกสารของแปลงแรก — เอกสารนอกสามกลุ่มหลักใช้ "เอกสารสิทธิ์อื่น"
+export const VACANT_LAND = 'ที่ดินเปล่า'
+export const isVacantLandSubtype = (subtype) => String(subtype || '').startsWith(VACANT_LAND + ' (')
+export function vacantLandSubtypeFor(deedKey) {
+  if (deedKey === 'chanote') return 'ที่ดินเปล่า (โฉนด)'
+  if (['ns3k', 'ns3', 'ns3b'].includes(deedKey)) return 'ที่ดินเปล่า (น.ส.3)'
+  if (deedKey === 'sk1') return 'ที่ดินเปล่า (ส.ค.1)'
+  return 'ที่ดินเปล่า (เอกสารสิทธิ์อื่น)'
+}
+
+// ตัวเลขเนื้อที่จากช่องพิมพ์: เหลือแต่ตัวเลข (ทศนิยมได้เมื่ออนุญาต) ไม่มีศูนย์นำหน้า · ว่างได้ ลบได้หมด
+export function areaInput(value, { decimal = false } = {}) {
+  let text = String(value ?? '').replace(decimal ? /[^0-9.]/g : /[^0-9]/g, '')
+  if (decimal) { const [head, ...rest] = text.split('.'); text = rest.length ? `${head}.${rest.join('')}` : head }
+  text = text.replace(/^0+(?=[0-9])/, '')
+  return text.slice(0, 9)
+}
+
 // ค่า titleType เดิม (valuationOptions TITLE_TYPES) — ยังเป็นตัวคิดคะแนน จึงแปลงไป-กลับให้คะแนนเท่าเดิม
 export const LEGACY_TITLE = {
   chanoteFree: 'โฉนด (Chanote) ปลอดภาระ',

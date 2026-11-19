@@ -2,6 +2,8 @@
 // ลิงก์ของนายหน้า: /assess?ref=<รหัสหรือชื่อนายหน้า>  ·  ลิงก์จากช่องทางของเรา: /assess?src=<ช่องทาง เช่น fb, tiktok, google>
 // ไม่มีทะเบียนนายหน้าแยก — เจ้าของตั้งรหัสเองตอนส่งลิงก์ ระบบแค่จำว่าทรัพย์นี้มากับรหัสไหน
 
+import { DEED_BY_KEY } from './deedTypes.js'
+
 export const LEAD_SOURCES = {
   broker: { label: 'นายหน้า', icon: '🤝' },
   owner: { label: 'เจ้าของทรัพย์', icon: '🏠' },
@@ -66,6 +68,22 @@ export function leadDeedNumbers(row = {}) {
   return [...new Set(all)].slice(0, 6)
 }
 
+// บรรทัดเลขเอกสารสิทธิ์ในข้อความเตือน: โฉนดล้วน = "เลขโฉนด …" · มีเอกสารประเภทอื่น = กำกับชื่อย่อของประเภทไว้หลังเลข
+export function leadDeedLine(row = {}) {
+  const list = (Array.isArray(row.deeds) ? row.deeds : []).map((d) => ({
+    no: String(d?.titleDeedNo ?? '').replace(/[^\p{L}\p{N} ./-]/gu, '').trim().slice(0, 20),
+    code: d?.docType && d.docType !== 'chanote' ? DEED_BY_KEY[d.docType]?.code || '' : '',
+  }))
+  const codes = [...new Set(list.map((d) => d.code).filter(Boolean))]
+  const label = codes.length ? 'เลขเอกสารสิทธิ์' : 'เลขโฉนด'
+  const seen = new Set()
+  const numbered = list.filter((d) => d.no && !seen.has(d.no) && seen.add(d.no)).slice(0, 6).map((d) => `${d.no}${d.code ? ` (${d.code})` : ''}`)
+  if (numbered.length) return `${label} ${numbered.join(', ')}`
+  const fallback = leadDeedNumbers(row)
+  if (fallback.length) return `${label} ${fallback.join(', ')}`
+  return `ยังไม่ระบุ${label}${codes.length ? ` (${codes.join(', ')})` : ''}`
+}
+
 // ข้อความเตือนเข้า Telegram เมื่อมีทรัพย์เข้าใหม่ — ไม่ใส่ชื่อ เบอร์ หรือ LINE ของผู้ส่ง (ดูในแอปหลังล็อกอิน)
 // มีเลขโฉนด จังหวัด อำเภอ (เจ้าของขอ 19 พ.ย. 2569: สามอย่างนี้ใช้ค้นแปลงใน LandsMaps ได้ทันทีจากข้อความ)
 // extra = บรรทัดเสริมจากทะเบียนนายหน้าและการตรวจทรัพย์ซ้ำ (ไม่มีชื่อ เบอร์ เลขโฉนด)
@@ -78,13 +96,12 @@ export function leadNotifyText(row = {}, { files = 0, extra = [] } = {}) {
   const place = [row.subdistrict, row.district, row.province].map((s) => String(s || '').trim()).filter(Boolean).join(' · ')
   const requested = Number(row.requested_loan) || 0
   const ticket = leadTicketNo(row.id)
-  const deeds = leadDeedNumbers(row)
   const lines = [
     head,
     ...(ticket ? [`เลขรับเรื่อง ${ticket}`] : []),
     `${row.assessment_type || 'ไม่ระบุประเภท'} · ${row.property_subtype || row.property_type || 'ไม่ระบุทรัพย์'}`,
     place || 'ไม่ระบุที่ตั้ง',
-    deeds.length ? `เลขโฉนด ${deeds.join(', ')}` : 'ยังไม่ระบุเลขโฉนด',
+    leadDeedLine(row),
     requested > 0 ? `วงเงินที่ขอ ${requested.toLocaleString('th-TH')} บาท` : 'ยังไม่ระบุวงเงินที่ขอ',
     ...(Number(files) > 0 ? [`แนบรูป ${Number(files)} รูป`] : []),
     ...(Array.isArray(extra) && extra.length ? ['', ...extra.map((line) => String(line))] : []),

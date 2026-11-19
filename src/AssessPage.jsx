@@ -7,12 +7,13 @@ import { compressImage, isImageFile, MAX_FILES } from './lib/leadImage.js'
 import AssessChat from './AssessChat.jsx'
 import { parseLeadParams, LEAD_SOURCES, leadTicketNo, buildLeadNote } from './lib/leadSource.js'
 import { brokerLink } from './lib/brokers.js'
+import { DEED_TYPES, DEED_GROUPS, TITLE_ENCUMBRANCES, VACANT_LAND, areaInput, deedTypeKeyFor, effectiveTitleType, formEncumbrance, isVacantLandSubtype, vacantLandSubtypeFor } from './lib/deedTypes.js'
 import { formSnapshotOf } from './lib/valuationWorkflow.js'
 import { POSTER_CONTACT } from './lib/posterDesignSystem.js'
 import {
   ASSESSMENT_TYPES, PROPERTY_TYPES, PROPERTY_SUBTYPES, PROVINCES,
   ROAD_TYPE_OPTIONS, ROAD_WIDTH_OPTIONS, FRONTAGE_OPTIONS, ZONE_OPTIONS, SOIL_OPTIONS,
-  FLOOD_LEVELS, TITLE_TYPES, RISK_FACTORS,
+  FLOOD_LEVELS, RISK_FACTORS,
   EMPTY_DEED, computeValuation,
 } from './lib/valuationOptions.js'
 
@@ -148,8 +149,20 @@ export default function AssessPage() {
   const addDeed = () => setForm(prev => ({ ...prev, deeds: [...prev.deeds, EMPTY_DEED()] }))
   const removeDeed = (idx) => setForm(prev => ({ ...prev, deeds: prev.deeds.filter((_, i) => i !== idx) }))
 
-  const calc = useMemo(() => computeValuation(form), [form])
-  const subtypes = PROPERTY_SUBTYPES[form.propertyType] || ['อื่นๆ']
+  // ข้อมูลที่ใช้คำนวณและบันทึก: เนื้อที่เป็นตัวเลข (ช่องพิมพ์เก็บเป็นข้อความเพื่อให้ลบได้หมดบนมือถือ)
+  // ประเภทเอกสารรายแปลง → ประเภทย่อยของที่ดินเปล่า และ titleType ที่ใช้คิดคะแนน (เหมือนฟอร์มประเมินของทีมงาน)
+  const prepared = useMemo(() => {
+    const deeds = form.deeds.map(d => ({ ...d, areaRai: +d.areaRai || 0, areaNgan: +d.areaNgan || 0, areaSqw: +d.areaSqw || 0, docType: deedTypeKeyFor(d, form) }))
+    const next = { ...form, deeds }
+    if (isVacantLandSubtype(form.propertySubtype)) next.propertySubtype = vacantLandSubtypeFor(deeds[0]?.docType)
+    next.titleEncumbrance = formEncumbrance(form)
+    next.titleType = effectiveTitleType(next)
+    return next
+  }, [form])
+  const calc = useMemo(() => computeValuation(prepared), [prepared])
+  // ที่ดินเปล่าแสดงเป็นตัวเลือกเดียว (ประเภทเอกสารเลือกรายแปลงในขั้นถัดไป)
+  const subtypes = (PROPERTY_SUBTYPES[form.propertyType] || ['อื่นๆ']).filter((s, i, list) => !isVacantLandSubtype(s) || list.findIndex(isVacantLandSubtype) === i)
+  const deedGroups = useMemo(() => Object.keys(DEED_GROUPS).map(g => [g, DEED_TYPES.filter(t => t.group === g)]).filter(([, list]) => list.length), [])
   const hasMarketEstimate = !!form.compPrice
 
   // ข้อความบอกว่ายังขาดอะไร (ว่าง = ไปต่อได้) — ปุ่มที่กดไม่ได้ต้องบอกเหตุผลเสมอ
@@ -157,8 +170,9 @@ export default function AssessPage() {
     if (step === 1 && !(form.contactName.trim() && form.contactPhone.trim())) return 'กรอกชื่อและเบอร์โทรศัพท์ก่อน'
     // เลขโฉนด + จังหวัด + อำเภอ คือสามอย่างที่ทีมงานใช้ค้นแปลงในระบบกรมที่ดิน — นายหน้าต้องพิมพ์เอง ไม่อ่านจากรูป (รูปโฉนดเก่าอ่านเลขผิดได้)
     if (step === 3 && !form.district.trim()) return 'เลือกอำเภอ/เขตก่อน'
-    if (step === 3 && isBroker && !form.deeds.every(d => String(d.titleDeedNo || '').trim())) return 'กรอกเลขโฉนดของทุกแปลงก่อน'
-    if (step === 3 && !form.deeds.every(d => d.areaRai || d.areaNgan || d.areaSqw)) return 'กรอกเนื้อที่โดยประมาณของทุกแปลงก่อน'
+    if (step === 3 && isBroker && !form.deeds.every(d => String(d.titleDeedNo || '').trim())) return 'กรอกเลขโฉนดหรือเลขที่เอกสารสิทธิ์ของทุกแปลงก่อน'
+    if (step === 3 && form.deeds.some(d => (+d.areaNgan || 0) > 3)) return 'ช่อง "งาน" ใส่ได้ไม่เกิน 3 (4 งาน = 1 ไร่)'
+    if (step === 3 && !form.deeds.every(d => (+d.areaRai || 0) + (+d.areaNgan || 0) + (+d.areaSqw || 0) > 0)) return 'กรอกเนื้อที่โดยประมาณของทุกแปลงก่อน'
     if (step === STEPS.length && !form.requestedLoan) return 'กรอกจำนวนเงินที่ต้องการก่อน'
     return ''
   }
@@ -170,13 +184,13 @@ export default function AssessPage() {
     setSubmitting(true)
     try {
       const saved = await submitPublicAssessment({
-        ...form,
+        ...prepared,
         ...calc,
         projectName: `${form.contactName} — ${form.deeds[0]?.titleDeedNo || 'ไม่มีเลขโฉนด'}`,
         customerName: form.contactName,
         locationNote: buildLeadNote({ mapLink: form.mapLink, note: form.note }),
         // ช่องที่ไม่มีคอลัมน์ของตัวเอง (ประเภทเอกสารสิทธิ์ น้ำท่วม ความเสี่ยง) ส่งไปด้วย ให้ทีมงานเปิดประเมินต่อได้ครบ
-        formSnapshot: formSnapshotOf({ ...form, locationNote: buildLeadNote({ mapLink: form.mapLink, note: form.note }) }),
+        formSnapshot: formSnapshotOf({ ...prepared, locationNote: buildLeadNote({ mapLink: form.mapLink, note: form.note }) }),
       })
       // ส่งรูปทีละรูป: รูปที่ส่งไม่ผ่านไม่ทำให้รายการหาย แจ้งผู้ส่งให้ส่งทาง LINE แทน
       let failed = 0
@@ -256,7 +270,7 @@ export default function AssessPage() {
   const summary = [
     ['ผู้ส่ง', [form.contactName.trim(), isBroker ? 'นายหน้า' : ''].filter(Boolean).join(' · ')],
     ['ธุรกรรม', form.assessmentType],
-    ['ทรัพย์', form.propertySubtype],
+    ['ทรัพย์', prepared.propertySubtype],
     ['ที่ตั้ง', step >= 3 ? place : ''],
     ['เนื้อที่', areaText(form.deeds)],
     ['วงเงินที่ขอ', form.requestedLoan ? `${formatMoney(Math.round(+form.requestedLoan))} บาท` : ''],
@@ -336,7 +350,7 @@ export default function AssessPage() {
                 </Field>
                 <Field label="ประเภทย่อย">
                   <Sel value={form.propertySubtype} onChange={e => update('propertySubtype', e.target.value)}>
-                    {subtypes.map(s => <option key={s}>{s}</option>)}
+                    {subtypes.map(s => <option key={s} value={s}>{isVacantLandSubtype(s) ? VACANT_LAND : s}</option>)}
                   </Sel>
                 </Field>
               </>
@@ -377,25 +391,35 @@ export default function AssessPage() {
                   <span>เอกสารสิทธิ์ {form.deeds.length} แปลง</span>
                   <button type="button" className="as-link" onClick={addDeed}>+ เพิ่มแปลง</button>
                 </div>
-                <p className="as-hint" style={{ marginTop: 0 }}>{isBroker ? 'กรอกเลขโฉนดตามตัวเลขบนเอกสารจริงทุกแปลง ทีมงานใช้เลขโฉนด จังหวัด และอำเภอค้นข้อมูลแปลง รูปถ่ายโฉนดอย่างเดียวอาจอ่านเลขผิดได้' : 'ถ้าไม่ทราบเลขโฉนด กรอกเฉพาะเนื้อที่โดยประมาณได้ ทีมงานจะตรวจสอบอีกครั้ง'}</p>
+                <p className="as-hint" style={{ marginTop: 0 }}>{isBroker ? 'เลือกประเภทเอกสารและพิมพ์เลขตามเอกสารจริงทุกแปลง ทีมงานใช้เลขโฉนด จังหวัด และอำเภอค้นข้อมูลแปลง รูปถ่ายอย่างเดียวอาจอ่านเลขผิดได้' : 'ถ้าไม่ทราบเลขโฉนด กรอกเฉพาะเนื้อที่โดยประมาณได้ ทีมงานจะตรวจสอบอีกครั้ง'}</p>
                 {form.deeds.map((deed, idx) => (
                   <div key={deed.id} className="as-parcel">
                     <div className="as-parcel-head">
                       <span>แปลงที่ {idx + 1}</span>
                       {form.deeds.length > 1 && <button type="button" className="as-link" data-tone="danger" onClick={() => removeDeed(idx)}>ลบแปลงนี้</button>}
                     </div>
-                    <Field label="เลขโฉนด" hint={isBroker ? 'จำเป็น · พิมพ์ตามเอกสารจริง' : 'ถ้าทราบ'}>
-                      <Inp value={deed.titleDeedNo} inputMode="numeric" onChange={e => updateDeed(idx, 'titleDeedNo', e.target.value)} />
+                    <Field label="ประเภทเอกสารสิทธิ์" hint="ดูชื่อที่หัวเอกสาร">
+                      <Sel value={deedTypeKeyFor(deed, form)} onChange={e => updateDeed(idx, 'docType', e.target.value)}>
+                        {deedGroups.map(([g, list]) => (
+                          <optgroup key={g} label={DEED_GROUPS[g]}>
+                            {list.map(t => <option key={t.key} value={t.key}>{t.name}</option>)}
+                          </optgroup>
+                        ))}
+                      </Sel>
                     </Field>
+                    <Field label={deedTypeKeyFor(deed, form) === 'chanote' ? 'เลขโฉนด' : 'เลขที่เอกสารสิทธิ์'} hint={isBroker ? 'จำเป็น · พิมพ์ตามเอกสารจริง' : 'ถ้าทราบ'}>
+                      <Inp value={deed.titleDeedNo} maxLength={20} onChange={e => updateDeed(idx, 'titleDeedNo', e.target.value)} />
+                    </Field>
+                    {/* ช่องพิมพ์เป็นข้อความ (แป้นตัวเลข): ค่าเริ่มต้นว่าง ลบได้หมด ไม่มีศูนย์ค้างนำหน้า */}
                     <div className="as-row3" data-keep="true">
                       <Field label="ไร่">
-                        <Inp type="number" min="0" inputMode="numeric" value={deed.areaRai} onChange={e => updateDeed(idx, 'areaRai', +e.target.value)} />
+                        <Inp type="text" inputMode="numeric" autoComplete="off" placeholder="0" value={deed.areaRai || ''} onChange={e => updateDeed(idx, 'areaRai', areaInput(e.target.value))} />
                       </Field>
                       <Field label="งาน">
-                        <Inp type="number" min="0" max="3" inputMode="numeric" value={deed.areaNgan} onChange={e => updateDeed(idx, 'areaNgan', +e.target.value)} />
+                        <Inp type="text" inputMode="numeric" autoComplete="off" placeholder="0" value={deed.areaNgan || ''} onChange={e => updateDeed(idx, 'areaNgan', areaInput(e.target.value))} />
                       </Field>
                       <Field label="ตารางวา">
-                        <Inp type="number" min="0" inputMode="decimal" value={deed.areaSqw} onChange={e => updateDeed(idx, 'areaSqw', +e.target.value)} />
+                        <Inp type="text" inputMode="decimal" autoComplete="off" placeholder="0" value={deed.areaSqw || ''} onChange={e => updateDeed(idx, 'areaSqw', areaInput(e.target.value, { decimal: true }))} />
                       </Field>
                     </div>
                   </div>
@@ -444,9 +468,9 @@ export default function AssessPage() {
             {step === 5 && (
               <>
                 <div className="as-row2">
-                  <Field label="ประเภทเอกสารสิทธิ์">
-                    <Sel value={form.titleType} onChange={e => update('titleType', e.target.value)}>
-                      {TITLE_TYPES.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+                  <Field label="ภาระบนเอกสารสิทธิ์">
+                    <Sel value={formEncumbrance(form)} onChange={e => update('titleEncumbrance', e.target.value)}>
+                      {TITLE_ENCUMBRANCES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </Sel>
                   </Field>
                   <Field label="ประวัติน้ำท่วม">
@@ -537,7 +561,7 @@ export default function AssessPage() {
                   <div key={k}><dt>{k}</dt><dd data-empty={!v}>{v || 'ยังไม่ระบุ'}</dd></div>
                 ))}
               </dl>
-              {isBroker && form.leadRef && <div className="as-ref">รหัสผู้แนะนำ <b>{form.leadRef}</b></div>}
+              {isBroker && lead.locked && form.leadRef && <div className="as-ref">รหัสผู้แนะนำ <b>{form.leadRef}</b></div>}
             </div>
             <div className="as-card as-side-card">
               <h2 className="as-side-title">หลังส่งข้อมูล</h2>

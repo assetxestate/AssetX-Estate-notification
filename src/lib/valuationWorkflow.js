@@ -13,7 +13,7 @@ export const RISK_LABELS = {
 const SNAPSHOT_KEYS = [
   'assessmentType', 'propertyType', 'propertySubtype', 'projectName', 'assessmentDate', 'assessorName', 'deeds',
   'province', 'district', 'subdistrict', 'roadType', 'roadWidth', 'landFrontage', 'distanceFromMain',
-  'zoneColor', 'soilCondition', 'compPrice', 'compSource', 'locationNote', 'risks', 'floodLevel', 'titleType',
+  'zoneColor', 'soilCondition', 'compPrice', 'compSource', 'locationNote', 'risks', 'floodLevel', 'titleType', 'titleEncumbrance',
   'comps', 'ltvRate', 'lat', 'lng', 'requestedLoan', 'assetCode', 'parcelBoundary',
 ]
 
