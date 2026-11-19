@@ -8,7 +8,10 @@ import {
   updateValuationStatus as apiUpdateValuationStatus,
   createCustomer as apiCreateCustomer,
   cancelCustomer as apiCancelCustomer,
+  approveValuation as apiApproveValuation,
+  linkValuationCustomer as apiLinkValuationCustomer,
 } from "./lib/api.js";
+import { contractPrefill, returnStatusOf } from "./lib/valuationWorkflow.js";
 
 const BRAND = {
   bg: "var(--ax-c-0a1628)", cardBg: "var(--ax-c-111d35)", border: "rgba(45,212,191,0.15)",
@@ -49,7 +52,7 @@ function fmt(n) {
 
 function Card({ children, style }) {
   return (
-    <div style={{ background: BRAND.cardBg, border: `1px solid ${BRAND.border}`, borderRadius: 14, padding: 16, ...style }}>
+    <div style={{ background: BRAND.cardBg, border: '1px solid var(--ax-border-lt)', boxShadow: 'var(--ax-card-shadow)', borderRadius: 14, padding: 16, ...style }}>
       {children}
     </div>
   );
@@ -66,8 +69,11 @@ function StatBox({ label, value, color }) {
 
 // ── Modal สร้างสัญญา ────────────────────────────────────────
 function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
+  // ค่าตั้งต้นจากรายการประเมิน: ชื่อลูกค้า (เฉพาะ lead ที่เจ้าของทรัพย์ส่งเอง) ชื่อนายหน้า และเงินต้น — แก้ได้ทุกช่อง
+  // ช่อง LINE User ID (Uxxxx ของระบบแจ้งเตือน) ไม่เติมจาก LINE ID ที่ผู้ส่งกรอก เพราะเป็นคนละค่า
+  const prefill = contractPrefill(row);
   const [form, setForm] = useState({
-    customerName: '',
+    customerName: prefill.customerName,
     interestRate: '',
     installmentCount: '',
     contractStartDate: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
@@ -79,7 +85,7 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
     advanceDeductedAt: '',
   });
   const [existingDebts, setExistingDebts] = useState([]);
-  const [externalBroker, setExternalBroker] = useState({ name: '', amount: '', payment: 'โอน' });
+  const [externalBroker, setExternalBroker] = useState({ name: prefill.brokerName, amount: '', payment: 'โอน' });
   const [companyFee, setCompanyFee] = useState({ type: 'fixed', rate: '', amount: '' });
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -87,7 +93,8 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
 
   const up = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
-  const principal = parseFloat(row['วงเงินที่ลูกค้าขอ']) || parseFloat(row['วงเงินแนะนำ']) || 0;
+  // เงินต้น: วงเงินที่นายทุนอนุมัติ > วงเงินที่ลูกค้าขอ > วงเงินแนะนำ (contractPrefill) — สองอย่างหลังคือพฤติกรรมเดิม
+  const principal = prefill.principal;
   const amountPerInstall = form.interestRate
     ? Math.round(principal * parseFloat(form.interestRate) / 100)
     : 0;
@@ -230,7 +237,8 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
       });
       if (row['_rowIndex']) {
         // ปรับสถานะรายการประเมินให้ย้ายออกจากแท็บ "อนุมัติ" — ไม่งั้นจะดูเหมือนบันทึกไม่สำเร็จและถูกกดซ้ำ
-        await apiUpdateValuationStatus(row['_rowIndex'], 'สร้างสัญญาแล้ว').catch(() => {});
+        // ผูกรายการกับรหัสลูกค้าด้วย เพื่อให้ปุ่มเบรกทรัพย์/ยกเลิกสัญญาหาลูกค้าเจอ
+        await apiLinkValuationCustomer(row['_rowIndex'], customerId).catch(() => apiUpdateValuationStatus(row['_rowIndex'], 'สร้างสัญญาแล้ว').catch(() => {}));
       }
       onSuccess();
     } catch (e) {
@@ -290,6 +298,8 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
             ['ทรัพย์', row['ประเภทย่อย']],
             ['วงเงินที่ขอ', '฿' + fmt(row['วงเงินที่ลูกค้าขอ'])],
             ['วงเงินแนะนำ', '฿' + fmt(row['วงเงินแนะนำ'])],
+            ['เงินต้นของสัญญานี้', '฿' + fmt(principal) + (prefill.principalSource ? ` (${prefill.principalSource})` : '')],
+            ...(row.leadSource ? [[row.leadSource === 'broker' ? 'นายหน้าผู้ส่ง' : 'ผู้ติดต่อ', [row.contactName, row.contactPhone].filter(Boolean).join(' · ') || '—']] : []),
             ['ที่อยู่', (row['ตำบล/แขวง'] ? 'ต.' + row['ตำบล/แขวง'] + ' ' : '') + (row['อำเภอ/เขต'] ? 'อ.' + row['อำเภอ/เขต'] + ' ' : '') + (row['จังหวัด'] || '')],
             ['เลขโฉนด', row['เลขโฉนด'] || '—'],
           ].map(([k, v]) => (
@@ -524,13 +534,34 @@ function ContractModal({ row, appsScriptUrl, onClose, onSuccess }) {
 }
 
 // ── Main InvestorPage ────────────────────────────────────────
-export default function InvestorPage({ appsScriptUrl }) {
+export default function InvestorPage({ appsScriptUrl, onAssess }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('รอการพิจารณา');
+  // จำแท็บล่าสุดไว้ในรอบการใช้งานนี้ กลับจากหน้าประเมินละเอียดแล้วอยู่ที่แท็บเดิม
+  const [activeTab, setActiveTabState] = useState(() => {
+    try { const saved = sessionStorage.getItem('assetx_investor_tab'); if (TABS.some(t => t.key === saved)) return saved; } catch { /* ใช้ค่าเริ่มต้น */ }
+    return 'รอการพิจารณา';
+  });
+  const setActiveTab = (key) => { setActiveTabState(key); try { sessionStorage.setItem('assetx_investor_tab', key); } catch { /* ไม่จำก็ยังใช้งานได้ */ } };
   const [contractModal, setContractModal] = useState(null);
   const [processingRow, setProcessingRow] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
+  const [approvedInput, setApprovedInput] = useState({}); // วงเงินที่นายทุนอนุมัติ ต่อรายการ (พิมพ์ก่อนกดอนุมัติ)
+
+  const patchRow = (row, patch) => setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, ...patch } : r));
+
+  const approve = async (row) => {
+    setProcessingRow(row['_rowIndex']);
+    try {
+      const result = await apiApproveValuation(row['_rowIndex'], approvedInput[row['_rowIndex']]);
+      patchRow(row, { 'สถานะ': 'อนุมัติ', approvedLoan: result.approvedLoan });
+      if (result.dropped.length) showToast('อนุมัติแล้ว แต่ยังเก็บวงเงินที่อนุมัติไม่ได้: ต้องรันไฟล์ supabase_valuation_workflow.sql ใน Supabase ก่อน');
+    } catch (e) {
+      showToast('เกิดข้อผิดพลาด: ' + e.message);
+    } finally {
+      setProcessingRow(null);
+    }
+  };
 
   const load = () => {
     setLoading(true);
@@ -556,8 +587,9 @@ export default function InvestorPage({ appsScriptUrl }) {
   const cancelCustomer = async (row) => {
     setProcessingRow(row['_rowIndex']);
     try {
-      const customerId = row['_customerId'] || row['รหัส/ชื่อทรัพย์'];
-      await apiCancelCustomer(customerId).catch(() => {});
+      // รายการที่สร้างสัญญาก่อน 18 พ.ย. 2569 ไม่มีรหัสลูกค้าผูกไว้ → บอกผู้ใช้ให้ยกเลิกในหน้าลูกค้าเอง
+      if (row['_customerId']) await apiCancelCustomer(row['_customerId']);
+      else showToast('รายการนี้ไม่มีรหัสลูกค้าผูกไว้ ให้ยกเลิกสัญญาในหน้าลูกค้าด้วยตัวเอง');
       await updateStatus(row, 'ยกเลิก');
     } catch (e) {
       showToast('เกิดข้อผิดพลาด: ' + e.message);
@@ -570,8 +602,8 @@ export default function InvestorPage({ appsScriptUrl }) {
     if (!window.confirm(`เบรกทรัพย์ "${row['รหัส/ชื่อทรัพย์'] || '—'}"?\n\nลูกค้าจะถูกลบออกจากหน้าลูกค้า และทรัพย์จะกลับไปที่แท็บ "รอการพิจารณา"`)) return;
     setProcessingRow(row['_rowIndex']);
     try {
-      const customerId = row['_customerId'] || row['รหัส/ชื่อทรัพย์'];
-      await apiCancelCustomer(customerId).catch(() => {});
+      if (row['_customerId']) await apiCancelCustomer(row['_customerId']);
+      else showToast('รายการนี้ไม่มีรหัสลูกค้าผูกไว้ ให้ยกเลิกสัญญาในหน้าลูกค้าด้วยตัวเอง');
       await updateStatus(row, 'รอการพิจารณา');
     } catch (e) {
       showToast('เกิดข้อผิดพลาด: ' + e.message);
@@ -643,7 +675,7 @@ export default function InvestorPage({ appsScriptUrl }) {
       </div>
 
       {/* Content */}
-      <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         {loading ? (
           <div style={{ textAlign: 'center', color: BRAND.textSec, padding: 40 }}>⏳ กำลังโหลด...</div>
         ) : filtered.length === 0 ? (
@@ -660,7 +692,7 @@ export default function InvestorPage({ appsScriptUrl }) {
             const ltv = row['LTV ลูกค้า (% ต่อตลาด)'];
 
             return (
-              <Card key={row['_rowIndex'] || i}>
+              <Card key={row['_rowIndex'] || i} style={{ borderTop: `4px solid ${st.text}` }}>
                 {/* Header row */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 12 }}>
                   <div style={{ flex: 1 }}>
@@ -685,15 +717,19 @@ export default function InvestorPage({ appsScriptUrl }) {
                     {row.contactName && <span style={{ color: BRAND.textPri }}>👤 {row.contactName}</span>}
                     {row.contactPhone && <span style={{ color: 'var(--ax-c-38bdf8)', fontWeight: 700 }}>📞 {row.contactPhone}</span>}
                     {row.contactLine && <span style={{ color: BRAND.textSec }}>💬 LINE: {row.contactLine}</span>}
-                    {row.leadSource && row['หมายเหตุ'] && <span style={{ flexBasis: '100%', color: BRAND.textPri, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>📝 {row['หมายเหตุ']}</span>}
+                    {row.leadSource && row['หมายเหตุ'] && <span style={{ flexBasis: '100%', color: BRAND.textPri, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>📝 {String(row['หมายเหตุ']).split(/(https?:\/\/[^\s]+)/).map((part, i) => /^https?:\/\//.test(part)
+                      ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--ax-c-38bdf8)', fontWeight: 700, textDecoration: 'underline' }}>{part}</a>
+                      : part)}</span>}
                   </div>
                 )}
 
-                {/* รูปแนบและข้อความตอบผล — เฉพาะ lead จากหน้าประเมินออนไลน์ */}
-                {row.leadSource && (
+                {/* ขั้นงานของรายการ: ประเมินละเอียด · รูปแนบ/ตอบผู้ส่ง (lead จากเว็บ) · สรุปส่งนายทุน */}
+                {(activeTab === 'Lead จากเว็บ' || activeTab === 'รอการพิจารณา') && (
                   <LeadTools
                     row={row}
-                    onReplied={(leadRepliedAt, leadReplyResult) => setRows(prev => prev.map(r => r['_rowIndex'] === row['_rowIndex'] ? { ...r, leadRepliedAt, leadReplyResult } : r))}
+                    onAssess={onAssess}
+                    onReplied={(leadRepliedAt, leadReplyResult) => patchRow(row, { leadRepliedAt, leadReplyResult })}
+                    onSent={(investorSentAt, investorSummary) => patchRow(row, { 'สถานะ': 'รอการพิจารณา', investorSentAt, investorSummary })}
                   />
                 )}
 
@@ -706,7 +742,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                 </div>
 
                 {/* LTV bar */}
-                {ltv && (
+                {parseFloat(ltv) > 0 && (
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: BRAND.textSec, marginBottom: 4 }}>
                       <span>LTV ลูกค้า</span>
@@ -750,6 +786,12 @@ export default function InvestorPage({ appsScriptUrl }) {
                   </div>
                 )}
                 {activeTab === 'รอการพิจารณา' && (
+                  <label className="lt-approve">
+                    วงเงินที่นายทุนอนุมัติ (บาท) — ใส่ก่อนกดอนุมัติ ระบบใช้เป็นเงินต้นตั้งต้นตอนสร้างสัญญา
+                    <input type="number" min="0" inputMode="numeric" value={approvedInput[row['_rowIndex']] ?? ''} onChange={e => setApprovedInput(prev => ({ ...prev, [row['_rowIndex']]: e.target.value }))} placeholder={String(row['วงเงินแนะนำ'] || '')} />
+                  </label>
+                )}
+                {activeTab === 'รอการพิจารณา' && (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={() => updateStatus(row, 'ปฏิเสธ')}
@@ -759,7 +801,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                       {isProcessing ? '⏳' : '❌ ปฏิเสธ'}
                     </button>
                     <button
-                      onClick={() => updateStatus(row, 'อนุมัติ')}
+                      onClick={() => approve(row)}
                       disabled={isProcessing}
                       style={{ flex: 1, padding: '9px', borderRadius: 10, border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.08)', color: 'var(--ax-c-10b981)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
                     >
@@ -786,7 +828,7 @@ export default function InvestorPage({ appsScriptUrl }) {
                 )}
                 {activeTab === 'ปฏิเสธ' && (
                   <button
-                    onClick={() => updateStatus(row, 'รอดำเนินการ')}
+                    onClick={() => updateStatus(row, returnStatusOf(row))}
                     disabled={isProcessing}
                     style={{ width: '100%', padding: '9px', borderRadius: 10, border: `1px solid ${BRAND.border}`, background: 'transparent', color: BRAND.textSec, fontSize: 12, cursor: 'pointer' }}
                   >

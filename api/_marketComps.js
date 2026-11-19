@@ -19,6 +19,14 @@ function includesPlace(text, place) {
   return normalizePlace(text).includes(target)
 }
 
+// กรุงเทพฯ: ประกาศส่วนใหญ่เขียน "กรุงเทพ" / "กทม." / "Bangkok" ไม่เขียนชื่อเต็ม — ถือว่าเป็นจังหวัดเดียวกัน
+const isBangkok = (province) => normalizePlace(province) === normalizePlace('กรุงเทพมหานคร')
+function includesProvince(text, province) {
+  if (!isBangkok(province)) return includesPlace(text, province)
+  const t = normalizePlace(text)
+  return t.includes('กรุงเทพ') || t.includes('กทม') || t.includes('bangkok')
+}
+
 function targetLocationTokens(valuation = {}) {
   return {
     province: compactText(valuation.province),
@@ -49,7 +57,7 @@ function knownNearbyLocationConflicts(valuation = {}) {
 function assessLocationMatch(content, valuation = {}) {
   const target = targetLocationTokens(valuation)
   const strictAreaRequired = !!(target.subdistrict || target.district)
-  const hasProvince = target.province ? includesPlace(content, target.province) : false
+  const hasProvince = target.province ? includesProvince(content, target.province) : false
   const hasDistrict = target.district ? includesPlace(content, target.district) : false
   const hasSubdistrict = target.subdistrict ? includesPlace(content, target.subdistrict) : false
   const conflicts = knownNearbyLocationConflicts(valuation)
@@ -376,8 +384,8 @@ function scoreSource(item, valuation = {}) {
 function buildQuery(valuation = {}) {
   const targetBasis = classifyTargetBasis(valuation)
   const location = [
-    valuation.subdistrict ? `ต.${valuation.subdistrict}` : '',
-    valuation.district ? `อ.${valuation.district}` : '',
+    valuation.subdistrict ? `${isBangkok(valuation.province) ? 'แขวง' : 'ต.'}${valuation.subdistrict}` : '',
+    valuation.district ? `${isBangkok(valuation.province) ? 'เขต' : 'อ.'}${valuation.district}` : '',
     valuation.province || '',
   ].filter(Boolean).join(' ')
   const type = valuation.propertySubtype || valuation.propertyType || 'ที่ดิน'
@@ -413,7 +421,7 @@ function buildQuery(valuation = {}) {
 function buildRelaxedQuery(valuation = {}) {
   const targetBasis = classifyTargetBasis(valuation)
   const location = [
-    valuation.district ? `อ.${valuation.district}` : '',
+    valuation.district ? `${isBangkok(valuation.province) ? 'เขต' : 'อ.'}${valuation.district}` : '',
     valuation.province || '',
   ].filter(Boolean).join(' ')
   const subtype = valuation.propertySubtype || valuation.propertyType || 'อสังหาริมทรัพย์'

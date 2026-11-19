@@ -1,0 +1,36 @@
+/* แผงสำรวจราคาตลาด (หน้าประเมิน ขั้นที่ 2) — ใช้ตัวแปรสีชุดเดียวกับ LeadTools (คู่สว่าง/มืดใน theme.css) */
+.ms { padding: 16px; border: 1px solid var(--ax-border-lt); border-radius: 14px; background: var(--ax-bg-card); box-shadow: var(--ax-card-shadow); display: grid; gap: 12px; font-size: 13px; color: var(--ax-c-e2e8f0); }
+.ms-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ms-title { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--ax-c-e2e8f0); }
+.ms-note { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ax-c-94a3b8); }
+.ms-note[data-tone="warn"] { color: var(--ax-c-f59e0b); font-weight: 600; }
+.ms-note[data-tone="error"] { color: var(--ax-c-f87171); font-weight: 600; }
+.ms-btn { min-height: 38px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: transparent; color: var(--ax-c-e2e8f0); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.ms-btn[data-kind="primary"] { background: var(--ax-c-2dd4bf); border-color: var(--ax-c-2dd4bf); color: var(--ax-c-000); }
+.ms-btn:disabled { opacity: 0.55; cursor: default; }
+.ms-btn:focus-visible, .ms a:focus-visible, .ms input:focus-visible { outline: 2px solid var(--ax-c-2dd4bf); outline-offset: 2px; }
+.ms-table-wrap { overflow-x: auto; border: 1px solid var(--ax-border-lt); border-radius: 10px; }
+.ms-table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 12px; }
+.ms-table th { text-align: left; padding: 8px 10px; font-weight: 600; color: var(--ax-c-94a3b8); border-bottom: 1px solid var(--ax-border-lt); white-space: nowrap; }
+.ms-table td { padding: 8px 10px; border-bottom: 1px solid var(--ax-border); vertical-align: top; }
+.ms-table tr:last-child td { border-bottom: 0; }
+.ms-table tr[data-on="false"] td { opacity: 0.55; }
+.ms-table a { color: var(--ax-c-38bdf8); font-weight: 600; overflow-wrap: anywhere; }
+.ms-table small { display: block; margin-top: 2px; color: var(--ax-c-94a3b8); overflow-wrap: anywhere; }
+.ms-table input[type="checkbox"] { width: 18px; height: 18px; }
+.ms-link { padding: 0; border: 0; background: none; color: var(--ax-c-38bdf8); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+.ms-tag { display: block; width: fit-content; margin-top: 4px; padding: 1px 6px; border: 1px solid var(--ax-c-2dd4bf); border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.ms-num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ms-sum { display: grid; grid-template-columns: minmax(180px, 240px) 1fr; gap: 12px; align-items: start; }
+.ms-field { display: grid; gap: 4px; font-size: 12px; color: var(--ax-c-94a3b8); }
+.ms-field input { box-sizing: border-box; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: var(--ax-c-050b18); color: var(--ax-c-e2e8f0); font: inherit; font-size: 14px; }
+.ms-range { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ms-range > div { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--ax-border-lt); text-align: center; }
+.ms-range > div[data-mid="true"] { border-color: var(--ax-c-2dd4bf); }
+.ms-range small { display: block; font-size: 11px; color: var(--ax-c-94a3b8); }
+.ms-range b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.ms-range p { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--ax-c-94a3b8); }
+.ms-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ms-rejected { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.7; color: var(--ax-c-94a3b8); }
+.ms-rejected a { color: var(--ax-c-38bdf8); overflow-wrap: anywhere; }
+@media (max-width: 640px) { .ms-sum { grid-template-columns: 1fr; } }

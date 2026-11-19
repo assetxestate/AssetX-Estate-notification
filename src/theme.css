@@ -17,6 +17,7 @@
   --ax-bg-glass: rgba(255,255,255,0.9);
   --ax-border: #e2e8f0;
   --ax-border-lt: #cbd5e1;
+  --ax-card-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 6px 16px rgba(15,23,42,0.08);
   --ax-text-pri: #0f1f3a;
   --ax-text-sec: #526077;
   --ax-text-mut: #5f6c80;
@@ -153,6 +154,7 @@
   --ax-bg-glass: rgba(8,15,30,0.85);
   --ax-border: #0F2545;
   --ax-border-lt: #162E56;
+  --ax-card-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 6px 16px rgba(0,0,0,0.35);
   --ax-text-pri: #F0F6FF;
   --ax-text-sec: #64748B;
   --ax-text-mut: #334155;

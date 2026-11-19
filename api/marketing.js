@@ -11,6 +11,7 @@ import paymentAdditionsHandler from '../server/paymentAdditions.js'
 import imageJobsHandler from '../server/marketing-image-jobs.js'
 import contentJobsHandler from '../server/marketing-content-jobs.js'
 import leadFilesHandler from '../server/leadFiles.js'
+import marketSurveyHandler from '../server/market-survey-jobs.js'
 
 const handlers = {
   notices: noticesHandler,
@@ -32,6 +33,8 @@ const handlers = {
   ideas: ideasHandler,
   // รูปแนบของ lead จากหน้า /assess (bucket ปิด lead-files) — เปิดดูได้เฉพาะผู้ล็อกอิน
   'lead-files': leadFilesHandler,
+  // คิวสำรวจราคาตลาดจากประกาศขาย (หน้าประเมิน ขั้นที่ 2 · ตัวรับงานเดียวกับภาพ) — ตาราง market_survey_jobs
+  'market-survey': marketSurveyHandler,
 }
 
 function inferFeature(req) {
@@ -53,6 +56,7 @@ function inferFeature(req) {
   if (path.endsWith('/marketing-facebook')) return 'facebook'
   if (path.endsWith('/marketing-ideas')) return 'ideas'
   if (path.endsWith('/lead-files')) return 'lead-files'
+  if (path.endsWith('/market-survey')) return 'market-survey'
   return ''
 }
 

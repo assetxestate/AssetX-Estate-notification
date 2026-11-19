@@ -122,6 +122,8 @@ export default function App({ initialView = "main", onLogout }) {
   const [lastFetch, setLastFetch] = useState(null);
   const [filter, setFilter] = useState("all");
   const [mainTab, setMainTab] = useState("dashboard");
+  // รายการประเมินที่เปิดจากหน้านายทุนเพื่อประเมินละเอียด (ส่งต่อให้ ValuationPage)
+  const [valuationEditId, setValuationEditId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [expandedDeeds, setExpandedDeeds] = useState({});
   const [slipModal, setSlipModal] = React.useState(null); // { customer, payment }
@@ -863,7 +865,7 @@ export default function App({ initialView = "main", onLogout }) {
                 </span>
               </div>
               <button
-                onClick={() => openView(currentView === "valuation" ? "main" : "valuation")}
+                onClick={() => { setValuationEditId(null); openView(currentView === "valuation" ? "main" : "valuation"); }}
                 style={{
                   background: currentView === "valuation" ? "rgba(45,212,191,0.15)" : "rgba(245,158,11,0.12)",
                   border: `1px solid ${currentView === "valuation" ? BRAND.teal : BRAND.gold}`,
@@ -931,9 +933,11 @@ export default function App({ initialView = "main", onLogout }) {
         {/* Valuation Page */}
         {currentView === "valuation" && (
           <ValuationPage
-            onBack={() => openView("main")}
+            onBack={() => { setValuationEditId(null); openView("main"); }}
             appsScriptUrl={APPS_SCRIPT_URL}
             customers={enriched}
+            editId={valuationEditId}
+            onEditDone={() => setValuationEditId(null)}
           />
         )}
 
@@ -1054,7 +1058,7 @@ export default function App({ initialView = "main", onLogout }) {
 
           {/* Investor Tab */}
           {mainTab === "investor" && (
-            <InvestorPage appsScriptUrl={APPS_SCRIPT_URL} />
+            <InvestorPage appsScriptUrl={APPS_SCRIPT_URL} onAssess={(id) => { setValuationEditId(id); openView("valuation"); }} />
           )}
 
           {/* Tax Tab */}

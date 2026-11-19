@@ -13,7 +13,7 @@ import {
 } from './lib/api.js'
 import { searchGovPrice, extractPrice, recordLabel } from './lib/treasuryApi.js'
 import { confidenceBand } from './lib/pricePoints.js'
-import { parseParcelBoundary, parcelBoundaryToGeoJson } from './lib/parcelBoundary.js'
+import { geodesicAreaSqm, parseParcelBoundary, parcelBoundaryToGeoJson } from './lib/parcelBoundary.js'
 import { withAlpha } from './lib/theme.js'
 
 // ใช้สีกลางจาก config.js — override เฉพาะคีย์ที่หน้านี้ใช้ต่าง
@@ -28,8 +28,12 @@ import {
 } from './lib/valuationOptions.js'
 import { ADDRESS_PROVINCES, getDistrictsByProvince, getSubdistrictsByDistrict } from './lib/thaiAddress.js'
 import { buildUnderwritingPolicy } from './lib/underwritingPolicy.js'
+import { rowToForm, formSnapshotOf } from './lib/valuationWorkflow.js'
+import { leadTicketNo } from './lib/leadSource.js'
+import { parseLandsMapsText, landsMapsConflicts, LANDSMAPS_FIELD_LABELS } from './lib/landsmapsPaste.js'
 import { TITLE_ENCUMBRANCES, legacyTitleType, deedTypeKeyFor, deedVerdict, formDeedTypeKeys, strictestDeedType, formEncumbrance, deedTypeOf, deedRiskText } from './lib/deedTypes.js'
 import { DeedTypeSelect, DeedTypeCard, DeedStatusChip, DEED_STATUS_COLOR } from './components/DeedTypeCard.jsx'
+import MarketSurveyPanel from './components/MarketSurveyPanel.jsx'
 import {
   VALUATION_IMAGE_LIMIT,
   deleteValuationPropertyImage,
@@ -67,14 +71,16 @@ const createInitialForm = () => ({
 function loadValuationDraft() {
   try {
     const raw = localStorage.getItem(VALUATION_DRAFT_KEY)
-    if (!raw) return { form: createInitialForm(), step: 1 }
+    if (!raw) return { form: createInitialForm(), step: 1, editing: null }
     const parsed = JSON.parse(raw)
     return {
       form: { ...createInitialForm(), ...(parsed.form || {}) },
       step: Math.min(4, Math.max(1, Number(parsed.step) || 1)),
+      // ดราฟต์ของรายการเดิมที่ประเมินค้างไว้: จำเลขรายการด้วย ไม่งั้นรีเฟรชแล้วกดบันทึกจะกลายเป็นรายการใหม่
+      editing: parsed.editing?.id ? { id: parsed.editing.id, label: String(parsed.editing.label || ''), rebuilt: false } : null,
     }
   } catch {
-    return { form: createInitialForm(), step: 1 }
+    return { form: createInitialForm(), step: 1, editing: null }
   }
 }
 
@@ -794,6 +800,36 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
     ? [form.province, ...ADDRESS_PROVINCES]
     : ADDRESS_PROVINCES
   const districtOptions = useMemo(() => getDistrictsByProvince(form.province), [form.province])
+  // วางข้อความจากกล่องผลลัพธ์ LandsMaps (เจ้าของค้นและคัดลอกเอง) แล้วกรอกช่องของแปลงให้ · pasteIdx = แปลงที่เปิดกล่องวางอยู่
+  const [pasteIdx, setPasteIdx] = useState(null)
+  const [pasteText, setPasteText] = useState('')
+  const [pasteResult, setPasteResult] = useState(null)
+  const applyLandsMaps = (idx, text) => {
+    const { fields, found } = parseLandsMapsText(text)
+    if (found.length === 0) { setPasteResult({ idx, tone: 'error', text: 'อ่านข้อมูลจากข้อความนี้ไม่ได้ ให้คัดลอกกล่องผลลัพธ์ของ LandsMaps ตั้งแต่ "เลขโฉนดที่ดิน" ถึง "ค่าพิกัดแปลง"' }); return }
+    const conflicts = landsMapsConflicts(fields, form.deeds[idx])
+    if (conflicts.length > 0 && !window.confirm('ข้อมูลที่วางไม่ตรงกับที่กรอกไว้ในแปลงนี้\n' + conflicts.map(c => `${LANDSMAPS_FIELD_LABELS[c.key]}: ${c.from} → ${c.to}`).join('\n') + '\n\nเขียนทับด้วยข้อมูลที่วางหรือไม่')) return
+    for (const key of ['titleDeedNo', 'surveyPage', 'landNo', 'mapSheet', 'areaRai', 'areaNgan', 'areaSqw', 'govPrice']) {
+      if (fields[key] !== undefined) updateDeed(idx, key, fields[key])
+    }
+    const skipped = []
+    // ที่ตั้งและพิกัดเป็นของทั้งรายการ: กรอกจากแปลงแรกเท่านั้น และเฉพาะชื่อที่มีในตัวเลือกของฟอร์ม
+    if (idx === 0) {
+      const province = fields.province && ADDRESS_PROVINCES.includes(fields.province) ? fields.province : ''
+      if (province) {
+        const district = getDistrictsByProvince(province).includes(fields.district) ? fields.district : ''
+        const subdistrict = district && getSubdistrictsByDistrict(province, district).includes(fields.subdistrict) ? fields.subdistrict : ''
+        update('province', province); update('district', district); update('subdistrict', subdistrict)
+        if (fields.district && !district) skipped.push('district')
+        if (fields.subdistrict && !subdistrict) skipped.push('subdistrict')
+      } else if (fields.province) skipped.push('province', 'district', 'subdistrict')
+      if (fields.lat !== undefined) { update('lat', fields.lat); update('lng', fields.lng) }
+    } else skipped.push(...['province', 'district', 'subdistrict', 'coords'].filter(k => found.includes(k)))
+    const filled = found.filter(k => !skipped.includes(k)).map(k => LANDSMAPS_FIELD_LABELS[k])
+    const missing = Object.keys(LANDSMAPS_FIELD_LABELS).filter(k => !found.includes(k)).map(k => LANDSMAPS_FIELD_LABELS[k])
+    setPasteResult({ idx, tone: 'ok', text: `กรอกให้แล้ว: ${filled.join(' · ')}` + (missing.length ? `\nไม่พบในข้อความ: ${missing.join(' · ')}` : '') + (idx > 0 && skipped.length ? '\nที่ตั้งและพิกัดใช้ของแปลงแรก ไม่ได้เปลี่ยน' : idx === 0 && skipped.length ? `\nชื่อไม่ตรงกับตัวเลือกในฟอร์ม กรุณาเลือกเอง: ${[...new Set(skipped)].map(k => LANDSMAPS_FIELD_LABELS[k]).join(' · ')}` : '') + '\nตรวจตัวเลขกับโฉนดอีกครั้งก่อนบันทึก' })
+    setPasteText('')
+  }
   const subdistrictOptions = useMemo(() => getSubdistrictsByDistrict(form.province, form.district), [form.province, form.district])
   const districtChoices = form.district && !districtOptions.includes(form.district)
     ? [form.district, ...districtOptions]
@@ -1207,6 +1243,12 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                       }}
                       style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: `1px solid ${BRAND.gold}`, background: 'transparent', color: BRAND.gold, cursor: 'pointer' }}
                     >🌐 LandMap</button>
+                    <button
+                      type="button"
+                      aria-expanded={pasteIdx === idx}
+                      onClick={() => { setPasteIdx(pasteIdx === idx ? null : idx); setPasteText(''); setPasteResult(null) }}
+                      style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: `1px solid ${BRAND.teal}`, background: pasteIdx === idx ? 'rgba(45,212,191,0.12)' : 'transparent', color: BRAND.teal, cursor: 'pointer' }}
+                    >📋 วางข้อมูลจาก LandsMaps</button>
                     {form.deeds.length > 1 && (
                       <button
                         onClick={() => removeDeed(idx)}
@@ -1215,6 +1257,28 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
                     )}
                   </div>
                 </div>
+
+                {pasteIdx === idx && (
+                  <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, border: `1px dashed ${BRAND.teal}`, background: 'rgba(45,212,191,0.06)' }}>
+                    <div style={{ fontSize: 12, color: BRAND.textSec, marginBottom: 6, lineHeight: 1.6 }}>
+                      กด 🌐 LandMap ค้นเลขโฉนด แล้วลากคลุมข้อความในกล่องผลลัพธ์ตั้งแต่ "เลขโฉนดที่ดิน" ถึง "ค่าพิกัดแปลง" คัดลอกมาวางในช่องนี้ ระบบจะกรอกช่องของแปลงนี้ให้ทันที
+                    </div>
+                    <textarea
+                      rows={4}
+                      value={pasteText}
+                      onChange={e => setPasteText(e.target.value)}
+                      onPaste={e => { const t = e.clipboardData?.getData('text'); if (t) { e.preventDefault(); setPasteText(t); applyLandsMaps(idx, t) } }}
+                      placeholder="วางข้อความจาก LandsMaps ที่นี่"
+                      style={{ ...inputBase, resize: 'vertical', fontSize: 12 }}
+                    />
+                    {pasteText.trim() && (
+                      <button type="button" onClick={() => applyLandsMaps(idx, pasteText)} style={{ marginTop: 6, fontSize: 12, padding: '6px 14px', borderRadius: 8, border: `1px solid ${BRAND.teal}`, background: 'transparent', color: BRAND.teal, cursor: 'pointer', fontWeight: 600 }}>กรอกจากข้อความนี้</button>
+                    )}
+                    {pasteResult?.idx === idx && (
+                      <div role="status" style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: pasteResult.tone === 'error' ? 'var(--ax-c-f87171)' : BRAND.textPri }}>{pasteResult.text}</div>
+                    )}
+                  </div>
+                )}
 
                 {/* ประเภทเอกสารสิทธิ์ของแปลง (deedTypes.js) — บันทึกไปกับ deeds[] */}
                 {(() => {
@@ -1382,20 +1446,7 @@ function Step1({ form, update, updateDeed, addDeed, removeDeed, customers, asset
 }
 
 // ── Map Picker ─────────────────────────────────────────
-function calculateGeodesicArea(points) {
-  if (points.length < 3) return 0
-  const earthRadius = 6378137
-  const toRadians = value => value * Math.PI / 180
-  let area = 0
-
-  for (let i = 0; i < points.length; i += 1) {
-    const current = points[i]
-    const next = points[(i + 1) % points.length]
-    area += toRadians(next.lng - current.lng) * (2 + Math.sin(toRadians(current.lat)) + Math.sin(toRadians(next.lat)))
-  }
-
-  return Math.abs(area * earthRadius * earthRadius / 2)
-}
+const calculateGeodesicArea = geodesicAreaSqm
 
 function squareWaToThaiArea(totalSqw) {
   const roundedSqw = Math.round(totalSqw * 10) / 10
@@ -1539,6 +1590,18 @@ function MapPicker({ form, update, updateDeed }) {
       baseLayersRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    const lat = Number(form.lat), lng = Number(form.lng)
+    if (!map || form.lat == null || form.lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return
+    const current = markerRef.current?.getLatLng()
+    if (current && Math.abs(current.lat - lat) < 1e-7 && Math.abs(current.lng - lng) < 1e-7) return
+    if (markerRef.current) markerRef.current.setLatLng([lat, lng])
+    else markerRef.current = L.marker([lat, lng]).addTo(map)
+    map.setView([lat, lng], Math.max(map.getZoom(), 18))
+    setCoordInput(formatCoordPair(lat.toFixed(6), lng.toFixed(6)))
+  }, [form.lat, form.lng])
 
   const measuredSqm = useMemo(() => calculateGeodesicArea(measurementPoints), [measurementPoints])
   const measuredSqw = measuredSqm / 4
@@ -2530,7 +2593,7 @@ function NearbyPricePointsPanel({ points = [], loading, form, update }) {
   )
 }
 
-function Step2({ form, update, updateDeed, calc, comps = [], nearbyPricePoints = [], nearbyLoading = false }) {
+function Step2({ form, update, updateDeed, calc, comps = [], nearbyPricePoints = [], nearbyLoading = false, valuationId = null }) {
   // ราคาอ้างอิงจากประวัติในพื้นที่เดียวกัน
   const relevantComps = comps.filter(c =>
     c['จังหวัด'] === form.province && c['ประเภทอสังหาฯ'] === form.propertyType
@@ -2674,6 +2737,7 @@ function Step2({ form, update, updateDeed, calc, comps = [], nearbyPricePoints =
         <Label>หมายเหตุทำเล / สภาพพื้นที่</Label>
         <textarea value={form.locationNote} onChange={e => update('locationNote', e.target.value)} placeholder="บันทึกเพิ่มเติม เช่น สภาพพื้นที่ ทิศทาง สิ่งแวดล้อม..." style={{ width: '100%', background: BRAND.bg, border: `1px solid ${BRAND.border}`, borderRadius: 8, color: BRAND.textPri, fontSize: 13, padding: '10px 12px', outline: 'none', resize: 'vertical', minHeight: 80, boxSizing: 'border-box' }} />
       </Card>
+      <MarketSurveyPanel form={form} update={update} calc={calc} valuationId={valuationId} />
       <CompAdjPanel form={form} update={update} calc={calc} />
       <NearbyPricePointsPanel points={nearbyPricePoints} loading={nearbyLoading} form={form} update={update} />
       <MarketSearchPanel form={form} update={update} calc={calc} />
@@ -3129,7 +3193,8 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
         </div>
       </div>
       {form.lat && form.lng && (
-        <MiniMap lat={form.lat} lng={form.lng} label={form.projectName || form.province} />
+        <MiniMap lat={form.lat} lng={form.lng} label={form.projectName || form.province}
+          boundaries={(form.deeds.some(d => d.parcelBoundary?.points?.length >= 3) ? form.deeds.map(d => d.parcelBoundary?.points) : [form.parcelBoundary?.points]).filter(p => Array.isArray(p) && p.length >= 3)} />
       )}
       <div style={{ fontSize: 11, color: BRAND.textMut, textAlign: 'center', marginTop: 8 }}>
         บริษัท แอสเสทเอ็กซ์ เอสเตท จำกัด — Generated: {new Date().toLocaleString('th-TH')}
@@ -3139,7 +3204,7 @@ function Step4({ form, calc, update, policy, underwritingMemo, underwritingLoadi
 }
 
 // ── Mini Map (Step 4) ───────────────────────────────────
-function MiniMap({ lat, lng, label }) {
+function MiniMap({ lat, lng, label, boundaries = [] }) {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
 
@@ -3149,9 +3214,16 @@ function MiniMap({ lat, lng, label }) {
 
     const map = L.map(mapRef.current, { zoomControl: false, dragging: false, scrollWheelZoom: false })
       .setView([lat, lng], 15)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
-    const marker = L.marker([lat, lng]).addTo(map)
-    marker.bindPopup(`📍 ${label || 'ทรัพย์สิน'}`).openPopup()
+    const shapes = boundaries.filter(points => Array.isArray(points) && points.length >= 3)
+    if (shapes.length) {
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles © Esri', maxNativeZoom: 18, maxZoom: 21 }).addTo(map)
+      shapes.forEach(points => L.polygon(points, { color: 'var(--ax-c-ef4444)', weight: 3, fillColor: 'var(--ax-c-ef4444)', fillOpacity: 0.12 }).addTo(map))
+      map.fitBounds(L.latLngBounds(shapes.flat()), { padding: [36, 36], maxZoom: 19 })
+    } else {
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
+      const marker = L.marker([lat, lng]).addTo(map)
+      marker.bindPopup(`📍 ${label || 'ทรัพย์สิน'}`).openPopup()
+    }
     mapInstanceRef.current = map
 
     return () => { map.remove(); mapInstanceRef.current = null }
@@ -3169,9 +3241,9 @@ function MiniMap({ lat, lng, label }) {
           เปิด Google Maps ↗
         </a>
       </div>
-      <div ref={mapRef} style={{ width: '100%', height: 200, borderRadius: 10, border: `1px solid ${BRAND.border}` }} />
+      <div ref={mapRef} style={{ width: '100%', height: boundaries.length ? 320 : 200, borderRadius: 10, border: `1px solid ${BRAND.border}` }} />
       <div style={{ fontSize: 11, color: BRAND.textMut, marginTop: 6 }}>
-        พิกัด: {lat.toFixed(5)}, {lng.toFixed(5)}
+        พิกัด: {Number(lat).toFixed(5)}, {Number(lng).toFixed(5)}{boundaries.length > 0 && ' · เส้นแดง = แนวเขตที่วาดเองจากภาพถ่ายดาวเทียม เป็นค่าประมาณ ไม่ใช่แนวเขตทางการ'}
       </div>
     </Card>
   )
@@ -3188,7 +3260,8 @@ function fixLeafletIcons() {
 }
 
 // ── Main ───────────────────────────────────────────────
-export default function ValuationPage({ onBack, appsScriptUrl, customers = [] }) {
+// editId = เลขรายการประเมินที่เปิดมาจากหน้านายทุน (ปุ่ม "ประเมินละเอียด") → โหลดรายการนั้นเข้าฟอร์ม และบันทึกกลับรายการเดิม
+export default function ValuationPage({ onBack, appsScriptUrl, customers = [], editId = null, onEditDone }) {
   const initialDraft = useMemo(() => loadValuationDraft(), [])
   const [view, setView] = useState('form')
   const [step, setStep] = useState(initialDraft.step)
@@ -3202,8 +3275,47 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
   const [underwritingLoading, setUnderwritingLoading] = useState(false)
   const [underwritingError, setUnderwritingError] = useState('')
   const [valuationSeq, setValuationSeq] = useState(1)
+  // รายการเดิมที่กำลังประเมินต่อ: { id, label, rebuilt } · null = ประเมินรายการใหม่
+  const [editing, setEditing] = useState(initialDraft.editing)
+  const [editLoading, setEditLoading] = useState(false)
+  // resumed = เปิดมาเจองานที่ทำค้างไว้ของรายการเดียวกัน (ดราฟต์ในเครื่อง) · reloadTick > 0 = เจ้าของสั่งทิ้งดราฟต์ โหลดจากที่บันทึกไว้
+  const [resumed, setResumed] = useState(false)
+  const [reloadTick, setReloadTick] = useState(0)
+
+  useEffect(() => {
+    if (!editId) return
+    // กด "ประเมินละเอียด" ซ้ำกับรายการที่ทำค้างไว้: ทำต่อจากดราฟต์ ไม่โหลดข้อมูลเดิมมาทับ (ไม่งั้นที่กรอกไว้หายทั้งหมด)
+    if (reloadTick === 0 && initialDraft.editing && String(initialDraft.editing.id) === String(editId)) {
+      setResumed(true)
+      setView('form')
+      return
+    }
+    let cancelled = false
+    setEditLoading(true)
+    apiGetValuations()
+      .then(rows => {
+        if (cancelled) return
+        const row = rows.find(r => String(r._rowIndex) === String(editId))
+        if (!row) { showToast('ไม่พบรายการประเมินที่เลือก'); return }
+        const loaded = rowToForm(row, createInitialForm())
+        setForm(loaded.form)
+        setStep(1)
+        setView('form')
+        setSaved(false)
+        setUnderwritingMemo(row.underwritingMemo || '')
+        setUnderwritingError('')
+        setResumed(false)
+        setEditing({ id: row._rowIndex, label: row.leadSource ? leadTicketNo(row._rowIndex) : (row['รหัส/ชื่อทรัพย์'] || `รายการ ${row._rowIndex}`), rebuilt: loaded.rebuilt })
+      })
+      .catch(e => showToast('เปิดรายการประเมินไม่สำเร็จ: ' + e.message))
+      .finally(() => { if (!cancelled) setEditLoading(false) })
+    return () => { cancelled = true }
+  }, [editId, reloadTick])
   const compsLoadedRef = useRef(false)
   const seqLoadedRef = useRef(false)
+
+  // ประเมินรายการเดิม: แก้ฟอร์มหลังบันทึกแล้วต้องบันทึกซ้ำได้ (รายการใหม่คงพฤติกรรมเดิม กันบันทึกซ้ำเป็นสองรายการ)
+  useEffect(() => { if (editing) setSaved(false) }, [form, editing])
 
   const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
   const updateDeed = (idx, key, val) => setForm(prev => ({ ...prev, deeds: prev.deeds.map((d, i) => i === idx ? { ...d, [key]: val } : d) }))
@@ -3214,9 +3326,10 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
     localStorage.setItem(VALUATION_DRAFT_KEY, JSON.stringify({
       form,
       step,
+      editing: editing ? { id: editing.id, label: editing.label } : null,
       updatedAt: new Date().toISOString(),
     }))
-  }, [form, step])
+  }, [form, step, editing])
 
   // โหลด sequence number จากจำนวนประเมินทั้งหมด
   useEffect(() => {
@@ -3364,7 +3477,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
     setSaving(true)
     try {
       const primaryDeed = form.deeds[0] || {}
-      await apiSaveValuation({
+      const result = await apiSaveValuation({
         ...form,
         ...calc,
         savedAt: new Date().toISOString(),
@@ -3380,8 +3493,13 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
         govPrice: calc.weightedGovPrice,
         // ข้อจำกัดเอกสารสิทธิ์ (เช่น "น.ส.3: ขายฝากได้แบบมีเงื่อนไข") ต่อท้ายคอลัมน์ปัจจัยเสี่ยง — ประเภทรายแปลงอยู่ใน deeds[].docType
         deedRiskText: deedRiskText(form),
-      })
+        // ฟอร์มทั้งชุด + ผลวิเคราะห์ AI เก็บไว้กับรายการ (เปิดมาประเมินต่อได้ครบ)
+        formSnapshot: formSnapshotOf(form, { assessed: true }),
+        underwritingMemo: underwritingMemo.trim(),
+      }, editing ? { updateId: editing.id } : {})
       setSaved(true)
+      if (result?.dropped?.length) showToast('บันทึกผลประเมินแล้ว แต่ยังเก็บฟอร์มทั้งชุดและผลวิเคราะห์ AI ไม่ได้: ต้องรันไฟล์ supabase_valuation_workflow.sql ใน Supabase ก่อน')
+      else if (editing) showToast(`บันทึกกลับรายการ ${editing.label} แล้ว`, 'success')
     } catch (e) {
       showToast('เกิดข้อผิดพลาด: ' + e.message)
     } finally {
@@ -3445,6 +3563,8 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
     setSaved(false)
     setUnderwritingMemo('')
     setUnderwritingError('')
+    setEditing(null)
+    onEditDone?.()
   }
 
   const btn = (primary, ghost) => ({
@@ -3490,6 +3610,27 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
           <button onClick={onBack} style={{ ...btn(false), marginLeft: 'auto' }}>← กลับหน้าหลัก</button>
         </div>
 
+        {/* กำลังประเมินรายการเดิม (เปิดมาจากหน้านายทุน) */}
+        {view === 'form' && (editing || editLoading) && (
+          <div className="no-print" role="status" style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 10, border: `1px solid ${BRAND.teal}`, background: 'rgba(45,212,191,0.08)', color: BRAND.textPri, fontSize: 13, lineHeight: 1.6 }}>
+            {editLoading ? 'กำลังเปิดรายการประเมิน…' : (
+              <>
+                <b>กำลังประเมินรายการ {editing.label}</b> · กดบันทึกในขั้นสุดท้ายแล้วผลจะกลับไปที่รายการเดิม ไม่สร้างรายการใหม่
+                {resumed && (
+                  <div>
+                    เปิดงานที่ทำค้างไว้บนเครื่องนี้ (ยังไม่ได้บันทึกกลับรายการ) ·{' '}
+                    <button type="button" onClick={() => { if (window.confirm('ทิ้งสิ่งที่กรอกค้างไว้ แล้วเริ่มจากข้อมูลที่บันทึกไว้ล่าสุดของรายการนี้?')) setReloadTick(t => t + 1) }}
+                      style={{ padding: 0, border: 0, background: 'none', color: BRAND.teal, font: 'inherit', fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}>
+                      เริ่มใหม่จากข้อมูลที่บันทึกไว้
+                    </button>
+                  </div>
+                )}
+                {editing.rebuilt && <div style={{ color: BRAND.gold }}>รายการนี้ยังไม่เคยประเมินละเอียด: ตรวจช่องประเภทเอกสารสิทธิ์ ประวัติน้ำท่วม และความเสี่ยงอีกครั้ง เพราะข้อมูลที่ผู้ส่งกรอกมาไม่ครบทุกช่อง</div>}
+              </>
+            )}
+          </div>
+        )}
+
         {/* History View */}
         {view === 'history' && <HistoryView appsScriptUrl={appsScriptUrl} />}
 
@@ -3498,7 +3639,7 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
           <>
             <Stepper step={step} />
             {step === 1 && <Step1 form={form} update={update} updateDeed={updateDeed} addDeed={addDeed} removeDeed={removeDeed} customers={customers} assetCode={form.assetCode} />}
-            {step === 2 && <Step2 form={form} update={update} updateDeed={updateDeed} calc={calc} comps={comps} nearbyPricePoints={nearbyPricePoints} nearbyLoading={nearbyLoading} />}
+            {step === 2 && <Step2 form={form} update={update} updateDeed={updateDeed} calc={calc} comps={comps} nearbyPricePoints={nearbyPricePoints} nearbyLoading={nearbyLoading} valuationId={editing?.id || null} />}
             {step === 3 && <Step3 form={form} update={update} calc={calc} policy={underwritingPolicy} />}
             {step === 4 && (
               <Step4
@@ -3520,9 +3661,10 @@ export default function ValuationPage({ onBack, appsScriptUrl, customers = [] })
                 {step === 4 && (
                   <>
                     <button onClick={handleReset} style={btn(false)}>+ ทรัพย์ใหม่</button>
+                    {editing && saved && <button onClick={onBack} style={{ ...btn(false), color: BRAND.teal }}>← กลับไปส่งสรุปให้นายทุน</button>}
                     <button onClick={handlePrint} style={{ ...btn(false), color: BRAND.gold }}>📄 PDF</button>
                     <button onClick={handleSave} disabled={saving || saved} style={{ ...btn(true), opacity: saved ? 0.7 : 1 }}>
-                      {saving ? 'กำลังบันทึก...' : saved ? '✅ บันทึกแล้ว' : '💾 บันทึกข้อมูล'}
+                      {saving ? 'กำลังบันทึก...' : saved ? '✅ บันทึกแล้ว' : editing ? `💾 บันทึกกลับรายการ ${editing.label}` : '💾 บันทึกข้อมูล'}
                     </button>
                   </>
                 )}

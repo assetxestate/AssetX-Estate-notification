@@ -6,6 +6,7 @@ import { submitPublicAssessment, uploadPublicLeadFile, notifyPublicLead } from '
 import { compressImage, isImageFile, MAX_FILES } from './lib/leadImage.js'
 import AssessChat from './AssessChat.jsx'
 import { parseLeadParams, LEAD_SOURCES, leadTicketNo, buildLeadNote } from './lib/leadSource.js'
+import { formSnapshotOf } from './lib/valuationWorkflow.js'
 import { POSTER_CONTACT } from './lib/posterDesignSystem.js'
 import {
   ASSESSMENT_TYPES, PROPERTY_TYPES, PROPERTY_SUBTYPES, PROVINCES,
@@ -152,6 +153,8 @@ export default function AssessPage() {
         projectName: `${form.contactName} — ${form.deeds[0]?.titleDeedNo || 'ไม่มีเลขโฉนด'}`,
         customerName: form.contactName,
         locationNote: buildLeadNote({ mapLink: form.mapLink, note: form.note }),
+        // ช่องที่ไม่มีคอลัมน์ของตัวเอง (ประเภทเอกสารสิทธิ์ น้ำท่วม ความเสี่ยง) ส่งไปด้วย ให้ทีมงานเปิดประเมินต่อได้ครบ
+        formSnapshot: formSnapshotOf({ ...form, locationNote: buildLeadNote({ mapLink: form.mapLink, note: form.note }) }),
       })
       // ส่งรูปทีละรูป: รูปที่ส่งไม่ผ่านไม่ทำให้รายการหาย แจ้งผู้ส่งให้ส่งทาง LINE แทน
       let failed = 0

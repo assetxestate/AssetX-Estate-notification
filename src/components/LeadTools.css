@@ -1,6 +1,15 @@
 /* เครื่องมือบนการ์ด lead (หน้า นายทุน → Lead จากเว็บ) — ใช้ตัวแปรสีชุดเดียวกับการ์ดใน InvestorPage (มีคู่สว่าง/มืดใน theme.css) */
 .lt { margin-bottom: 14px; font-size: 13px; color: var(--ax-c-e2e8f0); }
 .lt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lt-steps { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; font-weight: 600; }
+.lt-steps li { color: var(--ax-c-f59e0b); }
+.lt-steps li::before { content: "○ "; }
+.lt-steps li[data-done="true"] { color: var(--ax-c-2dd4bf); }
+.lt-steps li[data-done="true"]::before { content: "● "; }
+.lt-tab[data-kind="go"] { background: var(--ax-c-2dd4bf); border-color: var(--ax-c-2dd4bf); color: var(--ax-c-000); }
+.lt-note[data-tone="warn"] { color: var(--ax-c-f59e0b); font-weight: 600; }
+.lt-approve { display: grid; gap: 4px; margin-bottom: 10px; font-size: 12px; color: var(--ax-c-94a3b8); }
+.lt-approve input { box-sizing: border-box; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: var(--ax-c-050b18); color: var(--ax-c-e2e8f0); font: inherit; font-size: 14px; }
 .lt-status { flex: 1 1 180px; color: var(--ax-c-f59e0b); font-weight: 600; }
 .lt-status[data-done="true"] { color: var(--ax-c-2dd4bf); }
 .lt-tab, .lt-btn, .lt-choice { min-height: 36px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: transparent; color: var(--ax-c-e2e8f0); font: inherit; font-weight: 600; cursor: pointer; }
@@ -23,3 +32,7 @@
 .lt-needs { display: grid; gap: 6px; }
 .lt-needs label { display: flex; align-items: center; gap: 8px; }
 .lt-preview { margin: 0; padding: 12px; border-radius: 8px; border: 1px dashed var(--ax-border-lt); background: var(--ax-c-111d35); color: var(--ax-c-e2e8f0); font: inherit; font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
+.lt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.lt-grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.lt-draft { font-size: 13px !important; line-height: 1.65; min-height: 220px; }
+@media (max-width: 640px) { .lt-grid, .lt-grid[data-cols="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

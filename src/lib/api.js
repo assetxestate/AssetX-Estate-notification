@@ -328,10 +328,36 @@ export async function getValuations() {
     leadReplyResult: v.lead_reply_result || "",
     createdAt: v.created_at || "",
     totalSqw: v.total_sqw || 0,
+    // เส้นทางหลังรับทรัพย์ (คอลัมน์จาก supabase_valuation_workflow.sql)
+    formSnapshot: v.form_snapshot || null,
+    underwritingMemo: v.underwriting_memo || "",
+    underwritingAt: v.underwriting_at || "",
+    investorSentAt: v.investor_sent_at || "",
+    investorSummary: v.investor_summary || "",
+    approvedLoan: v.approved_loan || 0,
+    _customerId: v.customer_id || "",
   }));
 }
 
-export async function saveValuation(data) {
+// คอลัมน์เสริมที่มาจากไฟล์ SQL ทีหลัง: ถ้าฐานข้อมูลยังไม่มีคอลัมน์ไหน ให้ตัดคอลัมน์นั้นแล้วลองใหม่
+// (งานหลักต้องบันทึกได้เสมอ) · คืน { data, error, dropped } — dropped = ชื่อคอลัมน์ที่ยังไม่มี
+async function writeWithOptionalColumns(run, base, extras = {}) {
+  const pending = { ...extras };
+  const dropped = [];
+  for (let attempt = 0; attempt <= Object.keys(extras).length; attempt++) {
+    const { data, error } = await run({ ...base, ...pending });
+    if (!error) return { data, error: null, dropped };
+    const detail = `${error.message || ""} ${error.details || ""}`;
+    const missing = Object.keys(pending).find((key) => detail.includes(key));
+    if (!missing) return { data: null, error, dropped };
+    delete pending[missing];
+    dropped.push(missing);
+  }
+  return { data: null, error: new Error("บันทึกไม่สำเร็จ"), dropped };
+}
+
+// updateId = เลขรายการเดิม → อัปเดตรายการนั้นด้วยผลประเมินเต็มจากฟอร์ม (ไม่แตะสถานะ ผู้ติดต่อ ที่มาของ lead และวันที่รับเรื่อง)
+export async function saveValuation(data, { updateId } = {}) {
   const riskLabels = {
     flood: "เสี่ยงน้ำท่วม", hardAccess: "เข้าถึงยาก/ซอยตัน",
     irregularShape: "รูปแปลงผิดปกติ", encumbrance: "มีภาระผูกพัน",
@@ -396,16 +422,26 @@ export async function saveValuation(data) {
     contact_phone: data.contactPhone || "",
     contact_line: data.contactLine || "",
   };
-  // ที่มาของ lead (หน้า /assess เท่านั้น) — คอลัมน์จาก supabase_valuation_lead_source.sql
-  const leadFields = data.leadSource
-    ? { lead_source: data.leadSource, lead_ref: data.leadRef || "" }
-    : null;
-  let { data: inserted, error } = await supabase.from("valuations")
-    .insert(leadFields ? { ...row, ...leadFields } : row).select("id").single();
-  // ยังไม่ได้รัน SQL เพิ่มคอลัมน์ → บันทึก lead ไว้ก่อนโดยไม่มีที่มา ดีกว่าทำให้ฟอร์มสาธารณะส่งไม่ได้
-  if (error && leadFields && /lead_(source|ref)/.test(`${error.message || ""} ${error.details || ""}`)) {
-    ({ data: inserted, error } = await supabase.from("valuations").insert(row).select("id").single());
+  const extras = {
+    // ที่มาของ lead (หน้า /assess เท่านั้น) — supabase_valuation_lead_source.sql
+    ...(data.leadSource && !updateId ? { lead_source: data.leadSource, lead_ref: data.leadRef || "" } : {}),
+    // ฟอร์มทั้งชุด ไว้เปิดประเมินต่อได้ครบทุกช่อง + บันทึกวิเคราะห์หลักประกัน — supabase_valuation_workflow.sql
+    ...(data.formSnapshot ? { form_snapshot: data.formSnapshot } : {}),
+    ...(data.underwritingMemo ? { underwriting_memo: data.underwritingMemo, underwriting_at: new Date().toISOString() } : {}),
+  };
+
+  if (updateId) {
+    const { recorded_at, status, customer_name, contact_name, contact_phone, contact_line, ...assessment } = row;
+    const result = await writeWithOptionalColumns(
+      (payload) => supabase.from("valuations").update(payload).eq("id", updateId).select("id").single(),
+      assessment, extras);
+    if (result.error) throw result.error;
+    return { success: true, rowIndex: updateId, dropped: result.dropped };
   }
+
+  // ยังไม่ได้รัน SQL เพิ่มคอลัมน์ → บันทึกไว้ก่อนโดยไม่มีคอลัมน์เสริม ดีกว่าทำให้ฟอร์มสาธารณะส่งไม่ได้
+  const { data: inserted, error } = await writeWithOptionalColumns(
+    (payload) => supabase.from("valuations").insert(payload).select("id").single(), row, extras);
   if (error) throw error;
   await saveAreaPricePointFromValuation(inserted.id, data).catch(() => {});
   return { success: true, rowIndex: inserted.id };
@@ -511,6 +547,17 @@ export async function getLeadFiles(id) {
   return Array.isArray(data.files) ? data.files : [];
 }
 
+// คิวสำรวจราคาตลาดจากประกาศขาย (server/market-survey-jobs.js · ต้องล็อกอิน) — งานรันบนคอมสำนักงาน หน้าเว็บถามสถานะเป็นระยะ
+async function marketSurveyCall(method, { query = "", body } = {}) {
+  const res = await fetch(`/api/market-survey${query}`, { method, credentials: "same-origin", cache: "no-store", ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "ติดต่อคิวสำรวจราคาไม่สำเร็จ");
+  return data;
+}
+export const getMarketSurvey = ({ id, valuationId } = {}) => marketSurveyCall("GET", { query: id ? `?id=${encodeURIComponent(id)}` : valuationId ? `?valuation_id=${encodeURIComponent(valuationId)}` : "" });
+export const createMarketSurvey = ({ valuationId, request }) => marketSurveyCall("POST", { body: { action: "create", valuation_id: valuationId || null, request } });
+export const cancelMarketSurvey = (id) => marketSurveyCall("POST", { body: { action: "cancel", id } });
+
 // บันทึกว่าตอบผลเบื้องต้นกลับผู้ส่งแล้ว (คอลัมน์จาก supabase_lead_files_reply.sql)
 export async function markLeadReplied(rowIndex, result) {
   const repliedAt = new Date().toISOString();
@@ -518,6 +565,35 @@ export async function markLeadReplied(rowIndex, result) {
     .update({ lead_replied_at: repliedAt, lead_reply_result: result || "" }).eq("id", rowIndex);
   if (error) throw error;
   return repliedAt;
+}
+
+// ส่งสรุปให้นายทุนแล้ว → ย้ายไปแท็บรอตัดสินใจ พร้อมเก็บเวลาและข้อความที่ส่ง (ไว้ดูว่ารอผลมานานแค่ไหน)
+export async function markInvestorSent(rowIndex, summary) {
+  const sentAt = new Date().toISOString();
+  const result = await writeWithOptionalColumns(
+    (payload) => supabase.from("valuations").update(payload).eq("id", rowIndex).select("id").single(),
+    { status: "รอการพิจารณา" }, { investor_sent_at: sentAt, investor_summary: String(summary || "").slice(0, 4000) });
+  if (result.error) throw result.error;
+  return { sentAt: result.dropped.includes("investor_sent_at") ? "" : sentAt, dropped: result.dropped };
+}
+
+// นายทุนอนุมัติ → เก็บวงเงินที่อนุมัติ ใช้เป็นเงินต้นตั้งต้นตอนสร้างสัญญา
+export async function approveValuation(rowIndex, approvedLoan) {
+  const amount = Number(approvedLoan) > 0 ? Number(approvedLoan) : null;
+  const result = await writeWithOptionalColumns(
+    (payload) => supabase.from("valuations").update(payload).eq("id", rowIndex).select("id").single(),
+    { status: "อนุมัติ" }, amount ? { approved_loan: amount } : {});
+  if (result.error) throw result.error;
+  return { approvedLoan: result.dropped.includes("approved_loan") ? 0 : (amount || 0), dropped: result.dropped };
+}
+
+// สร้างสัญญาแล้ว → ผูกรายการประเมินกับรหัสลูกค้า (ปุ่มเบรกทรัพย์/ยกเลิกสัญญาใช้รหัสนี้หาลูกค้า)
+export async function linkValuationCustomer(rowIndex, customerId) {
+  const result = await writeWithOptionalColumns(
+    (payload) => supabase.from("valuations").update(payload).eq("id", rowIndex).select("id").single(),
+    { status: "สร้างสัญญาแล้ว" }, { customer_id: customerId });
+  if (result.error) throw result.error;
+  return { dropped: result.dropped };
 }
 
 export async function updateValuation(rowIndex, data) {

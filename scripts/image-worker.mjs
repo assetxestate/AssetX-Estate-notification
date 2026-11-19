@@ -30,6 +30,7 @@ import { parseVariantLine } from '../src/lib/posterVariants.js'
 import { fillFreeImages, footerContactLines, parseFreeModeLine, PLACEHOLDER_FREE_IMAGES } from '../src/lib/posterFree.js'
 import { scrub } from '../server/research/pii.js'
 import { claimNextContentJob, CONTENT_JOB_TABLE, isMissingTable, processContentJob, releaseStaleContentJobs } from '../server/content-jobs-worker.js'
+import { runSurveyLoop } from '../server/market-survey-worker.js'
 import { generateFreshContent } from '../server/research/fresh.js'
 import { loadKnowledgeBase } from '../server/research/knowledge.js'
 import { loadHookLessons, loadHookPatterns } from '../server/research/hooks.js'
@@ -38,7 +39,8 @@ import { planPremiumPoster } from '../server/poster-premium-plan.js'
 
 // 2 = รับงานคิดคอนเทนต์ใหม่ได้ (หน้าเว็บดู info.content_jobs ว่าตัวรับงานที่เปิดอยู่เป็นรุ่นนี้หรือยัง)
 // 3 = รับโปสเตอร์โหมดพรีเมียมได้ (info.premium_posters · 9 พ.ย. 2569)
-const VERSION = '3'
+// 4 = รับงานสำรวจราคาตลาดได้ (info.market_survey · คิว market_survey_jobs · 18 พ.ย. 2569)
+const VERSION = '4'
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 config({ path: path.join(repo, '.env.local'), quiet: true })
 config({ path: path.join(repo, '.env'), quiet: true })
@@ -334,7 +336,7 @@ async function heartbeat(db, busyJob = null, busyContentJob = null) {
   const { error } = await db.from('marketing_image_worker').upsert({
     id: WORKER_ID,
     last_seen_at: new Date().toISOString(),
-    info: { version: VERSION, host: os.hostname(), busy_job: busyJob, content_jobs: true, premium_posters: true, busy_content_job: busyContentJob },
+    info: { version: VERSION, host: os.hostname(), busy_job: busyJob, content_jobs: true, premium_posters: true, market_survey: true, busy_content_job: busyContentJob },
   }, { onConflict: 'id' })
   if (error) throw error
 }
@@ -613,6 +615,8 @@ async function main() {
       }
     }
     if (!ONCE) contentLoop().catch((err) => log('ลูปคิดคอนเทนต์ใหม่หยุด:', shortError(err)))
+    // สำรวจราคาตลาด: ลูปที่สาม ไม่รอคิวภาพและคิวคิดคอนเทนต์ (Codex คนละ process)
+    if (!ONCE) runSurveyLoop({ db, workerId: WORKER_ID, log, isStopping: () => stopping, onBusy: () => beat() }).catch((err) => log('ลูปสำรวจราคาตลาดหยุด:', shortError(err)))
     while (!stopping) {
       await syncRefs()
       let job = null

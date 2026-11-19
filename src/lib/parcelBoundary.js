@@ -63,6 +63,32 @@ function pointsFromCoordinateText(text) {
   return normalizePoints(points)
 }
 
+// เนื้อที่ของรูปหลายเหลี่ยมบนผิวโลก (ตารางเมตร) จากจุด { lat, lng } — ค่าประมาณจากการคลิกบนภาพถ่าย ไม่ใช่แนวเขตทางการ
+export function geodesicAreaSqm(points = []) {
+  if (!Array.isArray(points) || points.length < 3) return 0
+  const earthRadius = 6378137
+  const toRadians = value => value * Math.PI / 180
+  let area = 0
+  for (let i = 0; i < points.length; i += 1) {
+    const current = points[i]
+    const next = points[(i + 1) % points.length]
+    area += toRadians(next.lng - current.lng) * (2 + Math.sin(toRadians(current.lat)) + Math.sin(toRadians(next.lat)))
+  }
+  return Math.abs(area * earthRadius * earthRadius / 2)
+}
+
+// แนวเขตที่วาดไว้ของฟอร์มประเมิน → { sqw, count, complete } · แนวเขตรายแปลงใน deeds ก่อน ไม่มีค่อยใช้ของฟอร์ม
+// complete = ทุกแปลงมีแนวเขต (เทียบกับเนื้อที่รวมหน้าโฉนดได้)
+export function drawnBoundarySummary(form = {}) {
+  const ok = (b) => Array.isArray(b?.points) && b.points.length >= 3
+  const deeds = Array.isArray(form.deeds) ? form.deeds : []
+  const perDeed = deeds.map((d) => d?.parcelBoundary).filter(ok)
+  const list = perDeed.length ? perDeed : ok(form.parcelBoundary) ? [form.parcelBoundary] : []
+  if (!list.length) return null
+  const sqw = Math.round(list.reduce((sum, b) => sum + geodesicAreaSqm(b.points), 0) / 4 * 10) / 10
+  return { sqw, count: list.length, complete: deeds.length <= 1 || perDeed.length === deeds.length }
+}
+
 export function parseParcelBoundary(text, fileName = '') {
   const value = String(text || '').trim()
   if (!value) throw new Error('Boundary data is empty')
