@@ -4,33 +4,44 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
-import { photoReviewFacts, buildPhotoReviewPrompt, normalizePhotoReview, photoReviewText, photoReviewWait, PHOTO_REVIEW_CAVEAT, PHOTO_REVIEW_MAX_IMAGES } from '../src/lib/photoReview.js'
+import { photoReviewFacts, photoReviewEntered, photoReviewImpact, photoFieldLine, buildPhotoReviewPrompt, normalizePhotoReview, photoReviewText, photoReviewWait, PHOTO_REVIEW_CAVEAT, PHOTO_REVIEW_MAX_IMAGES } from '../src/lib/photoReview.js'
+import { RISK_FACTORS } from '../src/lib/valuationOptions.js'
 import { requestPhotoReview, processPhotoReview, readReviewState, nextQueuedReview, runPhotoReviewLoop, isPropertyPhoto, reviewPath, queuePath } from './photoReview.js'
 import { createLeadFilesHandler } from './leadFiles.js'
 
 const ROW = {
   id: 7, status: 'Lead จากเว็บ', assessment_type: 'ขายฝาก', property_type: 'ที่ดิน', property_subtype: 'ที่ดินเปล่า (โฉนด)',
-  province: 'กรุงเทพมหานคร', district: 'ดอนเมือง', subdistrict: 'สีกัน', total_sqw: 722, road_type: 'ติดถนนใหญ่', road_width: 12,
+  province: 'กรุงเทพมหานคร', district: 'ดอนเมือง', subdistrict: 'สีกัน', total_sqw: 722, road_type: 'ติดถนนหลัก 2 เลน (สายหลัก)', road_width: '6–7 ม. (คสล./ลาดยาง)', soil_condition: 'ถมเรียบร้อย ระดับดี / ใช้ได้เลย',
   risks: { hardAccess: false, noUtilities: true },
   deeds: [{ titleDeedNo: '99999', docType: 'chanote' }],
   contact_name: 'สมมติ ทดสอบ', contact_phone: '0800000000', contact_line: 'testline', lat: 13.9, lng: 100.6, requested_loan: 1500000, gov_price: 20000,
 }
 
 const ANSWER = {
-  summary: 'รูปแสดงที่ดินมีอาคารชั้นเดียวอยู่ด้านใน ติดซอยคอนกรีต',
-  observations: [
-    { topic: 'สิ่งปลูกสร้าง', seen: 'มีอาคารชั้นเดียวหลังคากระเบื้อง', photos: [1, 2, 9], confidence: 'high' },
-    { topic: 'ถนนหน้าทรัพย์', seen: 'ซอยคอนกรีตกว้างประมาณ 4 เมตร', photos: [3], confidence: 'sure' },
-    { topic: 'มูลค่า', seen: 'น่าจะขายได้ราว 5 ล้านบาท', photos: [1], confidence: 'high' },
-    { topic: 'ป้าย', seen: 'มีป้ายติดต่อ 081-234-5678', photos: [2], confidence: 'medium' },
+  summary: 'รูปชี้ว่าทางเข้าแคบกว่าที่กรอกและมีคนใช้พื้นที่อยู่',
+  fields: [
+    { field: 'roadType', suggest: 'ซอยตัน / ปลายซอย', evidence: 'ทางสิ้นสุดที่หน้าแปลง', photos: [1, 9], confidence: 'high' },
+    { field: 'roadWidth', suggest: '12–19 ม.', evidence: 'ถนนดูกว้าง', photos: [2], confidence: 'sure' },
+    { field: 'soilCondition', suggest: 'ถมเรียบร้อย ระดับดี / ใช้ได้เลย', evidence: 'พื้นเสมอถนน', photos: [3], confidence: 'medium' },
+    { field: 'landFrontage', suggest: 'กว้างมาก', evidence: 'ตัวเลือกนี้ไม่มีในฟอร์ม', photos: [1], confidence: 'high' },
+    { field: 'roadType', suggest: 'ซอยสั้น < 100ม. ออกถนนใหญ่', evidence: 'ช่องซ้ำ', photos: [1], confidence: 'high' },
+  ],
+  risks: [
+    { key: 'nuisance', evidence: 'เห็นเสาไฟฟ้าแรงสูงติดแปลง', photos: [2], confidence: 'high' },
+    { key: 'noUtilities', evidence: 'ไม่เห็นเสาไฟและมิเตอร์', photos: [1], confidence: 'medium' },
+    { key: 'ghost', evidence: 'ไม่มีคีย์นี้', photos: [1], confidence: 'high' },
+  ],
+  flags: [
+    { topic: 'occupancy', finding: 'มีรถจอดและของใช้ในลาน', effect: 'risk', affects: ['liquidity', 'legal', 'cost', 'x'], action: 'ถามว่าใครใช้พื้นที่และส่งมอบได้เมื่อใด', photos: [3], confidence: 'high' },
+    { topic: 'structure', finding: 'ขายได้ราว 5 ล้านบาท', effect: 'support', affects: ['fsv'], action: '', photos: [1], confidence: 'high' },
+    { topic: 'sign', finding: 'มีป้ายติดต่อ 081-234-5678', effect: 'neutral', affects: [], action: 'ควรรับที่วงเงินต่ำ', photos: [2], confidence: 'medium' },
+    { topic: 'access', finding: 'มีป้ายบอกทาง 081-234-5678 หน้าซอย', effect: 'support', affects: ['liquidity'], action: 'ตรวจเส้นทาง', photos: [2], confidence: 'medium' },
   ],
   mismatches: [
     { field: 'ประเภททรัพย์', entered: 'ที่ดินเปล่า (โฉนด)', seen: 'มีอาคารอยู่บนที่ดิน', photos: [1] },
     { field: 'วงเงิน', entered: '', seen: 'ควรรับที่วงเงินต่ำ', photos: [] },
   ],
-  cannot_tell: ['แนวเขตแปลง', 'ราคาซื้อขายแถวนี้'],
-  check_on_site: ['ขอรูปถนนหน้าทรัพย์ให้เห็นความกว้าง'],
-  photo_quality: 'รูปชัด แต่ไม่มีรูปมุมกว้าง',
+  need_photos: ['รูปถนนหน้าทรัพย์มุมกว้าง เพื่อตัดสินความกว้างถนน', 'รูปที่ช่วยตั้งราคาตลาดแถวนี้'],
 }
 
 // ที่เก็บไฟล์ปลอมในหน่วยความจำ
@@ -68,25 +79,64 @@ test('ข้อมูลที่ส่งให้ AI ไม่มีชื่�
   assert.match(prompt, /เนื้อที่รวม: 722 ตารางวา/)
   assert.match(prompt, /ปัจจัยเสี่ยงที่ผู้ส่งติ๊ก: ไม่มีสาธารณูปโภค/)
   assert.match(prompt, /มีรูปทรัพย์ 3 รูป/)
+  assert.match(prompt, /ลักษณะถนน\/ทำเล: ติดถนนหลัก 2 เลน/)
+  // ตัวเลือกของฟอร์มและคีย์ปัจจัยเสี่ยงต้องอยู่ในคำสั่ง ให้ AI เลือกจากของจริง
+  assert.ok(prompt.includes('  - ซอยตัน / ปลายซอย'))
+  assert.ok(prompt.includes('  - nuisance: '))
+  assert.deepEqual(photoReviewEntered(ROW), { fields: { roadType: 'ติดถนนหลัก 2 เลน (สายหลัก)', roadWidth: '6–7 ม. (คสล./ลาดยาง)', landFrontage: '', soilCondition: 'ถมเรียบร้อย ระดับดี / ใช้ได้เลย' }, risks: ['noUtilities'] })
   assert.match(buildPhotoReviewPrompt([], 1), /ไม่ได้กรอกข้อมูลที่เทียบกับรูปได้/)
 })
 
-test('ผลของ AI: ตัดข้อที่ตั้งราคาหรือตัดสิน ตัดเลขยาว และคุมเลขรูปให้อยู่ในช่วง', () => {
+test('ผลของ AI: รับเฉพาะตัวเลือกที่มีในฟอร์ม ตัดข้อที่ตั้งราคาหรือตัดสิน ตัดเลขยาว และคุมเลขรูป', () => {
   const review = normalizePhotoReview(JSON.stringify(ANSWER), { imageCount: 3 })
-  assert.deepEqual(review.observations.map((o) => o.topic), ['สิ่งปลูกสร้าง', 'ถนนหน้าทรัพย์', 'ป้าย'])
-  assert.deepEqual(review.observations[0].photos, [1, 2])
-  assert.equal(review.observations[1].confidence, 'low')
-  assert.ok(!review.observations[2].seen.includes('081'))
+  assert.deepEqual(review.fields.map((f) => [f.field, f.suggest]), [['roadType', 'ซอยตัน / ปลายซอย'], ['roadWidth', '12–19 ม.'], ['soilCondition', 'ถมเรียบร้อย ระดับดี / ใช้ได้เลย']])
+  assert.deepEqual(review.fields[0].photos, [1])
+  assert.equal(review.fields[1].confidence, 'low')
+  assert.deepEqual(review.risks.map((r) => r.key), ['nuisance', 'noUtilities'])
+  assert.deepEqual(review.flags.map((f) => f.topic), ['occupancy', 'access'])
+  assert.deepEqual(review.flags[0].affects, ['liquidity', 'legal'])
+  assert.ok(!review.flags[1].finding.includes('081'))
   assert.deepEqual(review.mismatches.map((m) => m.field), ['ประเภททรัพย์'])
-  assert.deepEqual(review.cannotTell, ['แนวเขตแปลง'])
+  assert.deepEqual(review.needPhotos, ['รูปถนนหน้าทรัพย์มุมกว้าง เพื่อตัดสินความกว้างถนน'])
+  // คำตอบที่มีข้อความครอบ JSON ยังอ่านได้ · คำตอบที่ไม่ใช่ JSON หรือว่างเปล่าไม่ผ่าน
+  assert.equal(normalizePhotoReview('```json\n{"summary":"รูปชุดนี้ไม่เปลี่ยนการประเมิน"}\n```').summary, 'รูปชุดนี้ไม่เปลี่ยนการประเมิน')
+  assert.throws(() => normalizePhotoReview('ขออภัย อ่านรูปไม่ได้'))
+  assert.throws(() => normalizePhotoReview({ summary: 'ราคาประมาณ 3 ล้านบาท', flags: [] }))
+})
+
+test('ผลต่อการประเมิน: ตัวคูณและคะแนนมาจากตารางของระบบ และไม่เสนอปรับขึ้นจากรูป', () => {
+  const review = { ...normalizePhotoReview(ANSWER, { imageCount: 3 }), entered: photoReviewEntered(ROW) }
+  const impact = photoReviewImpact(review)
+  const byField = Object.fromEntries(impact.fields.map((f) => [f.field, f]))
+  // ถนนหลัก 2 เลน (×1.05) → ซอยตัน (×0.62): รูปขัดกับที่กรอก ราคาที่คำนวณลดลง
+  assert.equal(byField.roadType.status, 'differs')
+  assert.equal(byField.roadType.direction, 'down')
+  assert.deepEqual([byField.roadType.factorFrom, byField.roadType.factorTo], [1.05, 0.62])
+  assert.match(photoFieldLine(byField.roadType), /ตัวคูณ ×1\.05 → ×0\.62 \(ราคาที่ระบบคำนวณลดลง\)/)
+  // 6–7 ม. (×0.90) → 12–19 ม. (×1.00): ทางขึ้น ไม่นับเป็นข้อควรปรับ
+  assert.equal(byField.roadWidth.status, 'upward')
+  assert.match(photoFieldLine(byField.roadWidth), /ระบบไม่เสนอให้ปรับขึ้นจากรูป/)
+  assert.equal(byField.soilCondition.status, 'same')
+  const risks = Object.fromEntries(impact.risks.map((r) => [r.key, r]))
+  assert.equal(risks.nuisance.ticked, false)
+  assert.equal(risks.nuisance.score, RISK_FACTORS.find((r) => r.key === 'nuisance').score)
+  assert.equal(risks.noUtilities.ticked, true)
+  assert.equal(impact.changes, 2)
+  assert.equal(impact.addedRiskScore, risks.nuisance.score)
+  // ช่องที่ยังไม่ได้กรอก = เสนอให้เติม
+  const empty = photoReviewImpact({ fields: [{ field: 'landFrontage', suggest: '5–7 ม.', evidence: 'หน้าแปลงแคบ', photos: [1], confidence: 'medium' }], risks: [] }, photoReviewEntered(ROW))
+  assert.equal(empty.fields[0].status, 'empty')
+  assert.match(photoFieldLine(empty.fields[0]), /ยังไม่ได้กรอก · รูปชี้ว่า "5–7 ม\." · ตัวคูณ ×0\.90/)
+
   const text = photoReviewText(review)
   assert.ok(!/บาท|วงเงิน|081/.test(text))
+  const adjust = text.slice(text.indexOf('ควรปรับในฟอร์มประเมิน:'), text.indexOf('ข้อมูลที่กรอกขัดกับรูป:'))
+  assert.match(adjust, /ลักษณะถนน\/ทำเล: กรอกว่า "ติดถนนหลัก 2 เลน \(สายหลัก\)" · รูปชี้ว่า "ซอยตัน \/ ปลายซอย"/)
+  assert.match(adjust, /ยังไม่ได้ติ๊ก · รูปชี้ว่ามี \(คะแนนเสี่ยง \+12\)/)
+  assert.ok(!adjust.includes('ความกว้างถนน'))
   assert.match(text, /กรอกว่า ที่ดินเปล่า \(โฉนด\) · ในรูปเห็น มีอาคารอยู่บนที่ดิน \(รูปทรัพย์ที่ 1\)/)
+  assert.match(text, /การครอบครอง\/ผู้อยู่อาศัย: มีรถจอดและของใช้ในลาน \(รูปทรัพย์ที่ 3\) \[เพิ่มความเสี่ยง · กระทบสภาพคล่องตอนขาย และความเสี่ยงทางกฎหมาย\] → ถามว่าใครใช้พื้นที่/)
   assert.ok(text.endsWith(PHOTO_REVIEW_CAVEAT))
-  // คำตอบที่มีข้อความครอบ JSON ยังอ่านได้ · คำตอบที่ไม่ใช่ JSON หรือว่างเปล่าไม่ผ่าน
-  assert.equal(normalizePhotoReview('```json\n{"summary":"ที่ดินโล่ง"}\n```').summary, 'ที่ดินโล่ง')
-  assert.throws(() => normalizePhotoReview('ขออภัย อ่านรูปไม่ได้'))
-  assert.throws(() => normalizePhotoReview({ summary: 'ราคาประมาณ 3 ล้านบาท', observations: [] }))
 })
 
 test('กดขอ: เข้าคิวเฉพาะรายการที่มีรูปทรัพย์ · ขอซ้ำระหว่างรอได้คำขอเดิม', async () => {

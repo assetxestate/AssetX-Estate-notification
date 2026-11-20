@@ -3,7 +3,8 @@ import './LeadTools.css'
 import { showToast } from '../lib/toast.js'
 import { markLeadReplied, markInvestorSent } from '../lib/api.js'
 import { getLeadFilesWithReview, getPhotoReviewState, analyzeLeadPhotos } from '../lib/photoReviewApi.js'
-import { PHOTO_CONFIDENCE, PHOTO_REVIEW_CAVEAT, photoReviewText, photoReviewWait } from '../lib/photoReview.js'
+import BuildingCostPanel from './BuildingCostPanel.jsx'
+import { PHOTO_CONFIDENCE, PHOTO_REVIEW_CAVEAT, PHOTO_REVIEW_VERSION, PHOTO_TOPICS, photoFieldLine, photoFlagMeta, photoReviewImpact, photoReviewText, photoReviewWait, photoRiskLine } from '../lib/photoReview.js'
 import { POSTER_CONTACT } from '../lib/posterDesignSystem.js'
 import { REPLY_RESULTS, REPLY_NEEDS, buildBrokerReply, leadTicketNo, replyHours } from '../lib/leadSource.js'
 import { buildInvestorSummary, investorDefaults, waitingHours, isAssessed } from '../lib/valuationWorkflow.js'
@@ -106,7 +107,16 @@ export default function LeadTools({ row, onAssess, onReplied, onSent }) {
       setReviewError(e.message)
     }
   }
-  const hasReview = !!(review && (review.summary || review.observations?.length || review.mismatches?.length))
+  // ผลรุ่นเก่า (บรรยายรูป) ไม่แสดง ให้กดอ่านใหม่
+  const hasReview = !!(review && review.version === PHOTO_REVIEW_VERSION && (review.summary || review.fields?.length || review.risks?.length || review.flags?.length || review.mismatches?.length))
+  const impact = useMemo(() => photoReviewImpact(hasReview ? review : null), [review, hasReview])
+  // ข้อที่ควรปรับในฟอร์มประเมิน = ช่องที่รูปขัดหรือยังว่าง + ปัจจัยเสี่ยงที่ยังไม่ได้ติ๊ก (ตัวคูณและคะแนนจากตารางของระบบ)
+  const adjustments = [
+    ...impact.fields.filter(f => f.status === 'empty' || f.status === 'differs').map(f => ({ line: photoFieldLine(f), evidence: f.evidence, photos: f.photos, confidence: f.confidence })),
+    ...impact.risks.filter(r => !r.ticked).map(r => ({ line: photoRiskLine(r), evidence: r.evidence, photos: r.photos, confidence: r.confidence })),
+  ]
+  const unchanged = [...impact.fields.filter(f => f.status === 'same' || f.status === 'upward').map(photoFieldLine), ...impact.risks.filter(r => r.ticked).map(photoRiskLine)]
+  const confTag = (level) => <span className="lt-conf" data-level={level}>{PHOTO_CONFIDENCE[level] || PHOTO_CONFIDENCE.low}</span>
   const wait = pending ? photoReviewWait(pending.requestedAt, Date.now()) : null // tick ทำให้ข้อความเวลารอเดินทุกรอบถาม
   const propertyCount = (files || []).filter(f => f.kind === 'property').length
   const photoRef = (photos) => (photos?.length ? ` (รูปทรัพย์ที่ ${photos.join(', ')})` : '')
@@ -117,6 +127,8 @@ export default function LeadTools({ row, onAssess, onReplied, onSent }) {
     const next = panel === name ? '' : name
     setPanel(next)
     if (next === 'files') loadFiles()
+    // แผงสิ่งปลูกสร้างใช้ประเภทที่ AI เสนอจากรูป (ถ้าเคยอ่านไว้) — โหลดผลอ่านรูปมาเฉย ๆ ไม่เรียก AI
+    if (next === 'building' && isLead && !review) getPhotoReviewState(row._rowIndex).then(state => setReview(state.review)).catch(() => {})
   }
 
   const copy = async (text) => {
@@ -169,6 +181,7 @@ export default function LeadTools({ row, onAssess, onReplied, onSent }) {
         <button type="button" className="lt-tab" data-kind="go" onClick={() => onAssess?.(row._rowIndex)}>ประเมินละเอียด</button>
         {isLead && <button type="button" className="lt-tab" aria-expanded={panel === 'files'} onClick={() => toggle('files')}>รูปแนบ</button>}
         {isLead && <button type="button" className="lt-tab" aria-expanded={panel === 'reply'} onClick={() => toggle('reply')}>ข้อความตอบผู้ส่ง</button>}
+        <button type="button" className="lt-tab" aria-expanded={panel === 'building'} onClick={() => toggle('building')}>สิ่งปลูกสร้าง</button>
         <button type="button" className="lt-tab" aria-expanded={panel === 'investor'} onClick={() => toggle('investor')}>สรุปส่งนายทุน</button>
         {row.underwritingMemo && <button type="button" className="lt-tab" aria-expanded={panel === 'memo'} onClick={() => toggle('memo')}>ผลวิเคราะห์ AI</button>}
       </div>
@@ -200,39 +213,64 @@ export default function LeadTools({ row, onAssess, onReplied, onSent }) {
                       </div>
                       {propertyCount === 0
                         ? <p className="lt-note">รายการนี้มีแต่รูปเอกสารสิทธิ์ ซึ่งระบบไม่ส่งให้ AI เพราะมีชื่อเจ้าของทรัพย์</p>
-                        : !hasReview && !reviewBusy && <p className="lt-note">Codex บนคอมสำนักงานดูเฉพาะรูปทรัพย์ {propertyCount} รูป แล้วเทียบกับข้อมูลที่ผู้ส่งกรอก ใช้เวลาราว 1–2 นาที ไม่ส่งรูปเอกสารสิทธิ์ ชื่อ เบอร์ หรือเลขโฉนด</p>}
+                        : !hasReview && !reviewBusy && <p className="lt-note">Codex บนคอมสำนักงานดูเฉพาะรูปทรัพย์ {propertyCount} รูป แล้วบอกว่าควรปรับช่องไหนในฟอร์มประเมินและมีข้อไหนกระทบการขายทรัพย์ ใช้เวลาราว 1 นาที ไม่ส่งรูปเอกสารสิทธิ์ ชื่อ เบอร์ หรือเลขโฉนด</p>}
                       {wait && <p className="lt-note" data-tone={wait.late ? 'warn' : undefined}>{wait.text}</p>}
                       {reviewError && <p className="lt-note" data-tone="error">{reviewError}</p>}
+                      {review && !hasReview && review.version !== PHOTO_REVIEW_VERSION && review.summary && <p className="lt-note">ผลที่เก็บไว้เป็นรุ่นเก่า (บรรยายรูปอย่างเดียว) กด "ให้ AI อ่านรูปใหม่" เพื่อได้ผลต่อการประเมิน</p>}
                       {hasReview && (
                         <div className="lt-review-body">
                           {review.summary && <p className="lt-review-sum">{review.summary}</p>}
-                          {review.mismatches?.length > 0 ? (
+                          {adjustments.length > 0 ? (
                             <section>
-                              <h4 data-tone="warn">จุดที่รูปไม่ตรงกับข้อมูลที่กรอก</h4>
+                              <h4 data-tone="warn">ควรปรับในฟอร์มประเมิน ({adjustments.length} ข้อ{impact.addedRiskScore > 0 ? ` · คะแนนเสี่ยง +${impact.addedRiskScore}` : ''})</h4>
+                              <ul>
+                                {adjustments.map((a, i) => (
+                                  <li key={i}><b>{a.line}</b><span className="lt-why">{a.evidence}{photoRef(a.photos)} {confTag(a.confidence)}</span></li>
+                                ))}
+                              </ul>
+                            </section>
+                          ) : <p className="lt-note">รูปชุดนี้ไม่ชี้ให้ปรับช่องถนน สภาพดิน หรือปัจจัยเสี่ยงในฟอร์มประเมิน</p>}
+                          {review.mismatches?.length > 0 && (
+                            <section>
+                              <h4 data-tone="warn">ข้อมูลที่กรอกขัดกับรูป</h4>
                               <ul>
                                 {review.mismatches.map((m, i) => (
                                   <li key={i}><b>{m.field}:</b> กรอกว่า {m.entered || 'ไม่ระบุ'} · ในรูปเห็น {m.seen}{photoRef(m.photos)}</li>
                                 ))}
                               </ul>
                             </section>
-                          ) : <p className="lt-note">AI ไม่พบจุดที่รูปขัดกับข้อมูลที่กรอก (ไม่ได้แปลว่าข้อมูลถูกทุกข้อ)</p>}
-                          {review.observations?.length > 0 && (
+                          )}
+                          {review.flags?.length > 0 && (
                             <section>
-                              <h4>สิ่งที่เห็นในรูป</h4>
+                              <h4>ข้อสังเกตที่กระทบการประเมิน</h4>
                               <ul>
-                                {review.observations.map((o, i) => (
-                                  <li key={i}><b>{o.topic}:</b> {o.seen}{photoRef(o.photos)} <span className="lt-conf" data-level={o.confidence}>{PHOTO_CONFIDENCE[o.confidence] || PHOTO_CONFIDENCE.low}</span></li>
+                                {review.flags.map((f, i) => (
+                                  <li key={i}>
+                                    <b>{PHOTO_TOPICS[f.topic]}:</b> {f.finding}{photoRef(f.photos)} {confTag(f.confidence)}
+                                    <span className="lt-why" data-effect={f.effect}>{photoFlagMeta(f)}</span>
+                                    {f.action && <span className="lt-why">ควรทำ: {f.action}</span>}
+                                  </li>
                                 ))}
                               </ul>
                             </section>
                           )}
-                          {review.cannotTell?.length > 0 && (
-                            <section><h4>ดูจากรูปไม่ได้</h4><ul>{review.cannotTell.map((s, i) => <li key={i}>{s}</li>)}</ul></section>
+                          {review.buildings?.length > 0 && (
+                            <section>
+                              <h4>สิ่งปลูกสร้างที่เห็น (ประเภทตามบัญชีกรมธนารักษ์)</h4>
+                              <ul>
+                                {review.buildings.map((b, i) => (
+                                  <li key={i}><b>{b.what || 'สิ่งปลูกสร้าง'}:</b> ประเภท {b.typeId}{b.storeys ? ` · ${b.storeys} ชั้น` : ''}{b.condition ? ` · ${b.condition}` : ''}{photoRef(b.photos)} {confTag(b.confidence)}<span className="lt-why">{b.evidence}</span></li>
+                                ))}
+                              </ul>
+                              <p className="lt-note">เปิดแผง "สิ่งปลูกสร้าง" เพื่อกรอกพื้นที่และอายุ แล้วเทียบราคาประเมินของกรมธนารักษ์ตามจังหวัด</p>
+                            </section>
                           )}
-                          {review.checkOnSite?.length > 0 && (
-                            <section><h4>ควรตรวจเพิ่ม</h4><ul>{review.checkOnSite.map((s, i) => <li key={i}>{s}</li>)}</ul></section>
+                          {unchanged.length > 0 && (
+                            <section><h4>ช่องที่ไม่ต้องปรับ</h4><ul>{unchanged.map((line, i) => <li key={i}>{line}</li>)}</ul></section>
                           )}
-                          {review.photoQuality && <p className="lt-note">คุณภาพรูป: {review.photoQuality}</p>}
+                          {review.needPhotos?.length > 0 && (
+                            <section><h4>รูปที่ควรขอเพิ่ม</h4><ul>{review.needPhotos.map((line, i) => <li key={i}>{line}</li>)}</ul></section>
+                          )}
                           <p className="lt-note">
                             {PHOTO_REVIEW_CAVEAT}
                             {review.at ? ` · อ่านเมื่อ ${new Date(review.at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
@@ -244,6 +282,22 @@ export default function LeadTools({ row, onAssess, onReplied, onSent }) {
                     </div>
                   </>
                 )}
+        </div>
+      )}
+
+      {panel === 'building' && (
+        <div className="lt-panel">
+          <BuildingCostPanel
+            rowId={row._rowIndex}
+            province={row['จังหวัด']}
+            suggestions={hasReview ? review.buildings || [] : []}
+            suggestionsNote={isLead ? 'ถ้าต้องการให้ AI เสนอประเภทอาคารจากรูป กด "ให้ AI อ่านรูปทรัพย์" ในแผงรูปแนบก่อน' : ''}
+            onUse={({ total, text }) => {
+              setField('buildingGovValue', String(total))
+              setField('building', text)
+              showToast('ใส่ยอดและรายละเอียดสิ่งปลูกสร้างลงในสรุปส่งนายทุนแล้ว เปิดแผง "สรุปส่งนายทุน" เพื่อตรวจ', 'success')
+            }}
+          />
         </div>
       )}
 

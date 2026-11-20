@@ -31,6 +31,21 @@
 .lt-review-body h4 { margin: 0; font-size: 12px; font-weight: 700; color: var(--ax-c-94a3b8); }
 .lt-review-body h4[data-tone="warn"] { color: var(--ax-c-f59e0b); }
 .lt-review-body ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.bc { display: grid; gap: 10px; }
+.bc-row { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--ax-border-lt); border-radius: 8px; }
+.bc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bc-head b { flex: 1 1 160px; }
+.bc-remove { min-height: 32px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: transparent; color: var(--ax-c-94a3b8); font: inherit; font-size: 12px; cursor: pointer; }
+.bc-remove:focus-visible { outline: 2px solid var(--ax-c-2dd4bf); outline-offset: 2px; }
+.bc-grid { display: grid; grid-template-columns: minmax(0, 2.2fr) repeat(3, minmax(0, 1fr)); gap: 8px; align-items: end; }
+.bc-grid select { box-sizing: border-box; width: 100%; min-height: 38px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--ax-border-lt); background: var(--ax-c-111d35); color: var(--ax-c-e2e8f0); font: inherit; font-size: 14px; }
+.bc-line { margin: 0; font-size: 13px; color: var(--ax-c-f59e0b); }
+.bc-line[data-ready="true"] { color: var(--ax-c-e2e8f0); font-weight: 600; }
+.bc-total { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--ax-border-lt); font-size: 14px; }
+@media (max-width: 640px) { .bc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .bc-type { grid-column: 1 / -1; } }
+.lt-why { display: block; font-size: 12px; color: var(--ax-c-94a3b8); }
+.lt-why[data-effect="risk"] { color: var(--ax-c-f59e0b); font-weight: 600; }
+.lt-why[data-effect="support"] { color: var(--ax-c-2dd4bf); font-weight: 600; }
 .lt-conf { display: inline-block; margin-left: 4px; padding: 0 6px; border: 1px solid var(--ax-border-lt); border-radius: 999px; font-size: 11px; color: var(--ax-c-94a3b8); white-space: nowrap; }
 .lt-conf[data-level="high"] { border-color: var(--ax-c-2dd4bf); color: var(--ax-c-2dd4bf); }
 .lt-choices, .lt-actions { display: flex; flex-wrap: wrap; gap: 8px; }

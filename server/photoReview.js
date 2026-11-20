@@ -10,10 +10,11 @@ import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { codexLauncher } from './research/llm.js'
 import {
   PHOTO_REVIEW_MAX_BYTES, PHOTO_REVIEW_MAX_IMAGES, PHOTO_REVIEW_SYSTEM, PHOTO_REVIEW_VERSION,
-  buildPhotoReviewPrompt, normalizePhotoReview, photoReviewFacts,
+  buildPhotoReviewPrompt, normalizePhotoReview, photoReviewEntered, photoReviewFacts,
 } from '../src/lib/photoReview.js'
 
 export const PHOTO_BUCKET = 'lead-files'
@@ -31,6 +32,15 @@ export const reviewPath = (id, ms) => `${reviewDir(id)}/${String(ms).padStart(15
 export const queuePath = (id, ms) => `${QUEUE_DIR}/${id}-${ms}.json`
 const QUEUE_NAME = /^(\d+)-(\d+)\.json$/
 export const isPropertyPhoto = (name) => /^property-[\w-]+\.(jpe?g|png|webp)$/i.test(String(name || ''))
+// ประเภทสิ่งปลูกสร้างตามบัญชีของกรมธนารักษ์ (อ่านไฟล์เฉพาะตอนตัวรับงานทำงาน ไม่โหลดบนเซิร์ฟเวอร์เว็บ)
+let buildingTypesCache = null
+export async function treasuryBuildingTypes() {
+  if (!buildingTypesCache) {
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'lib', 'treasuryBuildingCosts.json')
+    buildingTypesCache = JSON.parse(await readFile(file, 'utf8')).types.map(([id, name]) => ({ id, name }))
+  }
+  return buildingTypesCache
+}
 const shortError = (err) => String(err?.message || err || 'ไม่ทราบสาเหตุ').replace(/\s+/g, ' ').trim().slice(0, 300)
 
 async function readJson(db, file) {
@@ -146,10 +156,11 @@ export async function processPhotoReview({ db, bucket = PHOTO_BUCKET, id, ask = 
     if (!images.length) throw new Error('เปิดรูปทรัพย์จากที่เก็บไฟล์ไม่สำเร็จ')
 
     const facts = photoReviewFacts(row)
-    const answer = await ask({ prompt: buildPhotoReviewPrompt(facts, images.length), imagePaths: images.map((i) => i.file), workDir })
+    const buildingTypes = await treasuryBuildingTypes().catch(() => [])
+    const answer = await ask({ prompt: buildPhotoReviewPrompt(facts, images.length, { buildingTypes }), imagePaths: images.map((i) => i.file), workDir })
     const seconds = Math.round((Date.now() - started) / 1000)
     const review = {
-      ...normalizePhotoReview(answer.text, { imageCount: images.length }),
+      ...normalizePhotoReview(answer.text, { imageCount: images.length, buildingTypeIds: buildingTypes.map((t) => t.id) }),
       version: PHOTO_REVIEW_VERSION,
       at: now().toISOString(),
       model: answer.model || 'codex',
@@ -157,10 +168,11 @@ export async function processPhotoReview({ db, bucket = PHOTO_BUCKET, id, ask = 
       photos: images.map((i) => i.name),
       skipped: names.length - images.length,
       facts,
+      entered: photoReviewEntered(row),
     }
     const saved = await writeJson(db, reviewPath(id, now().getTime()), review)
     if (saved.error) throw new Error('เก็บผลอ่านรูปไม่สำเร็จ')
-    log(`${label}: เสร็จใน ${seconds} วินาที · ${images.length} รูป · ไม่ตรง ${review.mismatches.length} จุด`)
+    log(`${label}: เสร็จใน ${seconds} วินาที · ${images.length} รูป · ช่องที่รูปชี้ ${review.fields.length} · ปัจจัยเสี่ยง ${review.risks.length} · ข้อสังเกต ${review.flags.length} · สิ่งปลูกสร้าง ${review.buildings.length}`)
     return { ok: true, review }
   } catch (err) {
     const message = shortError(err)
