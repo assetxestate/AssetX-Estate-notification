@@ -41,9 +41,15 @@ function fakeDb({ row = ROW, files = {} } = {}) {
     store, asked,
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: row, error: null }) }) }) }),
     storage: { from: () => ({
-      list: async (folder) => ({ data: [...store.keys()].filter((p) => p.startsWith(`${folder}/`)).map((p) => ({ name: p.split('/')[1], id: p })), error: null }),
+      // เหมือนที่เก็บจริง: คืนเฉพาะไฟล์ชั้นถัดไป รองรับ search · sortBy name · limit
+      list: async (folder, { search = '', sortBy, limit = 100 } = {}) => {
+        let names = [...store.keys()].filter((p) => p.startsWith(`${folder}/`)).map((p) => p.slice(folder.length + 1)).filter((n) => !n.includes('/') && n.includes(search)).sort()
+        if (sortBy?.order === 'desc') names = names.reverse()
+        return { data: names.slice(0, limit).map((name) => ({ name, id: `${folder}/${name}` })), error: null }
+      },
       download: async (path) => { asked.push(path); return store.has(path) ? { data: new Blob([store.get(path)]), error: null } : { data: null, error: { message: 'not found' } } },
-      upload: async (file, bytes) => { store.set(file, Buffer.from(bytes)); return { error: null } },
+      // ห้ามเขียนทับ: ที่เก็บจริงแคชไฟล์ที่ถูกเขียนทับ อ่านแล้วได้ของเก่า
+      upload: async (file, bytes, options = {}) => { if (store.has(file) || options.upsert) return { error: { message: 'เทสต์: ห้ามเขียนทับไฟล์เดิม' } }; store.set(file, Buffer.from(bytes)); return { error: null } },
       remove: async (paths) => { for (const p of paths) store.delete(p); return { error: null } },
       createBucket: undefined,
       createSignedUrls: async (paths) => ({ data: paths.map((p) => ({ signedUrl: `https://signed/${p}` })), error: null }),
@@ -87,7 +93,7 @@ test('กดขอ: เข้าคิวเฉพาะรายการที
   const onlyDeed = fakeDb({ files: { '7/deed-a.jpg': IMG } })
   const none = await requestPhotoReview({ db: onlyDeed, id: 7, files: listOf(onlyDeed, 7) })
   assert.equal(none.status, 400)
-  assert.equal(onlyDeed.store.has(queuePath(7)), false)
+  assert.equal([...onlyDeed.store.keys()].some((p) => p.startsWith('review-queue/')), false)
   const db = fakeDb({ files: { '7/deed-a.jpg': IMG, '7/property-b.jpg': IMG } })
   const first = await requestPhotoReview({ db, id: 7, files: listOf(db, 7), now: () => new Date('2026-11-20T03:00:00Z') })
   assert.deepEqual(first, { ok: true, pending: { requestedAt: '2026-11-20T03:00:00.000Z' } })
@@ -116,17 +122,18 @@ test('ตัวรับงาน: ส่งให้ AI เฉพาะรู�
   assert.equal(state.review.summary, ANSWER.summary)
   assert.equal(state.review.model, 'fake-model')
   assert.deepEqual(state.review.photos, ['property-b.jpg', 'property-c.png'])
-  assert.equal(reviewPath(7), 'reviews/7.json')
+  assert.equal(reviewPath(7, 1234), 'reviews/7/000000000001234.json')
+  assert.equal(queuePath(7, 1234), 'review-queue/7-1234.json')
   assert.equal(isPropertyPhoto('deed-a.jpg'), false)
   assert.equal(isPropertyPhoto('property-../x.jpg'), false)
 })
 
 test('ตัวรับงาน: AI ล้ม = เก็บเหตุผลไว้กับผลเดิม ไม่ทิ้งผลเก่า และคิวไม่ค้าง · รูปเกินจำนวนถูกนับเป็นข้าม', async () => {
   const db = fakeDb({ files: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`7/property-${i}.jpg`, IMG])) })
-  const good = await processPhotoReview({ db, id: 7, ask: async () => ({ text: JSON.stringify(ANSWER), model: 'm' }) })
+  const good = await processPhotoReview({ db, id: 7, ask: async () => ({ text: JSON.stringify(ANSWER), model: 'm' }), now: () => new Date('2026-11-20T03:30:00Z') })
   assert.equal(good.review.photos.length, PHOTO_REVIEW_MAX_IMAGES)
   assert.equal(good.review.skipped, 2)
-  await requestPhotoReview({ db, id: 7, files: listOf(db, 7) })
+  await requestPhotoReview({ db, id: 7, files: listOf(db, 7), now: () => new Date('2026-11-20T03:59:00Z') })
   const bad = await processPhotoReview({ db, id: 7, ask: async () => { throw new Error('Codex exit 1: not logged in') }, now: () => new Date('2026-11-20T04:00:00Z') })
   assert.equal(bad.ok, false)
   const state = await readReviewState(db, 7)
@@ -134,8 +141,26 @@ test('ตัวรับงาน: AI ล้ม = เก็บเหตุผล
   assert.equal(state.review.summary, ANSWER.summary)
   assert.deepEqual(state.review.lastError, { message: 'Codex exit 1: not logged in', at: '2026-11-20T04:00:00.000Z' })
   // คำตอบที่ไม่ใช่โครงที่กำหนดก็นับเป็นล้ม
-  await processPhotoReview({ db, id: 7, ask: async () => ({ text: 'ขออภัย' }) })
+  await processPhotoReview({ db, id: 7, ask: async () => ({ text: 'ขออภัย' }), now: () => new Date('2026-11-20T05:00:00Z') })
   assert.match((await readReviewState(db, 7)).review.lastError.message, /โครงที่กำหนด/)
+  // อ่านใหม่สำเร็จ: ได้ผลใหม่ ไม่มีข้อผิดพลาดค้าง · ทุกผลเป็นไฟล์ใหม่ (ไม่เขียนทับ)
+  await processPhotoReview({ db, id: 7, ask: async () => ({ text: JSON.stringify({ ...ANSWER, summary: 'ผลรอบใหม่' }), model: 'm' }), now: () => new Date('2026-11-20T06:00:00Z') })
+  const fresh = (await readReviewState(db, 7)).review
+  assert.equal(fresh.summary, 'ผลรอบใหม่')
+  assert.equal(fresh.lastError, undefined)
+  assert.equal([...db.store.keys()].filter((p) => p.startsWith('reviews/7/')).length, 4)
+})
+
+test('คิว: เลขรายการที่ขึ้นต้นเหมือนกันไม่ปนกัน และหยิบคำขอเก่าสุดก่อน', async () => {
+  const db = fakeDb({ files: { '2/property-a.jpg': IMG, '21/property-b.jpg': IMG } })
+  await requestPhotoReview({ db, id: 21, files: listOf(db, 21), now: () => new Date('2026-11-20T03:00:00Z') })
+  assert.equal((await readReviewState(db, 2)).pending, null)
+  await requestPhotoReview({ db, id: 2, files: listOf(db, 2), now: () => new Date('2026-11-20T03:05:00Z') })
+  assert.equal((await readReviewState(db, 2)).pending.requestedAt, '2026-11-20T03:05:00.000Z')
+  assert.equal(await nextQueuedReview(db), 21)
+  await processPhotoReview({ db, id: 21, ask: async () => ({ text: JSON.stringify(ANSWER), model: 'm' }) })
+  assert.equal(await nextQueuedReview(db), 2)
+  assert.equal((await readReviewState(db, 2)).review, null)
 })
 
 test('ลูปตัวรับงาน: หยิบคำขอในคิวทีละรายการจนหมด', async () => {

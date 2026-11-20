@@ -2,7 +2,9 @@
 // หน้าเว็บ (ผู้ล็อกอิน) กดขอ → ไฟล์คำขอใน bucket ปิด lead-reviews ที่ review-queue/<เลขรายการ>.json
 // (bucket รูป lead-files รับเฉพาะไฟล์รูป จึงแยก bucket · สร้างเองครั้งแรกด้วย ensureReviewBucket)
 // → ตัวรับงาน scripts/image-worker.mjs (ลูปที่สี่ runPhotoReviewLoop) ดึงรูปทรัพย์ลงโฟลเดอร์ชั่วคราว → codex exec -i → ลบรูปชั่วคราว
-// → ผลเก็บที่ reviews/<เลขรายการ>.json · ไม่มีตารางใหม่ ไม่ต้องรัน SQL
+// → ผลเก็บที่ reviews/<เลขรายการ>/<เวลา>.json · ไม่มีตารางใหม่ ไม่ต้องรัน SQL
+// ห้ามเขียนทับไฟล์เดิม: ที่เก็บไฟล์แคชไฟล์ที่ถูกเขียนทับได้ถึง 1 ชั่วโมง (อ่านแล้วได้ของเก่า) → ทุกคำขอและทุกผลใช้ชื่อไฟล์ใหม่
+// และสถานะคิวดูจากรายชื่อไฟล์ ซึ่งไม่ผ่านแคช
 // ส่งเข้า AI เฉพาะไฟล์ที่ขึ้นต้นด้วย property- · รูปเอกสารสิทธิ์ (deed-) ไม่ออกจากที่เก็บ · ตรรกะล้วนอยู่ใน src/lib/photoReview.js
 import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -24,8 +26,10 @@ export async function ensureReviewBucket(db) {
 }
 const QUEUE_DIR = 'review-queue'
 const DEFAULT_TIMEOUT_MS = 6 * 60 * 1000
-export const reviewPath = (id) => `reviews/${id}.json`
-export const queuePath = (id) => `${QUEUE_DIR}/${id}.json`
+export const reviewDir = (id) => `reviews/${id}`
+export const reviewPath = (id, ms) => `${reviewDir(id)}/${String(ms).padStart(15, '0')}.json`
+export const queuePath = (id, ms) => `${QUEUE_DIR}/${id}-${ms}.json`
+const QUEUE_NAME = /^(\d+)-(\d+)\.json$/
 export const isPropertyPhoto = (name) => /^property-[\w-]+\.(jpe?g|png|webp)$/i.test(String(name || ''))
 const shortError = (err) => String(err?.message || err || 'ไม่ทราบสาเหตุ').replace(/\s+/g, ' ').trim().slice(0, 300)
 
@@ -37,12 +41,29 @@ async function readJson(db, file) {
     return value && typeof value === 'object' ? value : null
   } catch { return null }
 }
-const writeJson = (db, file, value) => db.storage.from(REVIEW_BUCKET).upload(file, Buffer.from(JSON.stringify(value)), { contentType: 'application/json', upsert: true })
+const writeJson = (db, file, value) => db.storage.from(REVIEW_BUCKET).upload(file, Buffer.from(JSON.stringify(value)), { contentType: 'application/json', upsert: false })
+
+// คำขอที่ยังอยู่ในคิว เรียงจากเก่าไปใหม่: [{ id, ms, name }]
+async function queuedRequests(db, id = 0) {
+  const { data, error } = await db.storage.from(REVIEW_BUCKET).list(QUEUE_DIR, { limit: 100, sortBy: { column: 'name', order: 'asc' }, ...(id ? { search: `${id}-` } : {}) })
+  if (error) throw error
+  return (data || []).map((f) => { const m = QUEUE_NAME.exec(String(f?.name || '')); return m && f.id ? { id: Number(m[1]), ms: Number(m[2]), name: f.name } : null })
+    .filter((q) => q && q.id > 0 && (!id || q.id === id)).sort((a, b) => a.ms - b.ms)
+}
+
+// ผลล่าสุดของรายการ (ไฟล์ชื่อมากสุด = ใหม่สุด)
+export async function readStoredReview(db, id) {
+  try {
+    const { data, error } = await db.storage.from(REVIEW_BUCKET).list(reviewDir(id), { limit: 1, sortBy: { column: 'name', order: 'desc' } })
+    const latest = !error && (data || []).find((f) => f?.id && /^\d+\.json$/.test(f.name))
+    return latest ? await readJson(db, `${reviewDir(id)}/${latest.name}`) : null
+  } catch { return null }
+}
 
 // สถานะสำหรับหน้าเว็บ: ผลล่าสุด + คำขอที่ยังรอคอมสำนักงาน
 export async function readReviewState(db, id) {
-  const [review, pending] = await Promise.all([readJson(db, reviewPath(id)), readJson(db, queuePath(id))])
-  return { review, pending: pending?.requested_at ? { requestedAt: pending.requested_at } : null }
+  const [review, queued] = await Promise.all([readStoredReview(db, id), queuedRequests(db, id).catch(() => [])])
+  return { review, pending: queued.length ? { requestedAt: new Date(queued[0].ms).toISOString() } : null }
 }
 
 // ผู้ล็อกอินกดขอให้อ่านรูป → วางคำขอในคิว (ขอซ้ำระหว่างรอ = คำขอเดิม)
@@ -50,12 +71,14 @@ export async function requestPhotoReview({ db, id, files, now = () => new Date()
   const { data: row, error } = await db.from('valuations').select('id').eq('id', id).maybeSingle()
   if (error || !row) return { ok: false, status: 404, error: 'ไม่พบรายการนี้' }
   if (!files.some((f) => isPropertyPhoto(f.name))) return { ok: false, status: 400, error: 'รายการนี้ไม่มีรูปทรัพย์ให้อ่าน (รูปเอกสารสิทธิ์ไม่ส่งให้ AI)' }
-  const waiting = await readJson(db, queuePath(id))
-  if (waiting?.requested_at) return { ok: true, pending: { requestedAt: waiting.requested_at } }
-  const requestedAt = now().toISOString()
-  let saved = await writeJson(db, queuePath(id), { id, requested_at: requestedAt })
+  const waiting = await queuedRequests(db, id).catch(() => [])
+  if (waiting.length) return { ok: true, pending: { requestedAt: new Date(waiting[0].ms).toISOString() } }
+  const at = now()
+  const requestedAt = at.toISOString()
+  const file = queuePath(id, at.getTime())
+  let saved = await writeJson(db, file, { id, requested_at: requestedAt })
   // ครั้งแรกยังไม่มี bucket → สร้างแล้วลองอีกครั้ง
-  if (saved.error && await ensureReviewBucket(db)) saved = await writeJson(db, queuePath(id), { id, requested_at: requestedAt })
+  if (saved.error && await ensureReviewBucket(db)) saved = await writeJson(db, file, { id, requested_at: requestedAt })
   if (saved.error) return { ok: false, status: 502, error: 'ส่งคำขอเข้าคิวไม่สำเร็จ' }
   return { ok: true, pending: { requestedAt } }
 }
@@ -135,30 +158,28 @@ export async function processPhotoReview({ db, bucket = PHOTO_BUCKET, id, ask = 
       skipped: names.length - images.length,
       facts,
     }
-    const saved = await writeJson(db, reviewPath(id), review)
+    const saved = await writeJson(db, reviewPath(id, now().getTime()), review)
     if (saved.error) throw new Error('เก็บผลอ่านรูปไม่สำเร็จ')
     log(`${label}: เสร็จใน ${seconds} วินาที · ${images.length} รูป · ไม่ตรง ${review.mismatches.length} จุด`)
     return { ok: true, review }
   } catch (err) {
     const message = shortError(err)
     log(`${label}: ไม่สำเร็จ — ${message}`)
-    const previous = (await readJson(db, reviewPath(id))) || {}
-    await writeJson(db, reviewPath(id), { ...previous, lastError: { message, at: now().toISOString() } })
+    const previous = (await readStoredReview(db, id)) || {}
+    await writeJson(db, reviewPath(id, now().getTime()), { ...previous, lastError: { message, at: now().toISOString() } })
     return { ok: false, error: message }
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => {})
-    await db.storage.from(REVIEW_BUCKET).remove([queuePath(id)]).catch(() => {})
+    // เอาคำขอของรายการนี้ออกจากคิว (ไฟล์คำขอเป็นแค่ตัวบอกคิว ไม่ใช่ข้อมูลลูกค้า)
+    try {
+      const mine = await queuedRequests(db, id)
+      if (mine.length) await db.storage.from(REVIEW_BUCKET).remove(mine.map((q) => `${QUEUE_DIR}/${q.name}`))
+    } catch { /* รอบหน้าจะหยิบซ้ำแล้วลบใหม่ */ }
   }
 }
 
 export async function nextQueuedReview(db) {
-  const { data, error } = await db.storage.from(REVIEW_BUCKET).list(QUEUE_DIR, { limit: 20, sortBy: { column: 'created_at', order: 'asc' } })
-  if (error) throw error
-  for (const f of data || []) {
-    const id = Number(String(f?.name || '').replace(/\.json$/, ''))
-    if (f?.id && Number.isInteger(id) && id > 0) return id
-  }
-  return 0
+  return (await queuedRequests(db))[0]?.id || 0
 }
 
 // ลูปของตัวรับงาน: ทีละรายการ
