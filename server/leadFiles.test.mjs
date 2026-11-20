@@ -84,8 +84,10 @@ test('ดูรูปแนบต้องล็อกอิน และได�
     ['property', 'รูปทรัพย์', 'https://signed/7/property-b.jpg'],
   ])
   assert.equal((await call(handler, { url: '/api/lead-files?id=abc' })).code, 400)
-  assert.equal((await call(handler, { method: 'POST' })).code, 405)
-  assert.deepEqual((await call(createLeadFilesHandler({ authorized: () => true, database: () => fakeDb({ row: lead() }) }))).body, { files: [] })
+  assert.equal((await call(handler, { method: 'DELETE' })).code, 405)
+  assert.equal((await call(handler, { method: 'POST' })).code, 400)
+  assert.equal(ok.body.review, null)
+  assert.deepEqual((await call(createLeadFilesHandler({ authorized: () => true, database: () => fakeDb({ row: lead() }) }))).body, { files: [], review: null, pending: null })
   assert.equal((await call(createLeadFilesHandler({ authorized: () => true, database: () => null }))).code, 503)
   assert.equal(kindOfFile('deed-x.jpg'), 'deed')
   assert.equal(kindOfFile('property-x.jpg'), 'property')

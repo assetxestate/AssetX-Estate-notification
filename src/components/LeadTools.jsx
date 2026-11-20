@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import './LeadTools.css'
 import { showToast } from '../lib/toast.js'
-import { getLeadFiles, markLeadReplied, markInvestorSent } from '../lib/api.js'
+import { markLeadReplied, markInvestorSent } from '../lib/api.js'
+import { getLeadFilesWithReview, getPhotoReviewState, analyzeLeadPhotos } from '../lib/photoReviewApi.js'
+import { PHOTO_CONFIDENCE, PHOTO_REVIEW_CAVEAT, photoReviewText, photoReviewWait } from '../lib/photoReview.js'
 import { POSTER_CONTACT } from '../lib/posterDesignSystem.js'
 import { REPLY_RESULTS, REPLY_NEEDS, buildBrokerReply, leadTicketNo, replyHours } from '../lib/leadSource.js'
 import { buildInvestorSummary, investorDefaults, waitingHours, isAssessed } from '../lib/valuationWorkflow.js'
@@ -14,6 +16,29 @@ export default function LeadTools({ row, onAssess, onReplied, onSent }) {
   const [panel, setPanel] = useState('')
   const [files, setFiles] = useState(null)
   const [filesError, setFilesError] = useState('')
+  // ผลอ่านรูปทรัพย์ของ AI (เก็บฝั่งเซิร์ฟเวอร์ เปิดรายการครั้งหน้ายังอยู่)
+  // อ่านโดย Codex บนคอมสำนักงาน: กดแล้วเข้าคิว (pending) หน้าเว็บถามสถานะทุก 6 วินาทีจนคำขอหายจากคิว
+  const [review, setReview] = useState(null)
+  const [pending, setPending] = useState(null)
+  const [reviewError, setReviewError] = useState('')
+  const [tick, setTick] = useState(0)
+  const requestedRef = useRef('')
+  const reviewBusy = !!pending
+  useEffect(() => {
+    if (!pending || panel !== 'files') return undefined
+    const timer = setInterval(async () => {
+      setTick(t => t + 1)
+      try {
+        const state = await getPhotoReviewState(row._rowIndex)
+        if (state.pending) return
+        setPending(null)
+        setReview(state.review)
+        const failed = state.review?.lastError
+        if (failed && failed.at >= requestedRef.current) setReviewError(`อ่านรูปไม่สำเร็จ: ${failed.message}`)
+      } catch { /* เน็ตสะดุด รอบหน้าถามใหม่ */ }
+    }, 6000)
+    return () => clearInterval(timer)
+  }, [pending, panel, row._rowIndex])
   const [reply, setReply] = useState({ result: row.leadReplyResult || 'interested', amount: '', needs: [], note: '' })
   // ช่องของสรุปส่งนายทุน: ค่าตั้งต้นจากรายการประเมิน + ที่เจ้าของเคยกรอกไว้ในเครื่องนี้ (เงื่อนไข สิ่งปลูกสร้าง)
   const inputsKey = `assetx_investor_inputs_${row._rowIndex}`
@@ -62,8 +87,31 @@ export default function LeadTools({ row, onAssess, onReplied, onSent }) {
     if (!isLead) { setFiles([]); return }
     setFiles(null)
     setFilesError('')
-    try { setFiles(await getLeadFiles(row._rowIndex)) } catch (e) { setFilesError(e.message) }
+    try {
+      const loaded = await getLeadFilesWithReview(row._rowIndex)
+      setFiles(loaded.files)
+      setReview(loaded.review)
+      setPending(loaded.pending)
+      if (loaded.pending) requestedRef.current = loaded.pending.requestedAt
+    } catch (e) { setFilesError(e.message) }
   }
+
+  const runReview = async () => {
+    setReviewError('')
+    try {
+      const queued = await analyzeLeadPhotos(row._rowIndex)
+      requestedRef.current = queued.requestedAt
+      setPending(queued)
+    } catch (e) {
+      setReviewError(e.message)
+    }
+  }
+  const hasReview = !!(review && (review.summary || review.observations?.length || review.mismatches?.length))
+  const wait = pending ? photoReviewWait(pending.requestedAt, Date.now()) : null // tick ทำให้ข้อความเวลารอเดินทุกรอบถาม
+  const propertyCount = (files || []).filter(f => f.kind === 'property').length
+  const photoRef = (photos) => (photos?.length ? ` (รูปทรัพย์ที่ ${photos.join(', ')})` : '')
+  // เลขใต้รูปทรัพย์ = เลขที่ AI ใช้อ้าง (ลำดับของรูปทรัพย์ ไม่นับรูปเอกสารสิทธิ์)
+  const propertyNo = (name) => (files || []).filter(f => f.kind === 'property').findIndex(f => f.name === name) + 1
 
   const toggle = (name) => {
     const next = panel === name ? '' : name
@@ -137,12 +185,63 @@ export default function LeadTools({ row, onAssess, onReplied, onSent }) {
                         <li key={f.name}>
                           <a href={f.url} target="_blank" rel="noreferrer">
                             <img src={f.url} alt={f.label} loading="lazy" />
-                            <span>{f.label}</span>
+                            <span>{f.label}{f.kind === 'property' ? ` ${propertyNo(f.name)}` : ''}</span>
                           </a>
                         </li>
                       ))}
                     </ul>
                     <p className="lt-note">ลิงก์รูปใช้ได้ 10 นาที ปิดแล้วเปิดใหม่ได้ กดที่รูปเพื่อดูขนาดเต็ม</p>
+                    <div className="lt-review">
+                      <div className="lt-actions">
+                        <button type="button" className="lt-btn" data-kind={hasReview ? undefined : 'primary'} disabled={reviewBusy || propertyCount === 0} onClick={runReview}>
+                          {reviewBusy ? 'รอ AI อ่านรูป…' : hasReview ? 'ให้ AI อ่านรูปใหม่' : 'ให้ AI อ่านรูปทรัพย์'}
+                        </button>
+                        {hasReview && <button type="button" className="lt-btn" onClick={() => copy(photoReviewText(review))}>คัดลอกผลอ่านรูป</button>}
+                      </div>
+                      {propertyCount === 0
+                        ? <p className="lt-note">รายการนี้มีแต่รูปเอกสารสิทธิ์ ซึ่งระบบไม่ส่งให้ AI เพราะมีชื่อเจ้าของทรัพย์</p>
+                        : !hasReview && !reviewBusy && <p className="lt-note">Codex บนคอมสำนักงานดูเฉพาะรูปทรัพย์ {propertyCount} รูป แล้วเทียบกับข้อมูลที่ผู้ส่งกรอก ใช้เวลาราว 1–2 นาที ไม่ส่งรูปเอกสารสิทธิ์ ชื่อ เบอร์ หรือเลขโฉนด</p>}
+                      {wait && <p className="lt-note" data-tone={wait.late ? 'warn' : undefined}>{wait.text}</p>}
+                      {reviewError && <p className="lt-note" data-tone="error">{reviewError}</p>}
+                      {hasReview && (
+                        <div className="lt-review-body">
+                          {review.summary && <p className="lt-review-sum">{review.summary}</p>}
+                          {review.mismatches?.length > 0 ? (
+                            <section>
+                              <h4 data-tone="warn">จุดที่รูปไม่ตรงกับข้อมูลที่กรอก</h4>
+                              <ul>
+                                {review.mismatches.map((m, i) => (
+                                  <li key={i}><b>{m.field}:</b> กรอกว่า {m.entered || 'ไม่ระบุ'} · ในรูปเห็น {m.seen}{photoRef(m.photos)}</li>
+                                ))}
+                              </ul>
+                            </section>
+                          ) : <p className="lt-note">AI ไม่พบจุดที่รูปขัดกับข้อมูลที่กรอก (ไม่ได้แปลว่าข้อมูลถูกทุกข้อ)</p>}
+                          {review.observations?.length > 0 && (
+                            <section>
+                              <h4>สิ่งที่เห็นในรูป</h4>
+                              <ul>
+                                {review.observations.map((o, i) => (
+                                  <li key={i}><b>{o.topic}:</b> {o.seen}{photoRef(o.photos)} <span className="lt-conf" data-level={o.confidence}>{PHOTO_CONFIDENCE[o.confidence] || PHOTO_CONFIDENCE.low}</span></li>
+                                ))}
+                              </ul>
+                            </section>
+                          )}
+                          {review.cannotTell?.length > 0 && (
+                            <section><h4>ดูจากรูปไม่ได้</h4><ul>{review.cannotTell.map((s, i) => <li key={i}>{s}</li>)}</ul></section>
+                          )}
+                          {review.checkOnSite?.length > 0 && (
+                            <section><h4>ควรตรวจเพิ่ม</h4><ul>{review.checkOnSite.map((s, i) => <li key={i}>{s}</li>)}</ul></section>
+                          )}
+                          {review.photoQuality && <p className="lt-note">คุณภาพรูป: {review.photoQuality}</p>}
+                          <p className="lt-note">
+                            {PHOTO_REVIEW_CAVEAT}
+                            {review.at ? ` · อ่านเมื่อ ${new Date(review.at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+                            {review.photos?.length ? ` · ${review.photos.length} รูป` : ''}
+                            {review.skipped > 0 ? ` (ยังไม่ได้อ่านอีก ${review.skipped} รูป)` : ''}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
         </div>

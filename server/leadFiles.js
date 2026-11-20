@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
+import { requestPhotoReview, readReviewState } from './photoReview.js'
 
 export const LEAD_BUCKET = 'lead-files'
 export const LEAD_FILE_LIMIT = 3 * 1024 * 1024 // ต่อรูป หลังย่อฝั่งหน้าเว็บ (คำขอของ Vercel รับได้ 4.5 MB รวม base64)
@@ -70,23 +71,40 @@ export async function uploadLeadFile({ id: rawId, file, db = serviceDb(), now = 
 }
 
 // ผู้ล็อกอินเท่านั้น: GET /api/lead-files?id=<เลข lead> → รายการรูปพร้อมลิงก์ชั่วคราว 10 นาที
+//                    GET  /api/lead-files?id=<เลข lead>&review=1 → เฉพาะผลอ่านรูปของ AI และคำขอที่รออยู่ (หน้าเว็บถามเป็นระยะ)
+//                    POST /api/lead-files { id, action: 'analyze' } → ขอให้ Codex บนคอมสำนักงานอ่านรูปทรัพย์ (server/photoReview.js)
 export function createLeadFilesHandler({ authorized = verifySession, database = serviceDb } = {}) {
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store')
     if (!authorized(req)) return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' })
-    if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' })
+    if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
     const db = database()
     if (!db) return res.status(503).json({ error: 'ยังไม่ได้ตั้งค่าฐานข้อมูลฝั่งเซิร์ฟเวอร์' })
+    if (req.method === 'POST') {
+      try {
+        const id = leadIdOf(req.body?.id)
+        if (!id || req.body?.action !== 'analyze') return res.status(400).json({ error: 'คำขอไม่ถูกต้อง' })
+        const result = await requestPhotoReview({ db, id, files: await listLeadFiles(db, id) })
+        if (!result.ok) return res.status(result.status).json({ error: result.error })
+        return res.status(200).json({ pending: result.pending })
+      } catch (error) {
+        console.error('lead-photo-review failed:', error.message)
+        return res.status(502).json({ error: 'ส่งคำขอเข้าคิวไม่สำเร็จ ลองใหม่อีกครั้ง' })
+      }
+    }
     try {
-      const id = leadIdOf(new URL(req.url, 'http://localhost').searchParams.get('id'))
+      const params = new URL(req.url, 'http://localhost').searchParams
+      const id = leadIdOf(params.get('id'))
       if (!id) return res.status(400).json({ error: 'กรุณาระบุรายการ' })
+      if (params.get('review') === '1') return res.status(200).json(await readReviewState(db, id))
       const files = await listLeadFiles(db, id)
-      if (!files.length) return res.status(200).json({ files: [] })
+      if (!files.length) return res.status(200).json({ files: [], review: null, pending: null })
       const paths = files.map((f) => `${id}/${f.name}`)
       const signed = await db.storage.from(LEAD_BUCKET).createSignedUrls(paths, SIGNED_SECONDS)
       if (signed.error) throw signed.error
       return res.status(200).json({
         files: files.map((f, i) => ({ name: f.name, kind: kindOfFile(f.name), label: LEAD_KINDS[kindOfFile(f.name)], url: signed.data?.[i]?.signedUrl || '' })).filter((f) => f.url),
+        ...(await readReviewState(db, id)),
       })
     } catch (error) {
       console.error('lead-files failed:', error.message)

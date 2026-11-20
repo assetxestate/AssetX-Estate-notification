@@ -31,6 +31,7 @@ import { fillFreeImages, footerContactLines, parseFreeModeLine, PLACEHOLDER_FREE
 import { scrub } from '../server/research/pii.js'
 import { claimNextContentJob, CONTENT_JOB_TABLE, isMissingTable, processContentJob, releaseStaleContentJobs } from '../server/content-jobs-worker.js'
 import { runSurveyLoop } from '../server/market-survey-worker.js'
+import { runPhotoReviewLoop } from '../server/photoReview.js'
 import { generateFreshContent } from '../server/research/fresh.js'
 import { loadKnowledgeBase } from '../server/research/knowledge.js'
 import { loadHookLessons, loadHookPatterns } from '../server/research/hooks.js'
@@ -336,7 +337,7 @@ async function heartbeat(db, busyJob = null, busyContentJob = null) {
   const { error } = await db.from('marketing_image_worker').upsert({
     id: WORKER_ID,
     last_seen_at: new Date().toISOString(),
-    info: { version: VERSION, host: os.hostname(), busy_job: busyJob, content_jobs: true, premium_posters: true, market_survey: true, busy_content_job: busyContentJob },
+    info: { version: VERSION, host: os.hostname(), busy_job: busyJob, content_jobs: true, premium_posters: true, market_survey: true, photo_review: true, busy_content_job: busyContentJob },
   }, { onConflict: 'id' })
   if (error) throw error
 }
@@ -617,6 +618,8 @@ async function main() {
     if (!ONCE) contentLoop().catch((err) => log('ลูปคิดคอนเทนต์ใหม่หยุด:', shortError(err)))
     // สำรวจราคาตลาด: ลูปที่สาม ไม่รอคิวภาพและคิวคิดคอนเทนต์ (Codex คนละ process)
     if (!ONCE) runSurveyLoop({ db, workerId: WORKER_ID, log, isStopping: () => stopping, onBusy: () => beat() }).catch((err) => log('ลูปสำรวจราคาตลาดหยุด:', shortError(err)))
+    // ลูปที่สี่: อ่านรูปทรัพย์ของ lead ด้วย Codex (คิวเป็นไฟล์ใน bucket ปิด ไม่มีตาราง · server/photoReview.js)
+    if (!ONCE) runPhotoReviewLoop({ db, log, isStopping: () => stopping, onBusy: () => beat() }).catch((err) => log('ลูปอ่านรูปทรัพย์หยุด:', shortError(err)))
     while (!stopping) {
       await syncRefs()
       let job = null

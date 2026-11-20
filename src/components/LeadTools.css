@@ -24,6 +24,15 @@
 .lt-files a { display: block; border: 1px solid var(--ax-border-lt); border-radius: 8px; overflow: hidden; color: var(--ax-c-e2e8f0); text-decoration: none; }
 .lt-files img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
 .lt-files span { display: block; padding: 4px 8px; font-size: 12px; }
+.lt-review { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--ax-border-lt); }
+.lt-review-body { display: grid; gap: 10px; font-size: 13px; line-height: 1.65; }
+.lt-review-sum { margin: 0; font-weight: 600; }
+.lt-review-body section { display: grid; gap: 4px; }
+.lt-review-body h4 { margin: 0; font-size: 12px; font-weight: 700; color: var(--ax-c-94a3b8); }
+.lt-review-body h4[data-tone="warn"] { color: var(--ax-c-f59e0b); }
+.lt-review-body ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.lt-conf { display: inline-block; margin-left: 4px; padding: 0 6px; border: 1px solid var(--ax-border-lt); border-radius: 999px; font-size: 11px; color: var(--ax-c-94a3b8); white-space: nowrap; }
+.lt-conf[data-level="high"] { border-color: var(--ax-c-2dd4bf); color: var(--ax-c-2dd4bf); }
 .lt-choices, .lt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .lt-field { display: grid; gap: 4px; }
 .lt-field small { color: var(--ax-c-94a3b8); font-weight: 400; }
