@@ -13,6 +13,7 @@ import contentJobsHandler from '../server/marketing-content-jobs.js'
 import leadFilesHandler from '../server/leadFiles.js'
 import marketSurveyHandler from '../server/market-survey-jobs.js'
 import brokersHandler from '../server/brokers.js'
+import proofHandler from '../server/marketing-proof.js'
 
 const handlers = {
   notices: noticesHandler,
@@ -38,6 +39,8 @@ const handlers = {
   'market-survey': marketSurveyHandler,
   // ทะเบียนนายหน้า (ตาราง brokers) — ระบุตัวตนด้วยเบอร์โทร ดูได้เฉพาะผู้ล็อกอิน
   brokers: brokersHandler,
+  // Content Brief + Proof Card + บันทึกการอนุมัติของ /marketing (ธง MARKETING_PROOF_CARDS · ตารางจาก supabase_marketing_proof.sql)
+  proof: proofHandler,
 }
 
 function inferFeature(req) {
@@ -61,6 +64,7 @@ function inferFeature(req) {
   if (path.endsWith('/lead-files')) return 'lead-files'
   if (path.endsWith('/market-survey')) return 'market-survey'
   if (path.endsWith('/brokers')) return 'brokers'
+  if (path.endsWith('/marketing-proof')) return 'proof'
   return ''
 }
 

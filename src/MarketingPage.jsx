@@ -19,6 +19,8 @@ import { contentNoOf, contentReference, ensureContentNumbers, findContentByNo, f
 import { freshJobStatus, isActiveJob as isActiveFreshJob, latestJobBy, shouldResumeJob } from './lib/freshContentJob.js'
 import { CHANNEL_ORDER, channelMeta, channelOfIdea, countByChannel } from './lib/ideaChannels.js'
 import { ThemeToggle } from './components/ThemeToggle.jsx'
+import BriefProofPanel, { GateResult } from './components/BriefProofPanel.jsx'
+import { approveContent, attachBrief, checkGate, gatePayload, getProofFlags, storeReviewer, storedReviewer } from './lib/marketingProofApi.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
 
@@ -1125,6 +1127,14 @@ export default function MarketingPage({ onBack }) {
   const [facebookPublishingId, setFacebookPublishingId] = useState(null)
   const [facebookCheckingId, setFacebookCheckingId] = useState(null)
   const [artworkBrief, setArtworkBrief] = useState(null)
+  // Content Brief + Proof Card (เฟส P0 · ธง MARKETING_PROOF_CARDS ฝั่งเซิร์ฟเวอร์ · ธงปิด = หน้านี้ทำงานแบบเดิมทุกอย่าง)
+  // proofGates = ผลด่านตรวจล่าสุดต่อการ์ด { [postId]: { loading | error | gate, proof, review } } (สถานะหน้าจอ ไม่บันทึกลงเวิร์กสเปซ)
+  const [proofFlags, setProofFlags] = useState({ on: false, ready: false })
+  const [proofGates, setProofGates] = useState({})
+  const [reviewerName, setReviewerNameState] = useState(storedReviewer)
+  const setReviewerName = (name) => { setReviewerNameState(name); storeReviewer(name) }
+  const proofOn = proofFlags.on && proofFlags.ready
+  const proofSetupNote = proofFlags.on && !proofFlags.ready ? 'ระบบตรวจหลักฐานเปิดใช้แล้ว แต่ฐานข้อมูลยังไม่พร้อม — ระหว่างนี้ส่งโพสต์ไป Facebook จากหน้านี้ไม่ได้ (แจ้งผู้ดูแลระบบ)' : ''
   // คิวไอเดียจากระบบรีเสิร์ช: state = loading | ok | unauthorized | unavailable | error (ไม่เงียบอีกต่อไป)
   const [researchFeed, setResearchFeed] = useState({ state: 'loading', ideas: [], total: 0, meta: null, httpStatus: null, fetchedAt: null })
   const researchIdeas = researchFeed.ideas
@@ -1422,6 +1432,12 @@ export default function MarketingPage({ onBack }) {
 
   // ระหว่างโหลดข้อมูลจากระบบ หน้าจอยังแสดงสำเนาในเครื่องที่อาจเก่ากว่าระบบ → การกระทำกับของที่มีอยู่แล้ว
   // (แก้ข้อความ อนุมัติ ตั้งเวลา พักไว้ ลบ โพสต์) รอให้โหลดเสร็จก่อน ไม่งั้นจะไปลงกับฉบับในระบบที่คนยังไม่เห็น
+  useEffect(() => {
+    let cancelled = false
+    getProofFlags().then((flags) => { if (!cancelled) setProofFlags(flags) })
+    return () => { cancelled = true }
+  }, [])
+
   const blockedWhileLoading = () => {
     if (loadSettledRef.current) return false
     notify(LOADING_MESSAGE, 'warn')
@@ -1445,7 +1461,9 @@ export default function MarketingPage({ onBack }) {
     }
     if (Object.hasOwn(patch, 'caption') || Object.hasOwn(patch, 'channel') || Object.hasOwn(patch, 'title')) {
       const review = reviewAssetxContent({ ...current, ...patch })
-      patch = { ...patch, status: 'pending', reviewStatus: review.ok ? 'passed' : 'needs_edit', reviewNotes: [...review.notes, 'ข้อความเปลี่ยนแล้ว ต้องตรวจและอนุมัติใหม่'] }
+      // approval: บันทึกอนุมัติฝั่งเซิร์ฟเวอร์ผูกกับเนื้อหาฉบับเดิม — ข้อความเปลี่ยนแล้วใช้ไม่ได้ (เซิร์ฟเวอร์เทียบแฮชซ้ำตอนส่งออกอยู่แล้ว)
+      patch = { ...patch, status: 'pending', approval: null, reviewStatus: review.ok ? 'passed' : 'needs_edit', reviewNotes: [...review.notes, 'ข้อความเปลี่ยนแล้ว ต้องตรวจและอนุมัติใหม่'] }
+      setProofGates((all) => (all[id] ? { ...all, [id]: undefined } : all))
     }
     if (['approved', 'scheduled'].includes(patch.status)) {
       const review = reviewAssetxContent({ ...current, ...patch })
@@ -1469,6 +1487,75 @@ export default function MarketingPage({ onBack }) {
     }
     save((ws) => ({ ...ws, posts: (ws.posts || []).map((post) => post.id === id ? { ...post, ...patch } : post) }))
     if (message) notify(withContentNo(current.contentNo, message))
+  }
+
+  // ตรวจหลักฐานและเกณฑ์ของร่าง (อ่านอย่างเดียว ไม่บันทึก) → แสดงผลบนการ์ด
+  const checkProofGate = async (post, media) => {
+    setProofGates((all) => ({ ...all, [post.id]: { loading: true } }))
+    try {
+      const data = await checkGate(gatePayload(post, media?.id || post.mediaAssetId), post.briefId || null)
+      setProofGates((all) => ({ ...all, [post.id]: { gate: data.gate, proof: data.proof } }))
+    } catch (error) {
+      setProofGates((all) => ({ ...all, [post.id]: { error: errorMessage(error, 'ตรวจหลักฐานไม่สำเร็จ ลองใหม่อีกครั้ง') } }))
+    }
+  }
+
+  // อนุมัติผ่านเซิร์ฟเวอร์ (ธงเปิด): เซิร์ฟเวอร์ตรวจด่านเองและเก็บบันทึก ผู้ตรวจ · เวลา · แฮชของเนื้อหา
+  // ติดตัวบล็อก = ไม่อนุมัติ และแสดงว่าติดข้อไหน · ด่านส่งออก Facebook ตรวจบันทึกนี้ซ้ำ
+  const approveWithProof = async (post, media) => {
+    if (blockedWhileLoading()) return
+    if (isSamplePost(post)) {
+      notify('ร่างตัวอย่างอนุมัติไม่ได้ — แก้ข้อความให้เป็นร่างของเราก่อน', 'warn')
+      return
+    }
+    const reviewer = reviewerName.trim()
+    if (!reviewer) {
+      notify('ใส่ชื่อผู้ตรวจที่ด้านบนของแท็บ ร่าง ก่อนอนุมัติ', 'error')
+      return
+    }
+    const mediaAssetId = media?.id || post.mediaAssetId || ''
+    setProofGates((all) => ({ ...all, [post.id]: { loading: true } }))
+    try {
+      const data = await approveContent(gatePayload(post, mediaAssetId), { reviewer, briefId: post.briefId || null })
+      const latest = draftsOf(workspaceRef.current).find((item) => item.id === post.id)
+      if (!latest || latest.caption !== post.caption || latest.title !== post.title || latest.channel !== post.channel) {
+        // แก้ข้อความระหว่างรอ: บันทึกอนุมัติเป็นของฉบับก่อนแก้ ใช้กับฉบับใหม่ไม่ได้
+        setProofGates((all) => ({ ...all, [post.id]: undefined }))
+        notify(withContentNo(post.contentNo, 'ข้อความเปลี่ยนระหว่างรออนุมัติ · ตรวจแล้วกดอนุมัติอีกครั้ง'), 'warn')
+        return
+      }
+      setProofGates((all) => ({ ...all, [post.id]: { gate: data.gate, proof: all[post.id]?.proof || null, review: data.review } }))
+      updatePost(post.id, {
+        status: post.scheduledAt ? 'scheduled' : 'approved',
+        reviewStatus: 'passed',
+        mediaAssetId: mediaAssetId || null,
+        approval: { reviewId: data.review.id, reviewer: data.review.reviewer, at: data.review.created_at },
+      }, post.scheduledAt ? 'อนุมัติแล้ว · ตั้งเวลาตามวันที่กำหนด' : 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์')
+    } catch (error) {
+      const message = errorMessage(error, 'อนุมัติไม่สำเร็จ ลองใหม่อีกครั้ง')
+      setProofGates((all) => ({ ...all, [post.id]: error.gate ? { gate: error.gate, proof: error.proof || null } : { error: message } }))
+      notify(withContentNo(post.contentNo, message), 'error')
+    }
+  }
+
+  // ร่างจากบรีฟ + Proof Card (ไม่ใช้ AI): ข้อความมาจากข้อมูลที่กรอกและข้ออ้างที่ยืนยันแล้วเท่านั้น
+  // บรีฟรูปและแฮชแท็กยังมาจากแม่แบบของหัวข้อ (สื่อที่สร้างจากข้อเท็จจริงของร่างเป็นงานเฟสถัดไป)
+  const composeFromBrief = (draft, proof) => {
+    const ws = workspaceRef.current
+    const input = { ...ws.studio, prompt: normalizePrompt(proof.brief.topic), briefId: proof.brief.id, sourceIdeaId: null }
+    const base = runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || ''))
+    const generated = {
+      ...base,
+      headline: draft.headline,
+      caption: draft.caption,
+      cta: draft.cta,
+      videoScript: videoScriptFromDraft({ caption: draft.caption, cta: draft.cta }),
+      automationPayload: { ...(base.automationPayload || {}), postText: draft.caption },
+      briefId: proof.brief.id,
+      meta: { ...(base.meta || {}), generatedBy: 'brief', captionQuality: null, hooks: [], claimIdsUsed: draft.claim_ids_used, missingEvidence: draft.missing_evidence, basis: draft.basis },
+    }
+    save((current) => ({ ...current, studio: input, generated }))
+    notify('ร่างจากข้อมูลจริงแล้ว · อ่านทั้งโพสต์ แล้วกด ส่งเข้ารอตรวจ')
   }
 
   const attachDesignedArtwork = async (image) => {
@@ -1565,6 +1652,10 @@ export default function MarketingPage({ onBack }) {
             caption: post.caption,
             scheduledAt: target.scheduledAt || '',
             facebookPostId: post.facebookPostId || '',
+            // ชุดเดียวกับตอนอนุมัติ (lib/marketingProofApi.js gatePayload) — เซิร์ฟเวอร์เทียบกับบันทึกการอนุมัติเมื่อธงตรวจหลักฐานเปิด
+            contentNo: post.contentNo || null,
+            mediaAssetId: media?.id || post.mediaAssetId || '',
+            draftSource: post.draftSource || undefined,
           },
           media: media ? {
             dataUrl: media.dataUrl,
@@ -1764,7 +1855,10 @@ export default function MarketingPage({ onBack }) {
   const addGeneratedToQueue = (status = 'pending') => {
     const ws = workspaceRef.current
     if (!ws.generated) return
-    const topic = ws.generated.meta?.resolved?.topic || ws.studio.prompt
+    // ธงตรวจหลักฐานเปิด: การอนุมัติต้องผ่านแท็บ ร่าง (เซิร์ฟเวอร์เก็บบันทึก) — จาก Studio ส่งได้แค่เข้ารอตรวจ
+    if (proofOn && status === 'approved') status = 'pending'
+    const fromBrief = ws.generated.meta?.generatedBy === 'brief' && Boolean(ws.generated.briefId)
+    const topic = fromBrief ? ws.studio.prompt : (ws.generated.meta?.resolved?.topic || ws.studio.prompt)
     const publishCheck = reviewAssetxContent({ ...ws.generated, topic })
     if (status === 'approved' && !publishCheck.ok) {
       notify(publishCheck.notes.join('\n'), 'error')
@@ -1781,21 +1875,26 @@ export default function MarketingPage({ onBack }) {
       videoScript: ws.generated.videoScript,
       mediaAssetId: ws.generated.mediaAssetId || null,
       reviewStatus: publishCheck.ok ? 'passed' : 'needs_edit',
-      reviewNotes: isAiDraft(ws.generated)
+      reviewNotes: fromBrief
+        ? [...publishCheck.notes, 'ร่างจากบรีฟและข้ออ้างที่ยืนยันแล้ว — กด ตรวจหลักฐาน บนการ์ดก่อนอนุมัติ', ...(ws.generated.meta?.missingEvidence || []).map((item) => `ยังไม่ได้ใช้ (รอยืนยัน): ${item.text}`)]
+        : isAiDraft(ws.generated)
         ? [...publishCheck.notes, ...aiDraftReviewNotes(ws.generated)]
         : publishCheck.ok
           ? ['ผ่านเงื่อนไขเบื้องต้น', 'ควรตรวจรายละเอียดจริงก่อนโพสต์']
           : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
-      ...(isAiDraft(ws.generated) ? { draftSource: 'ai' } : {}),
+      ...(fromBrief ? { draftSource: 'brief', briefId: ws.generated.briefId } : isAiDraft(ws.generated) ? { draftSource: 'ai' } : {}),
       ...(ws.generated.meta?.hooks?.length ? { hooks: ws.generated.meta.hooks, hookPattern: ws.generated.meta.hookPattern || null } : {}),
-      source: 'AssetX Studio',
+      source: fromBrief ? 'บรีฟ + หลักฐาน' : 'AssetX Studio',
       ...(ws.generated.sourceIdeaId ? { ideaId: ws.generated.sourceIdeaId } : {}),
       createdAt: new Date().toISOString(),
     }
-    const next = save((current) => ({ ...current, posts: [post, ...(current.posts || [])] }))
+    // บรีฟหนึ่งใบผูกกับคอนเทนต์ชิ้นเดียว: ส่งเข้ารอตรวจแล้ว Studio เริ่มบรีฟใบใหม่
+    const next = save((current) => ({ ...current, posts: [post, ...(current.posts || [])], ...(fromBrief ? { studio: { ...current.studio, briefId: null } } : {}) }))
     setSelectedId(post.id)
     goTo('approvals')
     notify(withContentNo(contentNoOf(next, post.id), status === 'approved' ? 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์' : 'ส่งเข้ารอตรวจแล้ว'))
+    // ผูกบรีฟกับคอนเทนต์ทันที (ผูกไม่สำเร็จตอนนี้ = เซิร์ฟเวอร์ผูกให้ตอนอนุมัติ จากเลขบรีฟบนการ์ด)
+    if (fromBrief) attachBrief({ briefId: post.briefId, contentId: String(post.id), contentNo: contentNoOf(next, post.id) }).catch(() => {})
   }
 
   const addManualIdea = () => {
@@ -2524,6 +2623,16 @@ export default function MarketingPage({ onBack }) {
             onQueue={addGeneratedToQueue}
             onCopy={copyText}
             onBack={() => goTo('approvals')}
+            proofNote={proofSetupNote}
+            proof={proofOn ? {
+              briefId: workspace.studio.briefId || null,
+              reviewer: reviewerName,
+              onReviewerChange: setReviewerName,
+              onBriefId: (id) => save((ws) => ({ ...ws, studio: { ...ws.studio, briefId: id } })),
+              onCompose: composeFromBrief,
+              onBackToDraft: () => { save((ws) => ({ ...ws, studio: { ...ws.studio, briefId: null } })); goTo('approvals') },
+              notify,
+            } : null}
           />
         )}
         {view === 'approvals' && (
@@ -2549,6 +2658,12 @@ export default function MarketingPage({ onBack }) {
             focusNo={focusNo}
             loading={syncState.state === 'loading'}
             onWaitNotice={blockedWhileLoading}
+            proofNote={proofSetupNote}
+            proof={proofOn ? {
+              gates: proofGates, onCheck: checkProofGate, onApprove: approveWithProof, reviewer: reviewerName, onReviewerChange: setReviewerName,
+              // เปิดบรีฟของร่างนี้ใน Studio เพื่อแก้แหล่งข้อมูล/ยืนยันข้ออ้าง แล้วกลับมากดตรวจหลักฐานใหม่
+              onOpenBrief: (post) => { save((ws) => ({ ...ws, studio: { ...ws.studio, briefId: post.briefId } })); setProofGates((all) => ({ ...all, [post.id]: undefined })); goTo('studio') },
+            } : null}
           />
         )}
         {view === 'queue' && (
@@ -3078,7 +3193,7 @@ function IdeasView({
   )
 }
 
-function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onChannelChange, onPromptChange, onGenerate, onQueue, onCopy, onBack, onPickHook }) {
+function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onChannelChange, onPromptChange, onGenerate, onQueue, onCopy, onBack, onPickHook, proof = null, proofNote = '' }) {
   const posterPrompt = generated ? buildSocialPosterPrompt({
     title: generated.headline || studio.prompt,
     imagePrompt: generated.imagePrompt,
@@ -3093,6 +3208,9 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
         </div>
         <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onBack}>← กลับไปร่างที่รอตรวจ</button></div>
       </div>
+      {proofNote && <p className="mx-warn">{proofNote}</p>}
+      {proof && <BriefProofPanel topicHint={studio.prompt} {...proof} />}
+      {proof && <div className="mx-kicker">โหมดสร้างเร็ว · พิมพ์หัวข้ออย่างเดียว (ความรู้ทั่วไป ไม่มี Proof Card)</div>}
       <div className="mx-prompt-box">
         <textarea value={studio.prompt} onChange={(event) => onPromptChange(event.target.value)} placeholder="พิมพ์หัวข้อที่อยากโพสต์ เช่น เจ้าของที่ดินต้องการเงินก่อน แต่ไม่อยากขายขาด" />
         <button className="mx-primary" onClick={onGenerate}>ร่างโพสต์</button>
@@ -3102,7 +3220,7 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
           {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
         </select>
       </label>
-      <div className="mx-model-note">{generated?.meta?.generatedBy === 'llm' ? 'ร่างโดย AI จากข้อเท็จจริงที่สำรวจมา — ตรวจกับแหล่งที่มาและแก้ข้อความก่อนส่งตรวจทุกครั้ง' : 'ร่างจากแม่แบบของ AssetX — ตรวจข้อเท็จจริงและแก้ข้อความก่อนส่งตรวจทุกครั้ง'}</div>
+      <div className="mx-model-note">{generated?.meta?.generatedBy === 'brief' ? 'ร่างจากบรีฟและข้ออ้างที่ยืนยันแล้ว (ไม่ใช้ AI) — ระบบเรียงข้อความให้ ไม่เติมข้อเท็จจริง · อ่านและเกลาภาษาก่อนส่งตรวจ' : generated?.meta?.generatedBy === 'llm' ? 'ร่างโดย AI จากข้อเท็จจริงที่สำรวจมา — ตรวจกับแหล่งที่มาและแก้ข้อความก่อนส่งตรวจทุกครั้ง' : 'ร่างจากแม่แบบของ AssetX — ตรวจข้อเท็จจริงและแก้ข้อความก่อนส่งตรวจทุกครั้ง'}</div>
       {generated && (
         <div className="mx-generated-grid">
           <article className="mx-review-card wide">
@@ -3112,11 +3230,17 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
             </div>
             <ContentBlock title="แคปชั่น" value={generated.caption} onCopy={() => onCopy(generated.caption)} />
             <HookPicker hooks={generated.meta?.hooks} caption={generated.caption} onPick={onPickHook} />
+            {generated.meta?.generatedBy === 'brief' && generated.meta?.missingEvidence?.length > 0 && (
+              <div className="mx-review-notes">
+                <strong>ข้ออ้างที่ยังไม่ได้ใช้ เพราะยังไม่ยืนยัน</strong>
+                {generated.meta.missingEvidence.map((item) => <span key={item.claim_id}>{item.text} — {item.need}</span>)}
+              </div>
+            )}
             <ContentBlock title="บรีฟรูป (ภาษาอังกฤษ สำหรับโปรแกรมสร้างภาพ)" value={posterPrompt} onCopy={() => onCopy(posterPrompt)} collapsed />
             <ContentBlock title="สคริปต์วิดีโอ" value={generated.videoScript} onCopy={() => onCopy(generated.videoScript)} collapsed />
             <div className="mx-card-actions end">
               <button className="mx-primary" onClick={() => onQueue('pending')}>ส่งเข้ารอตรวจ</button>
-              <button className="mx-secondary" onClick={() => onQueue('approved')}>อนุมัติ</button>
+              {!proof && <button className="mx-secondary" onClick={() => onQueue('approved')}>อนุมัติ</button>}
             </div>
           </article>
           <aside className="mx-preview">
@@ -3152,6 +3276,8 @@ function ApprovalsView({
   freshJobs = {},
   freshWorker = null,
   onFreshContent = null,
+  proof = null,
+  proofNote = '',
 }) {
   return (
     <section className="mx-content">
@@ -3164,6 +3290,12 @@ function ApprovalsView({
         <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onNewDraft}>เขียนโพสต์ใหม่</button></div>
       </div>
       {loading && <p className="mx-warn">{LOADING_EDIT_NOTE}</p>}
+      {proofNote && <p className="mx-warn">{proofNote}</p>}
+      {proof && (
+        <label className="bp-reviewer-row">ชื่อผู้ตรวจ (บันทึกไว้กับทุกการอนุมัติ)
+          <input value={proof.reviewer} maxLength={80} placeholder="พิมพ์ชื่อผู้ตรวจ" onChange={(event) => proof.onReviewerChange(event.target.value)} />
+        </label>
+      )}
       {drafts.length === 0 ? (
         <div className="mx-empty">ยังไม่มีร่างรอตรวจ — เลือกไอเดียในแท็บ ไอเดีย แล้วกด ร่างโพสต์ หรือกด เขียนโพสต์ใหม่</div>
       ) : (
@@ -3214,10 +3346,10 @@ function ApprovalsView({
                 <div className="mx-approval-copy-column">
                   <div className="mx-review-head">
                     <div>
-                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{post.draftSource === 'ai' ? ` · ร่าง AI${post.angleLabel ? ` (${post.angleLabel})` : ''}` : ''}{post.replacesNo ? ` · คิดใหม่แทน ${formatContentNo(post.replacesNo)}` : ''}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
+                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{post.draftSource === 'ai' ? ` · ร่าง AI${post.angleLabel ? ` (${post.angleLabel})` : ''}` : ''}{post.draftSource === 'brief' ? ' · จากบรีฟ + หลักฐาน' : ''}{post.replacesNo ? ` · คิดใหม่แทน ${formatContentNo(post.replacesNo)}` : ''}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
                       <h2><ContentNo post={post} onCopy={onCopy} />{post.title}</h2>
                     </div>
-                    <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'}>{reviewLabel(post)}</span>
+                    <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'} title={proof ? 'ผลตรวจถ้อยคำอัตโนมัติ · หลักฐานดูที่ปุ่ม ตรวจหลักฐาน' : undefined}>{proof ? (post.reviewStatus === 'passed' ? 'ถ้อยคำผ่าน' : 'ถ้อยคำติดเกณฑ์') : reviewLabel(post)}</span>
                   </div>
                   {/* พาดหัวพิมพ์แก้เองได้ (เจ้าของ 11 พ.ย. 2569 #37: ภาพพรีเมียมได้พาดหัวที่ดีกว่า แต่แก้พาดหัวการ์ดให้ตรงกับภาพไม่ได้ — เดิมเลือกได้แค่ 3 ประโยคเปิดทางเลือก)
                       พาดหัวนี้ใช้เป็นหัวข้อโปสเตอร์รอบถัดไปด้วย · แก้แล้วต้องตรวจและอนุมัติใหม่ */}
@@ -3285,6 +3417,7 @@ function ApprovalsView({
                     <strong>ผลตรวจเกณฑ์</strong>
                     {uniqueReviewNotes(post.reviewNotes).map((note, index) => <span key={index}>{note}</span>)}
                   </div>
+                  {proof && <GateResult result={proof.gates[post.id]} />}
                   <div className="mx-schedule-row compact" onClick={(event) => event.stopPropagation()}>
                     <label>
                       กำหนดวันโพสต์ (ไม่บังคับ)
@@ -3298,7 +3431,14 @@ function ApprovalsView({
                     {postMedia && <span>{postMedia.width} × {postMedia.height} px</span>}
                   </div>
                   <div className="mx-card-actions">
-                    <button className="mx-primary" onClick={(event) => { event.stopPropagation(); onUpdate(post.id, { status: post.scheduledAt ? 'scheduled' : 'approved', reviewStatus: 'passed', mediaAssetId: postMedia?.id || post.mediaAssetId || null }, post.scheduledAt ? 'อนุมัติแล้ว · ตั้งเวลาตามวันที่กำหนด' : 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์') }}>อนุมัติ</button>
+                    {proof && <button className="mx-secondary" disabled={loading || proof.gates[post.id]?.loading} onClick={(event) => { event.stopPropagation(); proof.onCheck(post, postMedia) }}>ตรวจหลักฐาน</button>}
+                    {proof && post.briefId && <button className="mx-ghost" disabled={loading} title="เปิดบรีฟของร่างนี้ เพื่อเพิ่มแหล่งข้อมูลหรือยืนยันข้ออ้าง" onClick={(event) => { event.stopPropagation(); proof.onOpenBrief(post) }}>แก้หลักฐาน</button>}
+                    <button className="mx-primary" disabled={Boolean(proof?.gates[post.id]?.loading)} onClick={(event) => {
+                      event.stopPropagation()
+                      // ธงตรวจหลักฐานเปิด: อนุมัติผ่านเซิร์ฟเวอร์ (เก็บผู้ตรวจ เวลา และแฮชของเนื้อหา) · ธงปิด: ทางเดิม
+                      if (proof) proof.onApprove(post, postMedia)
+                      else onUpdate(post.id, { status: post.scheduledAt ? 'scheduled' : 'approved', reviewStatus: 'passed', mediaAssetId: postMedia?.id || post.mediaAssetId || null }, post.scheduledAt ? 'อนุมัติแล้ว · ตั้งเวลาตามวันที่กำหนด' : 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์')
+                    }}>อนุมัติ</button>
                     <button className="mx-ghost" onClick={(event) => { event.stopPropagation(); onArchive(post.id) }}>พักไว้</button>
                     {post.ideaId && onFreshContent && !post.facebookPostId && !isSamplePost(post) && (
                       <button className="mx-ghost" disabled={loading || freshBusy} title="ไม่ชอบคอนเทนต์นี้? ให้ AI คิดมุมใหม่และเขียนร่างใหม่ทั้งชิ้นสด ๆ (ราว 1–3 นาที) · ได้ร่างใหม่แทนร่างนี้ ร่างเดิมพักไว้ในคลังผลงาน" onClick={(event) => { event.stopPropagation(); onFreshContent({ post }) }}>{freshBusy ? 'AI กำลังคิด…' : '✨ คิดคอนเทนต์ใหม่ (AI)'}</button>

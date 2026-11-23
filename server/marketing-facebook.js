@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { verifySession } from '../api/_auth.js'
 import { canPublishAssetxPost } from '../src/lib/assetxMarketingModel.js'
+import { assertApprovedForPublish, proofDatabase, proofFlagOn } from './marketing-proof.js'
 
 const DEFAULT_GRAPH_VERSION = 'v26.0'
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -224,7 +225,8 @@ async function getTokenHealth(fetchImpl, config) {
   }
 }
 
-export async function publishFacebookPost(payload = {}, fetchImpl = fetch, config = facebookConfig()) {
+// approvalGuard (ธง MARKETING_PROOF_CARDS): ตรวจบันทึกการอนุมัติของคนฝั่งเซิร์ฟเวอร์ก่อนส่งออกจริง — ไม่เชื่อ reviewStatus ที่เบราว์เซอร์ส่งมาอย่างเดียว
+export async function publishFacebookPost(payload = {}, fetchImpl = fetch, config = facebookConfig(), { approvalGuard = null } = {}) {
   const status = configStatus(config)
   if (!status.ready) throw new Error(`ยังไม่ได้ตั้งค่า ${status.missing.join(', ')}`)
 
@@ -243,6 +245,7 @@ export async function publishFacebookPost(payload = {}, fetchImpl = fetch, confi
   if (!caption) throw new Error('กรุณากรอกข้อความโพสต์')
   const schedule = post.status === 'scheduled' ? parseScheduledAt(post.scheduledAt) : null
   if (post.status === 'scheduled' && !schedule) throw new Error('กรุณาระบุวันและเวลาที่จะโพสต์')
+  if (approvalGuard) await approvalGuard({ ...post, caption })
 
   const media = payload.media || null
   let result
@@ -298,7 +301,8 @@ export default async function handler(req, res) {
       return res.status(200).json(await getFacebookConnection())
     }
     if (req.method === 'POST') {
-      const result = await publishFacebookPost(req.body || {})
+      const guard = proofFlagOn() ? (post) => assertApprovedForPublish(proofDatabase(), post) : null
+      const result = await publishFacebookPost(req.body || {}, fetch, facebookConfig(), { approvalGuard: guard })
       return res.status(200).json({ success: true, ...result })
     }
     return res.status(405).json({ error: 'Method Not Allowed' })

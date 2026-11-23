@@ -1,0 +1,72 @@
+/* แผงบรีฟ + Proof Card ของ /marketing — ใช้โทเค็น --mx-* ของหน้า (คู่สว่าง/มืดอยู่ใน MarketingPage.jsx) ไม่มีรหัสสีตรง */
+.bp-panel { border: 1px solid var(--mx-line); background: var(--mx-panel); border-radius: var(--mx-radius); padding: 16px; margin-bottom: 16px; display: grid; gap: 14px; }
+.bp-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; flex-wrap: wrap; }
+.bp-head strong { display: block; color: var(--mx-ink); font-size: 17px; }
+.bp-head span { color: var(--mx-muted); font-size: 14px; }
+.bp-tag { border: 1px solid var(--mx-line-2); border-radius: 999px; padding: 4px 10px; color: var(--mx-accent-ink); font-size: 13px; font-weight: 600; white-space: nowrap; }
+
+.bp-modes { display: flex; gap: 8px; flex-wrap: wrap; }
+.bp-modes button { border: 1px solid var(--mx-line); background: var(--mx-soft); color: var(--mx-ink-2); border-radius: 10px; padding: 9px 14px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.bp-modes button.active { border-color: var(--mx-sky); background: var(--mx-tint-2); color: var(--mx-ink); }
+.bp-modes button:focus-visible, .bp-panel button:focus-visible, .bp-panel input:focus-visible, .bp-panel select:focus-visible, .bp-panel textarea:focus-visible { outline: 2px solid var(--mx-sky); outline-offset: 2px; }
+
+.bp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.bp-grid.tight { gap: 10px; }
+.bp-grid .wide { grid-column: 1 / -1; }
+.bp-panel label { display: grid; gap: 6px; color: var(--mx-muted); font-size: 14px; font-weight: 600; min-width: 0; }
+.bp-panel input:not([type="checkbox"]), .bp-panel select, .bp-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--mx-line); background: var(--mx-field); color: var(--mx-ink); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 16px; font-weight: 400; }
+.bp-panel textarea { resize: vertical; line-height: 1.5; }
+
+.bp-fieldset { border: 1px solid var(--mx-line); border-radius: 12px; padding: 14px; margin: 0; display: grid; gap: 12px; min-width: 0; background: var(--mx-inset); }
+.bp-fieldset legend { color: var(--mx-ink); font-weight: 700; font-size: 15px; padding: 0 6px; }
+.bp-note { color: var(--mx-muted); font-size: 14px; line-height: 1.5; margin: 0; }
+.bp-error { margin: 0; border: 1px solid var(--mx-err); border-radius: 10px; padding: 10px 12px; color: var(--mx-err-soft); font-size: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.bp-error button { border: 1px solid var(--mx-line-2); background: var(--mx-soft); color: var(--mx-ink); border-radius: 8px; padding: 6px 10px; font-size: 14px; cursor: pointer; }
+
+.bp-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.bp-actions.end { justify-content: flex-end; }
+.bp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: end; border-bottom: 1px solid var(--mx-line); padding-bottom: 10px; }
+.bp-row-main { display: grid; gap: 4px; min-width: 0; }
+.bp-row-main strong { color: var(--mx-ink); font-size: 15px; overflow-wrap: anywhere; }
+.bp-row-main span { color: var(--mx-muted); font-size: 14px; }
+.bp-row-main a { color: var(--mx-accent-ink); }
+.bp-inline { font-size: 13px; }
+.bp-add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1.2fr) auto auto; gap: 10px; align-items: end; }
+.bp-add textarea { grid-column: 1 / -1; }
+
+.bp-claim { border: 1px solid var(--mx-line); border-left-width: 4px; border-radius: 10px; padding: 12px; display: grid; gap: 10px; background: var(--mx-panel-solid); }
+.bp-claim.verified { border-left-color: var(--mx-ok); }
+.bp-claim.needs_check, .bp-claim.draft { border-left-color: var(--mx-warn); }
+.bp-claim.rejected { border-left-color: var(--mx-err); opacity: .8; }
+.bp-claim-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+.bp-claim-head strong { color: var(--mx-ink); font-size: 15px; }
+.bp-claim-text { margin: 0; color: var(--mx-ink); font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.bp-status { border-radius: 999px; padding: 3px 10px; font-size: 13px; font-weight: 700; border: 1px solid var(--mx-line-2); color: var(--mx-ink-2); }
+.bp-status.verified { border-color: var(--mx-ok); color: var(--mx-ok-ink); }
+.bp-status.needs_check, .bp-status.draft { border-color: var(--mx-warn); color: var(--mx-warn-ink); }
+.bp-status.rejected { border-color: var(--mx-err); color: var(--mx-err-soft); }
+.bp-checks { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; color: var(--mx-muted); font-size: 14px; }
+.bp-panel .bp-checks label, .bp-panel label.bp-check { display: inline-flex; grid-template-columns: none; gap: 6px; align-items: center; font-weight: 500; color: var(--mx-ink-2); font-size: 15px; }
+.bp-checks input, .bp-check input { width: 18px; height: 18px; }
+.bp-reviewer { max-width: 360px; }
+
+.bp-missing, .bp-gate { border: 1px solid var(--mx-line); background: var(--mx-inset); border-radius: 10px; padding: 12px; display: grid; gap: 6px; }
+.bp-missing strong, .bp-gate strong { color: var(--mx-ink); font-size: 15px; }
+.bp-missing span, .bp-gate span { color: var(--mx-ink-2); font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.bp-gate { margin-top: 10px; }
+.bp-gate.blocked { border-color: var(--mx-err); }
+.bp-gate.clear { border-color: var(--mx-ok); }
+.bp-gate .bp-gate-mode { color: var(--mx-muted); font-size: 14px; }
+.bp-gate-section { display: grid; gap: 4px; border-top: 1px solid var(--mx-line); padding-top: 8px; }
+.bp-gate-section em { font-style: normal; font-weight: 700; font-size: 14px; color: var(--mx-accent-ink); }
+.bp-gate-section.blocking em { color: var(--mx-err-soft); }
+.bp-reviewer-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; color: var(--mx-muted); font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+.bp-reviewer-row input { border: 1px solid var(--mx-line); background: var(--mx-field); color: var(--mx-ink); border-radius: 10px; padding: 9px 12px; font: inherit; font-size: 16px; min-width: 0; width: min(280px, 100%); }
+
+@media (max-width: 720px) {
+  .bp-panel { padding: 12px; }
+  .bp-grid, .bp-add { grid-template-columns: minmax(0, 1fr); }
+  .bp-row { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+  .bp-actions.end { justify-content: stretch; }
+  .bp-actions.end > button { flex: 1 1 auto; }
+}

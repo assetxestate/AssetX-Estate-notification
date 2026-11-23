@@ -25,6 +25,7 @@
     { "source": "/api/marketing-knowledge-save", "destination": "/api/marketing?feature=knowledge-save" },
     { "source": "/api/marketing-facebook", "destination": "/api/marketing?feature=facebook" },
     { "source": "/api/marketing-ideas", "destination": "/api/marketing?feature=ideas" },
+    { "source": "/api/marketing-proof", "destination": "/api/marketing?feature=proof" },
     { "source": "/api/telegram-webhook", "destination": "/api/telegram-webhook" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/(.*)", "destination": "/index.html" }

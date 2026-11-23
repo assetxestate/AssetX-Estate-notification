@@ -174,9 +174,10 @@ export function applyHookChoice(generated, hook) {
   }
 }
 
-// โพสต์/ผลร่างที่แคปชั่นมาจาก AI (ไม่ใช่เทมเพลต) — ใช้ทั้งฝั่งเว็บและด่านโพสต์ฝั่ง server (payload.post ส่ง draftSource มาด้วย)
+// โพสต์/ผลร่างที่แคปชั่นไม่ได้มาจากเทมเพลต 6 หัวข้อ: ร่าง AI หรือร่างที่เรียงจากบรีฟ + Proof Card (draftSource 'brief' · src/lib/marketingProof.js)
+// ใช้ทั้งฝั่งเว็บและด่านโพสต์ฝั่ง server (payload.post ส่ง draftSource มาด้วย) — ด่านคำต้องห้ามยังตรวจเต็ม ข้ามเฉพาะการเทียบกับแม่แบบหัวข้อ
 export function isAiDraft(item = {}) {
-  return item?.draftSource === 'ai' || item?.meta?.generatedBy === 'llm'
+  return ['ai', 'brief'].includes(item?.draftSource) || ['llm', 'brief'].includes(item?.meta?.generatedBy)
 }
 
 // หมายเหตุให้คนตรวจเมื่อร่างมาจาก AI — สิ่งที่ AI บอกว่าต้องยืนยัน + คำเตือนจากด่านคำ (warn) ที่ติดมากับร่าง
