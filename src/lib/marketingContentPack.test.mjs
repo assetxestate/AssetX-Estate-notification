@@ -167,3 +167,17 @@ test('video page helpers: edit a scene, tick shot/prep items, progress, teleprom
   // แก้ฉากแล้วชุดยังผูกกับข้อความของร่างเดิม (ไม่ล้าสมัยเพราะการแก้ฉาก)
   assert.equal(isPackStale({ ...post, contentPack: prepped }), false)
 })
+
+test('narration script for script-to-video tools: plain lines, hook, duration, real-footage flag', async () => {
+  const { narrationScript, updateScene } = await import('./marketingContentPack.js')
+  const { pack } = buildContentPack(post, { claims })
+  const out = narrationScript(updateScene(pack, 2, { narration: 'บทพูดที่แก้เอง' }).reel)
+  const lines = out.script.split('\n')
+  assert.equal(lines.length, pack.reel.scenes.length)
+  assert.equal(lines[1], 'บทพูดที่แก้เอง')
+  assert.doesNotMatch(out.script, /วิ\]|ภาพ:|บนจอ:|…/)
+  assert.ok(out.headlineHook.length > 0 && out.headlineHook.length <= 64)
+  assert.equal(out.targetDurationSec, 40)
+  assert.equal(out.needsRealFootage, true)
+  assert.equal(narrationScript(buildReelStoryboard({ title: 'ขายฝากกับจำนองต่างกันอย่างไร', caption: 'ขายฝากกับจำนองต่างกันตรงกรรมสิทธิ์\n\nขายฝากกรรมสิทธิ์โอนไปตั้งแต่วันจดทะเบียน' })).needsRealFootage, false)
+})

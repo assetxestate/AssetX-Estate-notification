@@ -4,7 +4,7 @@
 // ทำอะไรได้: สร้าง/สร้างใหม่ storyboard · แก้ภาพ บทพูด ตัวหนังสือบนจอรายฉาก · ติ๊กฉากที่ถ่ายแล้วและของที่เตรียมแล้ว · บทพูดล้วน · Carousel · บรีฟภาพ
 // ตรรกะล้วนอยู่ใน src/lib/marketingContentPack.js — หน้านี้ไม่สร้างวิดีโอเอง เป็นโต๊ะวางแผนและเช็กงานถ่าย
 import React, { useEffect, useState } from 'react'
-import { REEL_DEFAULT_SEC, REEL_MAX_SEC, REEL_MIN_SEC, buildContentPack, isPackStale, packProgress, storyboardText, teleprompterText, togglePrep, updateScene } from '../lib/marketingContentPack.js'
+import { REEL_DEFAULT_SEC, REEL_MAX_SEC, REEL_MIN_SEC, buildContentPack, isPackStale, narrationScript, packProgress, storyboardText, teleprompterText, togglePrep, updateScene } from '../lib/marketingContentPack.js'
 
 const ROLE = { hook: 'เปิด', explain: 'เนื้อหา', point: 'ข้อ', caveat: 'ข้อจำกัด', cta: 'ชวนทำ' }
 const SLIDE = { cover: 'ปก', content: 'เนื้อหา', caveat: 'ข้อจำกัด', cta: 'ชวนทำ' }
@@ -102,6 +102,24 @@ export default function VideoStudio({ posts = [], post = null, claims = [], load
                   <button type="button" className="mx-secondary" onClick={() => onCopy?.(storyboardText(pack.reel))}>คัดลอก storyboard</button>
                   <button type="button" className="mx-secondary" onClick={() => onCopy?.(teleprompterText(pack.reel))}>คัดลอกบทพูดล้วน</button>
                 </div>
+
+                <h2 className="mx-section-title">สร้างคลิปด้วย AI จากบทพูดนี้</h2>
+                {(() => {
+                  const hero = narrationScript(pack.reel)
+                  return (
+                    <div className="bp-gate-section">
+                      <span>เครื่องมือทำคลิปจากบทพูด (HERO AI) ใส่เสียงพากย์ ภาพประกอบ และซับไทยให้เอง · ตอนนี้ยังสั่งสร้างจากหน้านี้โดยตรงไม่ได้ จึงเตรียมสคริปต์ให้คัดลอกไปวางใน HERO AI Studio</span>
+                      {hero.needsRealFootage && <span className="bp-pack-warn">โพสต์นี้มีฉากที่ต้องใช้ภาพหน้างานจริง — ภาพประกอบของเครื่องมือ AI เป็นภาพสต็อกหรือภาพที่สร้างขึ้น ห้ามใช้แทนสถานที่จริง ถ้าจะใช้ AI ทำคลิป ให้ใส่ภาพหน้างานของเราเองแทนในฉากนั้น</span>}
+                      <span><b>พาดหัวเปิดคลิป</b> {hero.headlineHook}</span>
+                      <span className="bp-ai-caption">{hero.script}</span>
+                      <div className="bp-actions">
+                        <button type="button" className="mx-secondary" onClick={() => onCopy?.(hero.script)}>คัดลอกสคริปต์สำหรับ HERO AI</button>
+                        <button type="button" className="mx-mini-button" onClick={() => onCopy?.(hero.headlineHook)}>คัดลอกพาดหัวเปิดคลิป</button>
+                        <a className="mx-mini-button" href="https://studio.heroaiengine.com" target="_blank" rel="noreferrer noopener">เปิด HERO AI Studio</a>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 <h2 className="mx-section-title">ของที่ต้องเตรียมก่อนถ่าย</h2>
                 {[['ภาพที่ต้องถ่ายหรือหา', pack.reel.prep.footage], ['กราฟิกที่ต้องทำ', pack.reel.prep.graphics]].map(([label, items]) => (

@@ -263,3 +263,16 @@ export function packProgress(pack) {
 
 // บทพูดล้วนสำหรับอ่านหน้ากล้องหรืออัดเสียง (ตามฉาก พร้อมเวลา)
 export const teleprompterText = (reel) => (reel?.scenes || []).map((scene) => `[${scene.start_sec}–${scene.end_sec} วิ] ${scene.narration}`).join('\n\n')
+
+// สคริปต์สำหรับเครื่องมือทำคลิปจากบทพูด (เช่น HERO AI): บทพูดล้วนเรียงตามฉาก ไม่มีเวลาและคำกำกับภาพ + พาดหัวเปิดคลิป
+// ใช้ข้อความของฉากตามที่เป็นอยู่ (รวมที่แก้เอง) ไม่เติมอะไร · ภาพประกอบของเครื่องมือแบบนี้เป็นภาพสต็อกหรือภาพ AI
+//   จึงเหมาะกับโพสต์ความรู้ทั่วไป ไม่ใช่โพสต์ที่อ้างภาพหน้างานจริง (needsRealFootage บอกให้หน้าจอเตือน)
+export function narrationScript(reel) {
+  const scenes = reel?.scenes || []
+  return {
+    script: scenes.map((scene) => String(scene.narration || '').replace(/…$/, '').trim()).filter(Boolean).join('\n'),
+    headlineHook: String(scenes[0]?.overlay || '').replace(/…$/, '').trim().slice(0, 64),
+    targetDurationSec: reel?.duration || null,
+    needsRealFootage: scenes.some((scene) => scene.need === 'footage'),
+  }
+}
