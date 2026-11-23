@@ -1087,6 +1087,8 @@ export default function MarketingPage({ onBack }) {
   const pendingRef = useRef([])
   const mountWorkspaceRef = useRef(workspace)
   const toastTimerRef = useRef(null)
+  // เตือน "พื้นที่เก็บในเบราว์เซอร์เต็ม" ครั้งเดียวต่อการเปิดหน้า (เดิมเด้งทุกตัวอักษรที่พิมพ์ เพราะทุกการพิมพ์คือการบันทึก — เจ้าของเจอ 23 พ.ย. 2569)
+  const storageWarnedRef = useRef(false)
   const toolsRef = useRef(null)
   const [view, setView] = useState('ideas')
   const [toolsOpen, setToolsOpen] = useState(false)
@@ -1189,7 +1191,10 @@ export default function MarketingPage({ onBack }) {
     if (!loadSettledRef.current && typeof update === 'function') pendingRef.current.push(update)
     commitWorkspace(next)
     // พื้นที่เก็บในเบราว์เซอร์เต็ม (รูปใหญ่หลายรูป) — ข้อมูลยังอยู่ในหน้าและจะบันทึกขึ้นระบบตามปกติ ไม่โยน DOMException ภาษาอังกฤษขึ้นจอ
-    if (!stored) notify('พื้นที่เก็บในเบราว์เซอร์เต็ม ข้อมูลยังอยู่ในหน้านี้และจะบันทึกขึ้นระบบต่อไป', 'error')
+    if (!stored && !storageWarnedRef.current) {
+      storageWarnedRef.current = true
+      notify('พื้นที่เก็บสำรองในเบราว์เซอร์เต็ม (รูปในคลังมีมาก) · ไม่กระทบงาน: ข้อมูลยังบันทึกขึ้นระบบตามปกติ ดูสถานะ "บันทึกแล้ว" ที่แถบด้านบน', 'warn')
+    }
     return next
   }
 
