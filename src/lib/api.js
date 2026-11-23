@@ -3,6 +3,7 @@
 // ทุก component ที่เคย fetch(APPS_SCRIPT_URL) ให้ import จากที่นี่
 // ============================================================
 import { supabase } from "./supabase";
+import { dehydrateWorkspace } from "./marketingMedia.js";
 import { haversineDistanceMeters } from "./pricePoints";
 import { postponeTopupInstallment } from "./topupSchedule.js";
 
@@ -1046,10 +1047,11 @@ export async function getMarketingWorkspace(id = "default") {
   return data || null;
 }
 
+// รูปที่อยู่ในที่เก็บไฟล์แล้ว (มี storagePath) ไม่ถูกส่งไปกับก้อนนี้ — เหลือแค่ตำแหน่งไฟล์ (lib/marketingMedia.js)
 export async function saveMarketingWorkspace(payload, id = "default") {
   const { error } = await supabase.from("marketing_workspaces").upsert({
     id,
-    payload,
+    payload: dehydrateWorkspace(payload),
     updated_at: new Date().toISOString(),
   });
   if (error) throw error;

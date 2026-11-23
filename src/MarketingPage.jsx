@@ -3,6 +3,8 @@ import { aiDraftReviewNotes, appendMarketingHashtags, applyAiDraft, applyHookCho
 import { hookOptionsFor, isCurrentHook, swapOpeningLine, videoScriptFromDraft } from './lib/hookOptions.js'
 import { DECORATED_MIN, countEmoji, decorateCaption, stripEmoji } from './lib/captionEmoji.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
+import { dehydrateWorkspace, hydrateWorkspace, markStored, needsHydration, needsUpload, sameImage } from './lib/marketingMedia.js'
+import { fetchMedia, getMediaStatus, uploadMedia } from './lib/marketingMediaApi.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
 import { canRecoverManualFacebookPost, canReturnToEdit, facebookScheduleTooSoon, publishNowPost, recoverManualFacebookPost, returnToEditPatch, scheduledAtMs } from './lib/marketingQueue.js'
@@ -1099,6 +1101,11 @@ export default function MarketingPage({ onBack }) {
   const toastTimerRef = useRef(null)
   // เตือน "พื้นที่เก็บในเบราว์เซอร์เต็ม" ครั้งเดียวต่อการเปิดหน้า (เดิมเด้งทุกตัวอักษรที่พิมพ์ เพราะทุกการพิมพ์คือการบันทึก — เจ้าของเจอ 23 พ.ย. 2569)
   const storageWarnedRef = useRef(false)
+  // รูปเก็บเป็นไฟล์แยก (lib/marketingMedia.js): ที่เก็บพร้อมหรือไม่ · รูปที่กำลังย้าย/โหลด · รูปที่ล้มแล้วไม่ลองซ้ำในหน้านี้ · ก้อนล่าสุดที่บันทึกสำเร็จ (ไม่ส่งซ้ำเมื่อไม่มีอะไรเปลี่ยน)
+  const [mediaStoreReady, setMediaStoreReady] = useState(false)
+  const mediaBusyRef = useRef(new Set())
+  const mediaFailedRef = useRef(new Set())
+  const lastSavedJsonRef = useRef('')
   const toolsRef = useRef(null)
   const [view, setView] = useState('ideas')
   const [toolsOpen, setToolsOpen] = useState(false)
@@ -1192,7 +1199,7 @@ export default function MarketingPage({ onBack }) {
     const next = loadSettledRef.current ? numbered(raw) : raw
     let stored = true
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dehydrateWorkspace(next)))
     } catch {
       stored = false
     }
@@ -1321,7 +1328,7 @@ export default function MarketingPage({ onBack }) {
         loadSettledRef.current = true
         commitWorkspace(next)
         // พื้นที่ในเบราว์เซอร์เต็มต้องไม่ทำให้หยุดบันทึกขึ้นระบบ — ข้อมูลชุดนี้มาจากระบบอยู่แล้ว
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* ข้ามได้ */ }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(dehydrateWorkspace(next))) } catch { /* ข้ามได้ */ }
         if (importNotice) {
           const post = importNotice.postId ? draftsOf(next).find((item) => item.id === importNotice.postId) : null
           // เปิดแท็บที่ร่างอยู่ตามสถานะ (ร่างที่นำเข้าไว้แล้วอาจถูกอนุมัติหรือพักไว้แล้ว) และไฮไลต์การ์ด
@@ -1339,7 +1346,7 @@ export default function MarketingPage({ onBack }) {
         loadSettledRef.current = true
         const next = numbered(workspaceRef.current)
         commitWorkspace(next)
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* ข้ามได้ */ }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(dehydrateWorkspace(next))) } catch { /* ข้ามได้ */ }
         setSyncState({ state: 'local', at: null })
         setCloudReady(false)
       })
@@ -1349,13 +1356,50 @@ export default function MarketingPage({ onBack }) {
   useEffect(() => {
     if (!cloudReady) return undefined
     const timer = window.setTimeout(() => {
+      // สิ่งที่จะขึ้นระบบ = เวิร์กสเปซที่ตัดรูปที่ย้ายแล้วออก · เหมือนครั้งก่อนทุกตัวอักษร (เช่น เพิ่งเติมรูปกลับเข้าหน่วยความจำ) = ไม่ต้องส่ง
+      const json = JSON.stringify(dehydrateWorkspace(workspace))
+      if (json === lastSavedJsonRef.current) return
       setSyncState((prev) => ({ ...prev, state: 'saving' }))
       saveMarketingWorkspace(workspace)
-        .then(() => setSyncState({ state: 'saved', at: new Date().toISOString() }))
+        .then(() => { lastSavedJsonRef.current = json; setSyncState({ state: 'saved', at: new Date().toISOString() }) })
         .catch(() => setSyncState({ state: 'failed', at: null }))
     }, 700)
     return () => window.clearTimeout(timer)
   }, [workspace, cloudReady])
+
+  useEffect(() => {
+    let cancelled = false
+    getMediaStatus().then((status) => { if (!cancelled) setMediaStoreReady(status.ready) })
+    return () => { cancelled = true }
+  }, [])
+
+  // รูป ↔ ที่เก็บไฟล์: (1) รูปที่มีตำแหน่งไฟล์แต่ยังไม่มีในหน่วยความจำ → ดึงมาเติม (ไม่นับเป็นการแก้ ไม่ต้องบันทึก)
+  // (2) รูปใหม่ที่ยังฝังอยู่ในก้อน → อัปโหลด อ่านกลับมาเทียบกับต้นฉบับ ตรงกันจึงผูกตำแหน่งไฟล์ (ครั้งบันทึกถัดไปก้อนจะไม่พกรูปนี้)
+  // ล้มขั้นไหนก็ตาม = รูปอยู่ในก้อนตามเดิม ไม่มีข้อความรบกวน และไม่ลองซ้ำจนกว่าจะเปิดหน้าใหม่
+  useEffect(() => {
+    if (!mediaStoreReady || syncState.state === 'loading') return
+    for (const asset of workspace.mediaAssets || []) {
+      if (!asset?.id || mediaBusyRef.current.has(asset.id) || mediaFailedRef.current.has(asset.id)) continue
+      if (needsHydration(asset)) {
+        mediaBusyRef.current.add(asset.id)
+        fetchMedia(asset.storagePath)
+          .then((dataUrl) => commitWorkspace(hydrateWorkspace(workspaceRef.current, { [asset.id]: { storagePath: asset.storagePath, dataUrl } })))
+          .catch(() => { mediaFailedRef.current.add(asset.id); notify('โหลดรูปบางรูปจากที่เก็บไม่สำเร็จ · รีเฟรชหน้าเพื่อลองใหม่ (รูปยังอยู่ในที่เก็บ)', 'warn') })
+          .finally(() => mediaBusyRef.current.delete(asset.id))
+      } else if (needsUpload(asset)) {
+        const original = asset.dataUrl
+        mediaBusyRef.current.add(asset.id)
+        uploadMedia(asset.id, original)
+          .then(async ({ path }) => {
+            if (!sameImage(await fetchMedia(path), original)) throw new Error('read-back mismatch')
+            save((ws) => markStored(ws, asset.id, path, original))
+          })
+          .catch(() => mediaFailedRef.current.add(asset.id))
+          .finally(() => mediaBusyRef.current.delete(asset.id))
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace.mediaAssets, mediaStoreReady, syncState.state])
 
   // ค้นด้วยเลข → เลื่อนไปที่การ์ดหลังหน้าเปลี่ยนแล้ว และไฮไลต์ชั่วครู่
   useEffect(() => {
@@ -1636,7 +1680,7 @@ export default function MarketingPage({ onBack }) {
         throw new Error('บันทึกภาพขึ้นระบบไม่สำเร็จ ลองใหม่อีกครั้ง')
       }
       final = workspaceRef.current === base ? next : numbered(withArtwork(workspaceRef.current, isSample ? contentNoOf(next, postId) : null))
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(final)) } catch { /* ขึ้นระบบแล้ว พื้นที่ในเครื่องเต็มก็ไม่เป็นไร */ }
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(dehydrateWorkspace(final))) } catch { /* ขึ้นระบบแล้ว พื้นที่ในเครื่องเต็มก็ไม่เป็นไร */ }
       commitWorkspace(final)
     }
     if (!isGenerated) setSelectedId(postId)
@@ -1667,6 +1711,11 @@ export default function MarketingPage({ onBack }) {
       target = publishNowPost(post)
     }
     const media = findMediaForPost(workspaceRef.current.mediaAssets || [], post)
+    // รูปของโพสต์ยังโหลดจากที่เก็บไม่เสร็จ → ยังไม่ส่ง (ไม่งั้นโพสต์จะขึ้นแบบไม่มีรูป)
+    if (media && !media.dataUrl) {
+      notify(withContentNo(post.contentNo, 'รูปของโพสต์นี้ยังโหลดไม่เสร็จ รอสักครู่แล้วกดอีกครั้ง'), 'warn')
+      return
+    }
     setFacebookPublishingId(post.id)
     try {
       const response = await fetch('/api/marketing-facebook', {
