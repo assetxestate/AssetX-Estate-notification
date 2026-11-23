@@ -18,7 +18,7 @@
     "test:marketing-image": "node server/marketing-image.test.mjs",
     "test:image-jobs": "node --test server/marketing-image-jobs.test.mjs src/lib/posterBrief.test.mjs src/lib/posterV4.test.mjs src/lib/posterFree.test.mjs src/lib/posterPremium.test.mjs server/poster-premium-plan.test.mjs server/poster-brief-ai.test.mjs server/poster-refs.test.mjs",
     "image-worker": "node scripts/image-worker.mjs",
-    "test:marketing-proof": "node --test src/lib/marketingProof.test.mjs server/marketing-proof.test.mjs server/briefWriter.test.mjs src/lib/marketingOriginality.test.mjs src/lib/marketingSeries.test.mjs src/lib/marketingBrands.test.mjs src/lib/marketingMedia.test.mjs src/lib/marketingContentPack.test.mjs",
+    "test:marketing-proof": "node --test src/lib/marketingProof.test.mjs server/marketing-proof.test.mjs server/briefWriter.test.mjs src/lib/marketingOriginality.test.mjs src/lib/marketingSeries.test.mjs src/lib/marketingBrands.test.mjs src/lib/marketingMedia.test.mjs src/lib/marketingContentPack.test.mjs src/lib/marketingPerformance.test.mjs",
     "test:marketing-content": "node --test src/lib/marketingContent.test.mjs src/lib/marketingContentNumbers.test.mjs",
     "test:contract-summary": "node --test src/lib/contractSummaryReport.test.mjs",
     "test:topup-schedule": "node --test src/lib/topupSchedule.test.mjs",

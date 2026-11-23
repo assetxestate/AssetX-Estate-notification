@@ -106,6 +106,16 @@
 .bp-pack-scene i { font-style: normal; font-weight: 700; color: var(--mx-accent-ink); font-size: 13px; margin-right: 4px; }
 .bp-pack .bp-pack-warn { color: var(--mx-warn-ink); }
 
+.bp-perf { display: grid; gap: 14px; margin-top: 24px; }
+.bp-perf .bp-inline { display: grid; gap: 6px; color: var(--mx-muted); font-size: 13px; font-weight: 600; }
+.bp-perf select, .bp-perf input[type="text"], .bp-perf textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--mx-line); background: var(--mx-field); color: var(--mx-ink); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 16px; font-weight: 400; }
+.bp-perf .bp-inline select { min-width: 150px; }
+.bp-perf-inputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+.bp-perf-inputs strong { grid-column: 1 / -1; color: var(--mx-ink); font-size: 14px; }
+.bp-perf-exp { margin-bottom: 4px; }
+.bp-perf .mx-row-card > div { display: grid; gap: 4px; min-width: 0; }
+.bp-perf .mx-row-card span { overflow-wrap: anywhere; }
+
 .bp-switch { display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap; margin: 14px 0; }
 .bp-switch span { color: var(--mx-muted); font-size: 14px; line-height: 1.5; }
 

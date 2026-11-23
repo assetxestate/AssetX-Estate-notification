@@ -26,6 +26,7 @@ import BriefProofPanel, { GateResult } from './components/BriefProofPanel.jsx'
 import { assessContent } from './lib/marketingOriginality.js'
 import SeriesManager from './components/SeriesManager.jsx'
 import ContentPackPanel from './components/ContentPackPanel.jsx'
+import PerformancePanel from './components/PerformancePanel.jsx'
 import { draftImagePrompt } from './lib/marketingContentPack.js'
 import BrandProfiles from './components/BrandProfiles.jsx'
 import { assignSeries, findSeries, repeatedEpisode, seriesEpisodes, seriesList } from './lib/marketingSeries.js'
@@ -445,6 +446,8 @@ function loadWorkspace() {
       hiddenPostIds: Array.isArray(stored.hiddenPostIds) ? stored.hiddenPostIds : [],
       customSeries: Array.isArray(stored.customSeries) ? stored.customSeries : [],
       brandSettings: stored.brandSettings && typeof stored.brandSettings === 'object' ? stored.brandSettings : {},
+      performance: Array.isArray(stored.performance) ? stored.performance : [],
+      experiments: Array.isArray(stored.experiments) ? stored.experiments : [],
       manualIdea: stored.manualIdea || '',
       contentSeq: stored.contentSeq,
     })
@@ -514,6 +517,8 @@ function normalizeWorkspace(workspace = {}) {
     hiddenPostIds: Array.isArray(workspace.hiddenPostIds) ? workspace.hiddenPostIds : [],
     customSeries: Array.isArray(workspace.customSeries) ? workspace.customSeries : [],
     brandSettings: workspace.brandSettings && typeof workspace.brandSettings === 'object' ? workspace.brandSettings : {},
+    performance: Array.isArray(workspace.performance) ? workspace.performance : [],
+    experiments: Array.isArray(workspace.experiments) ? workspace.experiments : [],
     manualIdea: workspace.manualIdea || '',
     contentSeq: workspace.contentSeq,
   })
@@ -2901,6 +2906,16 @@ export default function MarketingPage({ onBack }) {
             onFormChange={setMetricForm}
             onAdd={addMetricRecord}
             onDelete={deleteMetricRecord}
+            performance={proofOn ? (
+              <PerformancePanel
+                posts={workspace.posts}
+                performance={workspace.performance || []}
+                experiments={workspace.experiments || []}
+                onSavePerformance={(list) => save((ws) => ({ ...ws, performance: list }))}
+                onSaveExperiments={(list) => save((ws) => ({ ...ws, experiments: list }))}
+                notify={notify}
+              />
+            ) : null}
           />
         )}
         {view === 'pipeline' && <PipelineView feed={researchFeed} syncState={syncState} facebookConnection={facebookConnection} counts={dashboardCounts} onReload={loadResearchIdeas} />}
@@ -4322,7 +4337,7 @@ function CalendarView({ posts = [], onQueue }) {
   )
 }
 
-function MetricsView({ metrics: allMetrics, form, onFormChange, onAdd, onDelete }) {
+function MetricsView({ metrics: allMetrics, form, onFormChange, onAdd, onDelete, performance = null }) {
   // ช่วงเวลา: null = ทั้งหมด · ตัวเลข = วันย้อนหลัง (กรองจาก createdAt ของแต่ละรายการ)
   const [rangeDays, setRangeDays] = useState(null)
   const metrics = rangeDays
@@ -4381,6 +4396,7 @@ function MetricsView({ metrics: allMetrics, form, onFormChange, onAdd, onDelete 
         <div className="mx-bars">{(barData.length ? barData : [{ leads: 1 }]).map((item, index) => <span title={item.title || 'ยังไม่มีข้อมูล'} style={{ height: `${Math.max(8, ((Number(item.leads) || 0) / maxLeads) * 100)}%` }} key={item.id || index} />)}</div>
         <p>แท่งละหนึ่งโพสต์ที่บันทึกผล (ล่าสุด 12 รายการ) ความสูงตามจำนวนลีด</p>
       </div>
+      {performance}
     </section>
   )
 }
