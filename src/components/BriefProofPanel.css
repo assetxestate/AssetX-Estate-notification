@@ -63,6 +63,9 @@
 .bp-reviewer-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; color: var(--mx-muted); font-size: 14px; font-weight: 600; margin: 0 0 12px; }
 .bp-reviewer-row input { border: 1px solid var(--mx-line); background: var(--mx-field); color: var(--mx-ink); border-radius: 10px; padding: 9px 12px; font: inherit; font-size: 16px; min-width: 0; width: min(280px, 100%); }
 
+.bp-switch { display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap; margin: 14px 0; }
+.bp-switch span { color: var(--mx-muted); font-size: 14px; line-height: 1.5; }
+
 @media (max-width: 720px) {
   .bp-panel { padding: 12px; }
   .bp-grid, .bp-add { grid-template-columns: minmax(0, 1fr); }

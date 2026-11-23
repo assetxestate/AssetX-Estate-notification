@@ -19,6 +19,7 @@ import { contentNoOf, contentReference, ensureContentNumbers, findContentByNo, f
 import { freshJobStatus, isActiveJob as isActiveFreshJob, latestJobBy, shouldResumeJob } from './lib/freshContentJob.js'
 import { CHANNEL_ORDER, channelMeta, channelOfIdea, countByChannel } from './lib/ideaChannels.js'
 import { ThemeToggle } from './components/ThemeToggle.jsx'
+import { resolveTopic } from './lib/marketing-model/topics.js'
 import BriefProofPanel, { GateResult } from './components/BriefProofPanel.jsx'
 import { approveContent, attachBrief, checkGate, gatePayload, getProofFlags, storeReviewer, storedReviewer } from './lib/marketingProofApi.js'
 
@@ -1443,6 +1444,10 @@ export default function MarketingPage({ onBack }) {
     return () => { cancelled = true }
   }, [])
 
+  const showStudioResult = () => window.setTimeout(() => {
+    document.querySelector('.mx-studio-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, 120)
+
   const blockedWhileLoading = () => {
     if (loadSettledRef.current) return false
     notify(LOADING_MESSAGE, 'warn')
@@ -1560,6 +1565,7 @@ export default function MarketingPage({ onBack }) {
       meta: { ...(base.meta || {}), generatedBy: 'brief', captionQuality: null, hooks: [], claimIdsUsed: draft.claim_ids_used, missingEvidence: draft.missing_evidence, basis: draft.basis },
     }
     save((current) => ({ ...current, studio: input, generated }))
+    showStudioResult()
     notify('ร่างจากข้อมูลจริงแล้ว · อ่านทั้งโพสต์ แล้วกด ส่งเข้ารอตรวจ')
   }
 
@@ -1794,10 +1800,15 @@ export default function MarketingPage({ onBack }) {
     // ติดเลขไอเดียไปกับร่างใน Studio → พอส่งเข้ารอตรวจ ร่างจะบอก "จากไอเดีย N" (ตัวร่างไม่ถูกแก้ แค่ติดป้ายผลลัพธ์)
     // ไอเดียจากคลัง/การ์ดที่มีร่าง AI ล่วงหน้า (มุมที่เลือก หรือมุมแรก) → ใช้ร่างนั้นแทนเทมเพลต
     const aiDraft = sourceIdea?.draft?.caption ? sourceIdea.draft : (sourceIdea?.angles?.[0]?.draft?.caption ? sourceIdea.angles[0].draft : null)
-    const generated = applyAiDraft({ ...runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || '')), ...(sourceIdeaId ? { sourceIdeaId } : {}) }, aiDraft, { channel: input.channel })
+    const base = applyAiDraft({ ...runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || '')), ...(sourceIdeaId ? { sourceIdeaId } : {}) }, aiDraft, { channel: input.channel })
+    // หัวข้อที่ไม่เข้าแม่แบบและไม่มีร่าง AI: แม่แบบไม่แต่งเนื้อหาให้ → บอกตรง ๆ ในหน้า แทนร่างเปล่าที่ดูเหมือนระบบไม่ทำงาน
+    const unmatched = !aiDraft && resolveTopic(input.prompt) === 'unknown'
+    const generated = unmatched ? { ...base, meta: { ...(base.meta || {}), unmatched: true } } : base
     save((current) => ({ ...current, studio: input, generated }))
     goTo('studio')
-    notify('ร่างโพสต์แล้ว · ตรวจแล้วกด ส่งเข้ารอตรวจ')
+    showStudioResult()
+    if (unmatched) notify('ยังไม่มีแม่แบบสำหรับหัวข้อนี้ · ดูคำแนะนำใต้ช่องหัวข้อ', 'warn')
+    else notify('ร่างโพสต์แล้ว · เลื่อนลงดูร่าง แล้วกด ส่งเข้ารอตรวจ')
   }
 
   // replaces = ร่างเดิมที่เจ้าของกด "คิดคอนเทนต์ใหม่ (AI)" — ร่างใหม่บอกว่าแทนเลขไหน ร่างเดิมพักไว้ในคลังผลงาน (ไม่ลบ) และไม่พาไปแท็บอื่นเอง (ผลมาถึงทีหลัง เจ้าของอาจทำอย่างอื่นอยู่)
@@ -3199,6 +3210,9 @@ function IdeasView({
 }
 
 function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onChannelChange, onPromptChange, onGenerate, onQueue, onCopy, onBack, onPickHook, proof = null, proofNote = '' }) {
+  // แผงข้อมูลจริงพับไว้ก่อน (ฟอร์มยาว ดันช่องพิมพ์หัวข้อและผลร่างลงใต้จอ) · มีบรีฟค้างอยู่ = เปิดให้เลย
+  const [panelOpen, setPanelOpen] = useState(Boolean(proof?.briefId))
+  useEffect(() => { if (proof?.briefId) setPanelOpen(true) }, [proof?.briefId])
   const posterPrompt = generated ? buildSocialPosterPrompt({
     title: generated.headline || studio.prompt,
     imagePrompt: generated.imagePrompt,
@@ -3214,20 +3228,37 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
         <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onBack}>← กลับไปร่างที่รอตรวจ</button></div>
       </div>
       {proofNote && <p className="mx-warn">{proofNote}</p>}
-      {proof && <BriefProofPanel topicHint={studio.prompt} {...proof} />}
-      {proof && <div className="mx-kicker">โหมดสร้างเร็ว · พิมพ์หัวข้ออย่างเดียว (ความรู้ทั่วไป ไม่มี Proof Card)</div>}
+      {proof && <div className="mx-kicker">ทางที่ 1 · พิมพ์หัวข้อ ให้ระบบร่างจากแม่แบบ (ขายฝาก จำนอง ไถ่ถอน ซื้อ-ขายทรัพย์ สภาพคล่อง)</div>}
       <div className="mx-prompt-box">
         <textarea value={studio.prompt} onChange={(event) => onPromptChange(event.target.value)} placeholder="พิมพ์หัวข้อที่อยากโพสต์ เช่น เจ้าของที่ดินต้องการเงินก่อน แต่ไม่อยากขายขาด" />
-        <button className="mx-primary" onClick={onGenerate}>ร่างโพสต์</button>
+        <button className="mx-primary" onClick={onGenerate}>{proof ? 'ร่างจากแม่แบบ' : 'ร่างโพสต์'}</button>
       </div>
       <label className="mx-schedule-row">ช่องทาง
         <select value={studio.channel} onChange={(event) => onChannelChange(event.target.value)}>
           {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
         </select>
       </label>
+      {proof && (
+        <div className="bp-switch">
+          <button type="button" className="mx-secondary" aria-expanded={panelOpen} onClick={() => setPanelOpen((open) => !open)}>
+            {panelOpen ? 'พับแผงข้อมูลจริง' : 'ทางที่ 2 · มีข้อมูลหน้างานหรือแหล่งอ้างอิง → สร้างจากข้อมูลจริง'}
+          </button>
+          {!panelOpen && <span>ใช้เมื่อมีของจริงจะเล่า: สิ่งที่เห็นตอนไปดูทรัพย์ ราคาหรือข้อกฎหมายที่มีแหล่งอ้างอิง</span>}
+        </div>
+      )}
+      {proof && panelOpen && <BriefProofPanel topicHint={studio.prompt} {...proof} />}
       <div className="mx-model-note">{generated?.meta?.generatedBy === 'brief' ? 'ร่างจากบรีฟและข้ออ้างที่ยืนยันแล้ว (ไม่ใช้ AI) — ระบบเรียงข้อความให้ ไม่เติมข้อเท็จจริง · อ่านและเกลาภาษาก่อนส่งตรวจ' : generated?.meta?.generatedBy === 'llm' ? 'ร่างโดย AI จากข้อเท็จจริงที่สำรวจมา — ตรวจกับแหล่งที่มาและแก้ข้อความก่อนส่งตรวจทุกครั้ง' : 'ร่างจากแม่แบบของ AssetX — ตรวจข้อเท็จจริงและแก้ข้อความก่อนส่งตรวจทุกครั้ง'}</div>
-      {generated && (
-        <div className="mx-generated-grid">
+      {generated?.meta?.unmatched && (
+        <div className="mx-review-notes mx-studio-result" role="status">
+          <strong>ยังไม่มีแม่แบบสำหรับหัวข้อนี้ ระบบจึงไม่ร่างให้ (ไม่แต่งเนื้อหาขึ้นเอง)</strong>
+          <span>แม่แบบร่างได้ทันทีเมื่อหัวข้อมีคำเหล่านี้: ขายฝาก · จำนอง · ไถ่ถอน · ขายขาด/สภาพคล่อง · ซื้อ/ลงทุน/ตรวจที่ดิน · ขาย/ราคาตลาด/ประเมิน</span>
+          {proof
+            ? <span>ถ้ามีข้อมูลของเราเองเรื่องนี้ ใช้ทางที่ 2: กดปุ่ม "สร้างจากข้อมูลจริง" ด้านบน ใส่หัวข้อและข้อสังเกตหน้างาน แล้วกด "ร่างโพสต์จากข้อมูลนี้"</span>
+            : <span>หรือเลือกไอเดียจากแท็บ ไอเดีย ซึ่งมีร่างที่ AI เขียนจากข้อเท็จจริงที่สำรวจมา</span>}
+        </div>
+      )}
+      {generated && !generated.meta?.unmatched && (
+        <div className="mx-generated-grid mx-studio-result">
           <article className="mx-review-card wide">
             <div className="mx-review-head">
               <div><div className="mx-kicker">ร่างพร้อมตรวจ</div><h2>{generated.headline}</h2></div>
