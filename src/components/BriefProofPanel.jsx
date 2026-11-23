@@ -470,6 +470,47 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
   )
 }
 
+// คะแนนสามอย่างแยกกัน + ด่าน 6 ข้อ + ประโยคสำเร็จรูป (src/lib/marketingOriginality.js) — ข้อมูลประกอบการตรวจ ไม่บล็อก ไม่ใช่คำทำนายยอด
+function ScoreSummary({ assessment }) {
+  if (!assessment) return null
+  const passed = assessment.gates.filter((gate) => gate.ok).length
+  return (
+    <details className="bp-scores">
+      <summary>
+        <span>ต้นฉบับ <strong>{assessment.originality}</strong>/100</span>
+        <span>บรรณาธิการ <strong>{assessment.editorial}</strong>/100</span>
+        <span>โครงสร้าง <strong>{assessment.structural}</strong>/100</span>
+        <span>ด่าน 6 ข้อ ผ่าน {passed}</span>
+      </summary>
+      <span className="bp-gate-mode">เกณฑ์ภายในสำหรับช่วยตรวจ ไม่ใช่คำทำนายยอดเข้าถึง · คะแนนสูงไม่ลบล้างตัวบล็อก · โพสต์ความรู้ทั่วไปได้คะแนนต้นฉบับต่ำเป็นปกติ{assessment.ready_for_final_review ? ' · คะแนนถึงเกณฑ์ พร้อมให้คนตรวจขั้นสุดท้าย' : ''}</span>
+      <div className="bp-gate-section">
+        <em>ด่าน 6 ข้อ</em>
+        {assessment.gates.map((gate) => <span key={gate.key}><b className={gate.ok ? 'ok' : 'todo'}>{gate.ok ? 'ใช่' : 'ต้องปรับ'}</b> {gate.label} — {gate.why}</span>)}
+      </div>
+      {assessment.advice.length > 0 && (
+        <div className="bp-gate-section">
+          <em>ถ้าจะปรับ เริ่มจากข้อนี้</em>
+          {assessment.advice.map((tip) => <span key={tip}>{tip}</span>)}
+        </div>
+      )}
+      {assessment.sameness.length > 0 && (
+        <div className="bp-gate-section">
+          <em>ประโยคสำเร็จรูปและความซ้ำ</em>
+          {assessment.sameness.map((item) => <span key={item.code}>{item.message}</span>)}
+        </div>
+      )}
+      <div className="bp-gate-section">
+        <em>ที่มาของคะแนนต้นฉบับ</em>
+        {assessment.originality_parts.map((part) => <span key={part.key}>{part.label} {part.score}/{part.max}</span>)}
+      </div>
+      <div className="bp-gate-section">
+        <em>ที่มาของคะแนนบรรณาธิการ</em>
+        {assessment.editorial_parts.map((part) => <span key={part.key}>{part.label} {part.score}/{part.max}</span>)}
+      </div>
+    </details>
+  )
+}
+
 // ผลด่านตรวจบนการ์ดร่าง: ตัวบล็อกแยกหมวด + ข้ออ้าง → แหล่งที่มา · สถานะความถูกต้องแยกจากคะแนนโครงสร้าง
 export function GateResult({ result }) {
   if (!result) return null
@@ -503,6 +544,7 @@ export function GateResult({ result }) {
           })}
         </div>
       )}
+      <ScoreSummary assessment={result.assessment} />
       {result.review && <span className="bp-gate-mode">อนุมัติล่าสุดโดย {result.review.reviewer} · {new Date(result.review.created_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}</span>}
     </div>
   )

@@ -21,6 +21,9 @@ import { CHANNEL_ORDER, channelMeta, channelOfIdea, countByChannel } from './lib
 import { ThemeToggle } from './components/ThemeToggle.jsx'
 import { resolveTopic } from './lib/marketing-model/topics.js'
 import BriefProofPanel, { GateResult } from './components/BriefProofPanel.jsx'
+import { assessContent } from './lib/marketingOriginality.js'
+import SeriesManager from './components/SeriesManager.jsx'
+import { assignSeries, findSeries, repeatedEpisode, seriesList } from './lib/marketingSeries.js'
 import { approveContent, attachBrief, checkGate, gatePayload, getProofFlags, storeReviewer, storedReviewer } from './lib/marketingProofApi.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
@@ -434,6 +437,7 @@ function loadWorkspace() {
       mediaAssets: Array.isArray(stored.mediaAssets) ? stored.mediaAssets : [],
       metrics: Array.isArray(stored.metrics) ? stored.metrics : [],
       hiddenPostIds: Array.isArray(stored.hiddenPostIds) ? stored.hiddenPostIds : [],
+      customSeries: Array.isArray(stored.customSeries) ? stored.customSeries : [],
       manualIdea: stored.manualIdea || '',
       contentSeq: stored.contentSeq,
     })
@@ -501,6 +505,7 @@ function normalizeWorkspace(workspace = {}) {
     mediaAssets: Array.isArray(workspace.mediaAssets) ? workspace.mediaAssets : [],
     metrics: Array.isArray(workspace.metrics) ? workspace.metrics : [],
     hiddenPostIds: Array.isArray(workspace.hiddenPostIds) ? workspace.hiddenPostIds : [],
+    customSeries: Array.isArray(workspace.customSeries) ? workspace.customSeries : [],
     manualIdea: workspace.manualIdea || '',
     contentSeq: workspace.contentSeq,
   })
@@ -1499,12 +1504,20 @@ export default function MarketingPage({ onBack }) {
     if (message) notify(withContentNo(current.contentNo, message))
   }
 
+  // คะแนนต้นฉบับ/บรรณาธิการของร่าง เทียบกับโพสต์อื่นของเรา (ไม่รวมตัวเองและร่างตัวอย่าง) — คำนวณในหน้าเว็บจากผลด่านของเซิร์ฟเวอร์
+  const assessDraft = (post, gate, proof) => {
+    const library = draftsOf(workspaceRef.current)
+      .filter((item) => item.id !== post.id && !isSamplePost(item) && item.id !== post.replacesId && item.replacedBy !== post.id)
+      .map((item) => ({ caption: item.caption, contentNo: item.contentNo, title: item.title }))
+    return assessContent({ title: post.title, caption: post.caption, channel: post.channel }, { proof: proof?.brief ? proof : null, gate, library })
+  }
+
   // ตรวจหลักฐานและเกณฑ์ของร่าง (อ่านอย่างเดียว ไม่บันทึก) → แสดงผลบนการ์ด
   const checkProofGate = async (post, media) => {
     setProofGates((all) => ({ ...all, [post.id]: { loading: true } }))
     try {
       const data = await checkGate(gatePayload(post, media?.id || post.mediaAssetId), post.briefId || null)
-      setProofGates((all) => ({ ...all, [post.id]: { gate: data.gate, proof: data.proof } }))
+      setProofGates((all) => ({ ...all, [post.id]: { gate: data.gate, proof: data.proof, assessment: assessDraft(post, data.gate, data.proof) } }))
     } catch (error) {
       setProofGates((all) => ({ ...all, [post.id]: { error: errorMessage(error, 'ตรวจหลักฐานไม่สำเร็จ ลองใหม่อีกครั้ง') } }))
     }
@@ -1534,7 +1547,7 @@ export default function MarketingPage({ onBack }) {
         notify(withContentNo(post.contentNo, 'ข้อความเปลี่ยนระหว่างรออนุมัติ · ตรวจแล้วกดอนุมัติอีกครั้ง'), 'warn')
         return
       }
-      setProofGates((all) => ({ ...all, [post.id]: { gate: data.gate, proof: all[post.id]?.proof || null, review: data.review } }))
+      setProofGates((all) => ({ ...all, [post.id]: { gate: data.gate, proof: all[post.id]?.proof || null, assessment: all[post.id]?.assessment || null, review: data.review } }))
       updatePost(post.id, {
         status: post.scheduledAt ? 'scheduled' : 'approved',
         reviewStatus: 'passed',
@@ -1543,7 +1556,7 @@ export default function MarketingPage({ onBack }) {
       }, post.scheduledAt ? 'อนุมัติแล้ว · ตั้งเวลาตามวันที่กำหนด' : 'อนุมัติแล้ว · ไปตั้งเวลาในแท็บ โพสต์')
     } catch (error) {
       const message = errorMessage(error, 'อนุมัติไม่สำเร็จ ลองใหม่อีกครั้ง')
-      setProofGates((all) => ({ ...all, [post.id]: error.gate ? { gate: error.gate, proof: error.proof || null } : { error: message } }))
+      setProofGates((all) => ({ ...all, [post.id]: error.gate ? { gate: error.gate, proof: error.proof || null, assessment: assessDraft(post, error.gate, error.proof) } : { error: message } }))
       notify(withContentNo(post.contentNo, message), 'error')
     }
   }
@@ -2504,6 +2517,7 @@ export default function MarketingPage({ onBack }) {
     ['references', 'คลังตัวอย่างโฆษณา', dashboardCounts.references],
     ['metrics', 'ตัวเลข'],
     ['pipeline', 'สถานะระบบ'],
+    ...(proofOn ? [['series', 'ซีรีส์']] : []),
     ['brand', 'กติกาแบรนด์'],
     ['inbox', 'ตอบคอมเมนต์ (ตัวอย่าง)'],
   ]
@@ -2678,6 +2692,14 @@ export default function MarketingPage({ onBack }) {
             onWaitNotice={blockedWhileLoading}
             proofNote={proofSetupNote}
             proof={proofOn ? {
+              series: seriesList(workspace.customSeries || []),
+              seriesName: (id) => findSeries(id, workspace.customSeries || [])?.name || '',
+              seriesWarning: (post) => repeatedEpisode(post, workspace.posts),
+              onSeries: (post, seriesId) => {
+                if (isSamplePost(post)) { notify('ร่างตัวอย่างเลือกซีรีส์ไม่ได้ — แก้ข้อความให้เป็นร่างของเราก่อน', 'warn'); return }
+                const patch = assignSeries(post, seriesId, workspaceRef.current.posts)
+                updatePost(post.id, patch, patch.seriesId ? `อยู่ในซีรีส์ "${findSeries(patch.seriesId, workspaceRef.current.customSeries || [])?.name}" ตอนที่ ${patch.episodeNo}` : 'เอาออกจากซีรีส์แล้ว')
+              },
               gates: proofGates, onCheck: checkProofGate, onApprove: approveWithProof, reviewer: reviewerName, onReviewerChange: setReviewerName,
               // เปิดบรีฟของร่างนี้ใน Studio เพื่อแก้แหล่งข้อมูล/ยืนยันข้ออ้าง แล้วกลับมากดตรวจหลักฐานใหม่
               onOpenBrief: (post) => { save((ws) => ({ ...ws, studio: { ...ws.studio, briefId: post.briefId } })); setProofGates((all) => ({ ...all, [post.id]: undefined })); goTo('studio') },
@@ -2756,6 +2778,15 @@ export default function MarketingPage({ onBack }) {
             onCopy={copyText}
             onGenerateImage={(brief) => generateMedia('image', brief)}
             onGenerateVideo={(brief) => generateMedia('video', brief)}
+          />
+        )}
+        {view === 'series' && proofOn && (
+          <SeriesManager
+            posts={workspace.posts}
+            customSeries={workspace.customSeries || []}
+            onAddSeries={(series) => { save((ws) => ({ ...ws, customSeries: [...(ws.customSeries || []), series] })); notify(`เพิ่มซีรีส์ "${series.name}" แล้ว · เลือกให้ร่างได้ที่การ์ดในแท็บ ร่าง`) }}
+            onToggleSeries={(id) => save((ws) => ({ ...ws, customSeries: (ws.customSeries || []).map((series) => (series.id === id ? { ...series, paused: !series.paused } : series)) }))}
+            onOpenPost={openContent}
           />
         )}
         {view === 'brand' && <BrandBrainView />}
@@ -3451,6 +3482,17 @@ function ApprovalsView({
                       {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
                     </select>
                   </label>
+                  {proof && (
+                    <label className="mx-schedule-row" onClick={(event) => event.stopPropagation()}>ซีรีส์
+                      <select value={post.seriesId || ''} disabled={loading} onChange={(event) => proof.onSeries(post, event.target.value)}>
+                        <option value="">ไม่อยู่ในซีรีส์</option>
+                        {post.seriesId && !proof.series.some((series) => series.id === post.seriesId) && <option value={post.seriesId}>{proof.seriesName(post.seriesId) || 'ซีรีส์ที่พักไว้'}</option>}
+                        {proof.series.map((series) => <option key={series.id} value={series.id}>{series.name}</option>)}
+                      </select>
+                      {post.seriesId && Number.isInteger(post.episodeNo) && <span>ตอนที่ {post.episodeNo}</span>}
+                      {proof.seriesWarning(post) && <span className="mx-warn" style={{ whiteSpace: 'normal' }}>{proof.seriesWarning(post)}</span>}
+                    </label>
+                  )}
                   <div className="mx-review-notes compact">
                     <strong>ผลตรวจเกณฑ์</strong>
                     {uniqueReviewNotes(post.reviewNotes).map((note, index) => <span key={index}>{note}</span>)}
