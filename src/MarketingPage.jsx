@@ -25,7 +25,8 @@ import { resolveTopic } from './lib/marketing-model/topics.js'
 import BriefProofPanel, { GateResult } from './components/BriefProofPanel.jsx'
 import { assessContent } from './lib/marketingOriginality.js'
 import SeriesManager from './components/SeriesManager.jsx'
-import ContentPackPanel from './components/ContentPackPanel.jsx'
+import VideoStudio from './components/VideoStudio.jsx'
+import { isPackStale } from './lib/marketingContentPack.js'
 import PerformancePanel from './components/PerformancePanel.jsx'
 import { draftImagePrompt } from './lib/marketingContentPack.js'
 import BrandProfiles from './components/BrandProfiles.jsx'
@@ -1153,6 +1154,8 @@ export default function MarketingPage({ onBack }) {
   const [facebookPublishingId, setFacebookPublishingId] = useState(null)
   const [facebookCheckingId, setFacebookCheckingId] = useState(null)
   const [artworkBrief, setArtworkBrief] = useState(null)
+  // หน้าทำวิดีโอ: เลขคอนเทนต์ที่เปิดอยู่ (สถานะหน้าจอ · ที่อยู่ ?video=<เลข> ทำให้รีเฟรชแล้วกลับมาที่เดิม) — ข้อมูลอยู่ที่ post.contentPack ของโพสต์นั้น
+  const [videoNo, setVideoNo] = useState(() => { try { const n = Number(new URLSearchParams(window.location.search).get('video')); return Number.isInteger(n) && n > 0 ? n : null } catch { return null } })
   // Content Brief + Proof Card (เฟส P0 · ธง MARKETING_PROOF_CARDS ฝั่งเซิร์ฟเวอร์ · ธงปิด = หน้านี้ทำงานแบบเดิมทุกอย่าง)
   // proofGates = ผลด่านตรวจล่าสุดต่อการ์ด { [postId]: { loading | error | gate, proof, review } } (สถานะหน้าจอ ไม่บันทึกลงเวิร์กสเปซ)
   const [proofFlags, setProofFlags] = useState({ on: false, ready: false })
@@ -1160,6 +1163,7 @@ export default function MarketingPage({ onBack }) {
   const [reviewerName, setReviewerNameState] = useState(storedReviewer)
   const setReviewerName = (name) => { setReviewerNameState(name); storeReviewer(name) }
   const proofOn = proofFlags.on && proofFlags.ready
+  useEffect(() => { if (proofOn && videoNo && view === 'ideas') setView('video') }, [proofOn]) // eslint-disable-line react-hooks/exhaustive-deps
   const proofSetupNote = proofFlags.on && !proofFlags.ready ? 'ระบบตรวจหลักฐานเปิดใช้แล้ว แต่ฐานข้อมูลยังไม่พร้อม — ระหว่างนี้ส่งโพสต์ไป Facebook จากหน้านี้ไม่ได้ (แจ้งผู้ดูแลระบบ)' : ''
   // คิวไอเดียจากระบบรีเสิร์ช: state = loading | ok | unauthorized | unavailable | error (ไม่เงียบอีกต่อไป)
   const [researchFeed, setResearchFeed] = useState({ state: 'loading', ideas: [], total: 0, meta: null, httpStatus: null, fetchedAt: null })
@@ -2576,7 +2580,7 @@ export default function MarketingPage({ onBack }) {
   }
 
   // แท็บหลัก 3 อัน (ไอเดีย → ร่าง → โพสต์) · Studio เป็นสถานะย่อยของ "ร่าง" · ปฏิทินเป็นสถานะย่อยของ "โพสต์" · ที่เหลืออยู่ในเมนูเครื่องมือ
-  const activeTab = view === 'ideas' ? 'ideas' : ['approvals', 'studio'].includes(view) ? 'drafts' : ['queue', 'calendar'].includes(view) ? 'posts' : 'tools'
+  const activeTab = view === 'ideas' ? 'ideas' : ['approvals', 'studio', 'video'].includes(view) ? 'drafts' : ['queue', 'calendar'].includes(view) ? 'posts' : 'tools'
   const toolViews = [
     ['library', 'คลังผลงาน', dashboardCounts.library],
     ['gallery', 'ห้องภาพ'],
@@ -2584,12 +2588,30 @@ export default function MarketingPage({ onBack }) {
     ['references', 'คลังตัวอย่างโฆษณา', dashboardCounts.references],
     ['metrics', 'ตัวเลข'],
     ['pipeline', 'สถานะระบบ'],
-    ...(proofOn ? [['series', 'ซีรีส์']] : []),
+    ...(proofOn ? [['video', 'ทำวิดีโอ'], ['series', 'ซีรีส์']] : []),
     ['brand', 'กติกาแบรนด์'],
     ['inbox', 'ตอบคอมเมนต์ (ตัวอย่าง)'],
   ]
   const activeTool = toolViews.find(([id]) => id === view)
+  // ที่อยู่ของหน้าทำวิดีโอ: ?video=<เลข> เมื่ออยู่ในหน้านั้น และเอาออกเมื่อไปหน้าอื่น (ไม่เพิ่มประวัติของเบราว์เซอร์)
+  const setVideoUrl = (no) => {
+    try {
+      const url = new URL(window.location.href)
+      if (no) url.searchParams.set('video', String(no))
+      else url.searchParams.delete('video')
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+    } catch { /* ข้ามได้ */ }
+  }
+  const openVideo = (no) => {
+    setVideoNo(no || null)
+    setVideoUrl(no || null)
+    setView('video')
+    setToolsOpen(false)
+    window.scrollTo({ top: 0 })
+  }
+
   const goTo = (next) => {
+    if (next !== 'video') setVideoUrl(null)
     setView(next)
     setToolsOpen(false)
     // ช่องตัวอย่างของคลังผลงานกลับไปแสดงชิ้นแรกตามปกติ (ชิ้นที่ค้นด้วยเลขไม่ค้างตลอด session)
@@ -2766,6 +2788,7 @@ export default function MarketingPage({ onBack }) {
             onWaitNotice={blockedWhileLoading}
             proofNote={proofSetupNote}
             proof={proofOn ? {
+              onOpenVideo: (post) => { if (isSamplePost(post)) { notify('ร่างตัวอย่างทำวิดีโอไม่ได้ — แก้ข้อความให้เป็นร่างของเราก่อน', 'warn'); return } openVideo(post.contentNo) },
               series: seriesList(workspace.customSeries || []),
               seriesName: (id) => findSeries(id, workspace.customSeries || [])?.name || '',
               seriesWarning: (post) => repeatedEpisode(post, workspace.posts),
@@ -2860,6 +2883,23 @@ export default function MarketingPage({ onBack }) {
             onGenerateVideo={(brief) => generateMedia('video', brief)}
           />
         )}
+        {view === 'video' && proofOn && (() => {
+          const candidates = workspace.posts.filter((item) => item.contentNo && item.status !== 'archived').sort((a, b) => b.contentNo - a.contentNo)
+          const current = candidates.find((item) => item.contentNo === videoNo) || null
+          return (
+            <VideoStudio
+              posts={candidates}
+              post={current}
+              claims={current ? (proofGates[current.id]?.proof?.claims || []) : []}
+              loading={syncState.state === 'loading'}
+              onSelect={(no) => openVideo(no)}
+              onSavePack={(post, pack, message) => updatePost(post.id, { contentPack: pack }, message || '')}
+              onOpenPost={(post) => { setVideoUrl(null); openContent(post) }}
+              onCopy={copyText}
+              onBack={() => goTo('approvals')}
+            />
+          )
+        })()}
         {view === 'series' && proofOn && (
           <SeriesManager
             posts={workspace.posts}
@@ -3602,13 +3642,13 @@ function ApprovalsView({
                   </div>
                   {proof && <GateResult result={proof.gates[post.id]} />}
                   {proof && !isSamplePost(post) && (
-                    <ContentPackPanel
-                      post={post}
-                      claims={proof.gates[post.id]?.proof?.claims || []}
-                      disabled={loading}
-                      onCopy={onCopy}
-                      onSave={(pack) => onUpdate(post.id, { contentPack: pack }, 'สร้างชุดคอนเทนต์แล้ว · เปิดดู storyboard และ Carousel ได้ในการ์ด')}
-                    />
+                    <div className="bp-pack bp-pack-launch" onClick={(event) => event.stopPropagation()}>
+                      <div>
+                        <strong>ชุดคอนเทนต์: Reel · Carousel · บรีฟภาพ</strong>
+                        <small>{!post.contentPack ? 'ยังไม่ได้สร้าง storyboard' : isPackStale(post) ? 'ล้าสมัย: ข้อความของร่างเปลี่ยนแล้ว' : `มี storyboard ${post.contentPack.reel.duration} วินาที ${post.contentPack.reel.scenes.length} ฉาก · Carousel ${post.contentPack.carousel.slides.length} หน้า`}</small>
+                      </div>
+                      <button type="button" className="mx-secondary" disabled={loading || !post.contentNo} onClick={() => proof.onOpenVideo(post)}>เปิดหน้าทำวิดีโอ</button>
+                    </div>
                   )}
                   <div className="mx-schedule-row compact" onClick={(event) => event.stopPropagation()}>
                     <label>

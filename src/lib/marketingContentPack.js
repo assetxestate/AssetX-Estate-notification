@@ -223,3 +223,43 @@ export function storyboardText(reel) {
     reel.prep.graphics.length ? `กราฟิกที่ต้องทำ:\n${reel.prep.graphics.map((item) => `- ${item}`).join('\n')}` : '',
   ].filter(Boolean).join('\n\n')
 }
+
+// ── หน้าทำวิดีโอ: แก้ฉากด้วยมือ ติ๊กว่าถ่ายแล้ว และติ๊กของที่เตรียมแล้ว (เจ้าของขอแยกหน้า 23 พ.ย. 2569) ──
+// แก้ได้เฉพาะภาพ คำบรรยาย ตัวหนังสือบนจอ โน้ต และสถานะถ่ายแล้ว · เวลาของฉากมาจากตัวแบ่งเวลา ไม่แก้ด้วยมือ (รวมแล้วต้องเท่าความยาวคลิป)
+// คำบรรยายที่แก้เองไม่ผ่านด่านตรวจของโพสต์: หน้าจอเตือนให้ตรงกับโพสต์ที่อนุมัติ
+const SCENE_TEXT = { shot: 300, narration: 400, overlay: 60, note: 200 }
+export function updateScene(pack, sceneNo, patch = {}) {
+  if (!pack?.reel?.scenes) return pack
+  let changed = false
+  const scenes = pack.reel.scenes.map((scene) => {
+    if (scene.no !== sceneNo) return scene
+    const next = { ...scene }
+    for (const [key, max] of Object.entries(SCENE_TEXT)) {
+      if (patch[key] === undefined) continue
+      const value = String(patch[key]).replace(/\r\n?/g, '\n').slice(0, max)
+      if (value !== (scene[key] ?? '')) { next[key] = value; if (key !== 'note') next.edited = true; changed = true }
+    }
+    if (patch.done !== undefined && Boolean(patch.done) !== Boolean(scene.done)) { next.done = Boolean(patch.done); changed = true }
+    return next
+  })
+  return changed ? { ...pack, reel: { ...pack.reel, scenes } } : pack
+}
+
+// ติ๊กรายการของที่ต้องเตรียม (ภาพที่ต้องถ่าย · กราฟิกที่ต้องทำ) — เก็บเป็นรายการข้อความที่ติ๊กแล้ว
+export function togglePrep(pack, item) {
+  if (!pack?.reel) return pack
+  const done = new Set(pack.reel.prepDone || [])
+  if (done.has(item)) done.delete(item)
+  else done.add(item)
+  return { ...pack, reel: { ...pack.reel, prepDone: [...done] } }
+}
+
+export function packProgress(pack) {
+  const scenes = pack?.reel?.scenes || []
+  const prep = [...(pack?.reel?.prep?.footage || []), ...(pack?.reel?.prep?.graphics || [])]
+  const prepDone = new Set(pack?.reel?.prepDone || [])
+  return { scenes: scenes.length, scenesDone: scenes.filter((scene) => scene.done).length, prep: prep.length, prepDone: prep.filter((item) => prepDone.has(item)).length, edited: scenes.filter((scene) => scene.edited).length }
+}
+
+// บทพูดล้วนสำหรับอ่านหน้ากล้องหรืออัดเสียง (ตามฉาก พร้อมเวลา)
+export const teleprompterText = (reel) => (reel?.scenes || []).map((scene) => `[${scene.start_sec}–${scene.end_sec} วิ] ${scene.narration}`).join('\n\n')
