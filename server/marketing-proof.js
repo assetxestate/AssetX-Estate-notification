@@ -21,7 +21,7 @@ import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
 import { CLAIM_STATUS, normalizeBrief, normalizeClaim, normalizeSource, verifyProblems } from '../src/lib/marketingProof.js'
-import { scrub } from './research/pii.js'
+import { scrub, scrubPostText } from './research/pii.js'
 import { approvalBasis, buildReviewGate, gateBlockerText } from '../src/lib/marketingReviewGate.js'
 
 const SQL_FILE = 'supabase_marketing_proof.sql'
@@ -256,7 +256,11 @@ async function actions(db, body, now) {
     const active = await jobsQuery(db.from(JOBS_TABLE).select('id').in('status', ['queued', 'running']))
     if ((active.data?.length || 0) >= MAX_ACTIVE_JOBS) throw new ApiError(429, `มีงานให้ AI เขียนรอคิวอยู่ ${active.data.length} งานแล้ว รอให้เสร็จก่อนแล้วค่อยสั่งเพิ่ม`)
     const note = scrub(String(body.note ?? '')).replace(/\s+/g, ' ').trim().slice(0, 200)
-    const created = await jobsQuery(db.from(JOBS_TABLE).insert({ status: 'queued', brief_id: briefId, request: note ? { note } : {} }).select(JOB_COLUMNS).maybeSingle())
+    // บริบทของซีรีส์จากหน้าเว็บ (ชื่อ เรื่องที่เล่า พาดหัวของตอนก่อน) — เป็นข้อความโพสต์ของเราเอง ผ่านตัวลบข้อมูลบุคคลก่อนเก็บ
+    const line = (value, max) => scrubPostText(String(value ?? '')).replace(/\s+/g, ' ').trim().slice(0, max)
+    const seriesName = line(body.series?.name, 80)
+    const series = seriesName ? { name: seriesName, thesis: line(body.series?.thesis, 300), previous: (Array.isArray(body.series?.previous) ? body.series.previous : []).map((item) => line(item, 120)).filter(Boolean).slice(0, 6) } : null
+    const created = await jobsQuery(db.from(JOBS_TABLE).insert({ status: 'queued', brief_id: briefId, request: { ...(note ? { note } : {}), ...(series ? { series } : {}) } }).select(JOB_COLUMNS).maybeSingle())
     return { job: created.data, reused: false, worker: await readWorker(db, now) }
   }
 

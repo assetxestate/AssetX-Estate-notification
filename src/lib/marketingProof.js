@@ -60,6 +60,7 @@ export function normalizeBrief(input = {}) {
   const value = {
     mode,
     brand_id: text(input.brand_id, 40) || 'assetx_estate',
+    series_id: text(input.series_id, 40),
     topic: text(input.topic, 200),
     audience: text(input.audience, 200),
     objective: text(input.objective, 40),

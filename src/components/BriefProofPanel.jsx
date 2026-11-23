@@ -13,6 +13,7 @@ import { assetxAssetTypes } from '../lib/assetxMarketingModel.js'
 import './BriefProofPanel.css'
 
 const EMPTY_BRIEF = {
+  brand_id: 'assetx_estate', series_id: '',
   mode: 'field', topic: '', audience_problem: '', unique_insight: '', intended_takeaway: '', cta: '', asset_type: '',
   public_location_level: 'none', public_location: '', reference_url: '',
   field: { survey_date: '', features: '', observations: '', unknowns: '', price_kind: '', customer_question: '', lesson: '' },
@@ -33,7 +34,8 @@ function toForm(brief) {
 
 const options = (map) => Object.entries(map).map(([value, label]) => <option key={value} value={value}>{typeof label === 'string' ? label : label.label}</option>)
 
-export default function BriefProofPanel({ briefId, topicHint = '', reviewer = '', onReviewerChange, onBriefId, onCompose, onBackToDraft, notify }) {
+// brands = โปรไฟล์แบรนด์ที่ใช้จริง · series = ซีรีส์ที่เลือกได้ · seriesContext(id) = { name, thesis, previous } ส่งให้ AI เป็นบริบท
+export default function BriefProofPanel({ briefId, topicHint = '', reviewer = '', onReviewerChange, onBriefId, onCompose, onBackToDraft, notify, brands = [], series = [], seriesContext = () => null }) {
   const [form, setForm] = useState(() => ({ ...EMPTY_BRIEF, topic: topicHint }))
   const [meta, setMeta] = useState(null) // { id, version } ของบรีฟที่บันทึกแล้ว
   const [sources, setSources] = useState([])
@@ -183,13 +185,17 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
     let brief = meta?.id && !dirty ? { ...normalized, id: meta.id } : await save()
     if (!brief) return
     brief = { ...normalizeBrief(brief).value, id: brief.id }
-    onCompose?.(composeProofDraft({ brief, claims, sources, links }), { brief, claims, sources, links })
+    // ไม่ได้กรอกคำชวนทำ = ใช้คำชวนทำตั้งต้นของแบรนด์ที่เลือก
+    const composed = composeProofDraft({ brief: { ...brief, cta: brief.cta || activeBrand?.cta || '' }, claims, sources, links })
+    onCompose?.({ ...composed, brand_id: brief.brand_id, series_id: brief.series_id }, { brief, claims, sources, links })
   }
+
+  const activeBrand = brands.find((brand) => brand.id === form.brand_id) || brands[0] || null
 
   const askAiToWrite = async () => {
     const brief = meta?.id && !dirty ? { id: meta.id } : await save()
     if (!brief) return
-    const data = await run('write', () => requestWrite(brief.id, writeNote))
+    const data = await run('write', () => requestWrite(brief.id, writeNote, form.series_id ? seriesContext(form.series_id) : null))
     if (data) setWrite(data)
   }
 
@@ -198,6 +204,7 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
     onCompose?.({
       headline: draft.headline, caption: draft.caption, cta: draft.cta, claim_ids_used: draft.claim_ids_used || [],
       missing_evidence: write?.job?.result?.missing_evidence || [], basis: 'ai', knowledge: draft.knowledge || [],
+      hooks: draft.hooks || [], brand_id: brief.brand_id, series_id: brief.series_id,
       ai: { kind: draft.kind, label: draft.kind_label, provider: write?.job?.result?.provider || null },
     }, { brief, claims, sources, links })
   }
@@ -239,6 +246,22 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
       )}
 
       <div className="bp-grid">
+        {brands.length > 1 && (
+          <label>แบรนด์
+            <select value={form.brand_id} onChange={(event) => setField('brand_id', event.target.value)}>
+              {brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+            </select>
+          </label>
+        )}
+        {series.length > 0 && (
+          <label>ซีรีส์ (ไม่บังคับ)
+            <select value={form.series_id} onChange={(event) => setField('series_id', event.target.value)}>
+              <option value="">ไม่อยู่ในซีรีส์</option>
+              {series.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+        )}
+        {activeBrand && brands.length > 1 && <p className="bp-note wide">{activeBrand.short}: {activeBrand.voice} · คำชวนทำตั้งต้น: {activeBrand.cta}</p>}
         <label className="wide">หัวข้อ
           <input value={form.topic} maxLength={200} onChange={(event) => setField('topic', event.target.value)} placeholder="เช่น ที่ดินติดถนนใหญ่เหมือนกัน ทำไมมูลค่าต่างกัน" />
         </label>
@@ -455,6 +478,10 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
               {draft.knowledge?.length > 0 && <span className="bp-note">อิงคลังความรู้: {[...new Set(draft.knowledge.map((item) => item.cite))].join(' · ')}{draft.knowledge.some((item) => item.secondary) ? ' · มีข้อจากแหล่งรอง ยืนยันก่อนโพสต์' : ''}</span>}
               <p className="bp-ai-headline">{draft.headline}</p>
               <p className="bp-ai-caption">{draft.caption}</p>
+              {draft.reader_learns && <span className="bp-note">คนอ่านได้: {draft.reader_learns}</span>}
+              {draft.visual && <span className="bp-note">แนวภาพ: {draft.visual}</span>}
+              {draft.missing_evidence?.length > 0 && <span className="bp-note">หลักฐานที่ถ้าหามาได้ มุมนี้จะแข็งขึ้น: {draft.missing_evidence.join(' · ')}</span>}
+              {draft.hooks?.length > 1 && <span className="bp-note">มีประโยคเปิดทางเลือกอีก {draft.hooks.length - 1} แบบ (สลับได้หลังกด ใช้ร่างนี้)</span>}
               <div className="bp-actions end">
                 <button type="button" className="mx-primary" onClick={() => pickAiDraft(draft)}>ใช้ร่างนี้</button>
               </div>
@@ -497,6 +524,12 @@ function ScoreSummary({ assessment }) {
         <div className="bp-gate-section">
           <em>ประโยคสำเร็จรูปและความซ้ำ</em>
           {assessment.sameness.map((item) => <span key={item.code}>{item.message}</span>)}
+        </div>
+      )}
+      {assessment.brand && (
+        <div className="bp-gate-section">
+          <em>น้ำเสียงของแบรนด์ {assessment.brand.name}</em>
+          {assessment.brand.warnings.length ? assessment.brand.warnings.map((item) => <span key={item}>{item}</span>) : <span>ไม่พบถ้อยคำที่ผิดน้ำเสียงของแบรนด์นี้</span>}
         </div>
       )}
       <div className="bp-gate-section">

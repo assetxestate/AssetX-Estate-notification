@@ -42,7 +42,7 @@ export const saveClaim = (claim, { briefId = null, id = null, version = null, so
 export const reviewClaim = ({ id, version, status, reviewer }) => post({ action: 'review-claim', id, version, status, reviewer })
 export const attachBrief = ({ briefId, contentId, contentNo = null }) => post({ action: 'attach-content', briefId, contentId, contentNo })
 // ให้ AI บนคอมสำนักงานเขียนจากโน้ต (คิว) · job = งานเดียว · briefJob = งานล่าสุดของบรีฟ (เปิดแผงใหม่แล้วตามงาน/ดูผลเดิม)
-export const requestWrite = (briefId, note = '') => post({ action: 'write-request', briefId, note })
+export const requestWrite = (briefId, note = '', series = null) => post({ action: 'write-request', briefId, note, series })
 export const getWriteJob = (jobId) => request(`${URL_BASE}?job=${encodeURIComponent(jobId)}`)
 export const getBriefWriteJob = (briefId) => request(`${URL_BASE}?briefJob=${encodeURIComponent(briefId)}`)
 

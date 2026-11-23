@@ -200,3 +200,42 @@ test('ข้อเท็จจริงเสริม: ความจริง
   assert.deepEqual(out.drafts[0].knowledge.map((item) => item.id).sort(), ['act-scope', 'sale-def'])
   assert.equal(out.drafts[0].knowledge.find((item) => item.id === 'sale-def').secondary, true)
 })
+
+test('แบรนด์ ซีรีส์ และของเสริมต่อมุม: คำสั่งถึง AI เปลี่ยนตามแบรนด์และซีรีส์ · Research ที่ขายตรงตก · ประโยคเปิดทางเลือกที่แต่งตัวเลขถูกทิ้ง', () => {
+  const research = brief({ brand_id: 'assetx_research' })
+  const { system, prompt } = buildBriefWriterPrompt({ brief: research, facts: briefFacts(proofOf({ brief: research })), series: { name: 'ราคานี้มาจากไหน?', thesis: 'แยกชนิดของราคา', previous: ['ราคาตั้งขายไม่ใช่ราคาที่ขายได้'] } })
+  assert.match(system, /แบรนด์ของโพสต์นี้: AssetX Research/)
+  assert.match(system, /ห้ามชวนใช้บริการ/)
+  assert.match(prompt, /ตอนหนึ่งของซีรีส์ "ราคานี้มาจากไหน\?"/)
+  assert.match(prompt, /1\. ราคาตั้งขายไม่ใช่ราคาที่ขายได้/)
+  assert.match(buildBriefWriterPrompt({ brief: brief(), facts: [] }).system, /แบรนด์ของโพสต์นี้: Asset X Estate/)
+
+  const ctx = context()
+  ctx.proof = proofOf({ brief: research })
+  const sales = checkBriefDraft(good({ cta: 'สนใจทักเลย ปรึกษาฟรี' }), ctx)
+  assert.equal(sales.ok, false)
+  assert.match(sales.reasons.join(), /ขายตรง/)
+  assert.equal(checkBriefDraft(good({ cta: 'สนใจทักเลย ปรึกษาฟรี' }), context()).ok, true)
+
+  const extras = checkBriefDraft(good({
+    openings: ['ป้ายบอกว่าติดถนนใหญ่ แต่ป้ายไม่ได้บอกว่ารถเข้าออกแปลงได้ทางไหน', 'แปลงแบบนี้มูลค่าหายไป 30% เสมอ', 'สั้นไป'],
+    missing_evidence: ['ภาพทางเข้าแปลงที่ได้รับอนุญาตเผยแพร่', 'เอกสารสิทธิทางเข้าออกที่ตรวจแล้ว', 'แผนที่แสดงทางคู่ขนาน', 'ข้อที่สี่เกินโควตา'],
+    reader_learns: 'รู้ว่าต้องดูทางเข้าออกจริงก่อนเทียบราคา', visual: 'แผนภาพเส้นทางรถเข้าแปลง (ภาพจำลอง ติดป้าย)',
+  }), context())
+  assert.equal(extras.ok, true, JSON.stringify(extras.reasons))
+  assert.deepEqual(extras.draft.hooks.map((hook) => hook.pattern), ['ai-used', 'ai-alt-1'])
+  assert.ok(!extras.draft.hooks.some((hook) => /30%/.test(hook.line)))
+  assert.equal(extras.draft.missing_evidence.length, 3)
+  assert.equal(extras.draft.reader_learns, 'รู้ว่าต้องดูทางเข้าออกจริงก่อนเทียบราคา')
+  assert.equal(extras.draft.brand_id, 'assetx_estate')
+  assert.deepEqual(checkBriefDraft(good(), context()).draft.hooks, [])
+})
+
+test('strips internal fact codes that the model leaks into post text', () => {
+  const tagged = checkBriefDraft(good({ caption: body.replace('ไม่มีจุดกลับรถใกล้แปลง', 'ไม่มีจุดกลับรถใกล้แปลง [O1, O2]') + ' [C3]', headline: 'ติดถนนใหญ่เหมือนกัน ทำไมมูลค่าต่างกัน (I1)', openings: ['ป้ายบอกว่าติดถนนใหญ่ แต่ป้ายไม่ได้บอกว่ารถเข้าออกแปลงได้ทางไหน [O1]'] }), context())
+  assert.equal(tagged.ok, true, JSON.stringify(tagged.reasons))
+  const text = [tagged.draft.headline, tagged.draft.caption, ...tagged.draft.hooks.map((hook) => hook.line)].join('\n')
+  assert.doesNotMatch(text, /\[[A-Z]\d|\([A-Z]\d/)
+  assert.match(tagged.draft.caption, /400 เมตร/)
+  assert.deepEqual(tagged.draft.facts_used, ['I1', 'O1', 'O2', 'C3', 'U1'])
+})

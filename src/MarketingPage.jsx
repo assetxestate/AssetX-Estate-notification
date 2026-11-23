@@ -23,7 +23,9 @@ import { resolveTopic } from './lib/marketing-model/topics.js'
 import BriefProofPanel, { GateResult } from './components/BriefProofPanel.jsx'
 import { assessContent } from './lib/marketingOriginality.js'
 import SeriesManager from './components/SeriesManager.jsx'
-import { assignSeries, findSeries, repeatedEpisode, seriesList } from './lib/marketingSeries.js'
+import BrandProfiles from './components/BrandProfiles.jsx'
+import { assignSeries, findSeries, repeatedEpisode, seriesEpisodes, seriesList } from './lib/marketingSeries.js'
+import { brandList, brandProfile, brandWarnings, cleanBrandId, effectiveBrand, saveBrandSettings } from './lib/marketingBrands.js'
 import { approveContent, attachBrief, checkGate, gatePayload, getProofFlags, storeReviewer, storedReviewer } from './lib/marketingProofApi.js'
 
 const STORAGE_KEY = 'assetx_marketing_workspace_v5'
@@ -438,6 +440,7 @@ function loadWorkspace() {
       metrics: Array.isArray(stored.metrics) ? stored.metrics : [],
       hiddenPostIds: Array.isArray(stored.hiddenPostIds) ? stored.hiddenPostIds : [],
       customSeries: Array.isArray(stored.customSeries) ? stored.customSeries : [],
+      brandSettings: stored.brandSettings && typeof stored.brandSettings === 'object' ? stored.brandSettings : {},
       manualIdea: stored.manualIdea || '',
       contentSeq: stored.contentSeq,
     })
@@ -506,6 +509,7 @@ function normalizeWorkspace(workspace = {}) {
     metrics: Array.isArray(workspace.metrics) ? workspace.metrics : [],
     hiddenPostIds: Array.isArray(workspace.hiddenPostIds) ? workspace.hiddenPostIds : [],
     customSeries: Array.isArray(workspace.customSeries) ? workspace.customSeries : [],
+    brandSettings: workspace.brandSettings && typeof workspace.brandSettings === 'object' ? workspace.brandSettings : {},
     manualIdea: workspace.manualIdea || '',
     contentSeq: workspace.contentSeq,
   })
@@ -1509,7 +1513,9 @@ export default function MarketingPage({ onBack }) {
     const library = draftsOf(workspaceRef.current)
       .filter((item) => item.id !== post.id && !isSamplePost(item) && item.id !== post.replacesId && item.replacedBy !== post.id)
       .map((item) => ({ caption: item.caption, contentNo: item.contentNo, title: item.title }))
-    return assessContent({ title: post.title, caption: post.caption, channel: post.channel }, { proof: proof?.brief ? proof : null, gate, library })
+    // น้ำเสียงของแบรนด์ที่เลือกบนการ์ด (ข้อสังเกต ไม่บล็อก) — เปลี่ยนแบรนด์แล้วข้อสังเกตเปลี่ยน ข้ออ้างและแหล่งที่มาไม่ถูกแตะ
+    const brand = brandProfile(post.brandId)
+    return { ...assessContent({ title: post.title, caption: post.caption, channel: post.channel }, { proof: proof?.brief ? proof : null, gate, library }), brand: { id: brand.id, name: brand.name, warnings: brandWarnings(post, brand.id) } }
   }
 
   // ตรวจหลักฐานและเกณฑ์ของร่าง (อ่านอย่างเดียว ไม่บันทึก) → แสดงผลบนการ์ด
@@ -1577,7 +1583,7 @@ export default function MarketingPage({ onBack }) {
       videoScript: videoScriptFromDraft({ caption: draft.caption, cta: draft.cta }),
       automationPayload: { ...(base.automationPayload || {}), postText: caption },
       briefId: proof.brief.id,
-      meta: { ...(base.meta || {}), generatedBy: 'brief', briefAi: draft.ai ? { ...draft.ai, knowledge: draft.knowledge || [] } : null, captionQuality: null, hooks: [], claimIdsUsed: draft.claim_ids_used, missingEvidence: draft.missing_evidence, basis: draft.basis },
+      meta: { ...(base.meta || {}), generatedBy: 'brief', briefAi: draft.ai ? { ...draft.ai, knowledge: draft.knowledge || [] } : null, captionQuality: null, hooks: draft.hooks || [], hookPattern: draft.hooks?.length ? 'ai-used' : null, brandId: cleanBrandId(draft.brand_id), seriesId: draft.series_id || null, claimIdsUsed: draft.claim_ids_used, missingEvidence: draft.missing_evidence, basis: draft.basis },
     }
     save((current) => ({ ...current, studio: input, generated }))
     showStudioResult()
@@ -1916,6 +1922,9 @@ export default function MarketingPage({ onBack }) {
       ...(fromBrief ? { draftSource: 'brief', briefId: ws.generated.briefId, ...(ws.generated.meta?.briefAi ? { briefAi: true, angleLabel: ws.generated.meta.briefAi.label } : {}) } : isAiDraft(ws.generated) ? { draftSource: 'ai' } : {}),
       ...(ws.generated.meta?.hooks?.length ? { hooks: ws.generated.meta.hooks, hookPattern: ws.generated.meta.hookPattern || null } : {}),
       source: fromBrief ? 'บรีฟ + หลักฐาน' : 'AssetX Studio',
+      // แบรนด์และซีรีส์ที่เลือกในบรีฟตามมากับร่าง (เลขตอนแจกตอนนี้ ครั้งเดียว)
+      ...(fromBrief ? { brandId: cleanBrandId(ws.generated.meta?.brandId) } : {}),
+      ...(fromBrief && ws.generated.meta?.seriesId && findSeries(ws.generated.meta.seriesId, ws.customSeries || []) ? assignSeries({}, ws.generated.meta.seriesId, ws.posts || []) : {}),
       ...(ws.generated.sourceIdeaId ? { ideaId: ws.generated.sourceIdeaId } : {}),
       createdAt: new Date().toISOString(),
     }
@@ -2662,6 +2671,13 @@ export default function MarketingPage({ onBack }) {
               onReviewerChange: setReviewerName,
               onBriefId: (id) => save((ws) => ({ ...ws, studio: { ...ws.studio, briefId: id } })),
               onCompose: composeFromBrief,
+              brands: brandList().map((brand) => effectiveBrand(brand.id, workspace.brandSettings || {})),
+              series: seriesList(workspace.customSeries || []),
+              // บริบทของซีรีส์ให้ AI: ชื่อ เรื่องที่เล่า และพาดหัวของตอนก่อน (ไม่รวมตอนที่พักไว้) เพื่อไม่ให้เล่าซ้ำ
+              seriesContext: (id) => {
+                const found = findSeries(id, workspace.customSeries || [])
+                return found ? { name: found.name, thesis: found.thesis, previous: seriesEpisodes(workspace.posts, id).filter((post) => post.status !== 'archived').map((post) => post.title).filter(Boolean).slice(-6) } : null
+              },
               onBackToDraft: () => { save((ws) => ({ ...ws, studio: { ...ws.studio, briefId: null } })); goTo('approvals') },
               notify,
             } : null}
@@ -2695,6 +2711,12 @@ export default function MarketingPage({ onBack }) {
               series: seriesList(workspace.customSeries || []),
               seriesName: (id) => findSeries(id, workspace.customSeries || [])?.name || '',
               seriesWarning: (post) => repeatedEpisode(post, workspace.posts),
+              brands: brandList(),
+              onBrand: (post, brandId) => {
+                if (isSamplePost(post)) { notify('ร่างตัวอย่างเลือกแบรนด์ไม่ได้ — แก้ข้อความให้เป็นร่างของเราก่อน', 'warn'); return }
+                setProofGates((all) => (all[post.id] ? { ...all, [post.id]: undefined } : all))
+                updatePost(post.id, { brandId: cleanBrandId(brandId) }, `แบรนด์ของร่างนี้คือ ${brandProfile(brandId).name} · กด ตรวจหลักฐาน เพื่อดูข้อสังเกตเรื่องน้ำเสียง`)
+              },
               onSeries: (post, seriesId) => {
                 if (isSamplePost(post)) { notify('ร่างตัวอย่างเลือกซีรีส์ไม่ได้ — แก้ข้อความให้เป็นร่างของเราก่อน', 'warn'); return }
                 const patch = assignSeries(post, seriesId, workspaceRef.current.posts)
@@ -2787,6 +2809,12 @@ export default function MarketingPage({ onBack }) {
             onAddSeries={(series) => { save((ws) => ({ ...ws, customSeries: [...(ws.customSeries || []), series] })); notify(`เพิ่มซีรีส์ "${series.name}" แล้ว · เลือกให้ร่างได้ที่การ์ดในแท็บ ร่าง`) }}
             onToggleSeries={(id) => save((ws) => ({ ...ws, customSeries: (ws.customSeries || []).map((series) => (series.id === id ? { ...series, paused: !series.paused } : series)) }))}
             onOpenPost={openContent}
+          />
+        )}
+        {view === 'brand' && proofOn && (
+          <BrandProfiles
+            settings={workspace.brandSettings || {}}
+            onSave={(id, values) => { save((ws) => ({ ...ws, brandSettings: saveBrandSettings(ws.brandSettings || {}, id, values) })); notify(`บันทึกการตั้งค่าของ ${brandProfile(id).name} แล้ว`) }}
           />
         )}
         {view === 'brand' && <BrandBrainView />}
@@ -3482,6 +3510,13 @@ function ApprovalsView({
                       {assetxChannels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
                     </select>
                   </label>
+                  {proof && (
+                    <label className="mx-schedule-row" onClick={(event) => event.stopPropagation()}>แบรนด์
+                      <select value={cleanBrandId(post.brandId)} disabled={loading} onChange={(event) => proof.onBrand(post, event.target.value)}>
+                        {proof.brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+                      </select>
+                    </label>
+                  )}
                   {proof && (
                     <label className="mx-schedule-row" onClick={(event) => event.stopPropagation()}>ซีรีส์
                       <select value={post.seriesId || ''} disabled={loading} onChange={(event) => proof.onSeries(post, event.target.value)}>
