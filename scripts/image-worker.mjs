@@ -624,7 +624,7 @@ async function main() {
     if (!ONCE) runPhotoReviewLoop({ db, log, isStopping: () => stopping, onBusy: () => beat() }).catch((err) => log('ลูปอ่านรูปทรัพย์หยุด:', shortError(err)))
     // ลูปที่ห้า: ให้ AI เขียนโพสต์จากโน้ตของแผงบรีฟ (คิว marketing_brief_jobs · server/briefWriter.js · เจ้าของขอ 23 พ.ย. 2569)
     if (!ONCE) runBriefWriterLoop({
-      db, workerId: WORKER_ID, loadProof, loadBrand, log, isStopping: () => stopping, onBusy: () => beat(),
+      db, workerId: WORKER_ID, loadProof, loadBrand, loadKb: loadKnowledgeBase, log, isStopping: () => stopping, onBusy: () => beat(),
       makeAsk: (job) => createAsk({ log: (s) => log(`AI เขียนจากโน้ต งาน ${job.id}: ${s}`) }),
     }).catch((err) => log('ลูป AI เขียนจากโน้ตหยุด:', shortError(err)))
     while (!stopping) {

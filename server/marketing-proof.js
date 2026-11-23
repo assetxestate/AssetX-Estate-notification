@@ -20,7 +20,7 @@
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
-import { CLAIM_STATUS, canComposeFromBrief, normalizeBrief, normalizeClaim, normalizeSource, verifyProblems } from '../src/lib/marketingProof.js'
+import { CLAIM_STATUS, normalizeBrief, normalizeClaim, normalizeSource, verifyProblems } from '../src/lib/marketingProof.js'
 import { scrub } from './research/pii.js'
 import { approvalBasis, buildReviewGate, gateBlockerText } from '../src/lib/marketingReviewGate.js'
 
@@ -250,7 +250,6 @@ async function actions(db, body, now) {
     if (!briefId) throw new ApiError(400, 'บันทึกบรีฟก่อนให้ AI เขียน')
     const proof = await loadProof(db, { briefId })
     if (!proof?.brief) throw new ApiError(404, 'ไม่พบบรีฟนี้')
-    if (!canComposeFromBrief(proof.brief, proof.claims)) throw new ApiError(400, 'ยังไม่มีข้อมูลให้ AI เขียน — ใส่ข้อสังเกตหน้างาน ข้อสังเกตเฉพาะ หรือยืนยันข้ออ้างอย่างน้อยหนึ่งอย่าง แล้วบันทึกร่าง')
     // กดซ้ำขณะงานของบรีฟเดิมยังไม่จบ = ตามงานเดิม (ไม่เปลืองโควตา ไม่ได้ผลสองชุด)
     const existing = await jobsQuery(db.from(JOBS_TABLE).select(JOB_COLUMNS).eq('brief_id', briefId).in('status', ['queued', 'running']).order('id', { ascending: false }).limit(1))
     if (existing.data?.[0]) return { job: existing.data[0], reused: true, worker: await readWorker(db, now) }

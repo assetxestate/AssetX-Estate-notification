@@ -197,7 +197,7 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
     const brief = { ...normalizeBrief(form).value, id: meta.id }
     onCompose?.({
       headline: draft.headline, caption: draft.caption, cta: draft.cta, claim_ids_used: draft.claim_ids_used || [],
-      missing_evidence: write?.job?.result?.missing_evidence || [], basis: 'ai',
+      missing_evidence: write?.job?.result?.missing_evidence || [], basis: 'ai', knowledge: draft.knowledge || [],
       ai: { kind: draft.kind, label: draft.kind_label, provider: write?.job?.result?.provider || null },
     }, { brief, claims, sources, links })
   }
@@ -427,7 +427,7 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
           : (
             <>
               <button type="button" className="mx-secondary" disabled={saving || !composable} title={composable ? 'ระบบเรียงข้อความที่กรอกเป็นโพสต์ตรง ๆ ไม่ใช้ AI' : 'ต้องมีข้อสังเกตหน้างาน ข้อสังเกตเฉพาะ หรือข้ออ้างที่ยืนยันแล้วอย่างน้อยหนึ่งอย่าง'} onClick={compose}>เรียงร่างเอง (ไม่ใช้ AI)</button>
-              <button type="button" className="mx-primary" disabled={saving || !composable || writeActive} title={composable ? 'AI บนคอมสำนักงานเขียนให้ 3 มุมจากโน้ตนี้ ราว 1 นาที' : 'ต้องมีข้อสังเกตหน้างาน ข้อสังเกตเฉพาะ หรือข้ออ้างที่ยืนยันแล้วอย่างน้อยหนึ่งอย่าง'} onClick={askAiToWrite}>{writeActive ? 'AI กำลังเขียน…' : aiDrafts.length ? 'ให้ AI เขียนใหม่อีกรอบ' : 'ให้ AI เขียนจากโน้ตนี้'}</button>
+              <button type="button" className="mx-primary" disabled={saving || !form.topic.trim() || writeActive} title={form.topic.trim() ? 'AI บนคอมสำนักงานเขียนให้ 3 มุมจากโน้ตนี้และคลังความรู้ของเรา ราว 1 นาที · ยิ่งจดข้อสังเกตมาก โพสต์ยิ่งเป็นของเราเอง' : 'ใส่หัวข้อก่อน'} onClick={askAiToWrite}>{writeActive ? 'AI กำลังเขียน…' : aiDrafts.length ? 'ให้ AI เขียนใหม่อีกรอบ' : 'ให้ AI เขียนจากโน้ตนี้'}</button>
             </>
           )}
       </div>
@@ -452,6 +452,7 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
                 <strong>{draft.kind_label} · {draft.label}</strong>
                 <span className="bp-tag">{draft.caption.length} ตัวอักษร</span>
               </div>
+              {draft.knowledge?.length > 0 && <span className="bp-note">อิงคลังความรู้: {[...new Set(draft.knowledge.map((item) => item.cite))].join(' · ')}{draft.knowledge.some((item) => item.secondary) ? ' · มีข้อจากแหล่งรอง ยืนยันก่อนโพสต์' : ''}</span>}
               <p className="bp-ai-headline">{draft.headline}</p>
               <p className="bp-ai-caption">{draft.caption}</p>
               <div className="bp-actions end">
@@ -464,7 +465,7 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
       )}
       <p className="bp-note">{attached
         ? 'บรีฟนี้ผูกกับร่างในแท็บ ร่าง แล้ว — แก้แหล่งข้อมูลและข้ออ้างที่นี่ แล้วกลับไปกด ตรวจหลักฐาน บนการ์ด (ข้อความโพสต์แก้ที่การ์ด)'
-        : 'AI เขียนจากโน้ตและข้ออ้างที่ยืนยันแล้วเท่านั้น ร่างที่มีตัวเลขหรือข้ออ้างนอกโน้ตถูกคัดออกก่อนถึงหน้านี้ · ทุกร่างยังต้องให้คนอ่านและอนุมัติ'}</p>
+        : 'AI เขียนจากโน้ต ข้ออ้างที่ยืนยันแล้ว และคลังความรู้ของเราเท่านั้น ร่างที่มีตัวเลขหรือข้ออ้างนอกเหนือจากนี้ถูกคัดออกก่อนถึงหน้านี้ · ทุกร่างยังต้องให้คนอ่านและอนุมัติ'}</p>
     </section>
   )
 }

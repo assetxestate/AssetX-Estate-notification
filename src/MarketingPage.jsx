@@ -1564,7 +1564,7 @@ export default function MarketingPage({ onBack }) {
       videoScript: videoScriptFromDraft({ caption: draft.caption, cta: draft.cta }),
       automationPayload: { ...(base.automationPayload || {}), postText: caption },
       briefId: proof.brief.id,
-      meta: { ...(base.meta || {}), generatedBy: 'brief', briefAi: draft.ai || null, captionQuality: null, hooks: [], claimIdsUsed: draft.claim_ids_used, missingEvidence: draft.missing_evidence, basis: draft.basis },
+      meta: { ...(base.meta || {}), generatedBy: 'brief', briefAi: draft.ai ? { ...draft.ai, knowledge: draft.knowledge || [] } : null, captionQuality: null, hooks: [], claimIdsUsed: draft.claim_ids_used, missingEvidence: draft.missing_evidence, basis: draft.basis },
     }
     save((current) => ({ ...current, studio: input, generated }))
     showStudioResult()
@@ -1894,7 +1894,7 @@ export default function MarketingPage({ onBack }) {
       mediaAssetId: ws.generated.mediaAssetId || null,
       reviewStatus: publishCheck.ok ? 'passed' : 'needs_edit',
       reviewNotes: fromBrief
-        ? [...publishCheck.notes, ws.generated.meta?.briefAi ? `AI เขียนจากโน้ตและข้ออ้างที่ยืนยันแล้ว (มุม${ws.generated.meta.briefAi.label}) ผ่านด่านตัวเลขและด่านคำ — อ่านเทียบกับโน้ตว่าไม่ตีความเกิน แล้วกด ตรวจหลักฐาน ก่อนอนุมัติ` : 'ร่างจากบรีฟและข้ออ้างที่ยืนยันแล้ว — กด ตรวจหลักฐาน บนการ์ดก่อนอนุมัติ', ...(ws.generated.meta?.missingEvidence || []).map((item) => `ยังไม่ได้ใช้ (รอยืนยัน): ${item.text}`)]
+        ? [...publishCheck.notes, ws.generated.meta?.briefAi ? `AI เขียนจากโน้ตและข้ออ้างที่ยืนยันแล้ว (มุม${ws.generated.meta.briefAi.label}) ผ่านด่านตัวเลขและด่านคำ — อ่านเทียบกับโน้ตว่าไม่ตีความเกิน แล้วกด ตรวจหลักฐาน ก่อนอนุมัติ` : 'ร่างจากบรีฟและข้ออ้างที่ยืนยันแล้ว — กด ตรวจหลักฐาน บนการ์ดก่อนอนุมัติ', ...(ws.generated.meta?.briefAi?.knowledge?.length ? [`อิงคลังความรู้: ${[...new Set(ws.generated.meta.briefAi.knowledge.map((item) => item.cite))].join(' · ')}`] : []), ...(ws.generated.meta?.briefAi?.knowledge?.some((item) => item.secondary) ? ['มีข้อจากแหล่งรองในคลังความรู้ — ยืนยันกับสำนักงานที่ดินก่อนโพสต์'] : []), ...(ws.generated.meta?.missingEvidence || []).map((item) => `ยังไม่ได้ใช้ (รอยืนยัน): ${item.text}`)]
         : isAiDraft(ws.generated)
         ? [...publishCheck.notes, ...aiDraftReviewNotes(ws.generated)]
         : publishCheck.ok

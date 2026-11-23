@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { briefFacts, buildBriefWriterPrompt, checkBriefDraft, claimNextBriefJob, inventedNumbers, numbersIn, processBriefJob, writeFromBrief } from './briefWriter.js'
+import { briefFacts, supportingFacts, buildBriefWriterPrompt, checkBriefDraft, claimNextBriefJob, inventedNumbers, numbersIn, processBriefJob, writeFromBrief } from './briefWriter.js'
 import { createProofHandler, loadProof } from './marketing-proof.js'
 import { fakeDb } from './marketing-proof.fakedb.mjs'
 
@@ -102,7 +102,10 @@ test('เขียนจากบรีฟ: รอบแรกมีฉบับ
   assert.equal(bad.ok, false)
   assert.match(bad.error, /ไม่ผ่านด่านตรวจ/)
   const empty = await writeFromBrief({ proof: proofOf({ brief: brief({ unique_insight: '', field: { observations: [], unknowns: [] } }), claims: [] }), ask })
-  assert.match(empty.error, /ยังไม่มีข้อสังเกตหน้างาน/)
+  assert.match(empty.error, /คลังความรู้ของเรายังไม่มีเรื่องนี้/)
+  // AI ข้ามทุกมุม → บอกเหตุผลของ AI และสิ่งที่ต้องเพิ่ม (งานจริงงานแรกของเจ้าของ 23 พ.ย. 2569 ได้แค่ "AI ยังเขียนไม่ได้")
+  const skippedAll = await writeFromBrief({ proof: proofOf(), ask: async () => ({ ok: true, data: { drafts: [], skipped: [{ kind: 'counter-intuitive', reason: 'มีข้อเท็จจริงข้อเดียว' }] }, provider: 'ทดสอบ' }) })
+  assert.match(skippedAll.error, /ข้อมูลในโน้ตยังไม่พอ \(มีข้อเท็จจริงข้อเดียว\) — เพิ่มข้อสังเกตหน้างาน/)
 })
 
 // ── คิวและ API ────────────────────────────────────────────────────────────────────────
@@ -119,13 +122,19 @@ test('สั่งงาน → ตัวรับงานหยิบ → เ�
   const db = fakeDb()
   const handler = handlerFor(db)
   const empty = (await call(handler, { body: { action: 'save-brief', brief: { topic: 'ยังไม่มีอะไร' } } })).data.brief
-  assert.equal((await call(handler, { body: { action: 'write-request', briefId: empty.id } })).status, 400)
+  // มีแค่หัวข้อ: ส่งคำขอได้ (คลังความรู้อยู่ฝั่งตัวรับงาน) · ตัวรับงานไม่มีข้อเท็จจริง = ล้มพร้อมเหตุผล ไม่เรียก AI
+  assert.equal((await call(handler, { body: { action: 'write-request', briefId: empty.id } })).status, 200)
+  const emptyJob = await claimNextBriefJob(db, 'office-pc')
+  let asked = 0
+  await processBriefJob(db, emptyJob, { loadProof, ask: async () => { asked += 1; return { ok: false } } })
+  assert.equal(asked, 0)
+  assert.match(db.tables().marketing_brief_jobs[0].error, /คลังความรู้ของเรายังไม่มีเรื่องนี้/)
   const saved = (await call(handler, { body: { action: 'save-brief', brief: { mode: 'field', topic: brief().topic, unique_insight: brief().unique_insight, field: brief().field } } })).data.brief
   const first = await call(handler, { body: { action: 'write-request', briefId: saved.id, note: 'โทนสุภาพ โทร 081-234-5678' } })
   assert.equal(first.status, 200)
   assert.equal(first.data.reused, false)
   assert.deepEqual(first.data.worker, { online: false, writer: false, last_seen_at: null })
-  assert.ok(!/081/.test(db.tables().marketing_brief_jobs[0].request.note))
+  assert.ok(!/081/.test(db.tables().marketing_brief_jobs[1].request.note))
   assert.equal((await call(handler, { body: { action: 'write-request', briefId: saved.id } })).data.reused, true)
 
   const job = await claimNextBriefJob(db, 'office-pc')
@@ -158,4 +167,36 @@ test('AI เขียนไม่ผ่านด่าน → งานล้ม
   assert.equal(res.status, 503)
   assert.equal(res.data.missingJobsTable, true)
   assert.match(res.data.error, /supabase_marketing_brief_jobs\.sql/)
+})
+
+test('ข้อเท็จจริงเสริม: ความจริงของแบรนด์และคลังความรู้ที่ตรงหัวข้อ · ข้อที่มีตัวเลขอัตราไม่ถูกส่ง · หัวข้อที่มีแต่ชื่อเรื่องจึงเขียนได้', async () => {
+  const kb = {
+    sources: { act: { cite: 'พ.ร.บ.ขายฝาก พ.ศ. 2562' }, ccc: { cite: 'ประมวลกฎหมายแพ่งและพาณิชย์' } },
+    weights: new Map(),
+    entries: [
+      { id: 'sale-def', topics: ['ขายฝาก'], fact: 'ขายฝากคือสัญญาซื้อขายที่กรรมสิทธิ์ตกไปยังผู้ซื้อทันที โดยผู้ขายไถ่คืนได้ตามกำหนด', source: 'ccc', ref: 'มาตรา 491', confidence: 'secondary', order: 0 },
+      { id: 'act-scope', topics: ['ขายฝาก', 'ที่ดิน'], fact: 'การขายฝากที่ดินเพื่อเกษตรกรรมหรือที่อยู่อาศัยของบุคคลธรรมดาอยู่ใต้กฎหมายเฉพาะ', source: 'act', ref: 'มาตรา 4', confidence: 'official', order: 1 },
+      { id: 'rate-cap', topics: ['ขายฝาก', 'สินไถ่'], fact: 'สินไถ่คำนวณเป็นดอกเบี้ยแล้วต้องไม่เกินร้อยละ 15 ต่อปี', source: 'act', ref: 'มาตรา 8', confidence: 'official', order: 2 },
+    ],
+  }
+  const brand = { brand_name: 'AssetX Estate', page_services: ['ขายฝาก', 'จำนอง'], service_area_label: 'กรุงเทพฯ และปริมณฑล', service_area_expanding: true, steps: ['ส่งข้อมูลทรัพย์', 'ประเมินเบื้องต้น'] }
+  const topicOnly = brief({ topic: 'รับขายฝากที่ดิน กรุงเทพฯ และปริมณฑล', unique_insight: '', intended_takeaway: '', field: { observations: [], unknowns: [] } })
+  const extra = supportingFacts({ brief: topicOnly, brand, kb })
+  assert.deepEqual(extra.map((fact) => fact.id), ['B1', 'B2', 'B3', 'K1', 'K2'])
+  assert.ok(!extra.some((fact) => /ร้อยละ 15/.test(fact.text)))
+  assert.match(extra.find((fact) => fact.kbId === 'sale-def').text, /แหล่งรอง: ถ้าใช้ ต้องบอกผู้อ่านให้ยืนยันกับสำนักงานที่ดิน/)
+  assert.match(extra.find((fact) => fact.id === 'B2').text, /ห้ามเขียนว่ารับเฉพาะพื้นที่นี้/)
+  // หัวข้อที่ไม่เกี่ยวกับขายฝาก/จำนอง ไม่ได้ขั้นตอนของบริการ
+  assert.ok(!supportingFacts({ brief: brief(), brand, kb: null }).some((fact) => fact.id === 'B3'))
+
+  const caption = 'ก่อนขายฝากที่ดิน สิ่งแรกที่เจ้าของควรรู้คือ ขายฝากคือสัญญาซื้อขายที่กรรมสิทธิ์ตกไปยังผู้ซื้อทันที โดยผู้ขายไถ่คืนได้ตามกำหนด เรื่องนี้ควรยืนยันรายละเอียดกับสำนักงานที่ดินอีกครั้ง\n\nการขายฝากที่ดินเพื่อเกษตรกรรมหรือที่อยู่อาศัยของบุคคลธรรมดาอยู่ใต้กฎหมายเฉพาะ จึงควรรู้ว่าทรัพย์ของตัวเองเข้าข่ายหรือไม่ก่อนคุยเงื่อนไข\n\nAssetX Estate รับขายฝากในกรุงเทพฯ และปริมณฑล เริ่มจากส่งข้อมูลทรัพย์ แล้วประเมินเบื้องต้น ข้อมูลนี้เป็นข้อมูลทั่วไป ไม่ใช่คำแนะนำเฉพาะกรณี'
+  let seen = ''
+  const out = await writeFromBrief({
+    proof: { brief: topicOnly, claims: [], sources: [], links: [] }, brand, kb,
+    ask: async ({ prompt }) => { seen = prompt; return { ok: true, provider: 'ทดสอบ', data: { drafts: [{ kind: 'practical-diagnostic', label: 'รู้ก่อนขายฝาก', headline: 'ก่อนขายฝากที่ดิน รู้สองเรื่องนี้ก่อน', caption, cta: 'ส่งข้อมูลทรัพย์มาประเมินเบื้องต้นได้', facts_used: ['K1', 'K2', 'B1', 'B3'] }] } } },
+  })
+  assert.match(seen, /K1 \[ความรู้จากคลังที่ตรวจแล้ว\]/)
+  assert.equal(out.ok, true, out.error)
+  assert.deepEqual(out.drafts[0].knowledge.map((item) => item.id).sort(), ['act-scope', 'sale-def'])
+  assert.equal(out.drafts[0].knowledge.find((item) => item.id === 'sale-def').secondary, true)
 })
