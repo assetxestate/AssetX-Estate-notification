@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MEDIA_MAX_BYTES, dehydrateWorkspace, hydrateWorkspace, imageBytes, isStoragePath, markStored, mediaSummary, needsHydration, needsUpload, sameImage } from './marketingMedia.js'
+import { mediaTasks, MEDIA_MAX_BYTES, dehydrateWorkspace, hydrateWorkspace, imageBytes, isStoragePath, markStored, mediaSummary, needsHydration, needsUpload, sameImage } from './marketingMedia.js'
 import { createMediaHandler, mediaStorageOn } from '../../server/marketing-media.js'
 
 const png = (text) => `data:image/png;base64,${Buffer.from(text).toString('base64')}`
@@ -112,4 +112,27 @@ test('API: ปิดด้วยตัวแปรได้ · ปิดอย�
   assert.deepEqual((await call(handler, { query: { status: '1' } })).data, { ready: false })
   assert.equal((await call(handler, { method: 'POST', body: { action: 'upload', id: 'asset-1', dataUrl: A } })).status, 503)
   assert.equal(files.size, 0)
+})
+
+test('ภาพต้นทางของตัวออกแบบภาพ (sourceDataUrl) ย้ายและเติมกลับแบบเดียวกับภาพที่ใช้โพสต์ แยกช่องกัน', () => {
+  const asset = { id: 'asset-1', dataUrl: A, sourceDataUrl: B }
+  assert.deepEqual(mediaTasks(asset).map((task) => [task.kind, task.field, task.uploadId]), [['upload', 'dataUrl', 'asset-1'], ['upload', 'sourceDataUrl', 'asset-1-src']])
+  // ย้ายภาพที่ใช้โพสต์ก่อน: ภาพต้นทางยังอยู่ในก้อนจนกว่าจะย้ายของตัวเองเสร็จ
+  let memory = markStored(ws([asset]), 'asset-1', 'workspace/asset-1-aa.png', A)
+  assert.equal(dehydrateWorkspace(memory).mediaAssets[0].dataUrl, undefined)
+  assert.equal(dehydrateWorkspace(memory).mediaAssets[0].sourceDataUrl, B)
+  // ผูกตำแหน่งของภาพต้นทางด้วยรูปผิดช่อง = ไม่ผูก
+  assert.equal(markStored(memory, 'asset-1', 'workspace/asset-1-src-bb.png', A, 'sourceDataUrl'), memory)
+  memory = markStored(memory, 'asset-1', 'workspace/asset-1-src-bb.png', B, 'sourceDataUrl')
+  const stored = dehydrateWorkspace(memory).mediaAssets[0]
+  assert.deepEqual([stored.dataUrl, stored.sourceDataUrl, stored.storagePath, stored.sourceStoragePath], [undefined, undefined, 'workspace/asset-1-aa.png', 'workspace/asset-1-src-bb.png'])
+  assert.deepEqual(mediaTasks(memory.mediaAssets[0]), [])
+  // เปิดหน้าใหม่: สองช่องเป็นงานโหลดแยกกัน และเติมกลับถูกช่อง
+  const cloud = ws([stored])
+  assert.deepEqual(mediaTasks(stored).map((task) => [task.kind, task.field, task.path]), [['load', 'dataUrl', 'workspace/asset-1-aa.png'], ['load', 'sourceDataUrl', 'workspace/asset-1-src-bb.png']])
+  const one = hydrateWorkspace(cloud, { 'asset-1': { sourceStoragePath: 'workspace/asset-1-src-bb.png', sourceDataUrl: B } })
+  assert.deepEqual([one.mediaAssets[0].dataUrl, one.mediaAssets[0].sourceDataUrl], [undefined, B])
+  const both = hydrateWorkspace(one, { 'asset-1': { storagePath: 'workspace/asset-1-aa.png', dataUrl: A } })
+  assert.deepEqual(both.mediaAssets[0], memory.mediaAssets[0])
+  assert.deepEqual(mediaSummary(cloud), { total: 1, stored: 2, pendingUpload: 0, pendingLoad: 2, tooLarge: 0 })
 })

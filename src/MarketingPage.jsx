@@ -3,7 +3,7 @@ import { aiDraftReviewNotes, appendMarketingHashtags, applyAiDraft, applyHookCho
 import { hookOptionsFor, isCurrentHook, swapOpeningLine, videoScriptFromDraft } from './lib/hookOptions.js'
 import { DECORATED_MIN, countEmoji, decorateCaption, stripEmoji } from './lib/captionEmoji.js'
 import { getMarketingWorkspace, saveMarketingWorkspace } from './lib/api.js'
-import { dehydrateWorkspace, hydrateWorkspace, markStored, needsHydration, needsUpload, sameImage } from './lib/marketingMedia.js'
+import { dehydrateWorkspace, hydrateWorkspace, markStored, mediaTasks, sameImage } from './lib/marketingMedia.js'
 import { fetchMedia, getMediaStatus, uploadMedia } from './lib/marketingMediaApi.js'
 import ArtworkEditor from './ArtworkEditor.jsx'
 import ArtworkPreview from './ArtworkPreview.jsx'
@@ -1378,24 +1378,25 @@ export default function MarketingPage({ onBack }) {
   // ล้มขั้นไหนก็ตาม = รูปอยู่ในก้อนตามเดิม ไม่มีข้อความรบกวน และไม่ลองซ้ำจนกว่าจะเปิดหน้าใหม่
   useEffect(() => {
     if (!mediaStoreReady || syncState.state === 'loading') return
+    // รูปหนึ่งรายการมีสองช่อง (ภาพที่ใช้โพสต์ · ภาพต้นทางของตัวออกแบบภาพ) แต่ละช่องเป็นงานแยกกัน
     for (const asset of workspace.mediaAssets || []) {
-      if (!asset?.id || mediaBusyRef.current.has(asset.id) || mediaFailedRef.current.has(asset.id)) continue
-      if (needsHydration(asset)) {
-        mediaBusyRef.current.add(asset.id)
-        fetchMedia(asset.storagePath)
-          .then((dataUrl) => commitWorkspace(hydrateWorkspace(workspaceRef.current, { [asset.id]: { storagePath: asset.storagePath, dataUrl } })))
-          .catch(() => { mediaFailedRef.current.add(asset.id); notify('โหลดรูปบางรูปจากที่เก็บไม่สำเร็จ · รีเฟรชหน้าเพื่อลองใหม่ (รูปยังอยู่ในที่เก็บ)', 'warn') })
-          .finally(() => mediaBusyRef.current.delete(asset.id))
-      } else if (needsUpload(asset)) {
-        const original = asset.dataUrl
-        mediaBusyRef.current.add(asset.id)
-        uploadMedia(asset.id, original)
-          .then(async ({ path }) => {
-            if (!sameImage(await fetchMedia(path), original)) throw new Error('read-back mismatch')
-            save((ws) => markStored(ws, asset.id, path, original))
-          })
-          .catch(() => mediaFailedRef.current.add(asset.id))
-          .finally(() => mediaBusyRef.current.delete(asset.id))
+      for (const task of mediaTasks(asset)) {
+        if (mediaBusyRef.current.has(task.key) || mediaFailedRef.current.has(task.key)) continue
+        mediaBusyRef.current.add(task.key)
+        if (task.kind === 'load') {
+          fetchMedia(task.path)
+            .then((dataUrl) => commitWorkspace(hydrateWorkspace(workspaceRef.current, { [asset.id]: { [task.pathKey]: task.path, [task.field]: dataUrl } })))
+            .catch(() => { mediaFailedRef.current.add(task.key); notify('โหลดรูปบางรูปจากที่เก็บไม่สำเร็จ · รีเฟรชหน้าเพื่อลองใหม่ (รูปยังอยู่ในที่เก็บ)', 'warn') })
+            .finally(() => mediaBusyRef.current.delete(task.key))
+        } else {
+          uploadMedia(task.uploadId, task.dataUrl)
+            .then(async ({ path }) => {
+              if (!sameImage(await fetchMedia(path), task.dataUrl)) throw new Error('read-back mismatch')
+              save((ws) => markStored(ws, asset.id, path, task.dataUrl, task.field))
+            })
+            .catch(() => mediaFailedRef.current.add(task.key))
+            .finally(() => mediaBusyRef.current.delete(task.key))
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
