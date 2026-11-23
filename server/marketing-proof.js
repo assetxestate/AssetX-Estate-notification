@@ -12,18 +12,27 @@
 // POST { action: "attach-content", briefId, contentId, contentNo? }  → { brief }
 // POST { action: "gate", post, briefId? }                            → { gate }       ตรวจอย่างเดียว ไม่บันทึก
 // POST { action: "approve", post, reviewer, reason? }                → { review, gate } ติดตัวบล็อก = 422 ไม่บันทึกเป็นอนุมัติ
+// POST { action: "write-request", briefId, note? }                   → { job, reused, worker }   ให้ AI บนคอมสำนักงานเขียนจากโน้ต (server/briefWriter.js)
+// GET  /api/marketing-proof?job=<id> | ?briefJob=<briefId>           → { job, worker }           สถานะ/ผลของงานเขียน (briefJob = งานล่าสุดของบรีฟ)
 //
 // version: ทุกการแก้ต้องส่ง version ที่อ่านมา ไม่ตรง = 409 (มีคนแก้ไปก่อนจากอีกแท็บ/เครื่อง) — ไม่เขียนทับเงียบ ๆ
 // ห้าม log ข้อความบรีฟ/ข้ออ้าง (อาจมีรายละเอียดหน้างาน) · log ได้เฉพาะรหัสข้อผิดพลาด
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
-import { CLAIM_STATUS, normalizeBrief, normalizeClaim, normalizeSource, verifyProblems } from '../src/lib/marketingProof.js'
+import { CLAIM_STATUS, canComposeFromBrief, normalizeBrief, normalizeClaim, normalizeSource, verifyProblems } from '../src/lib/marketingProof.js'
+import { scrub } from './research/pii.js'
 import { approvalBasis, buildReviewGate, gateBlockerText } from '../src/lib/marketingReviewGate.js'
 
 const SQL_FILE = 'supabase_marketing_proof.sql'
 const MISSING_TABLE = new Set(['42P01', 'PGRST205'])
 const MAX_CAPTION = 20000
+// คิว "ให้ AI เขียนจากโน้ต" (supabase_marketing_brief_jobs.sql) — ตัวรับงานเดียวกับคิวภาพบนคอมสำนักงาน
+const JOBS_TABLE = 'marketing_brief_jobs'
+const JOBS_SQL = 'supabase_marketing_brief_jobs.sql'
+const JOB_COLUMNS = 'id,status,brief_id,result,error,created_at,claimed_at,finished_at'
+const MAX_ACTIVE_JOBS = 3
+const WORKER_ONLINE_MS = 90 * 1000
 const text = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
 const positiveInt = (value) => { const n = Number(value); return Number.isInteger(n) && n > 0 ? n : null }
 
@@ -70,6 +79,22 @@ export async function loadProof(db, { briefId = null, contentId = null } = {}) {
 async function latestReview(db, contentId) {
   const rows = unwrap(await db.from('marketing_content_reviews').select('*').eq('content_id', String(contentId)).order('id', { ascending: false }).limit(1)) || []
   return rows[0] || null
+}
+
+// สถานะตัวรับงานบนคอมสำนักงาน · writer = รุ่นที่รับงานเขียนจากโน้ตได้ (รุ่นเก่ายังเปิดอยู่ = งานค้างในคิว หน้าเว็บบอกให้เปิดใหม่)
+async function readWorker(db, now) {
+  const { data, error } = await db.from('marketing_image_worker').select('id,last_seen_at,info').eq('id', 'office-pc').maybeSingle()
+  if (error) return { online: false, writer: false, last_seen_at: null }
+  const lastSeen = data?.last_seen_at ? Date.parse(data.last_seen_at) : NaN
+  return { online: Number.isFinite(lastSeen) && now - lastSeen <= WORKER_ONLINE_MS, writer: Boolean(data?.info?.brief_writer), last_seen_at: data?.last_seen_at || null }
+}
+
+// ตารางคิวยังไม่ถูกสร้าง → ข้อความเฉพาะ (ส่วนอื่นของ Proof Card ยังใช้ได้)
+const jobsQuery = async (query) => {
+  const out = await query
+  if (out.error && MISSING_TABLE.has(out.error.code)) throw new ApiError(503, `ยังไม่ได้ติดตั้งคิวให้ AI เขียนจากโน้ต (รัน ${JOBS_SQL} ใน Supabase ครั้งเดียว)`, { missingJobsTable: true })
+  if (out.error) throw out.error
+  return out
 }
 
 const hashOf = (post, proof) => crypto.createHash('sha256').update(approvalBasis(post, proof)).digest('hex')
@@ -220,6 +245,22 @@ async function actions(db, body, now) {
     return { brief: briefOut(await versionedUpdate(db, 'marketing_content_briefs', briefId, brief.version, { content_id: contentId, content_no: positiveInt(body.contentNo) })) }
   }
 
+  if (body.action === 'write-request') {
+    const briefId = positiveInt(body.briefId)
+    if (!briefId) throw new ApiError(400, 'บันทึกบรีฟก่อนให้ AI เขียน')
+    const proof = await loadProof(db, { briefId })
+    if (!proof?.brief) throw new ApiError(404, 'ไม่พบบรีฟนี้')
+    if (!canComposeFromBrief(proof.brief, proof.claims)) throw new ApiError(400, 'ยังไม่มีข้อมูลให้ AI เขียน — ใส่ข้อสังเกตหน้างาน ข้อสังเกตเฉพาะ หรือยืนยันข้ออ้างอย่างน้อยหนึ่งอย่าง แล้วบันทึกร่าง')
+    // กดซ้ำขณะงานของบรีฟเดิมยังไม่จบ = ตามงานเดิม (ไม่เปลืองโควตา ไม่ได้ผลสองชุด)
+    const existing = await jobsQuery(db.from(JOBS_TABLE).select(JOB_COLUMNS).eq('brief_id', briefId).in('status', ['queued', 'running']).order('id', { ascending: false }).limit(1))
+    if (existing.data?.[0]) return { job: existing.data[0], reused: true, worker: await readWorker(db, now) }
+    const active = await jobsQuery(db.from(JOBS_TABLE).select('id').in('status', ['queued', 'running']))
+    if ((active.data?.length || 0) >= MAX_ACTIVE_JOBS) throw new ApiError(429, `มีงานให้ AI เขียนรอคิวอยู่ ${active.data.length} งานแล้ว รอให้เสร็จก่อนแล้วค่อยสั่งเพิ่ม`)
+    const note = scrub(String(body.note ?? '')).replace(/\s+/g, ' ').trim().slice(0, 200)
+    const created = await jobsQuery(db.from(JOBS_TABLE).insert({ status: 'queued', brief_id: briefId, request: note ? { note } : {} }).select(JOB_COLUMNS).maybeSingle())
+    return { job: created.data, reused: false, worker: await readWorker(db, now) }
+  }
+
   if (body.action === 'gate' || body.action === 'approve') {
     const post = postOf(body.post || {})
     const briefId = positiveInt(body.briefId)
@@ -269,6 +310,14 @@ export function createProofHandler({ authorized = verifySession, database = defa
       if (!enabled) return res.status(404).json({ error: 'ฟีเจอร์นี้ยังไม่เปิดใช้' })
       if (!db) return res.status(503).json({ error: 'ยังไม่ได้ตั้งค่าฐานข้อมูลฝั่งเซิร์ฟเวอร์' })
 
+      if (req.method === 'GET' && (req.query?.job || req.query?.briefJob)) {
+        const jobId = positiveInt(req.query.job)
+        const ofBrief = positiveInt(req.query.briefJob)
+        if (!jobId && !ofBrief) return res.status(400).json({ error: 'รหัสงานไม่ถูกต้อง' })
+        const base = db.from(JOBS_TABLE).select(JOB_COLUMNS)
+        const found = await jobsQuery(jobId ? base.eq('id', jobId).limit(1) : base.eq('brief_id', ofBrief).order('id', { ascending: false }).limit(1))
+        return res.status(200).json({ job: found.data?.[0] || null, worker: await readWorker(db, clock()) })
+      }
       if (req.method === 'GET') {
         const briefId = positiveInt(req.query?.brief)
         const contentId = text(req.query?.content, 80)

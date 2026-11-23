@@ -32,6 +32,8 @@ import { scrub } from '../server/research/pii.js'
 import { claimNextContentJob, CONTENT_JOB_TABLE, isMissingTable, processContentJob, releaseStaleContentJobs } from '../server/content-jobs-worker.js'
 import { runSurveyLoop } from '../server/market-survey-worker.js'
 import { runPhotoReviewLoop } from '../server/photoReview.js'
+import { runBriefWriterLoop } from '../server/briefWriter.js'
+import { loadProof } from '../server/marketing-proof.js'
 import { generateFreshContent } from '../server/research/fresh.js'
 import { loadKnowledgeBase } from '../server/research/knowledge.js'
 import { loadHookLessons, loadHookPatterns } from '../server/research/hooks.js'
@@ -337,7 +339,7 @@ async function heartbeat(db, busyJob = null, busyContentJob = null) {
   const { error } = await db.from('marketing_image_worker').upsert({
     id: WORKER_ID,
     last_seen_at: new Date().toISOString(),
-    info: { version: VERSION, host: os.hostname(), busy_job: busyJob, content_jobs: true, premium_posters: true, market_survey: true, photo_review: true, busy_content_job: busyContentJob },
+    info: { version: VERSION, host: os.hostname(), busy_job: busyJob, content_jobs: true, premium_posters: true, market_survey: true, photo_review: true, brief_writer: true, busy_content_job: busyContentJob },
   }, { onConflict: 'id' })
   if (error) throw error
 }
@@ -620,6 +622,11 @@ async function main() {
     if (!ONCE) runSurveyLoop({ db, workerId: WORKER_ID, log, isStopping: () => stopping, onBusy: () => beat() }).catch((err) => log('ลูปสำรวจราคาตลาดหยุด:', shortError(err)))
     // ลูปที่สี่: อ่านรูปทรัพย์ของ lead ด้วย Codex (คิวเป็นไฟล์ใน bucket ปิด ไม่มีตาราง · server/photoReview.js)
     if (!ONCE) runPhotoReviewLoop({ db, log, isStopping: () => stopping, onBusy: () => beat() }).catch((err) => log('ลูปอ่านรูปทรัพย์หยุด:', shortError(err)))
+    // ลูปที่ห้า: ให้ AI เขียนโพสต์จากโน้ตของแผงบรีฟ (คิว marketing_brief_jobs · server/briefWriter.js · เจ้าของขอ 23 พ.ย. 2569)
+    if (!ONCE) runBriefWriterLoop({
+      db, workerId: WORKER_ID, loadProof, loadBrand, log, isStopping: () => stopping, onBusy: () => beat(),
+      makeAsk: (job) => createAsk({ log: (s) => log(`AI เขียนจากโน้ต งาน ${job.id}: ${s}`) }),
+    }).catch((err) => log('ลูป AI เขียนจากโน้ตหยุด:', shortError(err)))
     while (!stopping) {
       await syncRefs()
       let job = null

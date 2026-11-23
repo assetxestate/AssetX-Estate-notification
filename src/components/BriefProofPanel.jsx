@@ -8,7 +8,7 @@ import {
   briefMissing, canComposeFromBrief, composeProofDraft, normalizeBrief, verifyProblems,
 } from '../lib/marketingProof.js'
 import { GATE_SECTIONS } from '../lib/marketingReviewGate.js'
-import { loadBriefProof, reviewClaim, saveBrief, saveClaim, saveSource } from '../lib/marketingProofApi.js'
+import { getBriefWriteJob, getWriteJob, loadBriefProof, requestWrite, reviewClaim, saveBrief, saveClaim, saveSource, writeJobStatus } from '../lib/marketingProofApi.js'
 import { assetxAssetTypes } from '../lib/assetxMarketingModel.js'
 import './BriefProofPanel.css'
 
@@ -45,6 +45,13 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
   const [newSource, setNewSource] = useState(EMPTY_SOURCE)
   const [newClaim, setNewClaim] = useState(EMPTY_CLAIM)
   const [checked, setChecked] = useState(false)
+  // งานให้ AI เขียนจากโน้ต { job, worker } (คิวบนคอมสำนักงาน) · tick ให้ตัวนับเวลาบนหน้าจอเดิน
+  const [write, setWrite] = useState(null)
+  const [writeNote, setWriteNote] = useState('')
+  const [, setTick] = useState(0)
+  // ส่วนแหล่งข้อมูล/ข้ออ้างพับไว้ก่อน (ใช้เมื่อโพสต์จะอ้างตัวเลข ราคา หรือข้อกฎหมาย) · มีข้อมูลอยู่แล้ว = เปิดให้เลย
+  const [proofOpen, setProofOpen] = useState(false)
+  useEffect(() => { if (sources.length || claims.length) setProofOpen(true) }, [sources.length, claims.length])
 
   const applyProof = (data) => {
     setForm(toForm(data.brief))
@@ -76,6 +83,27 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
     if (briefId && Number(briefId) !== Number(meta?.id)) load(briefId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [briefId])
+
+  // เปิดบรีฟที่เคยสั่ง AI เขียนไว้ → ตามงานที่ยังไม่จบ หรือแสดงร่างที่เขียนไว้แล้ว (ไม่ต้องสั่งใหม่)
+  useEffect(() => {
+    if (!meta?.id) { setWrite(null); return undefined }
+    let cancelled = false
+    getBriefWriteJob(meta.id).then((data) => { if (!cancelled && data.job) setWrite(data) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [meta?.id])
+
+  // งานยังไม่จบ → ถามสถานะทุก 5 วินาที (หยุดเองเมื่อจบหรือปิดแผง)
+  const writeActive = ['queued', 'running'].includes(write?.job?.status)
+  useEffect(() => {
+    if (!writeActive) return undefined
+    const jobId = write.job.id
+    const timer = window.setInterval(() => {
+      setTick((n) => n + 1)
+      getWriteJob(jobId).then((data) => { if (data.job) setWrite(data) }).catch(() => {})
+    }, 5000)
+    return () => window.clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writeActive, write?.job?.id])
 
   // เรียก API หนึ่งครั้ง: จัดสถานะกำลังทำ ข้อผิดพลาด และกรณีถูกแก้จากอีกแท็บ (โหลดฉบับล่าสุดได้ ข้อความที่พิมพ์ยังอยู่)
   const run = async (key, task) => {
@@ -157,6 +185,31 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
     brief = { ...normalizeBrief(brief).value, id: brief.id }
     onCompose?.(composeProofDraft({ brief, claims, sources, links }), { brief, claims, sources, links })
   }
+
+  const askAiToWrite = async () => {
+    const brief = meta?.id && !dirty ? { id: meta.id } : await save()
+    if (!brief) return
+    const data = await run('write', () => requestWrite(brief.id, writeNote))
+    if (data) setWrite(data)
+  }
+
+  const pickAiDraft = (draft) => {
+    const brief = { ...normalizeBrief(form).value, id: meta.id }
+    onCompose?.({
+      headline: draft.headline, caption: draft.caption, cta: draft.cta, claim_ids_used: draft.claim_ids_used || [],
+      missing_evidence: write?.job?.result?.missing_evidence || [], basis: 'ai',
+      ai: { kind: draft.kind, label: draft.kind_label, provider: write?.job?.result?.provider || null },
+    }, { brief, claims, sources, links })
+  }
+
+  const writeStatus = writeJobStatus(write?.job, write?.worker)
+  const aiDrafts = write?.job?.status === 'done' ? (write.job.result?.drafts || []) : []
+  const aiStale = aiDrafts.length > 0 && (dirty || Number(write.job.result?.brief_version) !== Number(meta?.version))
+
+  const aiCount = aiDrafts.length
+  useEffect(() => {
+    if (aiCount) window.setTimeout(() => document.querySelector('.bp-ai')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120)
+  }, [aiCount, write?.job?.id])
 
   const saving = Boolean(busy)
   // บรีฟที่ผูกกับร่างในแท็บ ร่าง แล้ว: แก้หลักฐานได้ แต่ไม่ร่างซ้ำเป็นคอนเทนต์ชิ้นใหม่ (บรีฟหนึ่งใบต่อคอนเทนต์หนึ่งชิ้น)
@@ -260,7 +313,13 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
         {!meta?.id && <span className="bp-note">บันทึกบรีฟก่อน แล้วจึงเพิ่มแหล่งข้อมูลและข้ออ้างได้</span>}
       </div>
 
-      {meta?.id && (
+      {meta?.id && !proofOpen && (
+        <div className="bp-switch">
+          <button type="button" className="mx-secondary" aria-expanded={false} onClick={() => setProofOpen(true)}>เพิ่มแหล่งข้อมูลและข้ออ้าง</button>
+          <span>ใช้เมื่อโพสต์จะอ้างตัวเลข ราคา หรือข้อกฎหมาย · ถ้าเล่าแค่สิ่งที่เห็นหน้างาน ข้ามได้</span>
+        </div>
+      )}
+      {meta?.id && proofOpen && (
         <>
           <fieldset className="bp-fieldset">
             <legend>แหล่งข้อมูล ({sources.length})</legend>
@@ -365,11 +424,47 @@ export default function BriefProofPanel({ briefId, topicHint = '', reviewer = ''
         <button type="button" className="mx-secondary" onClick={() => setChecked(true)}>ตรวจข้อมูล</button>
         {attached
           ? <button type="button" className="mx-primary" onClick={() => onBackToDraft?.()}>กลับไปที่ร่าง</button>
-          : <button type="button" className="mx-primary" disabled={saving || !composable} title={composable ? '' : 'ต้องมีข้อสังเกตหน้างาน ข้อสังเกตเฉพาะ หรือข้ออ้างที่ยืนยันแล้วอย่างน้อยหนึ่งอย่าง'} onClick={compose}>ร่างโพสต์จากข้อมูลนี้</button>}
+          : (
+            <>
+              <button type="button" className="mx-secondary" disabled={saving || !composable} title={composable ? 'ระบบเรียงข้อความที่กรอกเป็นโพสต์ตรง ๆ ไม่ใช้ AI' : 'ต้องมีข้อสังเกตหน้างาน ข้อสังเกตเฉพาะ หรือข้ออ้างที่ยืนยันแล้วอย่างน้อยหนึ่งอย่าง'} onClick={compose}>เรียงร่างเอง (ไม่ใช้ AI)</button>
+              <button type="button" className="mx-primary" disabled={saving || !composable || writeActive} title={composable ? 'AI บนคอมสำนักงานเขียนให้ 3 มุมจากโน้ตนี้ ราว 1 นาที' : 'ต้องมีข้อสังเกตหน้างาน ข้อสังเกตเฉพาะ หรือข้ออ้างที่ยืนยันแล้วอย่างน้อยหนึ่งอย่าง'} onClick={askAiToWrite}>{writeActive ? 'AI กำลังเขียน…' : aiDrafts.length ? 'ให้ AI เขียนใหม่อีกรอบ' : 'ให้ AI เขียนจากโน้ตนี้'}</button>
+            </>
+          )}
       </div>
+      {!attached && (
+        <label className="bp-ai-note">คำขอถึง AI (ไม่บังคับ)
+          <input value={writeNote} maxLength={200} disabled={writeActive} placeholder="เช่น เขียนสั้น ๆ · เน้นคนที่กำลังจะขายฝาก" onChange={(event) => setWriteNote(event.target.value)} />
+        </label>
+      )}
+      {writeStatus && (
+        <p className={`bp-ai-status ${writeStatus.tone}`} role="status">
+          {writeStatus.text}
+          {write?.job?.status === 'failed' && !attached && <button type="button" disabled={saving} onClick={askAiToWrite}>ลองอีกครั้ง</button>}
+        </p>
+      )}
+      {aiDrafts.length > 0 && !attached && (
+        <div className="bp-ai" aria-label="ร่างที่ AI เขียนจากโน้ต">
+          <strong>AI เขียนให้ {aiDrafts.length} มุม — เลือกมุมที่ชอบ</strong>
+          <span className="bp-note">ทุกมุมใช้เฉพาะข้อมูลในโน้ตและผ่านด่านตรวจตัวเลขแล้ว แต่ระบบตรวจการตีความเกินโน้ตไม่ได้ทั้งหมด อ่านเทียบกับโน้ตก่อนใช้{aiStale ? ' · โน้ตถูกแก้หลังร่างชุดนี้ กด ให้ AI เขียนใหม่อีกรอบ ถ้าต้องการให้ตรงกับโน้ตล่าสุด' : ''}</span>
+          {aiDrafts.map((draft) => (
+            <article className="bp-ai-card" key={draft.kind}>
+              <div className="bp-claim-head">
+                <strong>{draft.kind_label} · {draft.label}</strong>
+                <span className="bp-tag">{draft.caption.length} ตัวอักษร</span>
+              </div>
+              <p className="bp-ai-headline">{draft.headline}</p>
+              <p className="bp-ai-caption">{draft.caption}</p>
+              <div className="bp-actions end">
+                <button type="button" className="mx-primary" onClick={() => pickAiDraft(draft)}>ใช้ร่างนี้</button>
+              </div>
+            </article>
+          ))}
+          {(write.job.result?.skipped || []).map((item) => <span className="bp-note" key={item.kind}>AI ไม่ได้เขียนมุม {item.kind_label}: {item.reason}</span>)}
+        </div>
+      )}
       <p className="bp-note">{attached
         ? 'บรีฟนี้ผูกกับร่างในแท็บ ร่าง แล้ว — แก้แหล่งข้อมูลและข้ออ้างที่นี่ แล้วกลับไปกด ตรวจหลักฐาน บนการ์ด (ข้อความโพสต์แก้ที่การ์ด)'
-        : 'ร่างนี้เรียงจากข้อมูลที่กรอกและข้ออ้างที่ยืนยันแล้วเท่านั้น ระบบไม่เติมตัวเลขหรือเคสให้เอง'}</p>
+        : 'AI เขียนจากโน้ตและข้ออ้างที่ยืนยันแล้วเท่านั้น ร่างที่มีตัวเลขหรือข้ออ้างนอกโน้ตถูกคัดออกก่อนถึงหน้านี้ · ทุกร่างยังต้องให้คนอ่านและอนุมัติ'}</p>
     </section>
   )
 }

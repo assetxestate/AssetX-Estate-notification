@@ -1554,19 +1554,21 @@ export default function MarketingPage({ onBack }) {
     const ws = workspaceRef.current
     const input = { ...ws.studio, prompt: normalizePrompt(proof.brief.topic), briefId: proof.brief.id, sourceIdeaId: null }
     const base = runAssetxMarketingModel(input, draftsOf(ws).slice(0, 8).map((post) => post.caption || ''))
+    // ร่างที่ AI เขียนจากโน้ต (draft.ai): ใส่อีโมจิตามโครงโพสต์แบบเดียวกับร่าง AI อื่น (AI ไม่ได้ใส่เอง) · ร่างที่ระบบเรียงเองคงข้อความตามที่กรอก
+    const caption = draft.ai ? decorateCaption(draft.caption, { cta: draft.cta }) : draft.caption
     const generated = {
       ...base,
       headline: draft.headline,
-      caption: draft.caption,
+      caption,
       cta: draft.cta,
       videoScript: videoScriptFromDraft({ caption: draft.caption, cta: draft.cta }),
-      automationPayload: { ...(base.automationPayload || {}), postText: draft.caption },
+      automationPayload: { ...(base.automationPayload || {}), postText: caption },
       briefId: proof.brief.id,
-      meta: { ...(base.meta || {}), generatedBy: 'brief', captionQuality: null, hooks: [], claimIdsUsed: draft.claim_ids_used, missingEvidence: draft.missing_evidence, basis: draft.basis },
+      meta: { ...(base.meta || {}), generatedBy: 'brief', briefAi: draft.ai || null, captionQuality: null, hooks: [], claimIdsUsed: draft.claim_ids_used, missingEvidence: draft.missing_evidence, basis: draft.basis },
     }
     save((current) => ({ ...current, studio: input, generated }))
     showStudioResult()
-    notify('ร่างจากข้อมูลจริงแล้ว · อ่านทั้งโพสต์ แล้วกด ส่งเข้ารอตรวจ')
+    notify(draft.ai ? `ใช้ร่างที่ AI เขียน (มุม${draft.ai.label}) แล้ว · อ่านเทียบกับโน้ต แล้วกด ส่งเข้ารอตรวจ` : 'ร่างจากข้อมูลจริงแล้ว · อ่านทั้งโพสต์ แล้วกด ส่งเข้ารอตรวจ')
   }
 
   const attachDesignedArtwork = async (image) => {
@@ -1892,13 +1894,13 @@ export default function MarketingPage({ onBack }) {
       mediaAssetId: ws.generated.mediaAssetId || null,
       reviewStatus: publishCheck.ok ? 'passed' : 'needs_edit',
       reviewNotes: fromBrief
-        ? [...publishCheck.notes, 'ร่างจากบรีฟและข้ออ้างที่ยืนยันแล้ว — กด ตรวจหลักฐาน บนการ์ดก่อนอนุมัติ', ...(ws.generated.meta?.missingEvidence || []).map((item) => `ยังไม่ได้ใช้ (รอยืนยัน): ${item.text}`)]
+        ? [...publishCheck.notes, ws.generated.meta?.briefAi ? `AI เขียนจากโน้ตและข้ออ้างที่ยืนยันแล้ว (มุม${ws.generated.meta.briefAi.label}) ผ่านด่านตัวเลขและด่านคำ — อ่านเทียบกับโน้ตว่าไม่ตีความเกิน แล้วกด ตรวจหลักฐาน ก่อนอนุมัติ` : 'ร่างจากบรีฟและข้ออ้างที่ยืนยันแล้ว — กด ตรวจหลักฐาน บนการ์ดก่อนอนุมัติ', ...(ws.generated.meta?.missingEvidence || []).map((item) => `ยังไม่ได้ใช้ (รอยืนยัน): ${item.text}`)]
         : isAiDraft(ws.generated)
         ? [...publishCheck.notes, ...aiDraftReviewNotes(ws.generated)]
         : publishCheck.ok
           ? ['ผ่านเงื่อนไขเบื้องต้น', 'ควรตรวจรายละเอียดจริงก่อนโพสต์']
           : [...publishCheck.notes, 'ควรให้คนตรวจซ้ำก่อนเผยแพร่'],
-      ...(fromBrief ? { draftSource: 'brief', briefId: ws.generated.briefId } : isAiDraft(ws.generated) ? { draftSource: 'ai' } : {}),
+      ...(fromBrief ? { draftSource: 'brief', briefId: ws.generated.briefId, ...(ws.generated.meta?.briefAi ? { briefAi: true, angleLabel: ws.generated.meta.briefAi.label } : {}) } : isAiDraft(ws.generated) ? { draftSource: 'ai' } : {}),
       ...(ws.generated.meta?.hooks?.length ? { hooks: ws.generated.meta.hooks, hookPattern: ws.generated.meta.hookPattern || null } : {}),
       source: fromBrief ? 'บรีฟ + หลักฐาน' : 'AssetX Studio',
       ...(ws.generated.sourceIdeaId ? { ideaId: ws.generated.sourceIdeaId } : {}),
@@ -3247,7 +3249,7 @@ function StudioView({ studio, generated, posterCopy, artwork, onDesignImage, onC
         </div>
       )}
       {proof && panelOpen && <BriefProofPanel topicHint={studio.prompt} {...proof} />}
-      <div className="mx-model-note">{generated?.meta?.generatedBy === 'brief' ? 'ร่างจากบรีฟและข้ออ้างที่ยืนยันแล้ว (ไม่ใช้ AI) — ระบบเรียงข้อความให้ ไม่เติมข้อเท็จจริง · อ่านและเกลาภาษาก่อนส่งตรวจ' : generated?.meta?.generatedBy === 'llm' ? 'ร่างโดย AI จากข้อเท็จจริงที่สำรวจมา — ตรวจกับแหล่งที่มาและแก้ข้อความก่อนส่งตรวจทุกครั้ง' : 'ร่างจากแม่แบบของ AssetX — ตรวจข้อเท็จจริงและแก้ข้อความก่อนส่งตรวจทุกครั้ง'}</div>
+      <div className="mx-model-note">{generated?.meta?.generatedBy === 'brief' ? (generated.meta.briefAi ? 'AI เขียนจากโน้ตและข้ออ้างที่ยืนยันแล้ว — ผ่านด่านตัวเลขและด่านคำแล้ว แต่ยังต้องอ่านเทียบกับโน้ตว่าไม่ตีความเกินก่อนส่งตรวจ' : 'ร่างจากบรีฟและข้ออ้างที่ยืนยันแล้ว (ไม่ใช้ AI) — ระบบเรียงข้อความให้ ไม่เติมข้อเท็จจริง · อ่านและเกลาภาษาก่อนส่งตรวจ') : generated?.meta?.generatedBy === 'llm' ? 'ร่างโดย AI จากข้อเท็จจริงที่สำรวจมา — ตรวจกับแหล่งที่มาและแก้ข้อความก่อนส่งตรวจทุกครั้ง' : 'ร่างจากแม่แบบของ AssetX — ตรวจข้อเท็จจริงและแก้ข้อความก่อนส่งตรวจทุกครั้ง'}</div>
       {generated?.meta?.unmatched && (
         <div className="mx-review-notes mx-studio-result" role="status">
           <strong>ยังไม่มีแม่แบบสำหรับหัวข้อนี้ ระบบจึงไม่ร่างให้ (ไม่แต่งเนื้อหาขึ้นเอง)</strong>
@@ -3382,7 +3384,7 @@ function ApprovalsView({
                 <div className="mx-approval-copy-column">
                   <div className="mx-review-head">
                     <div>
-                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{post.draftSource === 'ai' ? ` · ร่าง AI${post.angleLabel ? ` (${post.angleLabel})` : ''}` : ''}{post.draftSource === 'brief' ? ' · จากบรีฟ + หลักฐาน' : ''}{post.replacesNo ? ` · คิดใหม่แทน ${formatContentNo(post.replacesNo)}` : ''}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
+                      <div className="mx-kicker">{channelLabel(post.channel)} · {displaySource(post.source)}{post.ideaId ? ` · จากไอเดีย ${post.ideaId}` : ''}{post.draftSource === 'ai' ? ` · ร่าง AI${post.angleLabel ? ` (${post.angleLabel})` : ''}` : ''}{post.draftSource === 'brief' ? ` · จากบรีฟ + หลักฐาน${post.briefAi ? ` · AI เขียน${post.angleLabel ? ` (${post.angleLabel})` : ''}` : ''}` : ''}{post.replacesNo ? ` · คิดใหม่แทน ${formatContentNo(post.replacesNo)}` : ''}{post.createdAt ? ` · ${thaiDate(post.createdAt)}` : ''}{isSamplePost(post) ? ' · ตัวอย่าง' : ''}</div>
                       <h2><ContentNo post={post} onCopy={onCopy} />{post.title}</h2>
                     </div>
                     <span className={post.reviewStatus === 'passed' ? 'mx-pass' : 'mx-warn'} title={proof ? 'ผลตรวจถ้อยคำอัตโนมัติ · หลักฐานดูที่ปุ่ม ตรวจหลักฐาน' : undefined}>{proof ? (post.reviewStatus === 'passed' ? 'ถ้อยคำผ่าน' : 'ถ้อยคำติดเกณฑ์') : reviewLabel(post)}</span>
