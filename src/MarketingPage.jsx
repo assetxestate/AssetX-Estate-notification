@@ -25,6 +25,8 @@ import { resolveTopic } from './lib/marketing-model/topics.js'
 import BriefProofPanel, { GateResult } from './components/BriefProofPanel.jsx'
 import { assessContent } from './lib/marketingOriginality.js'
 import SeriesManager from './components/SeriesManager.jsx'
+import ContentPackPanel from './components/ContentPackPanel.jsx'
+import { draftImagePrompt } from './lib/marketingContentPack.js'
 import BrandProfiles from './components/BrandProfiles.jsx'
 import { assignSeries, findSeries, repeatedEpisode, seriesEpisodes, seriesList } from './lib/marketingSeries.js'
 import { brandList, brandProfile, brandWarnings, cleanBrandId, effectiveBrand, saveBrandSettings } from './lib/marketingBrands.js'
@@ -1626,6 +1628,7 @@ export default function MarketingPage({ onBack }) {
       caption,
       cta: draft.cta,
       videoScript: videoScriptFromDraft({ caption: draft.caption, cta: draft.cta }),
+      imagePrompt: draftImagePrompt({ title: draft.headline, caption: draft.caption }),
       automationPayload: { ...(base.automationPayload || {}), postText: caption },
       briefId: proof.brief.id,
       meta: { ...(base.meta || {}), generatedBy: 'brief', briefAi: draft.ai ? { ...draft.ai, knowledge: draft.knowledge || [] } : null, captionQuality: null, hooks: draft.hooks || [], hookPattern: draft.hooks?.length ? 'ai-used' : null, brandId: cleanBrandId(draft.brand_id), seriesId: draft.series_id || null, claimIdsUsed: draft.claim_ids_used, missingEvidence: draft.missing_evidence, basis: draft.basis },
@@ -3583,6 +3586,15 @@ function ApprovalsView({
                     {uniqueReviewNotes(post.reviewNotes).map((note, index) => <span key={index}>{note}</span>)}
                   </div>
                   {proof && <GateResult result={proof.gates[post.id]} />}
+                  {proof && !isSamplePost(post) && (
+                    <ContentPackPanel
+                      post={post}
+                      claims={proof.gates[post.id]?.proof?.claims || []}
+                      disabled={loading}
+                      onCopy={onCopy}
+                      onSave={(pack) => onUpdate(post.id, { contentPack: pack }, 'สร้างชุดคอนเทนต์แล้ว · เปิดดู storyboard และ Carousel ได้ในการ์ด')}
+                    />
+                  )}
                   <div className="mx-schedule-row compact" onClick={(event) => event.stopPropagation()}>
                     <label>
                       กำหนดวันโพสต์ (ไม่บังคับ)
