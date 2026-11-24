@@ -2894,6 +2894,7 @@ export default function MarketingPage({ onBack }) {
               loading={syncState.state === 'loading'}
               onSelect={(no) => openVideo(no)}
               onSavePack={(post, pack, message) => updatePost(post.id, { contentPack: pack }, message || '')}
+              onSaveClip={(post, clip, message) => updatePost(post.id, { clip }, message || '')}
               onOpenPost={(post) => { setVideoUrl(null); openContent(post) }}
               onCopy={copyText}
               onBack={() => goTo('approvals')}

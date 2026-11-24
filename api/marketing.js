@@ -15,6 +15,7 @@ import marketSurveyHandler from '../server/market-survey-jobs.js'
 import brokersHandler from '../server/brokers.js'
 import proofHandler from '../server/marketing-proof.js'
 import mediaHandler from '../server/marketing-media.js'
+import clipHandler from '../server/marketing-clip.js'
 
 const handlers = {
   notices: noticesHandler,
@@ -44,6 +45,8 @@ const handlers = {
   proof: proofHandler,
   // รูปของ /marketing เก็บเป็นไฟล์แยกใน bucket ปิด marketing-media (ย้ายออกจากก้อนเวิร์กสเปซ 23 พ.ย. 2569)
   media: mediaHandler,
+  // คลิปวิดีโอของคอนเทนต์: ที่เก็บไฟล์ (bucket ปิด marketing-clips) + ส่งขึ้นเพจเป็น Reel (24 พ.ย. 2569)
+  clip: clipHandler,
 }
 
 function inferFeature(req) {
@@ -69,6 +72,7 @@ function inferFeature(req) {
   if (path.endsWith('/brokers')) return 'brokers'
   if (path.endsWith('/marketing-proof')) return 'proof'
   if (path.endsWith('/marketing-media')) return 'media'
+  if (path.endsWith('/marketing-clip')) return 'clip'
   return ''
 }
 

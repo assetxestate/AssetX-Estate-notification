@@ -7,7 +7,7 @@ const DEFAULT_GRAPH_VERSION = 'v26.0'
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 const MIN_SCHEDULE_DELAY_MS = 10 * 60 * 1000
 
-function facebookConfig() {
+export function facebookConfig() {
   return {
     pageId: String(process.env.META_PAGE_ID || '').trim(),
     accessToken: String(process.env.META_PAGE_ACCESS_TOKEN || '').trim(),
@@ -17,14 +17,14 @@ function facebookConfig() {
   }
 }
 
-function configStatus(config = facebookConfig()) {
+export function configStatus(config = facebookConfig()) {
   const missing = []
   if (!config.pageId) missing.push('META_PAGE_ID')
   if (!config.accessToken) missing.push('META_PAGE_ACCESS_TOKEN')
   return { ready: missing.length === 0, missing }
 }
 
-function graphUrl(config, path) {
+export function graphUrl(config, path) {
   return `https://graph.facebook.com/${config.graphVersion}/${path}`
 }
 
@@ -33,13 +33,13 @@ function appSecretProof(config) {
   return crypto.createHmac('sha256', config.appSecret).update(config.accessToken).digest('hex')
 }
 
-function addProofParam(params, config) {
+export function addProofParam(params, config) {
   const proof = appSecretProof(config)
   if (proof) params.set('appsecret_proof', proof)
   return params
 }
 
-function graphHeaders(config, headers = {}) {
+export function graphHeaders(config, headers = {}) {
   return { ...headers, Authorization: `Bearer ${config.accessToken}` }
 }
 
@@ -104,7 +104,7 @@ function facebookError(data, status, config) {
   return diagnostic
 }
 
-async function graphRequest(url, options, fetchImpl, config) {
+export async function graphRequest(url, options, fetchImpl, config) {
   const response = await fetchImpl(url, options)
   const data = await response.json().catch(() => ({}))
   if (!response.ok || data?.error) {

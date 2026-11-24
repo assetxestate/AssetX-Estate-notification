@@ -121,6 +121,8 @@
 .bp-pack-launch small { color: var(--mx-muted); font-size: 14px; }
 .bp-video-layout { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr); gap: 18px; align-items: start; }
 .bp-video-side { position: sticky; top: 12px; }
+.bp-clip textarea { width: 100%; }
+.bp-clip-player { width: 100%; max-width: 300px; aspect-ratio: 9 / 16; border-radius: 12px; border: 1px solid var(--mx-line); background: var(--mx-soft); }
 .bp-video-side .bp-ai-caption { max-height: 60vh; overflow: auto; }
 .bp-video-main { display: grid; gap: 14px; min-width: 0; }
 .bp-video-main .bp-inline { display: grid; gap: 6px; color: var(--mx-muted); font-size: 13px; font-weight: 600; }

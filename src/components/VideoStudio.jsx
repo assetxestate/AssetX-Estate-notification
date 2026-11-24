@@ -4,13 +4,14 @@
 // ทำอะไรได้: สร้าง/สร้างใหม่ storyboard · แก้ภาพ บทพูด ตัวหนังสือบนจอรายฉาก · ติ๊กฉากที่ถ่ายแล้วและของที่เตรียมแล้ว · บทพูดล้วน · Carousel · บรีฟภาพ
 // ตรรกะล้วนอยู่ใน src/lib/marketingContentPack.js — หน้านี้ไม่สร้างวิดีโอเอง เป็นโต๊ะวางแผนและเช็กงานถ่าย
 import React, { useEffect, useState } from 'react'
+import ClipPanel from './ClipPanel.jsx'
 import { REEL_DEFAULT_SEC, REEL_MAX_SEC, REEL_MIN_SEC, buildContentPack, isPackStale, narrationScript, packProgress, storyboardText, teleprompterText, togglePrep, updateScene } from '../lib/marketingContentPack.js'
 
 const ROLE = { hook: 'เปิด', explain: 'เนื้อหา', point: 'ข้อ', caveat: 'ข้อจำกัด', cta: 'ชวนทำ' }
 const SLIDE = { cover: 'ปก', content: 'เนื้อหา', caveat: 'ข้อจำกัด', cta: 'ชวนทำ' }
 const STATUS = { draft: 'รอตรวจ', pending: 'รอตรวจ', needs_edit: 'รอตรวจ', approved: 'อนุมัติแล้ว', scheduled: 'ตั้งเวลาแล้ว', posted: 'โพสต์แล้ว', archived: 'พักไว้' }
 
-export default function VideoStudio({ posts = [], post = null, claims = [], loading = false, onSelect, onSavePack, onOpenPost, onCopy, onBack }) {
+export default function VideoStudio({ posts = [], post = null, claims = [], loading = false, onSelect, onSavePack, onSaveClip, onOpenPost, onCopy, onBack }) {
   const pack = post?.contentPack || null
   const [seconds, setSeconds] = useState(pack?.reel?.duration || REEL_DEFAULT_SEC)
   const [error, setError] = useState('')
@@ -36,7 +37,7 @@ export default function VideoStudio({ posts = [], post = null, claims = [], load
         <div>
           <div className="mx-kicker">ทำวิดีโอ</div>
           <h1>{post ? `${post.contentNo ? `#${post.contentNo} ` : ''}${post.title || 'ไม่มีพาดหัว'}` : 'เลือกคอนเทนต์ที่จะทำวิดีโอ'}</h1>
-          <p>โต๊ะวางแผนและเช็กงานถ่ายของคอนเทนต์ชิ้นนี้ · ข้อมูลผูกกับโพสต์เดียวกันในแท็บ ร่าง และ โพสต์ · หน้านี้ไม่สร้างไฟล์วิดีโอเอง</p>
+          <p>โต๊ะวางแผนและเช็กงานถ่ายของคอนเทนต์ชิ้นนี้ · ข้อมูลผูกกับโพสต์เดียวกันในแท็บ ร่าง และ โพสต์ · หน้านี้ไม่สร้างไฟล์วิดีโอเอง แนบคลิปที่ตัดต่อเสร็จแล้วส่งขึ้นเพจเป็น Reel ได้</p>
         </div>
         <div className="mx-page-actions"><button className="mx-secondary" type="button" onClick={onBack}>← กลับไปที่ร่าง</button></div>
       </div>
@@ -60,6 +61,7 @@ export default function VideoStudio({ posts = [], post = null, claims = [], load
             </div>
           </aside>
           <div className="bp-video-main">
+            <ClipPanel post={post} loading={loading} onSaveClip={onSaveClip} />
             <div className="bp-actions">
               <label className="bp-inline">ความยาว Reel (วินาที)
                 <input type="number" inputMode="numeric" min={REEL_MIN_SEC} max={REEL_MAX_SEC} value={seconds} disabled={loading} onChange={(event) => setSeconds(event.target.value)} />
