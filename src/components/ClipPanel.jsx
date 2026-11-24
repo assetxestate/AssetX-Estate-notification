@@ -1,6 +1,7 @@
 // คลิปที่ตัดต่อเสร็จของคอนเทนต์หนึ่งชิ้น: แนบไฟล์ ดูคลิป และส่งขึ้นเพจ Facebook เป็น Reel (เจ้าของขอ 24 พ.ย. 2569)
 // ข้อมูลอยู่ที่ post.clip ของโพสต์ (ตำแหน่งไฟล์เท่านั้น ไฟล์อยู่ใน bucket ปิด) · ตรรกะล้วน src/lib/marketingClip.js · API /api/marketing-clip
-// การเผยแพร่เป็นสาธารณะและถอนคืนจากหน้านี้ไม่ได้ จึงต้องกดยืนยันทุกครั้ง · ส่งได้ครั้งเดียวต่อคลิป (กันโพสต์ซ้ำ)
+// การเผยแพร่เป็นสาธารณะและถอนคืนจากหน้านี้ไม่ได้ จึงต้องกดยืนยันทุกครั้ง (ขั้นยืนยันอยู่ในหน้า ไม่ใช้ window.confirm:
+//   เบราว์เซอร์ฝังในแอป Claude ปิดกล่องแบบนั้นเองทันที ปุ่มจึงกดแล้วเงียบ — เจอจริงตอนส่ง Reel แรก 24 พ.ย. 2569) · ส่งได้ครั้งเดียวต่อคลิป (กันโพสต์ซ้ำ)
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { CLIP_MIME, REEL_DESCRIPTION_MAX, checkClipFile, checkReelDescription, clipRecord, formatBytes } from '../lib/marketingClip.js'
@@ -39,13 +40,14 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
   const [viewUrl, setViewUrl] = useState('')
   const [description, setDescription] = useState('')
   const [aiGenerated, setAiGenerated] = useState(true)
+  const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
     let alive = true
     api('/api/marketing-clip?status=1').then((data) => { if (alive) setStatus(data) }).catch(() => { if (alive) setStatus({ ready: false, facebook: false }) })
     return () => { alive = false }
   }, [])
-  useEffect(() => { setViewUrl(''); setError(''); setWarnings([]); setBusy(''); setDescription(post?.clip?.reel?.description || post?.caption || '') }, [post?.id])
+  useEffect(() => { setViewUrl(''); setError(''); setWarnings([]); setBusy(''); setConfirming(false); setDescription(post?.clip?.reel?.description || post?.caption || '') }, [post?.id])
 
   if (!post) return null
   const locked = loading || Boolean(busy)
@@ -86,7 +88,7 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
 
   const sendReel = async () => {
     if (!text.ok) return
-    if (!window.confirm(`เผยแพร่คลิปนี้เป็น Reel บนเพจ Facebook ทันที\n\nทุกคนจะเห็นได้ และลบได้จาก Facebook เท่านั้น\n\nกด ตกลง เพื่อเผยแพร่`)) return
+    setConfirming(false)
     setError('')
     let videoId = reel?.videoId || ''
     try {
@@ -137,15 +139,24 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
           {!sent && (
             <>
               <label>ข้อความใต้คลิป
-                <textarea rows={6} maxLength={REEL_DESCRIPTION_MAX} value={description} disabled={locked} onChange={(event) => setDescription(event.target.value)} />
+                <textarea rows={6} maxLength={REEL_DESCRIPTION_MAX} value={description} disabled={locked || confirming} onChange={(event) => setDescription(event.target.value)} />
               </label>
               <span className="bp-note">ตั้งต้นจากแคปชั่นของโพสต์ · ข้อความที่แก้ที่นี่ผ่านด่านคำของแบรนด์ก่อนส่ง แต่ไม่ผ่านขั้นตรวจหลักฐานและอนุมัติของโพสต์ ให้ตรงกับข้อความที่อนุมัติแล้ว</span>
               {!text.ok && description.trim() && text.notes.map((item) => <span className="bp-pack-warn" key={item}>{item}</span>)}
               <label className="bp-check"><input type="checkbox" checked={aiGenerated} disabled={locked} onChange={(event) => setAiGenerated(event.target.checked)} />คลิปนี้มีภาพหรือเสียงที่สร้างด้วย AI (แจ้ง Facebook ให้ติดป้ายตามนโยบาย)</label>
-              <div className="bp-actions">
-                <button type="button" className="mx-primary" disabled={locked || !text.ok || !status?.facebook} onClick={sendReel}>{reel?.state === 'uploaded' ? 'เผยแพร่ Reel (ส่งไฟล์แล้ว)' : 'เผยแพร่เป็น Reel บนเพจ'}</button>
-                <span className="bp-note">เผยแพร่ทันที เป็นสาธารณะ · ยังตั้งเวลาจากหน้านี้ไม่ได้</span>
-              </div>
+              {!confirming && (
+                <div className="bp-actions">
+                  <button type="button" className="mx-primary" disabled={locked || !text.ok || !status?.facebook} onClick={() => setConfirming(true)}>{reel?.state === 'uploaded' ? 'เผยแพร่ Reel (ส่งไฟล์แล้ว)' : 'เผยแพร่เป็น Reel บนเพจ'}</button>
+                  <span className="bp-note">เผยแพร่ทันที เป็นสาธารณะ · ยังตั้งเวลาจากหน้านี้ไม่ได้</span>
+                </div>
+              )}
+              {confirming && (
+                <div className="bp-ai-status warn" role="alertdialog" aria-label="ยืนยันการเผยแพร่">
+                  <span>คลิปนี้จะขึ้นเพจ Facebook เป็น Reel ทันที ทุกคนเห็นได้ และลบได้จาก Facebook เท่านั้น</span>
+                  <button type="button" disabled={locked} onClick={sendReel}>ยืนยัน เผยแพร่เลย</button>
+                  <button type="button" disabled={locked} onClick={() => setConfirming(false)}>ยกเลิก</button>
+                </div>
+              )}
             </>
           )}
           {sent && (
