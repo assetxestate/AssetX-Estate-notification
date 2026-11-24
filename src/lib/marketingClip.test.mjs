@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CLIP_MAX_BYTES, checkClipFile, checkReelDescription, clipContentNo, clipPathFor, clipRecord, isClipPath, summarizeReelStatus } from './marketingClip.js'
+import { CLIP_MAX_BYTES, checkClipFile, checkReelDescription, clipContentNo, clipPathFor, clipRecord, isClipPath, replaceClip, summarizeReelStatus } from './marketingClip.js'
 
 test('ตำแหน่งไฟล์คลิป: สร้างจากเลขคอนเทนต์และเวลา รับเฉพาะรูปแบบนี้', () => {
   const path = clipPathFor(32, 1795500000000)
@@ -53,4 +53,25 @@ test('รายการคลิป: เก็บเฉพาะช่องท
   assert.equal(clipRecord({ path: 'x.mp4' }), null)
   const record = clipRecord({ path: 'clips/c32-1795500000000.mp4', bytes: 33160899, name: 'AX32-ad-final.mp4\n', duration: 53.04, width: 1080, height: 1920, extra: 'x', uploadedAt: '2026-11-24T10:00:00.000Z' })
   assert.deepEqual(record, { path: 'clips/c32-1795500000000.mp4', bytes: 33160899, name: 'AX32-ad-final.mp4 ', duration: 53, width: 1080, height: 1920, uploadedAt: '2026-11-24T10:00:00.000Z', reel: null })
+})
+
+test('แทนที่คลิป: Reel ที่ส่งแล้วของคลิปเดิมถูกเก็บเป็นประวัติ คลิปใหม่ยังไม่มี Reel', () => {
+  const next = clipRecord({ path: 'clips/c32-1795600000000.mp4', bytes: 5, name: 'new.mp4', uploadedAt: '2026-11-24T11:00:00.000Z' })
+  // คลิปเดิมยังไม่เคยส่ง หรือส่งไฟล์แล้วแต่ยังไม่เผยแพร่: ไม่มีประวัติ
+  assert.equal(replaceClip(null, next).previous, undefined)
+  assert.equal(replaceClip({ path: 'clips/c32-1795500000000.mp4', reel: null }, next).previous, undefined)
+  assert.equal(replaceClip({ path: 'clips/c32-1795500000000.mp4', reel: { videoId: '123456', state: 'uploaded' } }, next).previous, undefined)
+  // คลิปเดิมเผยแพร่แล้ว: เก็บรหัส ลิงก์ และข้อความไว้
+  const old = { path: 'clips/c32-1795500000000.mp4', name: 'old.mp4', reel: { videoId: '123456', state: 'published', permalink: 'https://www.facebook.com/reel/123456/', sentAt: '2026-11-24T10:00:00.000Z', description: 'ข้อความเดิม' } }
+  const replaced = replaceClip(old, next)
+  assert.equal(replaced.reel, null)
+  assert.equal(replaced.path, 'clips/c32-1795600000000.mp4')
+  assert.deepEqual(replaced.previous, [{ path: 'clips/c32-1795500000000.mp4', name: 'old.mp4', videoId: '123456', permalink: 'https://www.facebook.com/reel/123456/', sentAt: '2026-11-24T10:00:00.000Z', state: 'published', description: 'ข้อความเดิม' }])
+  // ประวัติสะสมต่อกัน และตัดเหลือ 5 รายการล่าสุด
+  const many = { ...old, previous: Array.from({ length: 5 }, (_, i) => ({ path: `clips/c32-179540000000${i}.mp4`, videoId: String(1000 + i) })) }
+  const capped = replaceClip(many, next).previous
+  assert.equal(capped.length, 5)
+  assert.equal(capped.at(-1).videoId, '123456')
+  assert.equal(capped[0].videoId, '1001')
+  assert.equal(replaceClip(old, null), null)
 })

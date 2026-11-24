@@ -1,10 +1,11 @@
 // คลิปที่ตัดต่อเสร็จของคอนเทนต์หนึ่งชิ้น: แนบไฟล์ ดูคลิป และส่งขึ้นเพจ Facebook เป็น Reel (เจ้าของขอ 24 พ.ย. 2569)
 // ข้อมูลอยู่ที่ post.clip ของโพสต์ (ตำแหน่งไฟล์เท่านั้น ไฟล์อยู่ใน bucket ปิด) · ตรรกะล้วน src/lib/marketingClip.js · API /api/marketing-clip
+// แทนที่คลิปหลังส่งแล้วได้ (เช่น พบจุดต้องแก้ในคลิปที่โพสต์ไป): Reel เดิมถูกเก็บเป็นประวัติ และหน้าจอบอกให้ไปลบที่ Facebook — ระบบลบให้ไม่ได้
 // การเผยแพร่เป็นสาธารณะและถอนคืนจากหน้านี้ไม่ได้ จึงต้องกดยืนยันทุกครั้ง (ขั้นยืนยันอยู่ในหน้า ไม่ใช้ window.confirm:
 //   เบราว์เซอร์ฝังในแอป Claude ปิดกล่องแบบนั้นเองทันที ปุ่มจึงกดแล้วเงียบ — เจอจริงตอนส่ง Reel แรก 24 พ.ย. 2569) · ส่งได้ครั้งเดียวต่อคลิป (กันโพสต์ซ้ำ)
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { CLIP_MIME, REEL_DESCRIPTION_MAX, checkClipFile, checkReelDescription, clipRecord, formatBytes } from '../lib/marketingClip.js'
+import { CLIP_MIME, REEL_DESCRIPTION_MAX, checkClipFile, checkReelDescription, clipRecord, formatBytes, replaceClip } from '../lib/marketingClip.js'
 
 const REEL_STATE = { uploaded: 'ส่งไฟล์ให้ Facebook แล้ว ยังไม่เผยแพร่', processing: 'Facebook กำลังประมวลผล', published: 'เผยแพร่บนเพจแล้ว', scheduled: 'ตั้งเวลาไว้บน Facebook', draft: 'เป็นฉบับร่างบน Facebook', error: 'Facebook ประมวลผลไม่สำเร็จ' }
 
@@ -41,13 +42,14 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
   const [description, setDescription] = useState('')
   const [aiGenerated, setAiGenerated] = useState(true)
   const [confirming, setConfirming] = useState(false)
+  const [replacing, setReplacing] = useState(false)
 
   useEffect(() => {
     let alive = true
     api('/api/marketing-clip?status=1').then((data) => { if (alive) setStatus(data) }).catch(() => { if (alive) setStatus({ ready: false, facebook: false }) })
     return () => { alive = false }
   }, [])
-  useEffect(() => { setViewUrl(''); setError(''); setWarnings([]); setBusy(''); setConfirming(false); setDescription(post?.clip?.reel?.description || post?.caption || '') }, [post?.id])
+  useEffect(() => { setViewUrl(''); setError(''); setWarnings([]); setBusy(''); setConfirming(false); setReplacing(false); setDescription(post?.clip?.reel?.description || post?.clip?.previous?.at(-1)?.description || post?.caption || '') }, [post?.id])
 
   if (!post) return null
   const locked = loading || Boolean(busy)
@@ -56,7 +58,7 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
 
   const upload = async (file) => {
     if (!file) return
-    setError(''); setWarnings([])
+    setError(''); setWarnings([]); setReplacing(false)
     try {
       setBusy('กำลังตรวจไฟล์')
       const meta = await readVideoMeta(file)
@@ -71,7 +73,7 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
       setBusy('กำลังตรวจไฟล์ในที่เก็บ')
       const stored = await api(`/api/marketing-clip?path=${encodeURIComponent(ticket.path)}`)
       if (stored.bytes && stored.bytes !== file.size) throw new Error('ไฟล์ในที่เก็บมีขนาดไม่ตรงกับต้นทาง ลองอัปโหลดใหม่')
-      save(clipRecord({ path: ticket.path, bytes: file.size, name: file.name, ...(meta || {}) }), clip ? 'เปลี่ยนคลิปของคอนเทนต์นี้แล้ว' : 'แนบคลิปกับคอนเทนต์นี้แล้ว')
+      save(replaceClip(clip, clipRecord({ path: ticket.path, bytes: file.size, name: file.name, ...(meta || {}) })), clip ? 'เปลี่ยนคลิปของคอนเทนต์นี้แล้ว' : 'แนบคลิปกับคอนเทนต์นี้แล้ว')
       setViewUrl(stored.url)
     } catch (err) {
       setError(err.message)
@@ -126,8 +128,19 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
       <div className="bp-actions">
         {!sent && <button type="button" className={clip ? 'mx-secondary' : 'mx-primary'} disabled={locked || !status?.ready} onClick={() => fileInput.current?.click()}>{clip ? 'เปลี่ยนไฟล์คลิป' : 'เลือกไฟล์คลิป'}</button>}
         {clip && !viewUrl && <button type="button" className="mx-secondary" disabled={locked} onClick={view}>ดูคลิป</button>}
+        {sent && !replacing && <button type="button" className="mx-secondary" disabled={locked || !status?.ready} onClick={() => setReplacing(true)}>แทนที่ด้วยคลิปใหม่</button>}
         {busy && <span className="bp-note" role="status">{busy}…</span>}
       </div>
+      {replacing && (
+        <div className="bp-ai-status warn" role="alertdialog" aria-label="ยืนยันการแทนที่คลิป">
+          <span>Reel ของคลิปเดิมยังอยู่บน Facebook ระบบลบให้ไม่ได้ ลบที่ Facebook ก่อนเผยแพร่คลิปใหม่ ไม่อย่างนั้นเพจจะมีคลิปซ้ำ</span>
+          <button type="button" disabled={locked} onClick={() => fileInput.current?.click()}>เลือกไฟล์คลิปใหม่</button>
+          <button type="button" disabled={locked} onClick={() => setReplacing(false)}>ยกเลิก</button>
+        </div>
+      )}
+      {(clip?.previous || []).length > 0 && (
+        <p className="bp-pack-warn">Reel ของคลิปก่อนหน้า (ลบที่ Facebook ถ้ายังไม่ได้ลบ): {clip.previous.map((item, index) => (item.permalink ? <a key={item.videoId || index} href={item.permalink} target="_blank" rel="noreferrer noopener"> เปิด Reel เดิม{clip.previous.length > 1 ? ` ${index + 1}` : ''}</a> : <span key={item.videoId || index}> รหัส {item.videoId}</span>))}</p>
+      )}
       {warnings.map((item) => <p className="bp-pack-warn" key={item}>{item}</p>)}
       {error && <p className="bp-error" role="alert">{error}</p>}
       {viewUrl && <video className="bp-clip-player" src={viewUrl} controls playsInline preload="metadata" />}
@@ -166,7 +179,7 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
                 <button type="button" className="mx-secondary" disabled={locked} onClick={check}>ตรวจสถานะกับ Facebook</button>
                 {reel.permalink && <a className="mx-mini-button" href={reel.permalink} target="_blank" rel="noreferrer noopener">เปิด Reel บน Facebook</a>}
               </div>
-              <span className="bp-note">ส่งได้ครั้งเดียวต่อคลิปเพื่อกันโพสต์ซ้ำ · ลบหรือแก้ Reel ทำที่ Facebook</span>
+              <span className="bp-note">ส่งได้ครั้งเดียวต่อคลิปเพื่อกันโพสต์ซ้ำ · ลบหรือแก้ข้อความของ Reel ทำที่ Facebook · จะเปลี่ยนตัวคลิปให้กด แทนที่ด้วยคลิปใหม่</span>
             </>
           )}
         </div>

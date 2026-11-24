@@ -88,4 +88,17 @@ export function clipRecord({ path, bytes, name, duration, width, height, uploade
   }
 }
 
+// แทนที่คลิปเดิมด้วยคลิปใหม่: Reel ที่ส่งไปแล้วของคลิปเดิมถูกเก็บเป็นประวัติ (previous · ล่าสุดอยู่ท้าย · เก็บ 5 รายการ)
+// ระบบลบ Reel บน Facebook ให้ไม่ได้ ประวัตินี้จึงเป็นที่เดียวที่บอกว่ามี Reel เก่าค้างอยู่ให้คนไปลบ
+export const PREVIOUS_MAX = 5
+export function replaceClip(oldClip, record) {
+  if (!record) return null
+  const history = Array.isArray(oldClip?.previous) ? oldClip.previous.filter((item) => item && isClipPath(item.path)) : []
+  const reel = oldClip?.reel
+  const sent = reel?.videoId && reel.state !== 'uploaded'
+  const entry = sent ? [{ path: oldClip.path, name: String(oldClip.name || '').slice(0, 120), videoId: String(reel.videoId), permalink: reel.permalink || null, sentAt: reel.sentAt || null, state: reel.state || null, description: String(reel.description || '').slice(0, REEL_DESCRIPTION_MAX) }] : []
+  const previous = [...history, ...entry].slice(-PREVIOUS_MAX)
+  return previous.length ? { ...record, previous } : record
+}
+
 export const formatBytes = (bytes) => (Number.isFinite(bytes) && bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '')
