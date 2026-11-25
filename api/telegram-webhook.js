@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { buildAssetxTelegramReply } from './_assetxTelegramAssistant.js';
 import { handlePosterRefMessage } from '../server/poster-refs.js';
+import { handleAccountingTelegramMessage } from '../server/accounting-inbox.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
 // /diary หรือ /diary@ชื่อบอท (ตามด้วยข้อความอะไรก็ได้) → ส่งปุ่มเปิดไดอารี่งาน ไม่ส่งต่อให้ AI
@@ -153,11 +154,24 @@ export default async function handler(req, res) {
         telegram: telegramFiles,
         log: (line) => console.warn('AssetX Telegram poster ref:', line),
       });
-      if (posterRef) return res.status(200).json({ ok: true, posterRef: { status: posterRef.status, stored: posterRef.stored } });
+      // รูปในอัลบั้มที่มาก่อนคำบรรยาย (unclaimed) ยังไม่รู้ว่าเป็นรูปตัวอย่างหรือเอกสารบัญชี → ปล่อยให้กล่องเอกสารบัญชีเก็บด้วย
+      if (posterRef && posterRef.status !== 'unclaimed') {
+        return res.status(200).json({ ok: true, posterRef: { status: posterRef.status, stored: posterRef.stored } });
+      }
     } catch (error) {
       console.error('AssetX Telegram poster ref error:', error.message);
       await sendTelegramMessage(chatId, 'เก็บรูปตัวอย่างไม่สำเร็จ ลองส่งใหม่อีกครั้ง (ถ้ายังไม่ได้รัน supabase_poster_refs.sql ใน Supabase ให้รันก่อน)').catch(() => {});
       return res.status(200).json({ ok: false, error: 'poster_ref_failed' });
+    }
+
+    // เอกสารบัญชีของเจ้าของ (สลิป ใบเสร็จ เอกสารสแกน) = รูป/ไฟล์ที่ไม่ใช่รูปตัวอย่าง — ดู server/accounting-inbox.js
+    try {
+      const accounting = await handleAccountingTelegramMessage({ message, db: adminDb(), telegram: telegramFiles });
+      if (accounting) return res.status(200).json({ ok: true, accounting: { stored: accounting.stored } });
+    } catch (error) {
+      console.error('AssetX Telegram accounting inbox error:', error.message);
+      await sendTelegramMessage(chatId, '📒 เก็บเอกสารบัญชีไม่สำเร็จ ลองส่งใหม่อีกครั้ง').catch(() => {});
+      return res.status(200).json({ ok: false, error: 'accounting_inbox_failed' });
     }
   }
 

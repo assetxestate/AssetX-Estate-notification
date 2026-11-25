@@ -2,9 +2,44 @@
 // หมายเหตุ (S6): การตรวจ X-Line-Signature ต้องใช้ raw body ซึ่งชนกับวิธีที่ Vercel
 // parse body ในโปรเจกต์นี้ จึงตรวจแบบ best-effort (log เตือน แต่ไม่บล็อก) กันบอทล่ม
 import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 import { verifySession } from './_auth.js';
+import { handleAccountingLineEvents } from '../server/accounting-inbox.js';
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwSU57wl8hq-GvlU0MgHgk4Jb1oLL6EMRAFX8b5TPqLib2kfy3zGDh4f92-eeY0ul1gkA/exec';
+async function collectAccountingFiles(body) {
+  const events = Array.isArray(body?.events) ? body.events : [];
+  // ไม่มีรูป/ไฟล์ และไม่มีคำขอดูรหัส = ไม่ต้องทำอะไร (ข้อความปกติของลูกค้าผ่านไปเร็วเท่าเดิม)
+  const relevant = events.some((e) => ['image', 'file'].includes(e?.message?.type) || /^assetx-id$/i.test(String(e?.message?.text || '').trim()));
+  if (!relevant) return;
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const db = supabaseUrl && serviceKey ? createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } }) : null;
+  const lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const line = {
+    async content(messageId) {
+      const response = await fetch(`https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`, {
+        headers: { Authorization: `Bearer ${lineToken}` },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!response.ok) throw new Error(`LINE content ${response.status}`);
+      return { bytes: Buffer.from(await response.arrayBuffer()), mime: response.headers.get('content-type') || '' };
+    },
+  };
+  const notify = async (text) => {
+    const token = process.env.ASSETX_TELEGRAM_BOT_TOKEN;
+    const chatId = String(process.env.ASSETX_TELEGRAM_ALLOWED_CHAT_ID || '').trim();
+    if (!token || !chatId) return;
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(10000),
+    });
+  };
+  await handleAccountingLineEvents({ events, db, line, notify });
+}
+
+const GAS_URL ='https://script.google.com/macros/s/AKfycbwSU57wl8hq-GvlU0MgHgk4Jb1oLL6EMRAFX8b5TPqLib2kfy3zGDh4f92-eeY0ul1gkA/exec';
 
 export default async function handler(req, res) {
   if (req.query?.action === 'send' || req.query?.action === 'check') {
@@ -76,6 +111,14 @@ export default async function handler(req, res) {
     }
   } catch (e) {
     console.error('signature check error:', e.message);
+  }
+
+  // เอกสารบัญชีของเจ้าของ: รูป/ไฟล์จากบัญชี LINE ที่อยู่ใน ACCOUNTING_LINE_USER_ID เท่านั้น → กล่องเอกสารบัญชี
+  // (รูปของลูกค้าไม่ถูกแตะ · ไม่ใช้ replyToken · ล้มก็ไม่กระทบการส่งต่อให้ GAS ด้านล่าง) — ดู server/accounting-inbox.js
+  try {
+    await collectAccountingFiles(body);
+  } catch (e) {
+    console.error('accounting inbox error:', e.message);
   }
 
   // ส่งต่อให้ GAS แล้วตอบ 200 กลับ LINE
