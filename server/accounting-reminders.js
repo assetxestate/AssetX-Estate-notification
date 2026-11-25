@@ -1,6 +1,6 @@
 // ตัวเตือนงานเอกสารบัญชีของเจ้าของทางเทเลแกรม (เจ้าของขอ 25 พ.ย. 2569)
 //   รอบเบิก            วันที่ 2, 3, 5 ของเดือน  — เจ้าของต้องนำใบขออนุมัติเบิกเงินไปเบิกกับบริษัทไม่เกินวันที่ 6
-//   รอบเบิกที่ 2        ตามวันใน ACCOUNTING_CLAIM2_DAYS (ยังไม่ตั้ง = ไม่เตือน) — สำหรับรายการที่เบิกตกหล่น
+//   รอบเบิกที่ 2        วันที่ 21, 22 ของเดือน   — สำหรับรายการที่เบิกตกหล่น ต้องเบิกไม่เกินวันที่ 23 (เจ้าของกำหนด 25 พ.ย. 2569)
 //   เอกสารที่ยังขาด     วันที่ 18 ของเดือน
 // เรียกจาก Vercel Cron วันละครั้ง (ดู vercel.json → /api/telegram-webhook?task=accounting-reminders)
 // ระบบบนเว็บไม่เห็นโฟลเดอร์เอกสารในเครื่อง: รายการที่ยังขาดมาจากไฟล์สถานะที่ Claude บนเครื่องเจ้าของเขียนขึ้น bucket
@@ -11,9 +11,10 @@ import { INBOX_BUCKET } from './accounting-inbox.js'
 export const STATUS_PATH = 'status/current.json'
 export const HEARTBEAT_PATH = 'reminders/heartbeat.json'
 const THAI_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
-const DEFAULT_DAYS = { claim: [2, 3, 5], claim2: [], missing: [18] }
+const DEFAULT_DAYS = { claim: [2, 3, 5], claim2: [21, 22], missing: [18] }
 const ENV_KEY = { claim: 'ACCOUNTING_CLAIM_DAYS', claim2: 'ACCOUNTING_CLAIM2_DAYS', missing: 'ACCOUNTING_MISSING_DAYS' }
 export const CLAIM_DEADLINE_DAY = 6
+export const CLAIM2_DEADLINE_DAY = 23
 // ไฟล์สถานะเก่ากว่านี้ถือว่าไม่รู้สถานะแล้ว (กันเตือนรายการของเดือนที่จบไปนาน)
 const STATUS_MAX_AGE_DAYS = 45
 
@@ -57,13 +58,14 @@ export function buildReminderText(kind, { date, status = null, waiting = 0 } = {
   if (kind === 'claim' || kind === 'claim2') {
     const head = kind === 'claim'
       ? `📒 เตือนรอบเบิก — ต้องเบิกกับบริษัทไม่เกินวันที่ ${CLAIM_DEADLINE_DAY}`
-      : '📒 เตือนรอบเบิกที่ 2 — สำหรับรายการที่เบิกตกหล่นจากรอบแรก'
+      : `📒 เตือนรอบเบิกที่ 2 — สำหรับรายการที่เบิกตกหล่นจากรอบแรก ต้องเบิกไม่เกินวันที่ ${CLAIM2_DEADLINE_DAY}`
     const body = status?.claims?.length
       ? `รายการที่ยังไม่ได้ออกใบขออนุมัติเบิกเงิน:\n${bullets(status.claims)}`
       : status
         ? 'ตามข้อมูลล่าสุดไม่มีรายการค้างเบิก ถ้ามีรายการที่สำรองจ่ายเพิ่ม ส่งสลิปการโอนเงินและใบเสร็จเข้าห้องนี้หรือ LINE ของ AssetX'
         : 'รายการที่สำรองจ่ายไปแล้ว ให้ส่งสลิปการโอนเงินและใบเสร็จเข้าห้องนี้หรือ LINE ของ AssetX เพื่อออกใบขออนุมัติเบิกเงิน'
-    const tail = kind === 'claim' && date?.day < CLAIM_DEADLINE_DAY ? `\n\nเหลือ ${CLAIM_DEADLINE_DAY - date.day} วัน` : ''
+    const deadline = kind === 'claim' ? CLAIM_DEADLINE_DAY : CLAIM2_DEADLINE_DAY
+    const tail = date?.day < deadline && deadline - date.day <= 7 ? `\n\nเหลือ ${deadline - date.day} วัน` : ''
     return `${head}\n\n${body}${tail}${waitingLine}`
   }
   const head = `📒 เอกสารบัญชี${monthLabel ? `เดือน${monthLabel} ` : 'ของเดือนนี้'}ที่ยังขาด`

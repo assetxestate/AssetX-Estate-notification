@@ -33,11 +33,12 @@ test('วันที่ใช้เวลาไทย: 18:00 UTC ของว�
   assert.equal(bangkokDate(at(5)).iso, '2026-12-05')
 })
 
-test('กำหนดเตือนตั้งต้น: รอบเบิก 2, 3, 5 · เอกสารที่ยังขาด 18 · รอบเบิกที่ 2 ยังไม่เตือนจนกว่าจะตั้งวัน', () => {
+test('กำหนดเตือนตั้งต้น: รอบเบิก 2, 3, 5 · เอกสารที่ยังขาด 18 · รอบเบิกที่ 2 วันที่ 21, 22', () => {
   for (const d of [2, 3, 5]) assert.deepEqual(dueReminders(bangkokDate(at(d)), {}), ['claim'])
   assert.deepEqual(dueReminders(bangkokDate(at(18)), {}), ['missing'])
-  for (const d of [1, 4, 6, 17, 19]) assert.deepEqual(dueReminders(bangkokDate(at(d)), {}), [])
-  assert.deepEqual(reminderDays('claim2', {}), [])
+  for (const d of [21, 22]) assert.deepEqual(dueReminders(bangkokDate(at(d)), {}), ['claim2'])
+  for (const d of [1, 4, 6, 17, 19, 20, 23]) assert.deepEqual(dueReminders(bangkokDate(at(d)), {}), [])
+  assert.deepEqual(reminderDays('claim2', {}), [21, 22])
   assert.deepEqual(dueReminders(bangkokDate(at(18)), { ACCOUNTING_CLAIM2_DAYS: '18, 20' }), ['claim2', 'missing'])
   assert.deepEqual(reminderDays('claim', { ACCOUNTING_CLAIM_DAYS: '1,x,40,4' }), [1, 4])
 })
@@ -58,8 +59,11 @@ test('ข้อความรอบเบิก: บอกเส้นตาย
   assert.match(text, /• ค่าโทรศัพท์/)
   assert.match(text, /รอจัดเข้าโฟลเดอร์ 2 ไฟล์/)
   assert.match(buildReminderText('claim', { date: bangkokDate(at(2)), status: null }), /ส่งสลิปการโอนเงินและใบเสร็จ/)
-  assert.match(buildReminderText('claim2', { date: bangkokDate(at(20)), status: null }), /รอบเบิกที่ 2/)
-  assert.doesNotMatch(buildReminderText('claim2', { date: bangkokDate(at(20)), status: null }), /เหลือ/)
+  const second = buildReminderText('claim2', { date: bangkokDate(at(21)), status: null })
+  assert.match(second, /รอบเบิกที่ 2/)
+  assert.match(second, /ไม่เกินวันที่ 23/)
+  assert.match(second, /เหลือ 2 วัน/)
+  assert.doesNotMatch(buildReminderText('claim2', { date: bangkokDate(at(25)), status: null }), /เหลือ/)
 })
 
 test('ข้อความเอกสารที่ยังขาด: ใช้ชื่อเดือนแบบ พ.ศ. และไม่แต่งรายการเมื่อไม่มีสถานะ', () => {
