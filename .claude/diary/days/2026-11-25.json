@@ -85,9 +85,10 @@
     },
     {
       "id": "accounting-reminders",
-      "done": false,
+      "done": true,
       "text": "ตัวเตือนทางเทเลแกรมตามกำหนด: รอบเบิกต้นเดือน และเอกสารของเดือนที่ยังขาด",
-      "owner": "claude"
+      "owner": "claude",
+      "done_at": "2026-11-25T13:31:36.627Z"
     },
     {
       "id": "accounting-auto-sort",
