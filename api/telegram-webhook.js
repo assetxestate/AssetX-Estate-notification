@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { buildAssetxTelegramReply } from './_assetxTelegramAssistant.js';
 import { handlePosterRefMessage } from '../server/poster-refs.js';
 import { handleAccountingTelegramMessage } from '../server/accounting-inbox.js';
+import { runAccountingReminders } from '../server/accounting-reminders.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
 // /diary หรือ /diary@ชื่อบอท (ตามด้วยข้อความอะไรก็ได้) → ส่งปุ่มเปิดไดอารี่งาน ไม่ส่งต่อให้ AI
@@ -119,6 +120,25 @@ export async function sendDiaryButton(chatId, url, { chatType = 'private' } = {}
 }
 
 export default async function handler(req, res) {
+  // ตัวเตือนงานเอกสารบัญชี: Vercel Cron เรียกวันละครั้ง 09:00 น. เวลาไทย (vercel.json) — ดู server/accounting-reminders.js
+  // ตั้ง CRON_SECRET ไว้ = ต้องตรงกัน (Vercel ใส่ Authorization ให้ cron เอง) · ไม่ได้ตั้ง = เปิดเหมือน daily-notify
+  // คนนอกเรียกได้ก็ทำได้แค่ให้ข้อความของวันนั้นออกเร็วขึ้น: ส่งเฉพาะวันถึงกำหนด ชนิดละครั้งต่อวัน ไปที่ห้องของเจ้าของเท่านั้น
+  if (req.method === 'GET' && req.query?.task === 'accounting-reminders') {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret && (req.headers.authorization || '') !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const chatId = String(process.env.ASSETX_TELEGRAM_ALLOWED_CHAT_ID || '').trim();
+    if (!chatId) return res.status(503).json({ ok: false, error: 'no_chat_configured' });
+    try {
+      const outcome = await runAccountingReminders({ db: adminDb(), send: (text) => sendTelegramMessage(chatId, text) });
+      return res.status(200).json({ ok: true, ...outcome });
+    } catch (error) {
+      console.error('AssetX accounting reminders error:', error.message);
+      return res.status(200).json({ ok: false, error: 'accounting_reminders_failed' });
+    }
+  }
+
   if (req.method === 'GET') {
     return res.status(200).json({
       ok: true,

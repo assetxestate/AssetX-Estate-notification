@@ -33,6 +33,7 @@
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/daily-notify", "schedule": "0 1 * * *" }
+    { "path": "/api/daily-notify", "schedule": "0 1 * * *" },
+    { "path": "/api/telegram-webhook?task=accounting-reminders", "schedule": "0 2 * * *" }
   ]
 }
