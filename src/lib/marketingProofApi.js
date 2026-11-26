@@ -62,7 +62,7 @@ export function writeJobStatus(job, worker, now = Date.now()) {
 }
 
 export const checkGate = (postPayload, briefId = null) => post({ action: 'gate', post: postPayload, briefId })
-export const approveContent = (postPayload, { reviewer, reason = '', briefId = null }) => post({ action: 'approve', post: postPayload, reviewer, reason, briefId })
+export const approveContent = (postPayload, { reviewer, reason = '', briefId = null, watched = undefined }) => post({ action: 'approve', post: postPayload, reviewer, reason, briefId, watched })
 
 // ส่วนของโพสต์ที่ส่งให้ด่าน — ต้องเป็นชุดเดียวกันทั้งตอนตรวจ ตอนอนุมัติ และตอนส่งออก (เซิร์ฟเวอร์เทียบแฮชจากชุดนี้)
 export function gatePayload(item = {}, mediaAssetId = '') {

@@ -81,6 +81,7 @@ export function approvalBasis(post = {}, proof = null) {
     .sort((a, b) => a.id.localeCompare(b.id))
   return JSON.stringify({
     v: 1,
+    ...(post.kind === 'reel' ? { kind: 'reel' } : {}),
     title: clean(post.title || post.headline),
     caption: clean(post.caption),
     videoScript: clean(post.videoScript),

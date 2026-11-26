@@ -101,4 +101,31 @@ export function replaceClip(oldClip, record) {
   return previous.length ? { ...record, previous } : record
 }
 
+// ── การอนุมัติ Reel (ต่อเข้ากับขั้นตรวจหลักฐานของโพสต์ · 26 พ.ย. 2569) ──
+// Reel มีบันทึกการอนุมัติของตัวเอง แยกจากโพสต์ (รหัส "<id ของโพสต์>#reel") เพราะข้อความใต้คลิปและไฟล์คลิปไม่ใช่ของชุดเดียวกับโพสต์
+// แฮชผูก: ข้อความใต้คลิป + ตำแหน่งไฟล์คลิป (ชื่อไฟล์มีเวลา ไม่ถูกเขียนทับ) + บรีฟและข้ออ้างของโพสต์ — แก้ข้อใดข้อหนึ่ง = ต้องอนุมัติใหม่
+// ชุดนี้ต้องเป็นชุดเดียวกันทั้งตอนตรวจ อนุมัติ ส่งไฟล์ และเผยแพร่ (เซิร์ฟเวอร์เทียบแฮชจากชุดนี้)
+export const REEL_KIND = 'reel'
+const cleanDescription = (value) => String(value ?? '').replace(/\r\n/g, '\n').trim()
+export const reelReviewId = (contentId) => `${String(contentId ?? '')}#reel`
+export function reelGatePayload(post = {}, { description = '', clipPath = '' } = {}) {
+  return {
+    id: String(post.id ?? ''),
+    kind: REEL_KIND,
+    contentNo: post.contentNo || null,
+    title: post.title || post.headline || '',
+    caption: cleanDescription(description),
+    videoScript: '',
+    topic: post.topic || '',
+    channel: 'facebook',
+    mediaAssetId: String(clipPath || ''),
+    draftSource: post.draftSource || undefined,
+  }
+}
+// บันทึกย่อของการอนุมัติที่เก็บกับคลิป (ให้หน้าจอรู้ว่าอนุมัติฉบับไหนไว้ — ตัวตัดสินจริงคือบันทึกบนเซิร์ฟเวอร์)
+export const reelApprovalMatches = (clip, description) => {
+  const approval = clip?.reelApproval
+  return Boolean(approval?.reviewId && approval.path === clip.path && approval.description === cleanDescription(description))
+}
+
 export const formatBytes = (bytes) => (Number.isFinite(bytes) && bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '')

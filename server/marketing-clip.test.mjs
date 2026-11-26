@@ -27,7 +27,7 @@ const make = (over = {}) => {
   const db = over.db || fakeDb()
   const requests = []
   const fetchImpl = over.fetchImpl || (async (url, options) => { requests.push({ url: String(url), options }); return json({ success: true }) })
-  const handler = createClipHandler({ authorized: () => over.authorized ?? true, database: () => db, enabled: () => over.enabled ?? true, ensure: async () => true, fetchImpl, config: () => over.config || fb, now: () => 1795500000000 })
+  const handler = createClipHandler({ authorized: () => over.authorized ?? true, database: () => db, enabled: () => over.enabled ?? true, ensure: async () => true, fetchImpl, config: () => over.config || fb, now: () => 1795500000000, approval: () => over.guard || null })
   return { handler, db, requests }
 }
 
@@ -37,8 +37,9 @@ test('ต้องล็อกอิน และรับเฉพาะ GET/PO
 })
 
 test('สถานะ: บอกว่าที่เก็บพร้อมไหม และตั้งค่า Facebook แล้วไหม', async () => {
-  assert.deepEqual((await run(make().handler, { query: { status: '1' } })).data, { ready: true, facebook: true })
-  assert.deepEqual((await run(make({ enabled: false, config: { ...fb, accessToken: '' } }).handler, { query: { status: '1' } })).data, { ready: false, facebook: false })
+  assert.deepEqual((await run(make().handler, { query: { status: '1' } })).data, { ready: true, facebook: true, approval: false })
+  assert.deepEqual((await run(make({ enabled: false, config: { ...fb, accessToken: '' } }).handler, { query: { status: '1' } })).data, { ready: false, facebook: false, approval: false })
+  assert.equal((await run(make({ guard: async () => {} }).handler, { query: { status: '1' } })).data.approval, true)
 })
 
 test('ขอลิงก์อัปโหลด: ตรวจชนิด ขนาด เลขคอนเทนต์ แล้วคืนตำแหน่งไฟล์ที่มีเวลา', async () => {
@@ -136,4 +137,36 @@ test('สถานะ Reel: ย่อสถานะและต่อลิง�
 test('คำสั่งที่ไม่รู้จัก 400 · ปิดที่เก็บ 503', async () => {
   assert.equal((await run(make().handler, { method: 'POST', body: { action: 'delete' } })).code, 400)
   assert.equal((await run(make({ enabled: false }).handler, { query: { path: PATH } })).code, 503)
+})
+
+test('ธงตรวจหลักฐานเปิด: ส่งไฟล์และเผยแพร่ต้องมีบันทึกการอนุมัติของ Reel ฉบับเดียวกัน ไม่ผ่าน = ไม่เรียก Facebook', async () => {
+  const TEXT = 'ขอยอดสินไถ่และวันครบกำหนดเป็นลายลักษณ์อักษรก่อนเซ็น'
+  const reel = (over = {}) => ({ id: 'p-32', kind: 'reel', contentNo: 32, caption: TEXT, mediaAssetId: PATH, ...over })
+  const seen = []
+  let approved = false
+  const guard = async (post) => { seen.push(post); if (!approved) throw new Error('ยังไม่มีบันทึกการอนุมัติของคนสำหรับ Reel นี้') }
+  let n = 0
+  const m = make({ guard, fetchImpl: async () => { n += 1; return n === 1 ? json({ video_id: '1234567890' }) : json({ success: true }) } })
+  const upload = (post) => run(m.handler, { method: 'POST', body: { action: 'reel-upload', path: PATH, post } })
+  const publish = (post, description = TEXT) => run(m.handler, { method: 'POST', body: { action: 'reel-publish', videoId: '1234567890', description, confirmed: true, post } })
+
+  // ไม่ส่งชุดข้อมูล ส่งชุดของโพสต์ หรือไฟล์/ข้อความไม่ตรงกับที่จะส่งจริง = 422 โดยไม่ถามบันทึกด้วยซ้ำ
+  assert.equal((await upload(undefined)).code, 422)
+  assert.equal((await upload({ ...reel(), kind: undefined })).code, 422)
+  assert.equal((await upload(reel({ mediaAssetId: 'clips/c32-1795600000000.mp4' }))).code, 422)
+  assert.equal((await publish(reel({ caption: 'ข้อความฉบับอื่นที่อนุมัติไว้' }))).code, 422)
+  assert.equal(seen.length, 0)
+  // ชุดถูกต้องแต่ยังไม่มีบันทึกอนุมัติ = 422 พร้อมข้อความของด่าน
+  const noReview = await upload(reel())
+  assert.equal(noReview.code, 422)
+  assert.match(noReview.data.error, /ยังไม่มีบันทึกการอนุมัติ/)
+  assert.equal((await publish(reel())).code, 422)
+  assert.equal(n, 0)
+  // มีบันทึกแล้ว = ผ่านทั้งสองขั้น และด่านได้ชุดข้อมูลของ Reel
+  approved = true
+  assert.deepEqual((await upload(reel())).data, { videoId: '1234567890' })
+  assert.equal((await publish(reel({ caption: `  ${TEXT}\r\n` }), `${TEXT}  `)).code, 200)
+  assert.equal(seen.at(-1).kind, 'reel')
+  // ด่านคำและการยืนยันยังมาก่อน
+  assert.equal((await publish(reel({ caption: 'อนุมัติไว รับประกันผล 100% ได้เงินแน่นอน' }), 'อนุมัติไว รับประกันผล 100% ได้เงินแน่นอน')).code, 400)
 })

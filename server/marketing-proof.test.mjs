@@ -188,3 +188,36 @@ test('ด่านโพสต์ Facebook: ธงเปิด = เรียก
   const legacy = await publishFacebookPost({ post: post({ id: 'p-legacy', caption: general.caption }) }, fetchImpl, config)
   assert.equal(legacy.facebookPostId, 'fb-1')
 })
+
+test('Reel: อนุมัติแยกจากโพสต์ ผูกข้อความใต้คลิปกับไฟล์คลิป และต้องยืนยันว่าดูคลิปแล้ว', async () => {
+  const db = fakeDb()
+  const handler = handlerFor(db)
+  const CLIP = 'clips/c12-1795500000000.mp4'
+  const reel = (over = {}) => ({ ...post({ caption: 'ก่อนเซ็นสัญญาขายฝาก ถามตัวเองก่อนว่าเงินที่จะไถ่คืนมาจากไหน' }), kind: 'reel', mediaAssetId: CLIP, videoScript: '', ...over })
+  // โพสต์อนุมัติแล้ว ไม่ได้แปลว่า Reel อนุมัติแล้ว
+  assert.equal((await call(handler, { body: { action: 'approve', post: post({ caption: reel().caption }), reviewer: 'ผู้ตรวจทดสอบ' } })).status, 200)
+  await assert.rejects(() => assertApprovedForPublish(db, reel(), { now: NOW }), /ยังไม่มีบันทึกการอนุมัติของคนสำหรับ Reel/)
+  // ตรวจอย่างเดียวได้ ไม่บันทึก
+  const gate = await call(handler, { body: { action: 'gate', post: reel() } })
+  assert.equal(gate.status, 200)
+  assert.equal(gate.data.gate.blocked, false)
+  // ไม่ยืนยันว่าดูคลิป ไฟล์ไม่ใช่คลิป หรือคลิปของคอนเทนต์เลขอื่น = อนุมัติไม่ได้
+  assert.equal((await call(handler, { body: { action: 'approve', post: reel(), reviewer: 'ผู้ตรวจทดสอบ' } })).status, 400)
+  assert.equal((await call(handler, { body: { action: 'approve', post: reel({ mediaAssetId: 'asset-1' }), reviewer: 'ผู้ตรวจทดสอบ', watched: true } })).status, 400)
+  assert.equal((await call(handler, { body: { action: 'approve', post: reel({ mediaAssetId: 'clips/c99-1795500000000.mp4' }), reviewer: 'ผู้ตรวจทดสอบ', watched: true } })).status, 400)
+  // ข้อความใต้คลิปติดคำต้องห้าม = 422
+  assert.equal((await call(handler, { body: { action: 'approve', post: reel({ caption: 'อนุมัติแน่นอน 100% ทุกเคส' }), reviewer: 'ผู้ตรวจทดสอบ', watched: true } })).status, 422)
+  const ok = await call(handler, { body: { action: 'approve', post: reel(), reviewer: 'ผู้ตรวจทดสอบ', watched: true } })
+  assert.equal(ok.status, 200)
+  const row = db.tables().marketing_content_reviews.at(-1)
+  assert.equal(row.content_id, `${post().id}#reel`)
+  assert.equal(row.category, 'reel')
+  assert.match(row.reason, /ดูคลิปจนจบแล้ว/)
+  await assertApprovedForPublish(db, reel(), { now: NOW })
+  // แก้ข้อความใต้คลิป หรือเปลี่ยนไฟล์คลิป หลังอนุมัติ = ส่งไม่ได้
+  await assert.rejects(() => assertApprovedForPublish(db, reel({ caption: `${reel().caption}\nเพิ่มบรรทัด` }), { now: NOW }), /เปลี่ยนหลังอนุมัติ/)
+  await assert.rejects(() => assertApprovedForPublish(db, reel({ mediaAssetId: 'clips/c12-1795600000000.mp4' }), { now: NOW }), /เปลี่ยนหลังอนุมัติ/)
+  // การอนุมัติของ Reel ไม่กระทบบันทึกของโพสต์
+  await assertApprovedForPublish(db, post({ caption: reel().caption }), { now: NOW })
+  assert.equal((await call(handler, { method: 'GET', query: { content: post().id } })).data.review.decision, 'approved')
+})

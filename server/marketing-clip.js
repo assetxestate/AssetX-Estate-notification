@@ -1,20 +1,25 @@
 // คลิปวิดีโอของคอนเทนต์ในหน้า /marketing: ที่เก็บไฟล์ + ส่งขึ้นเพจ Facebook เป็น Reel (เจ้าของขอ 24 พ.ย. 2569) — API หลังล็อกอิน
 // ตรรกะล้วน: src/lib/marketingClip.js · bucket ปิด marketing-clips (สร้างเองครั้งแรก ไม่มีตารางใหม่ ไม่ต้องรัน SQL)
 //
-// GET  /api/marketing-clip?status=1            → { ready, facebook }       ที่เก็บไฟล์พร้อมไหม · ตั้งค่า Facebook แล้วไหม
+// GET  /api/marketing-clip?status=1            → { ready, facebook, approval }  ที่เก็บไฟล์พร้อมไหม · ตั้งค่า Facebook แล้วไหม · ต้องมีบันทึกการอนุมัติไหม
 // GET  /api/marketing-clip?path=<path>         → { url, bytes }            ลิงก์ดูคลิปชั่วคราว (1 ชั่วโมง)
 // GET  /api/marketing-clip?reel=<video id>     → { state, message, permalink }  สถานะ Reel บน Facebook (อ่านอย่างเดียว)
 // POST { action: "upload-url", contentNo, bytes, type }  → { path, token }  ลิงก์อัปโหลดแบบเซ็นชื่อ เบราว์เซอร์ส่งไฟล์ตรงเข้าที่เก็บ
 //      (คลิปใหญ่เกินเพดานคำขอของเซิร์ฟเวอร์ 4.5 MB จึงไม่ส่งผ่านฟังก์ชันนี้)
-// POST { action: "reel-upload", path }                    → { videoId }     เปิดรายการ Reel แล้วให้ Facebook ดึงไฟล์จากลิงก์ชั่วคราว
-// POST { action: "reel-publish", videoId, description, aiGenerated } → { videoId }  เผยแพร่ (ข้อความผ่านด่านคำของแบรนด์ก่อน)
+// POST { action: "reel-upload", path, post? }             → { videoId }     เปิดรายการ Reel แล้วให้ Facebook ดึงไฟล์จากลิงก์ชั่วคราว
+// POST { action: "reel-publish", videoId, description, aiGenerated, post? } → { videoId }  เผยแพร่ (ข้อความผ่านด่านคำของแบรนด์ก่อน)
+//      post = ชุดจาก reelGatePayload (src/lib/marketingClip.js) — บังคับเมื่อธง MARKETING_PROOF_CARDS เปิด: ทั้งสองคำสั่งตรวจบันทึกการอนุมัติของ Reel
+//      (ผู้ตรวจ · แฮชของข้อความใต้คลิป + ไฟล์คลิป + ข้ออ้าง) และตรวจด่านหลักฐานซ้ำ ณ เวลาส่ง · ไม่ผ่าน = 422 ไม่เรียก Facebook
 //
 // ชื่อไฟล์มีเวลา ไม่เขียนทับ ไม่ลบ · ไฟล์ที่ส่งให้ Facebook ต้องเป็นคลิปการตลาดเท่านั้น (ห้ามรูปโฉนดหรือข้อมูลลูกค้า — กติกาเดิมของโปรเจกต์)
-// ข้อจำกัดที่รู้: Reel ยังไม่ผ่านบันทึกการอนุมัติแบบแฮช (assertApprovedForPublish ผูกกับโพสต์ข้อความ/รูป) — ด่านที่มีคือด่านคำ + คนกดยืนยันเอง
+// ข้อจำกัดที่รู้: ด่านอ่านได้แค่ข้อความใต้คลิป ไม่ได้อ่านเสียงหรือตัวหนังสือในคลิป (ผู้ตรวจยืนยันว่าดูคลิปแล้วตอนอนุมัติ) · รหัสวิดีโอของ Facebook
+//   ผูกกับไฟล์ที่อนุมัติด้วยคำสั่ง reel-upload ที่ตรวจตำแหน่งไฟล์ — เซิร์ฟเวอร์ไม่เก็บสถานะ จึงไม่ได้เทียบรหัสวิดีโอกับไฟล์ซ้ำตอนเผยแพร่
+//   ธงปิด = ด่านเดิม (ด่านคำ + คนกดยืนยัน)
 import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
 import { addProofParam, configStatus, facebookConfig, graphHeaders, graphRequest, graphUrl } from './marketing-facebook.js'
-import { CLIP_MAX_BYTES, CLIP_MIME, checkClipFile, checkReelDescription, clipPathFor, isClipPath, summarizeReelStatus } from '../src/lib/marketingClip.js'
+import { assertApprovedForPublish, proofDatabase, proofFlagOn } from './marketing-proof.js'
+import { CLIP_MAX_BYTES, CLIP_MIME, REEL_KIND, checkClipFile, checkReelDescription, clipPathFor, isClipPath, summarizeReelStatus } from '../src/lib/marketingClip.js'
 
 export const CLIP_BUCKET = 'marketing-clips'
 const VIEW_TTL_SEC = 60 * 60
@@ -95,7 +100,19 @@ export async function checkReel(videoId, fetchImpl = fetch, config = facebookCon
   return { videoId: id, ...summarizeReelStatus(data.status || {}), permalink: link ? (link.startsWith('http') ? link : `https://www.facebook.com${link}`) : null }
 }
 
-export function createClipHandler({ authorized = verifySession, database = defaultDatabase, enabled = clipStorageOn, ensure = ensureBucket, fetchImpl = fetch, config = facebookConfig, now = Date.now } = {}) {
+// ตัวตรวจบันทึกการอนุมัติ (ธงเปิด) หรือ null (ธงปิด = ด่านเดิม)
+const defaultApproval = () => (proofFlagOn() ? (post) => assertApprovedForPublish(proofDatabase(), post) : null)
+
+// คืนข้อความที่ต้องแจ้งเมื่อ Reel ยังส่งไม่ได้ · null = ผ่าน
+async function approvalProblem(guard, post, { path = null, description = null } = {}) {
+  if (!guard) return null
+  if (!post || typeof post !== 'object' || post.kind !== REEL_KIND) return 'Reel นี้ยังไม่ผ่านการตรวจหลักฐานและอนุมัติ — โหลดหน้านี้ใหม่แล้วกดตรวจและอนุมัติก่อน'
+  if (path !== null && post.mediaAssetId !== path) return 'ไฟล์คลิปไม่ตรงกับฉบับที่อนุมัติ — ตรวจและอนุมัติ Reel ใหม่ก่อนส่ง'
+  if (description !== null && String(post.caption ?? '').replace(/\r\n/g, '\n').trim() !== description) return 'ข้อความใต้คลิปไม่ตรงกับฉบับที่อนุมัติ — ตรวจและอนุมัติ Reel ใหม่ก่อนส่ง'
+  try { await guard(post); return null } catch (error) { return String(error?.message || 'ตรวจบันทึกการอนุมัติไม่สำเร็จ ลองใหม่อีกครั้ง') }
+}
+
+export function createClipHandler({ authorized = verifySession, database = defaultDatabase, enabled = clipStorageOn, ensure = ensureBucket, fetchImpl = fetch, config = facebookConfig, now = Date.now, approval = defaultApproval } = {}) {
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store')
     if (!authorized(req)) return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบก่อนใช้งาน' })
@@ -104,7 +121,8 @@ export function createClipHandler({ authorized = verifySession, database = defau
     const fb = config()
     try {
       const on = Boolean(enabled()) && Boolean(db)
-      if (req.method === 'GET' && req.query?.status) return res.status(200).json({ ready: on && await ensure(db), facebook: configStatus(fb).ready })
+      const guard = approval()
+      if (req.method === 'GET' && req.query?.status) return res.status(200).json({ ready: on && await ensure(db), facebook: configStatus(fb).ready, approval: Boolean(guard) })
       if (req.method === 'GET' && req.query?.reel) return res.status(200).json(await checkReel(req.query.reel, fetchImpl, fb))
       if (!on) return res.status(503).json({ error: 'ที่เก็บคลิปยังไม่เปิดใช้' })
       if (!(await ensure(db))) return res.status(503).json({ error: 'ที่เก็บคลิปยังไม่พร้อม ลองใหม่อีกครั้ง' })
@@ -131,12 +149,17 @@ export function createClipHandler({ authorized = verifySession, database = defau
         const path = String(body.path || '')
         if (!isClipPath(path)) return res.status(400).json({ error: 'ตำแหน่งคลิปไม่ถูกต้อง' })
         if (!(await clipInfo(db, path))) return res.status(404).json({ error: 'ไม่พบคลิปนี้ในที่เก็บ อัปโหลดใหม่ก่อน' })
+        // ไฟล์จะออกไปถึง Facebook ตั้งแต่ขั้นนี้ จึงตรวจการอนุมัติก่อนส่งไฟล์ ไม่รอถึงขั้นเผยแพร่
+        const problem = await approvalProblem(guard, body.post, { path })
+        if (problem) return res.status(422).json({ error: problem })
         return res.status(200).json(await uploadReelFromUrl(await signedUrl(db, path, FETCH_TTL_SEC), fetchImpl, fb))
       }
       if (body.action === 'reel-publish') {
         const text = checkReelDescription(body.description)
         if (!text.ok) return res.status(400).json({ error: `ข้อความใต้คลิปยังไม่ผ่านการตรวจ: ${text.notes.join(' · ')}` })
         if (body.confirmed !== true) return res.status(400).json({ error: 'ต้องยืนยันก่อนเผยแพร่' })
+        const problem = await approvalProblem(guard, body.post, { description: text.description })
+        if (problem) return res.status(422).json({ error: problem })
         return res.status(200).json(await publishReel({ videoId: body.videoId, description: text.description, aiGenerated: body.aiGenerated === true }, fetchImpl, fb))
       }
       return res.status(400).json({ error: 'ไม่รู้จักคำสั่งนี้' })

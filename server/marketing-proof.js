@@ -12,6 +12,8 @@
 // POST { action: "attach-content", briefId, contentId, contentNo? }  → { brief }
 // POST { action: "gate", post, briefId? }                            → { gate }       ตรวจอย่างเดียว ไม่บันทึก
 // POST { action: "approve", post, reviewer, reason? }                → { review, gate } ติดตัวบล็อก = 422 ไม่บันทึกเป็นอนุมัติ
+//      post.kind = "reel" (ชุดจาก reelGatePayload): อนุมัติ Reel ของคอนเทนต์ — caption = ข้อความใต้คลิป · mediaAssetId = ตำแหน่งไฟล์คลิป
+//      บันทึกแยกจากโพสต์ (content_id "<id>#reel" · category "reel") และต้องส่ง watched: true (ผู้ตรวจยืนยันว่าดูคลิปจนจบแล้ว)
 // POST { action: "write-request", briefId, note? }                   → { job, reused, worker }   ให้ AI บนคอมสำนักงานเขียนจากโน้ต (server/briefWriter.js)
 // GET  /api/marketing-proof?job=<id> | ?briefJob=<briefId>           → { job, worker }           สถานะ/ผลของงานเขียน (briefJob = งานล่าสุดของบรีฟ)
 //
@@ -23,6 +25,7 @@ import { verifySession } from '../api/_auth.js'
 import { CLAIM_STATUS, normalizeBrief, normalizeClaim, normalizeSource, verifyProblems } from '../src/lib/marketingProof.js'
 import { scrub, scrubPostText } from './research/pii.js'
 import { approvalBasis, buildReviewGate, gateBlockerText } from '../src/lib/marketingReviewGate.js'
+import { REEL_DESCRIPTION_MAX, clipContentNo, isClipPath, reelReviewId } from '../src/lib/marketingClip.js'
 
 const SQL_FILE = 'supabase_marketing_proof.sql'
 const MISSING_TABLE = new Set(['42P01', 'PGRST205'])
@@ -113,8 +116,18 @@ function postOf(input = {}) {
     draftSource: ['ai', 'brief'].includes(input.draftSource) ? input.draftSource : undefined,
   }
   if (post.caption.length > MAX_CAPTION) throw new ApiError(400, 'ข้อความโพสต์ยาวเกินไป')
+  if (input.kind === 'reel') {
+    // Reel: ไฟล์ต้องเป็นคลิปของคอนเทนต์เลขเดียวกัน (กันอนุมัติข้อความคู่กับคลิปของชิ้นอื่น)
+    post.kind = 'reel'
+    post.videoScript = ''
+    if (!isClipPath(post.mediaAssetId)) throw new ApiError(400, 'ไม่พบไฟล์คลิปของ Reel นี้')
+    if (!post.contentNo || clipContentNo(post.mediaAssetId) !== post.contentNo) throw new ApiError(400, 'ไฟล์คลิปไม่ใช่ของคอนเทนต์ชิ้นนี้')
+    if (post.caption.length > REEL_DESCRIPTION_MAX) throw new ApiError(400, `ข้อความใต้คลิปยาวเกิน ${REEL_DESCRIPTION_MAX} ตัวอักษร`)
+  }
   return post
 }
+// บันทึกการอนุมัติของ Reel แยกจากของโพสต์ · หลักฐาน (บรีฟ ข้ออ้าง) ใช้ของโพสต์เดียวกัน
+const reviewKey = (post) => (post.kind === 'reel' ? reelReviewId(post.id) : post.id)
 
 // ด่านก่อนส่งออกจริง (เรียกจาก server/marketing-facebook.js เมื่อธงเปิด): ต้องมีบันทึกอนุมัติของคนที่ตรงกับเนื้อหาฉบับนี้
 // และตรวจซ้ำ ณ เวลาส่ง (หลักฐานอาจหมดอายุหรือถูกถอนสิทธิหลังอนุมัติ) · ผิดเงื่อนไข = โยนข้อความไทย
@@ -125,14 +138,15 @@ export async function assertApprovedForPublish(db, rawPost, { now = Date.now() }
   let review
   let proof
   try {
-    review = await latestReview(db, post.id)
+    review = await latestReview(db, reviewKey(post))
     proof = await loadProof(db, { contentId: post.id })
   } catch (error) {
     if (MISSING_TABLE.has(error?.code)) throw new Error('ยังไม่ได้สร้างตารางหลักฐานของระบบการตลาด จึงยังส่งโพสต์ไม่ได้')
     throw new Error('ตรวจบันทึกการอนุมัติไม่สำเร็จ ลองใหม่อีกครั้ง')
   }
-  if (!review || review.decision !== 'approved') throw new Error('ยังไม่มีบันทึกการอนุมัติของคนสำหรับคอนเทนต์นี้ — กลับไปแท็บ ร่าง แล้วกดอนุมัติ')
-  if (review.content_hash !== hashOf(post, proof)) throw new Error('ข้อความ ภาพ หรือหลักฐานเปลี่ยนหลังอนุมัติ — กลับไปแท็บ ร่าง ตรวจและอนุมัติใหม่ก่อนส่ง')
+  const reel = post.kind === 'reel'
+  if (!review || review.decision !== 'approved') throw new Error(reel ? 'ยังไม่มีบันทึกการอนุมัติของคนสำหรับ Reel นี้ — กดตรวจหลักฐานและอนุมัติในหน้าทำวิดีโอก่อน' : 'ยังไม่มีบันทึกการอนุมัติของคนสำหรับคอนเทนต์นี้ — กลับไปแท็บ ร่าง แล้วกดอนุมัติ')
+  if (review.content_hash !== hashOf(post, proof)) throw new Error(reel ? 'ข้อความใต้คลิป ไฟล์คลิป หรือหลักฐานเปลี่ยนหลังอนุมัติ — ตรวจและอนุมัติ Reel ใหม่ก่อนส่ง' : 'ข้อความ ภาพ หรือหลักฐานเปลี่ยนหลังอนุมัติ — กลับไปแท็บ ร่าง ตรวจและอนุมัติใหม่ก่อนส่ง')
   const gate = buildReviewGate(post, proof, { now })
   if (gate.blocked) throw new Error(['ส่งไม่ได้ เพราะยังติดเกณฑ์:', ...gateBlockerText(gate)].join('\n'))
   return { review, gate }
@@ -282,10 +296,15 @@ async function actions(db, body, now) {
     const reviewer = text(body.reviewer, 80)
     if (!reviewer) throw new ApiError(400, 'ใส่ชื่อผู้ตรวจก่อนอนุมัติ')
     if (gate.blocked) throw new ApiError(422, 'ยังอนุมัติไม่ได้ เพราะติดเกณฑ์ที่ต้องแก้ก่อน', { gate, proof })
+    const reel = post.kind === 'reel'
+    // ด่านอ่านได้แค่ข้อความใต้คลิป เสียงและตัวหนังสือในคลิปต้องให้คนดูเอง จึงบังคับคำยืนยันและเก็บไว้ในบันทึก
+    if (reel && body.watched !== true) throw new ApiError(400, 'ติ๊กยืนยันว่าดูคลิปจนจบแล้วก่อนอนุมัติ')
+    const reason = [reel ? 'ผู้ตรวจยืนยันว่าดูคลิปจนจบแล้ว' : '', text(body.reason, 500)].filter(Boolean).join(' · ')
     const review = unwrap(await db.from('marketing_content_reviews').insert({
-      content_id: post.id, content_no: post.contentNo, brief_id: proof?.brief?.id || null, content_hash: hashOf(post, proof),
+      content_id: reviewKey(post), content_no: post.contentNo, brief_id: proof?.brief?.id || null, content_hash: hashOf(post, proof),
+      ...(reel ? { category: 'reel' } : {}),
       decision: 'approved', blockers: [], warnings: gate.editorial_warnings, claim_ids: gate.claim_ids_used,
-      reviewer, reason: text(body.reason, 500),
+      reviewer, reason,
     }).select('*').maybeSingle())
     return { review: { id: review.id, reviewer: review.reviewer, created_at: review.created_at, content_hash: review.content_hash }, gate }
   }

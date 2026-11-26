@@ -224,7 +224,8 @@ export function reviewAssetxContent(post = {}) {
     ...checkText(post.videoScript, 'สคริปต์วิดีโอ'),
     // ร่าง AI เขียนจากข้อเท็จจริงของไอเดีย ไม่ได้มาจากแม่แบบ 6 หัวข้อ — การเทียบกับแม่แบบ (unsupported_topic/topic_mismatch)
     // จึงไม่มีความหมายกับร่างแบบนี้ (หัวข้ออย่าง "ประกาศ ธปท." ไม่เข้าแม่แบบไหนเลยแต่เป็นโพสต์ที่ถูกต้อง) · ด่านคำต้องห้ามยังตรวจเต็มทุกบรรทัด
-    ...(isAiDraft(post) ? [] : checkTopicContent(topic, post)),
+    // ข้อความใต้ Reel (kind = reel) ก็ไม่ใช่แคปชั่นจากแม่แบบเช่นกัน — ตรวจด่านคำเต็ม ไม่เทียบแม่แบบ
+    ...(isAiDraft(post) || post.kind === 'reel' ? [] : checkTopicContent(topic, post)),
   ]
   if (!String(post.caption || '').trim()) findings.push({ id: 'empty_caption', severity: 'block', where: 'แคปชั่น', message: 'ยังไม่มีเนื้อหาโพสต์' })
   const ok = !findings.some(item => ['block', 'warn'].includes(item.severity))

@@ -3,9 +3,13 @@
 // แทนที่คลิปหลังส่งแล้วได้ (เช่น พบจุดต้องแก้ในคลิปที่โพสต์ไป): Reel เดิมถูกเก็บเป็นประวัติ และหน้าจอบอกให้ไปลบที่ Facebook — ระบบลบให้ไม่ได้
 // การเผยแพร่เป็นสาธารณะและถอนคืนจากหน้านี้ไม่ได้ จึงต้องกดยืนยันทุกครั้ง (ขั้นยืนยันอยู่ในหน้า ไม่ใช้ window.confirm:
 //   เบราว์เซอร์ฝังในแอป Claude ปิดกล่องแบบนั้นเองทันที ปุ่มจึงกดแล้วเงียบ — เจอจริงตอนส่ง Reel แรก 24 พ.ย. 2569) · ส่งได้ครั้งเดียวต่อคลิป (กันโพสต์ซ้ำ)
+// เมื่อระบบตรวจหลักฐานเปิด (status.approval): Reel ต้องผ่านตรวจหลักฐานและมีบันทึกการอนุมัติของคนก่อนเผยแพร่ (26 พ.ย. 2569)
+//   การอนุมัติผูกกับข้อความใต้คลิป + ไฟล์คลิป + ข้ออ้างของโพสต์ · เซิร์ฟเวอร์ตรวจซ้ำตอนส่งไฟล์และตอนเผยแพร่ · clip.reelApproval เป็นแค่บันทึกย่อให้หน้าจอ
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { CLIP_MIME, REEL_DESCRIPTION_MAX, checkClipFile, checkReelDescription, clipRecord, formatBytes, replaceClip } from '../lib/marketingClip.js'
+import { CLIP_MIME, REEL_DESCRIPTION_MAX, checkClipFile, checkReelDescription, clipRecord, formatBytes, reelApprovalMatches, reelGatePayload, replaceClip } from '../lib/marketingClip.js'
+import { approveContent, checkGate, storeReviewer, storedReviewer } from '../lib/marketingProofApi.js'
+import { GateResult } from './BriefProofPanel.jsx'
 
 const REEL_STATE = { uploaded: 'ส่งไฟล์ให้ Facebook แล้ว ยังไม่เผยแพร่', processing: 'Facebook กำลังประมวลผล', published: 'เผยแพร่บนเพจแล้ว', scheduled: 'ตั้งเวลาไว้บน Facebook', draft: 'เป็นฉบับร่างบน Facebook', error: 'Facebook ประมวลผลไม่สำเร็จ' }
 
@@ -43,18 +47,54 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
   const [aiGenerated, setAiGenerated] = useState(true)
   const [confirming, setConfirming] = useState(false)
   const [replacing, setReplacing] = useState(false)
+  const [gateResult, setGateResult] = useState(null) // { loading | error | gate, proof }
+  const [reviewer, setReviewer] = useState(storedReviewer)
+  const [watched, setWatched] = useState(false)
 
   useEffect(() => {
     let alive = true
     api('/api/marketing-clip?status=1').then((data) => { if (alive) setStatus(data) }).catch(() => { if (alive) setStatus({ ready: false, facebook: false }) })
     return () => { alive = false }
   }, [])
+  // ข้อความหรือไฟล์เปลี่ยน = ผลตรวจและคำยืนยันเดิมใช้ไม่ได้
+  useEffect(() => { setGateResult(null); setWatched(false); setConfirming(false) }, [description, post?.clip?.path])
   useEffect(() => { setViewUrl(''); setError(''); setWarnings([]); setBusy(''); setConfirming(false); setReplacing(false); setDescription(post?.clip?.reel?.description || post?.clip?.previous?.at(-1)?.description || post?.caption || '') }, [post?.id])
 
   if (!post) return null
   const locked = loading || Boolean(busy)
   const save = (next, message) => onSaveClip?.(post, next, message)
   const text = checkReelDescription(description)
+  // ต้องมีบันทึกการอนุมัติไหม (ธงตรวจหลักฐานเปิด) · อนุมัติแล้ว = ฉบับที่อนุมัติตรงกับข้อความและไฟล์ตอนนี้
+  const needsApproval = Boolean(status?.approval)
+  const approved = needsApproval && reelApprovalMatches(clip, description)
+  const payload = () => reelGatePayload(post, { description: text.description, clipPath: clip.path })
+
+  const checkEvidence = async () => {
+    setError('')
+    setGateResult({ loading: true })
+    try {
+      const data = await checkGate(payload(), post.briefId || null)
+      setGateResult({ gate: data.gate, proof: data.proof })
+    } catch (err) { setGateResult({ error: err.message }) }
+  }
+
+  const approveReel = async () => {
+    const name = reviewer.trim()
+    if (!name || !watched || !text.ok) return
+    setError('')
+    const approvedText = text.description
+    const approvedPath = clip.path
+    try {
+      setBusy('กำลังบันทึกการอนุมัติ')
+      const data = await approveContent(payload(), { reviewer: name, briefId: post.briefId || null, watched: true })
+      storeReviewer(name)
+      setGateResult((current) => ({ gate: data.gate, proof: current?.proof || null }))
+      save({ ...clip, reelApproval: { reviewId: data.review.id, reviewer: data.review.reviewer, at: data.review.created_at, path: approvedPath, description: approvedText } }, 'อนุมัติ Reel นี้แล้ว · เผยแพร่ได้')
+    } catch (err) {
+      if (err.gate) setGateResult({ gate: err.gate, proof: err.proof || null })
+      setError(err.message)
+    } finally { setBusy('') }
+  }
 
   const upload = async (file) => {
     if (!file) return
@@ -89,19 +129,19 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
   }
 
   const sendReel = async () => {
-    if (!text.ok) return
+    if (!text.ok || (needsApproval && !approved)) return
     setConfirming(false)
     setError('')
     let videoId = reel?.videoId || ''
     try {
       if (!videoId) {
         setBusy('กำลังส่งไฟล์ให้ Facebook')
-        videoId = (await api('/api/marketing-clip', { action: 'reel-upload', path: clip.path })).videoId
+        videoId = (await api('/api/marketing-clip', { action: 'reel-upload', path: clip.path, ...(needsApproval ? { post: payload() } : {}) })).videoId
         // บันทึกรหัสทันที: ถ้าขั้นเผยแพร่ล้ม กดอีกครั้งจะไม่ส่งไฟล์ซ้ำ
         save({ ...clip, reel: { videoId, state: 'uploaded', description: text.description, aiGenerated, sentAt: new Date().toISOString() } }, '')
       }
       setBusy('กำลังเผยแพร่')
-      await api('/api/marketing-clip', { action: 'reel-publish', videoId, description: text.description, aiGenerated, confirmed: true })
+      await api('/api/marketing-clip', { action: 'reel-publish', videoId, description: text.description, aiGenerated, confirmed: true, ...(needsApproval ? { post: payload() } : {}) })
       save({ ...clip, reel: { videoId, state: 'processing', description: text.description, aiGenerated, sentAt: new Date().toISOString() } }, 'ส่ง Reel ให้ Facebook แล้ว กำลังประมวลผล กดตรวจสถานะในอีกสักครู่')
     } catch (err) {
       setError(err.message)
@@ -154,12 +194,35 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
               <label>ข้อความใต้คลิป
                 <textarea rows={6} maxLength={REEL_DESCRIPTION_MAX} value={description} disabled={locked || confirming} onChange={(event) => setDescription(event.target.value)} />
               </label>
-              <span className="bp-note">ตั้งต้นจากแคปชั่นของโพสต์ · ข้อความที่แก้ที่นี่ผ่านด่านคำของแบรนด์ก่อนส่ง แต่ไม่ผ่านขั้นตรวจหลักฐานและอนุมัติของโพสต์ ให้ตรงกับข้อความที่อนุมัติแล้ว</span>
+              {needsApproval
+                ? <span className="bp-note">ตั้งต้นจากแคปชั่นของโพสต์ · ข้อความนี้และไฟล์คลิปต้องผ่านการตรวจหลักฐานและอนุมัติก่อนเผยแพร่ แก้ข้อความหรือเปลี่ยนคลิปหลังอนุมัติต้องอนุมัติใหม่</span>
+                : <span className="bp-note">ตั้งต้นจากแคปชั่นของโพสต์ · ข้อความที่แก้ที่นี่ผ่านด่านคำของแบรนด์ก่อนส่ง แต่ไม่ผ่านขั้นตรวจหลักฐานและอนุมัติของโพสต์ ให้ตรงกับข้อความที่อนุมัติแล้ว</span>}
               {!text.ok && description.trim() && text.notes.map((item) => <span className="bp-pack-warn" key={item}>{item}</span>)}
               <label className="bp-check"><input type="checkbox" checked={aiGenerated} disabled={locked} onChange={(event) => setAiGenerated(event.target.checked)} />คลิปนี้มีภาพหรือเสียงที่สร้างด้วย AI (แจ้ง Facebook ให้ติดป้ายตามนโยบาย)</label>
+              {needsApproval && !approved && (
+                <>
+                  <div className="bp-actions">
+                    <button type="button" className="mx-secondary" disabled={locked || !text.ok || gateResult?.loading} onClick={checkEvidence}>ตรวจหลักฐาน</button>
+                    <span className="bp-note">ระบบตรวจได้เฉพาะข้อความใต้คลิป เสียงและตัวหนังสือในคลิปผู้ตรวจต้องดูเอง</span>
+                  </div>
+                  <GateResult result={gateResult} />
+                  {gateResult?.gate && !gateResult.gate.blocked && (
+                    <>
+                      <label>ชื่อผู้ตรวจ
+                        <input type="text" maxLength={80} value={reviewer} disabled={locked} onChange={(event) => setReviewer(event.target.value)} />
+                      </label>
+                      <label className="bp-check"><input type="checkbox" checked={watched} disabled={locked} onChange={(event) => setWatched(event.target.checked)} />ดูคลิปนี้จนจบแล้ว: คำพูดและตัวหนังสือในคลิปไม่ขัดกับข้อความที่ตรวจ และไม่มีรูปเอกสารสิทธิ์จริงหรือข้อมูลลูกค้า</label>
+                      <div className="bp-actions">
+                        <button type="button" className="mx-primary" disabled={locked || !reviewer.trim() || !watched} onClick={approveReel}>อนุมัติ Reel นี้</button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+              {approved && <span className="bp-note" role="status">อนุมัติแล้วโดย {clip.reelApproval.reviewer} เมื่อ {new Date(clip.reelApproval.at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} · ระบบตรวจบันทึกนี้ซ้ำตอนส่ง</span>}
               {!confirming && (
                 <div className="bp-actions">
-                  <button type="button" className="mx-primary" disabled={locked || !text.ok || !status?.facebook} onClick={() => setConfirming(true)}>{reel?.state === 'uploaded' ? 'เผยแพร่ Reel (ส่งไฟล์แล้ว)' : 'เผยแพร่เป็น Reel บนเพจ'}</button>
+                  <button type="button" className="mx-primary" disabled={locked || !text.ok || !status?.facebook || (needsApproval && !approved)} onClick={() => setConfirming(true)}>{reel?.state === 'uploaded' ? 'เผยแพร่ Reel (ส่งไฟล์แล้ว)' : 'เผยแพร่เป็น Reel บนเพจ'}</button>
                   <span className="bp-note">เผยแพร่ทันที เป็นสาธารณะ · ยังตั้งเวลาจากหน้านี้ไม่ได้</span>
                 </div>
               )}

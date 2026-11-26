@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CLIP_MAX_BYTES, checkClipFile, checkReelDescription, clipContentNo, clipPathFor, clipRecord, isClipPath, replaceClip, summarizeReelStatus } from './marketingClip.js'
+import { CLIP_MAX_BYTES, checkClipFile, checkReelDescription, clipContentNo, clipPathFor, clipRecord, isClipPath, reelApprovalMatches, reelGatePayload, reelReviewId, replaceClip, summarizeReelStatus } from './marketingClip.js'
+import { approvalBasis } from './marketingReviewGate.js'
 
 test('ตำแหน่งไฟล์คลิป: สร้างจากเลขคอนเทนต์และเวลา รับเฉพาะรูปแบบนี้', () => {
   const path = clipPathFor(32, 1795500000000)
@@ -74,4 +75,28 @@ test('แทนที่คลิป: Reel ที่ส่งแล้วขอ�
   assert.equal(capped.at(-1).videoId, '123456')
   assert.equal(capped[0].videoId, '1001')
   assert.equal(replaceClip(old, null), null)
+})
+
+test('ชุดข้อมูลอนุมัติ Reel: ข้อความใต้คลิป + ไฟล์คลิป แยกจากโพสต์ และแฮชของโพสต์เดิมไม่เปลี่ยน', () => {
+  const post = { id: '1763870000000', contentNo: 32, title: 'หัวข้อ', caption: 'แคปชั่นของโพสต์', channel: 'facebook', draftSource: 'ai', mediaAssetId: 'asset-1' }
+  const payload = reelGatePayload(post, { description: '  ข้อความใต้คลิป\r\nบรรทัดสอง  ', clipPath: 'clips/c32-1795500000000.mp4' })
+  assert.deepEqual(payload, { id: '1763870000000', kind: 'reel', contentNo: 32, title: 'หัวข้อ', caption: 'ข้อความใต้คลิป\nบรรทัดสอง', videoScript: '', topic: '', channel: 'facebook', mediaAssetId: 'clips/c32-1795500000000.mp4', draftSource: 'ai' })
+  assert.equal(reelReviewId(post.id), '1763870000000#reel')
+  // แฮชของ Reel ต่างจากของโพสต์แม้ข้อความและไฟล์เหมือนกัน · โพสต์ที่ไม่มี kind ได้ค่าเดิม (ไม่มีช่อง kind)
+  const same = { ...post, mediaAssetId: 'x' }
+  assert.notEqual(approvalBasis({ ...same, kind: 'reel' }), approvalBasis(same))
+  assert.equal(JSON.parse(approvalBasis(same)).kind, undefined)
+  // เปลี่ยนข้อความหรือไฟล์ = ชุดใหม่
+  assert.notEqual(approvalBasis(payload), approvalBasis(reelGatePayload(post, { description: 'ข้อความอื่น', clipPath: payload.mediaAssetId })))
+  assert.notEqual(approvalBasis(payload), approvalBasis(reelGatePayload(post, { description: payload.caption, clipPath: 'clips/c32-1795600000000.mp4' })))
+})
+
+test('บันทึกย่อของการอนุมัติบนคลิป: ตรงเมื่อไฟล์และข้อความเป็นฉบับที่อนุมัติเท่านั้น', () => {
+  const clip = { path: 'clips/c32-1795500000000.mp4', reelApproval: { reviewId: 7, reviewer: 'ผู้ตรวจ', at: '2026-11-26T03:00:00Z', path: 'clips/c32-1795500000000.mp4', description: 'ข้อความใต้คลิป' } }
+  assert.equal(reelApprovalMatches(clip, ' ข้อความใต้คลิป '), true)
+  assert.equal(reelApprovalMatches(clip, 'ข้อความใต้คลิป แก้แล้ว'), false)
+  assert.equal(reelApprovalMatches({ ...clip, path: 'clips/c32-1795600000000.mp4' }, 'ข้อความใต้คลิป'), false)
+  assert.equal(reelApprovalMatches({ path: clip.path }, 'ข้อความใต้คลิป'), false)
+  // คลิปใหม่ที่มาแทนไม่พาการอนุมัติเดิมมา
+  assert.equal(replaceClip(clip, clipRecord({ path: 'clips/c32-1795600000000.mp4', bytes: 10 })).reelApproval, undefined)
 })
