@@ -55,9 +55,10 @@
     },
     {
       "id": "reel-schedule-and-limit",
-      "done": false,
+      "done": true,
       "text": "ตั้งเวลา Reel และนับเพดานจำนวนโพสต์ต่อวันของ Facebook",
-      "owner": "claude"
+      "owner": "claude",
+      "done_at": "2026-11-26T15:03:34.016Z"
     },
     {
       "id": "clip-feed-sizes",
