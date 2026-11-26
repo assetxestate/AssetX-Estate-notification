@@ -127,7 +127,7 @@ test('คำสั่งส่งไฟล์ผ่าน API: ต้องเ�
 
 test('สถานะ Reel: ย่อสถานะและต่อลิงก์เต็ม · ข้อผิดพลาดของ Facebook ไม่มีโทเคน', async () => {
   const done = await checkReel('1234567890', async () => json({ status: { video_status: 'ready', publishing_phase: { status: 'complete', publish_status: 'published' } }, permalink_url: '/reel/1234567890/' }), fb)
-  assert.deepEqual(done, { videoId: '1234567890', state: 'published', message: 'เผยแพร่บนเพจแล้ว', permalink: 'https://www.facebook.com/reel/1234567890/' })
+  assert.deepEqual(done, { videoId: '1234567890', state: 'published', message: 'เผยแพร่บนเพจแล้ว', scheduledAt: null, permalink: 'https://www.facebook.com/reel/1234567890/' })
   const failing = make({ fetchImpl: async () => json({ error: { message: 'Invalid token secret-token', code: 190 } }, 400) })
   const result = await run(failing.handler, { query: { reel: '1234567890' } })
   assert.equal(result.code, 502)
@@ -169,4 +169,40 @@ test('ธงตรวจหลักฐานเปิด: ส่งไฟล์
   assert.equal(seen.at(-1).kind, 'reel')
   // ด่านคำและการยืนยันยังมาก่อน
   assert.equal((await publish(reel({ caption: 'อนุมัติไว รับประกันผล 100% ได้เงินแน่นอน' }), 'อนุมัติไว รับประกันผล 100% ได้เงินแน่นอน')).code, 400)
+})
+
+test('ตั้งเวลา Reel: ส่ง SCHEDULED + เวลา Unix · เวลาผิดหรือใกล้เกิน = 400 ไม่เรียก Facebook · รหัส 613 = ข้อความเพดาน', async () => {
+  const TEXT = 'ขอยอดสินไถ่และวันครบกำหนดเป็นลายลักษณ์อักษรก่อนเซ็น'
+  const NOW = 1795500000000
+  const m = make()
+  const publish = (scheduledAt) => run(m.handler, { method: 'POST', body: { action: 'reel-publish', videoId: '1234567890', description: TEXT, confirmed: true, scheduledAt } })
+  assert.equal((await publish('2026-11-27T19:30')).code, 400)
+  assert.equal((await publish(new Date(NOW + 5 * 60000).toISOString())).code, 400)
+  assert.equal((await publish(new Date(NOW + 40 * 86400000).toISOString())).code, 400)
+  assert.equal(m.requests.length, 0)
+  const when = new Date(NOW + 3 * 3600000).toISOString()
+  const ok = await publish(when)
+  assert.equal(ok.code, 200)
+  assert.deepEqual(ok.data, { videoId: '1234567890', scheduledAt: when })
+  const body = m.requests[0].options.body
+  assert.equal(body.get('video_state'), 'SCHEDULED')
+  assert.equal(body.get('scheduled_publish_time'), String((NOW + 3 * 3600000) / 1000))
+  // ไม่ส่งเวลา = เผยแพร่ทันทีเหมือนเดิม
+  const now = await publish(undefined)
+  assert.deepEqual(now.data, { videoId: '1234567890', scheduledAt: null })
+  assert.equal(m.requests[1].options.body.get('video_state'), 'PUBLISHED')
+  assert.equal(m.requests[1].options.body.get('scheduled_publish_time'), null)
+  // Facebook ตอบเกินเพดาน
+  const limited = make({ fetchImpl: async () => json({ error: { message: 'Calls to this api have exceeded the rate limit.', code: 613 } }, 400) })
+  const refused = await run(limited.handler, { method: 'POST', body: { action: 'reel-publish', videoId: '1234567890', description: TEXT, confirmed: true } })
+  assert.equal(refused.code, 502)
+  assert.match(refused.data.error, /เพดาน 30 Reel/)
+})
+
+test('สถานะ Reel ที่ตั้งเวลา: คืนเวลาที่ Facebook จะเผยแพร่', async () => {
+  const scheduled = await checkReel('1234567890', async () => json({ status: { publishing_phase: { status: 'not_started', publish_status: 'scheduled', publish_time: 1795510800 } } }), fb)
+  assert.equal(scheduled.state, 'scheduled')
+  assert.equal(scheduled.scheduledAt, new Date(1795510800000).toISOString())
+  const published = await checkReel('1234567890', async () => json({ status: { publishing_phase: { status: 'complete', publish_status: 'published', publish_time: 1795510800 } } }), fb)
+  assert.equal(published.scheduledAt, null)
 })

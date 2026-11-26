@@ -61,7 +61,7 @@ export default function VideoStudio({ posts = [], post = null, claims = [], load
             </div>
           </aside>
           <div className="bp-video-main">
-            <ClipPanel post={post} loading={loading} onSaveClip={onSaveClip} />
+            <ClipPanel post={post} posts={posts} loading={loading} onSaveClip={onSaveClip} />
             <div className="bp-actions">
               <label className="bp-inline">ความยาว Reel (วินาที)
                 <input type="number" inputMode="numeric" min={REEL_MIN_SEC} max={REEL_MAX_SEC} value={seconds} disabled={loading} onChange={(event) => setSeconds(event.target.value)} />

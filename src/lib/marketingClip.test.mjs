@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CLIP_MAX_BYTES, checkClipFile, checkReelDescription, clipContentNo, clipPathFor, clipRecord, isClipPath, reelApprovalMatches, reelGatePayload, reelReviewId, replaceClip, summarizeReelStatus } from './marketingClip.js'
+import { CLIP_MAX_BYTES, checkClipFile, checkReelDescription, clipContentNo, clipPathFor, clipRecord, isClipPath, reelApprovalMatches, reelGatePayload, reelReviewId, replaceClip, summarizeReelStatus, REEL_DAILY_LIMIT, localInputToIso, parseReelSchedule, reelPublishTimes, reelQuota } from './marketingClip.js'
 import { approvalBasis } from './marketingReviewGate.js'
 
 test('ตำแหน่งไฟล์คลิป: สร้างจากเลขคอนเทนต์และเวลา รับเฉพาะรูปแบบนี้', () => {
@@ -67,7 +67,7 @@ test('แทนที่คลิป: Reel ที่ส่งแล้วขอ�
   const replaced = replaceClip(old, next)
   assert.equal(replaced.reel, null)
   assert.equal(replaced.path, 'clips/c32-1795600000000.mp4')
-  assert.deepEqual(replaced.previous, [{ path: 'clips/c32-1795500000000.mp4', name: 'old.mp4', videoId: '123456', permalink: 'https://www.facebook.com/reel/123456/', sentAt: '2026-11-24T10:00:00.000Z', state: 'published', description: 'ข้อความเดิม' }])
+  assert.deepEqual(replaced.previous, [{ path: 'clips/c32-1795500000000.mp4', name: 'old.mp4', videoId: '123456', permalink: 'https://www.facebook.com/reel/123456/', sentAt: '2026-11-24T10:00:00.000Z', scheduledAt: null, state: 'published', description: 'ข้อความเดิม' }])
   // ประวัติสะสมต่อกัน และตัดเหลือ 5 รายการล่าสุด
   const many = { ...old, previous: Array.from({ length: 5 }, (_, i) => ({ path: `clips/c32-179540000000${i}.mp4`, videoId: String(1000 + i) })) }
   const capped = replaceClip(many, next).previous
@@ -99,4 +99,48 @@ test('บันทึกย่อของการอนุมัติบน�
   assert.equal(reelApprovalMatches({ path: clip.path }, 'ข้อความใต้คลิป'), false)
   // คลิปใหม่ที่มาแทนไม่พาการอนุมัติเดิมมา
   assert.equal(replaceClip(clip, clipRecord({ path: 'clips/c32-1795600000000.mp4', bytes: 10 })).reelApproval, undefined)
+})
+
+test('ตั้งเวลา Reel: ว่าง = ทันที · ต้องมีเขตเวลา · ล่วงหน้า 15 นาทีถึง 28 วัน', () => {
+  const NOW = Date.parse('2026-11-26T05:00:00Z')
+  assert.deepEqual(parseReelSchedule('', NOW), { ok: true, at: null, unix: null, iso: null, note: '' })
+  const ok = parseReelSchedule('2026-11-27T19:30:00+07:00', NOW)
+  assert.equal(ok.ok, true)
+  assert.equal(ok.iso, '2026-11-27T12:30:00.000Z')
+  assert.equal(ok.unix, Date.parse('2026-11-27T12:30:00Z') / 1000)
+  // ไม่มีเขตเวลา หรือไม่ใช่เวลา = ไม่รับ (ไม่เดาเขตเวลาให้)
+  assert.equal(parseReelSchedule('2026-11-27T19:30', NOW).ok, false)
+  assert.equal(parseReelSchedule('พรุ่งนี้', NOW).ok, false)
+  assert.equal(parseReelSchedule('2026-11-26T05:14:00Z', NOW).ok, false)
+  assert.equal(parseReelSchedule('2026-11-26T05:15:00Z', NOW).ok, true)
+  assert.equal(parseReelSchedule('2026-12-24T05:00:00Z', NOW).ok, true)
+  assert.equal(parseReelSchedule('2026-12-24T05:00:01Z', NOW).ok, false)
+  assert.equal(parseReelSchedule('2026-11-25T05:00:00Z', NOW).ok, false)
+  // ช่องเวลาของเบราว์เซอร์ → ISO ที่มีเขตเวลา (ค่าที่อ่านไม่ได้ส่งต่อให้ตัวตรวจปฏิเสธ)
+  assert.equal(localInputToIso(''), '')
+  assert.match(localInputToIso('2026-11-27T19:30'), /^2026-11-2[67]T\d{2}:\d{2}:00\.000Z$/)
+  assert.equal(parseReelSchedule(localInputToIso('ไม่ใช่เวลา'), NOW).ok, false)
+})
+
+test('เพดาน Reel ต่อวัน: นับ Reel ที่ส่งผ่านระบบรอบเวลาที่จะเผยแพร่ รวมของคลิปที่ถูกแทนที่และที่ตั้งเวลาไว้', () => {
+  const NOW = Date.parse('2026-11-26T05:00:00Z')
+  const at = (hours) => new Date(NOW + hours * 3600000).toISOString()
+  const posts = [
+    { clip: { reel: { videoId: '1', state: 'published', sentAt: at(-2) } } },
+    { clip: { reel: { videoId: '2', state: 'scheduled', sentAt: at(-30), scheduledAt: at(20) } } },
+    { clip: { reel: { videoId: '3', state: 'uploaded', sentAt: at(-1) } } }, // ส่งไฟล์แล้วแต่ยังไม่เผยแพร่ = ไม่นับ
+    { clip: { reel: { videoId: '4', state: 'published', sentAt: at(-25) }, previous: [{ videoId: '5', sentAt: at(-3) }, { path: 'x' }] } },
+    { clip: null }, {},
+  ]
+  assert.equal(reelPublishTimes(posts).length, 4)
+  assert.deepEqual(reelQuota(posts, NOW), { used: 3, limit: REEL_DAILY_LIMIT, left: 27, full: false })
+  // ตั้งเวลาไว้อีก 40 ชั่วโมง: เหลือแค่ชิ้นที่ตั้งเวลาไว้ใกล้กัน
+  assert.equal(reelQuota(posts, NOW + 40 * 3600000).used, 1)
+  const many = Array.from({ length: 30 }, (_, index) => ({ clip: { reel: { videoId: String(index + 10), state: 'published', sentAt: at(-index / 2) } } }))
+  assert.equal(reelQuota(many, NOW).full, true)
+  assert.equal(reelQuota(many, NOW).left, 0)
+  assert.equal(reelQuota(many, NOW + 48 * 3600000).full, false)
+  // คลิปที่ถูกแทนที่ยังพาเวลาที่ตั้งไว้ไปในประวัติ
+  const replaced = replaceClip({ path: 'clips/c32-1795500000000.mp4', reel: { videoId: '9', state: 'scheduled', sentAt: at(-1), scheduledAt: at(5) } }, clipRecord({ path: 'clips/c32-1795600000000.mp4', bytes: 10 }))
+  assert.equal(replaced.previous[0].scheduledAt, at(5))
 })

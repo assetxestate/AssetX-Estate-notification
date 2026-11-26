@@ -7,7 +7,9 @@
 // POST { action: "upload-url", contentNo, bytes, type }  → { path, token }  ลิงก์อัปโหลดแบบเซ็นชื่อ เบราว์เซอร์ส่งไฟล์ตรงเข้าที่เก็บ
 //      (คลิปใหญ่เกินเพดานคำขอของเซิร์ฟเวอร์ 4.5 MB จึงไม่ส่งผ่านฟังก์ชันนี้)
 // POST { action: "reel-upload", path, post? }             → { videoId }     เปิดรายการ Reel แล้วให้ Facebook ดึงไฟล์จากลิงก์ชั่วคราว
-// POST { action: "reel-publish", videoId, description, aiGenerated, post? } → { videoId }  เผยแพร่ (ข้อความผ่านด่านคำของแบรนด์ก่อน)
+// POST { action: "reel-publish", videoId, description, aiGenerated, scheduledAt?, post? } → { videoId, scheduledAt }  เผยแพร่ (ข้อความผ่านด่านคำของแบรนด์ก่อน)
+//      scheduledAt = เวลา ISO ที่มีเขตเวลา → ตั้งเวลาบน Facebook (SCHEDULED) แทนการเผยแพร่ทันที · ล่วงหน้า 15 นาทีถึง 28 วัน · ไม่ส่ง = ทันที
+//      เพดาน 30 Reel ต่อ 24 ชั่วโมงของ API: หน้าจอนับจากเวิร์กสเปซ (เซิร์ฟเวอร์ไม่เก็บสถานะ) · Facebook ปฏิเสธด้วยรหัส 613 = แจ้งเป็นข้อความเพดาน
 //      post = ชุดจาก reelGatePayload (src/lib/marketingClip.js) — บังคับเมื่อธง MARKETING_PROOF_CARDS เปิด: ทั้งสองคำสั่งตรวจบันทึกการอนุมัติของ Reel
 //      (ผู้ตรวจ · แฮชของข้อความใต้คลิป + ไฟล์คลิป + ข้ออ้าง) และตรวจด่านหลักฐานซ้ำ ณ เวลาส่ง · ไม่ผ่าน = 422 ไม่เรียก Facebook
 //
@@ -19,7 +21,7 @@ import { createClient } from '@supabase/supabase-js'
 import { verifySession } from '../api/_auth.js'
 import { addProofParam, configStatus, facebookConfig, graphHeaders, graphRequest, graphUrl } from './marketing-facebook.js'
 import { assertApprovedForPublish, proofDatabase, proofFlagOn } from './marketing-proof.js'
-import { CLIP_MAX_BYTES, CLIP_MIME, REEL_KIND, checkClipFile, checkReelDescription, clipPathFor, isClipPath, summarizeReelStatus } from '../src/lib/marketingClip.js'
+import { CLIP_MAX_BYTES, CLIP_MIME, REEL_KIND, checkClipFile, checkReelDescription, clipPathFor, isClipPath, parseReelSchedule, summarizeReelStatus } from '../src/lib/marketingClip.js'
 
 export const CLIP_BUCKET = 'marketing-clips'
 const VIEW_TTL_SEC = 60 * 60
@@ -75,18 +77,27 @@ export async function uploadReelFromUrl(fileUrl, fetchImpl = fetch, config = fac
 }
 
 // ขั้นที่ 3: เผยแพร่ — เนื้อหาบนเพจเป็นสาธารณะ ผู้เรียกต้องผ่านด่านคำและคนยืนยันมาก่อน
-export async function publishReel({ videoId, description, aiGenerated = false }, fetchImpl = fetch, config = facebookConfig()) {
+// schedule = ผลของ parseReelSchedule ที่ผ่านแล้ว (มี unix) → ตั้งเวลาบน Facebook · ไม่มี = เผยแพร่ทันที
+export async function publishReel({ videoId, description, aiGenerated = false, schedule = null }, fetchImpl = fetch, config = facebookConfig()) {
   const status = configStatus(config)
   if (!status.ready) throw new Error(`ยังไม่ได้ตั้งค่า ${status.missing.join(', ')}`)
   const id = cleanVideoId(videoId)
   if (!id) throw new Error('รหัสวิดีโอไม่ถูกต้อง')
   const params = addProofParam(new URLSearchParams({ upload_phase: 'finish', video_id: id, video_state: 'PUBLISHED', description }), config)
   if (aiGenerated) params.set('is_ai_generated', 'true')
-  const result = await graphRequest(graphUrl(config, `${config.pageId}/video_reels`), {
-    method: 'POST', headers: graphHeaders(config, { 'Content-Type': 'application/x-www-form-urlencoded' }), body: params,
-  }, fetchImpl, config)
-  if (result.success !== true) throw new Error('Facebook ไม่ยืนยันการเผยแพร่')
-  return { videoId: id }
+  if (schedule?.unix) { params.set('video_state', 'SCHEDULED'); params.set('scheduled_publish_time', String(schedule.unix)) }
+  let result
+  try {
+    result = await graphRequest(graphUrl(config, `${config.pageId}/video_reels`), {
+      method: 'POST', headers: graphHeaders(config, { 'Content-Type': 'application/x-www-form-urlencoded' }), body: params,
+    }, fetchImpl, config)
+  } catch (error) {
+    // 613 = เรียกเกินเพดานของ API (เอกสารไม่ได้ผูกรหัสนี้กับเพดาน 30 Reel ตรง ๆ จึงบอกว่า "อาจ")
+    if (error?.fbCode === 613) throw Object.assign(new Error('Facebook ปฏิเสธเพราะเรียกเกินเพดาน อาจถึงเพดาน 30 Reel ใน 24 ชั่วโมงของ API แล้ว รอแล้วลองใหม่'), { fbCode: 613 })
+    throw error
+  }
+  if (result.success !== true) throw new Error(schedule?.unix ? 'Facebook ไม่ยืนยันการตั้งเวลา' : 'Facebook ไม่ยืนยันการเผยแพร่')
+  return { videoId: id, scheduledAt: schedule?.iso || null }
 }
 
 export async function checkReel(videoId, fetchImpl = fetch, config = facebookConfig()) {
@@ -97,7 +108,9 @@ export async function checkReel(videoId, fetchImpl = fetch, config = facebookCon
   const params = addProofParam(new URLSearchParams({ fields: 'status,permalink_url' }), config)
   const data = await graphRequest(`${graphUrl(config, id)}?${params}`, { method: 'GET', headers: graphHeaders(config) }, fetchImpl, config)
   const link = String(data.permalink_url || '')
-  return { videoId: id, ...summarizeReelStatus(data.status || {}), permalink: link ? (link.startsWith('http') ? link : `https://www.facebook.com${link}`) : null }
+  const publishTime = Number(data.status?.publishing_phase?.publish_time)
+  const summary = summarizeReelStatus(data.status || {})
+  return { videoId: id, ...summary, scheduledAt: summary.state === 'scheduled' && Number.isFinite(publishTime) && publishTime > 0 ? new Date(publishTime * 1000).toISOString() : null, permalink: link ? (link.startsWith('http') ? link : `https://www.facebook.com${link}`) : null }
 }
 
 // ตัวตรวจบันทึกการอนุมัติ (ธงเปิด) หรือ null (ธงปิด = ด่านเดิม)
@@ -158,9 +171,11 @@ export function createClipHandler({ authorized = verifySession, database = defau
         const text = checkReelDescription(body.description)
         if (!text.ok) return res.status(400).json({ error: `ข้อความใต้คลิปยังไม่ผ่านการตรวจ: ${text.notes.join(' · ')}` })
         if (body.confirmed !== true) return res.status(400).json({ error: 'ต้องยืนยันก่อนเผยแพร่' })
+        const schedule = parseReelSchedule(body.scheduledAt, now())
+        if (!schedule.ok) return res.status(400).json({ error: schedule.note })
         const problem = await approvalProblem(guard, body.post, { description: text.description })
         if (problem) return res.status(422).json({ error: problem })
-        return res.status(200).json(await publishReel({ videoId: body.videoId, description: text.description, aiGenerated: body.aiGenerated === true }, fetchImpl, fb))
+        return res.status(200).json(await publishReel({ videoId: body.videoId, description: text.description, aiGenerated: body.aiGenerated === true, schedule: schedule.at ? schedule : null }, fetchImpl, fb))
       }
       return res.status(400).json({ error: 'ไม่รู้จักคำสั่งนี้' })
     } catch (error) {

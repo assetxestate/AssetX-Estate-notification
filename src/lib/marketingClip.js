@@ -96,7 +96,7 @@ export function replaceClip(oldClip, record) {
   const history = Array.isArray(oldClip?.previous) ? oldClip.previous.filter((item) => item && isClipPath(item.path)) : []
   const reel = oldClip?.reel
   const sent = reel?.videoId && reel.state !== 'uploaded'
-  const entry = sent ? [{ path: oldClip.path, name: String(oldClip.name || '').slice(0, 120), videoId: String(reel.videoId), permalink: reel.permalink || null, sentAt: reel.sentAt || null, state: reel.state || null, description: String(reel.description || '').slice(0, REEL_DESCRIPTION_MAX) }] : []
+  const entry = sent ? [{ path: oldClip.path, name: String(oldClip.name || '').slice(0, 120), videoId: String(reel.videoId), permalink: reel.permalink || null, sentAt: reel.sentAt || null, scheduledAt: reel.scheduledAt || null, state: reel.state || null, description: String(reel.description || '').slice(0, REEL_DESCRIPTION_MAX) }] : []
   const previous = [...history, ...entry].slice(-PREVIOUS_MAX)
   return previous.length ? { ...record, previous } : record
 }
@@ -126,6 +126,53 @@ export function reelGatePayload(post = {}, { description = '', clipPath = '' } =
 export const reelApprovalMatches = (clip, description) => {
   const approval = clip?.reelApproval
   return Boolean(approval?.reviewId && approval.path === clip.path && approval.description === cleanDescription(description))
+}
+
+// ── ตั้งเวลา Reel และเพดานจำนวนต่อวัน (26 พ.ย. 2569 · เอกสาร Reels Publishing ของ Meta อ่านวันเดียวกัน) ──
+// ตั้งเวลา: video_state=SCHEDULED + scheduled_publish_time (วินาที Unix) · เอกสารกำหนด "มากกว่า 10 นาที และภายใน 29 วัน"
+// เผื่อขอบไว้ทั้งสองด้าน: อย่างน้อย 15 นาที (การส่งไฟล์และตรวจบันทึกใช้เวลา) และไม่เกิน 28 วัน
+export const REEL_SCHEDULE_MIN_MS = 15 * 60 * 1000
+export const REEL_SCHEDULE_MAX_MS = 28 * 24 * 60 * 60 * 1000
+// รับเฉพาะเวลาที่ระบุเขตเวลาครบ (หน้าจอส่ง toISOString) — เวลาที่ไม่มีเขตเวลาจะถูกเซิร์ฟเวอร์ตีความเป็น UTC ผิดไป 7 ชั่วโมง
+const ZONED_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/
+// คืน { ok, at, unix, iso, note } · ค่าว่าง = ไม่ตั้งเวลา (ok และ at เป็น null)
+export function parseReelSchedule(value, now = Date.now()) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return { ok: true, at: null, unix: null, iso: null, note: '' }
+  const at = ZONED_TIME.test(raw) ? Date.parse(raw) : NaN
+  if (!Number.isFinite(at)) return { ok: false, at: null, unix: null, iso: null, note: 'วันและเวลาที่ตั้งไม่ถูกต้อง' }
+  if (at < now + REEL_SCHEDULE_MIN_MS) return { ok: false, at, unix: null, iso: null, note: 'ตั้งเวลาล่วงหน้าอย่างน้อย 15 นาที' }
+  if (at > now + REEL_SCHEDULE_MAX_MS) return { ok: false, at, unix: null, iso: null, note: 'ตั้งเวลาล่วงหน้าได้ไม่เกิน 28 วัน' }
+  return { ok: true, at, unix: Math.floor(at / 1000), iso: new Date(at).toISOString(), note: '' }
+}
+// ค่าของช่อง datetime-local (เวลาเครื่อง ไม่มีเขตเวลา) → ISO ที่มีเขตเวลา · อ่านไม่ได้คืนค่าเดิมให้ตัวตรวจปฏิเสธ
+export function localInputToIso(value) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const at = new Date(raw).getTime()
+  return Number.isFinite(at) ? new Date(at).toISOString() : raw
+}
+
+// เพดานของ Reels API: 30 รายการที่เผยแพร่ผ่าน API ใน 24 ชั่วโมงแบบเลื่อน (เอกสารไม่บอกว่า Reel ที่ตั้งเวลานับตอนไหน)
+// เซิร์ฟเวอร์ไม่เก็บสถานะ จึงนับจากรายการในเวิร์กสเปซ: Reel ทุกชิ้นที่ส่งผ่านระบบนี้ (รวมของคลิปที่ถูกแทนที่) ที่เวลาเผยแพร่
+// (เวลาที่ตั้ง หรือเวลาที่ส่ง) อยู่ห่างจากเวลาที่จะเผยแพร่ไม่ถึง 24 ชั่วโมง ทั้งก่อนและหลัง — นับเกินได้ ไม่นับขาด
+// Reel ที่โพสต์เองบน Facebook ไม่อยู่ในเพดานนี้และระบบไม่เห็น · ตัวตัดสินสุดท้ายคือ Facebook
+export const REEL_DAILY_LIMIT = 30
+const DAY_MS = 24 * 60 * 60 * 1000
+const reelTime = (item) => { const at = Date.parse(item?.scheduledAt || item?.sentAt || ''); return Number.isFinite(at) ? at : null }
+export function reelPublishTimes(posts = []) {
+  const times = []
+  for (const post of Array.isArray(posts) ? posts : []) {
+    const clip = post?.clip
+    if (!clip) continue
+    if (clip.reel?.videoId && clip.reel.state !== 'uploaded') times.push(reelTime(clip.reel))
+    for (const item of Array.isArray(clip.previous) ? clip.previous : []) if (item?.videoId) times.push(reelTime(item))
+  }
+  return times.filter((at) => at !== null)
+}
+export function reelQuota(posts = [], at = Date.now()) {
+  const used = reelPublishTimes(posts).filter((time) => Math.abs(time - at) < DAY_MS).length
+  return { used, limit: REEL_DAILY_LIMIT, left: Math.max(0, REEL_DAILY_LIMIT - used), full: used >= REEL_DAILY_LIMIT }
 }
 
 export const formatBytes = (bytes) => (Number.isFinite(bytes) && bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '')

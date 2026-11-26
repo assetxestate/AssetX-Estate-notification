@@ -5,13 +5,19 @@
 //   เบราว์เซอร์ฝังในแอป Claude ปิดกล่องแบบนั้นเองทันที ปุ่มจึงกดแล้วเงียบ — เจอจริงตอนส่ง Reel แรก 24 พ.ย. 2569) · ส่งได้ครั้งเดียวต่อคลิป (กันโพสต์ซ้ำ)
 // เมื่อระบบตรวจหลักฐานเปิด (status.approval): Reel ต้องผ่านตรวจหลักฐานและมีบันทึกการอนุมัติของคนก่อนเผยแพร่ (26 พ.ย. 2569)
 //   การอนุมัติผูกกับข้อความใต้คลิป + ไฟล์คลิป + ข้ออ้างของโพสต์ · เซิร์ฟเวอร์ตรวจซ้ำตอนส่งไฟล์และตอนเผยแพร่ · clip.reelApproval เป็นแค่บันทึกย่อให้หน้าจอ
+// ตั้งเวลา (26 พ.ย. 2569): ใส่วันและเวลา = ตั้งเวลาบน Facebook แทนการเผยแพร่ทันที (ล่วงหน้า 15 นาทีถึง 28 วัน) · ยกเลิกหรือเปลี่ยนเวลาทำที่ Facebook
+//   เวลาไม่อยู่ในแฮชการอนุมัติ · เพดาน 30 Reel ต่อ 24 ชั่วโมงของ API นับจากรายการในเวิร์กสเปซ (posts) ถึงเพดาน = ปุ่มปิด
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { CLIP_MIME, REEL_DESCRIPTION_MAX, checkClipFile, checkReelDescription, clipRecord, formatBytes, reelApprovalMatches, reelGatePayload, replaceClip } from '../lib/marketingClip.js'
+import { CLIP_MIME, REEL_DESCRIPTION_MAX, REEL_SCHEDULE_MAX_MS, REEL_SCHEDULE_MIN_MS, checkClipFile, checkReelDescription, clipRecord, formatBytes, localInputToIso, parseReelSchedule, reelApprovalMatches, reelGatePayload, reelQuota, replaceClip } from '../lib/marketingClip.js'
 import { approveContent, checkGate, storeReviewer, storedReviewer } from '../lib/marketingProofApi.js'
 import { GateResult } from './BriefProofPanel.jsx'
 
 const REEL_STATE = { uploaded: 'ส่งไฟล์ให้ Facebook แล้ว ยังไม่เผยแพร่', processing: 'Facebook กำลังประมวลผล', published: 'เผยแพร่บนเพจแล้ว', scheduled: 'ตั้งเวลาไว้บน Facebook', draft: 'เป็นฉบับร่างบน Facebook', error: 'Facebook ประมวลผลไม่สำเร็จ' }
+
+const thaiWhen = (value) => new Date(value).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+// ค่าของช่อง datetime-local ตามเวลาเครื่อง
+const localInput = (ms) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16) }
 
 async function api(url, body) {
   const response = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined)
@@ -34,7 +40,7 @@ function readVideoMeta(file) {
   })
 }
 
-export default function ClipPanel({ post, loading = false, onSaveClip }) {
+export default function ClipPanel({ post, posts = [], loading = false, onSaveClip }) {
   const clip = post?.clip || null
   const reel = clip?.reel || null
   const fileInput = useRef(null)
@@ -50,6 +56,7 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
   const [gateResult, setGateResult] = useState(null) // { loading | error | gate, proof }
   const [reviewer, setReviewer] = useState(storedReviewer)
   const [watched, setWatched] = useState(false)
+  const [scheduleInput, setScheduleInput] = useState('') // ค่าของช่อง datetime-local · ว่าง = เผยแพร่ทันที
 
   useEffect(() => {
     let alive = true
@@ -58,7 +65,8 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
   }, [])
   // ข้อความหรือไฟล์เปลี่ยน = ผลตรวจและคำยืนยันเดิมใช้ไม่ได้
   useEffect(() => { setGateResult(null); setWatched(false); setConfirming(false) }, [description, post?.clip?.path])
-  useEffect(() => { setViewUrl(''); setError(''); setWarnings([]); setBusy(''); setConfirming(false); setReplacing(false); setDescription(post?.clip?.reel?.description || post?.clip?.previous?.at(-1)?.description || post?.caption || '') }, [post?.id])
+  useEffect(() => { setConfirming(false) }, [scheduleInput])
+  useEffect(() => { setViewUrl(''); setError(''); setWarnings([]); setBusy(''); setConfirming(false); setReplacing(false); setScheduleInput(''); setDescription(post?.clip?.reel?.description || post?.clip?.previous?.at(-1)?.description || post?.caption || '') }, [post?.id])
 
   if (!post) return null
   const locked = loading || Boolean(busy)
@@ -68,6 +76,9 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
   const needsApproval = Boolean(status?.approval)
   const approved = needsApproval && reelApprovalMatches(clip, description)
   const payload = () => reelGatePayload(post, { description: text.description, clipPath: clip.path })
+  // เวลาที่ตั้ง (ว่าง = ทันที) และจำนวน Reel ที่ส่งผ่านระบบรอบเวลานั้น
+  const schedule = parseReelSchedule(localInputToIso(scheduleInput))
+  const quota = reelQuota(posts, schedule.ok && schedule.at ? schedule.at : Date.now())
 
   const checkEvidence = async () => {
     setError('')
@@ -129,7 +140,10 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
   }
 
   const sendReel = async () => {
-    if (!text.ok || (needsApproval && !approved)) return
+    // ตรวจเวลาซ้ำตอนกดยืนยัน: หน้าอาจเปิดค้างจนเวลาที่ตั้งใกล้เกินไป
+    const when = parseReelSchedule(localInputToIso(scheduleInput))
+    if (!text.ok || (needsApproval && !approved) || quota.full) return
+    if (!when.ok) { setConfirming(false); setError(when.note); return }
     setConfirming(false)
     setError('')
     let videoId = reel?.videoId || ''
@@ -140,9 +154,11 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
         // บันทึกรหัสทันที: ถ้าขั้นเผยแพร่ล้ม กดอีกครั้งจะไม่ส่งไฟล์ซ้ำ
         save({ ...clip, reel: { videoId, state: 'uploaded', description: text.description, aiGenerated, sentAt: new Date().toISOString() } }, '')
       }
-      setBusy('กำลังเผยแพร่')
-      await api('/api/marketing-clip', { action: 'reel-publish', videoId, description: text.description, aiGenerated, confirmed: true, ...(needsApproval ? { post: payload() } : {}) })
-      save({ ...clip, reel: { videoId, state: 'processing', description: text.description, aiGenerated, sentAt: new Date().toISOString() } }, 'ส่ง Reel ให้ Facebook แล้ว กำลังประมวลผล กดตรวจสถานะในอีกสักครู่')
+      setBusy(when.at ? 'กำลังตั้งเวลา' : 'กำลังเผยแพร่')
+      const result = await api('/api/marketing-clip', { action: 'reel-publish', videoId, description: text.description, aiGenerated, confirmed: true, ...(when.at ? { scheduledAt: when.iso } : {}), ...(needsApproval ? { post: payload() } : {}) })
+      const base = { videoId, description: text.description, aiGenerated, sentAt: new Date().toISOString() }
+      if (when.at) save({ ...clip, reel: { ...base, state: 'scheduled', scheduledAt: result.scheduledAt || when.iso } }, `ตั้งเวลา Reel บน Facebook แล้ว · จะเผยแพร่ ${thaiWhen(when.at)}`)
+      else save({ ...clip, reel: { ...base, state: 'processing' } }, 'ส่ง Reel ให้ Facebook แล้ว กำลังประมวลผล กดตรวจสถานะในอีกสักครู่')
     } catch (err) {
       setError(err.message)
     } finally { setBusy('') }
@@ -153,7 +169,7 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
     try {
       setBusy('กำลังตรวจสถานะกับ Facebook')
       const now = await api(`/api/marketing-clip?reel=${encodeURIComponent(reel.videoId)}`)
-      save({ ...clip, reel: { ...reel, state: now.state, permalink: now.permalink || reel.permalink || null, checkedAt: new Date().toISOString() } }, now.message)
+      save({ ...clip, reel: { ...reel, state: now.state, scheduledAt: now.scheduledAt || reel.scheduledAt || null, permalink: now.permalink || reel.permalink || null, checkedAt: new Date().toISOString() } }, now.message)
     } catch (err) { setError(err.message) } finally { setBusy('') }
   }
 
@@ -220,16 +236,24 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
                 </>
               )}
               {approved && <span className="bp-note" role="status">อนุมัติแล้วโดย {clip.reelApproval.reviewer} เมื่อ {new Date(clip.reelApproval.at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} · ระบบตรวจบันทึกนี้ซ้ำตอนส่ง</span>}
+              <label>ตั้งเวลาเผยแพร่ (เว้นว่าง = เผยแพร่ทันที)
+                <input type="datetime-local" value={scheduleInput} disabled={locked || confirming} min={localInput(Date.now() + REEL_SCHEDULE_MIN_MS)} max={localInput(Date.now() + REEL_SCHEDULE_MAX_MS)} onChange={(event) => setScheduleInput(event.target.value)} />
+              </label>
+              {!schedule.ok && <span className="bp-pack-warn">{schedule.note}</span>}
+              {schedule.ok && schedule.at && <span className="bp-note">Facebook จะเผยแพร่เอง {thaiWhen(schedule.at)} · ยกเลิกหรือเปลี่ยนเวลาหลังตั้งแล้วทำที่ Facebook</span>}
+              {quota.full
+                ? <span className="bp-pack-warn">ส่ง Reel ผ่านระบบครบ {quota.limit} ชิ้นในรอบ 24 ชั่วโมงของเวลานี้แล้ว (เพดานของ Facebook) เลือกเวลาอื่นหรือรอ</span>
+                : quota.used > 0 && <span className="bp-note">Reel ที่ส่งผ่านระบบในรอบ 24 ชั่วโมงของเวลานี้: {quota.used} จาก {quota.limit} ชิ้น</span>}
               {!confirming && (
                 <div className="bp-actions">
-                  <button type="button" className="mx-primary" disabled={locked || !text.ok || !status?.facebook || (needsApproval && !approved)} onClick={() => setConfirming(true)}>{reel?.state === 'uploaded' ? 'เผยแพร่ Reel (ส่งไฟล์แล้ว)' : 'เผยแพร่เป็น Reel บนเพจ'}</button>
-                  <span className="bp-note">เผยแพร่ทันที เป็นสาธารณะ · ยังตั้งเวลาจากหน้านี้ไม่ได้</span>
+                  <button type="button" className="mx-primary" disabled={locked || !text.ok || !status?.facebook || !schedule.ok || quota.full || (needsApproval && !approved)} onClick={() => setConfirming(true)}>{schedule.at ? 'ตั้งเวลา Reel บนเพจ' : reel?.state === 'uploaded' ? 'เผยแพร่ Reel (ส่งไฟล์แล้ว)' : 'เผยแพร่เป็น Reel บนเพจ'}</button>
+                  <span className="bp-note">{schedule.at ? 'ถึงเวลาแล้วเป็นสาธารณะ' : 'เผยแพร่ทันที เป็นสาธารณะ'}</span>
                 </div>
               )}
               {confirming && (
                 <div className="bp-ai-status warn" role="alertdialog" aria-label="ยืนยันการเผยแพร่">
-                  <span>คลิปนี้จะขึ้นเพจ Facebook เป็น Reel ทันที ทุกคนเห็นได้ และลบได้จาก Facebook เท่านั้น</span>
-                  <button type="button" disabled={locked} onClick={sendReel}>ยืนยัน เผยแพร่เลย</button>
+                  <span>{schedule.at ? `คลิปนี้จะขึ้นเพจ Facebook เป็น Reel เมื่อ ${thaiWhen(schedule.at)} ทุกคนเห็นได้ ยกเลิกหรือลบได้จาก Facebook เท่านั้น` : 'คลิปนี้จะขึ้นเพจ Facebook เป็น Reel ทันที ทุกคนเห็นได้ และลบได้จาก Facebook เท่านั้น'}</span>
+                  <button type="button" disabled={locked} onClick={sendReel}>{schedule.at ? 'ยืนยัน ตั้งเวลาเลย' : 'ยืนยัน เผยแพร่เลย'}</button>
                   <button type="button" disabled={locked} onClick={() => setConfirming(false)}>ยกเลิก</button>
                 </div>
               )}
@@ -237,12 +261,12 @@ export default function ClipPanel({ post, loading = false, onSaveClip }) {
           )}
           {sent && (
             <>
-              <span>{REEL_STATE[reel.state] || reel.state} · ส่งเมื่อ {new Date(reel.sentAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}{reel.checkedAt ? ` · ตรวจล่าสุด ${new Date(reel.checkedAt).toLocaleTimeString('th-TH', { timeStyle: 'short' })}` : ''}</span>
+              <span>{REEL_STATE[reel.state] || reel.state}{reel.state === 'scheduled' && reel.scheduledAt ? ` · จะเผยแพร่ ${thaiWhen(reel.scheduledAt)}` : ''} · ส่งเมื่อ {new Date(reel.sentAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}{reel.checkedAt ? ` · ตรวจล่าสุด ${new Date(reel.checkedAt).toLocaleTimeString('th-TH', { timeStyle: 'short' })}` : ''}</span>
               <div className="bp-actions">
                 <button type="button" className="mx-secondary" disabled={locked} onClick={check}>ตรวจสถานะกับ Facebook</button>
                 {reel.permalink && <a className="mx-mini-button" href={reel.permalink} target="_blank" rel="noreferrer noopener">เปิด Reel บน Facebook</a>}
               </div>
-              <span className="bp-note">ส่งได้ครั้งเดียวต่อคลิปเพื่อกันโพสต์ซ้ำ · ลบหรือแก้ข้อความของ Reel ทำที่ Facebook · จะเปลี่ยนตัวคลิปให้กด แทนที่ด้วยคลิปใหม่</span>
+              <span className="bp-note">ส่งได้ครั้งเดียวต่อคลิปเพื่อกันโพสต์ซ้ำ · ลบ แก้ข้อความ ยกเลิกหรือเปลี่ยนเวลาที่ตั้งไว้ของ Reel ทำที่ Facebook · จะเปลี่ยนตัวคลิปให้กด แทนที่ด้วยคลิปใหม่</span>
             </>
           )}
         </div>
