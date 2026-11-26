@@ -82,9 +82,10 @@
     },
     {
       "id": "research-task-scheduler",
-      "done": false,
+      "done": true,
       "text": "ตั้ง Task Scheduler รัน `node scripts/research-ideas.mjs run` 07:00 / 07:30 / 08:00 บนเครื่องที่เปิดทุกเช้า — คำสั่ง PowerShell อยู่ใน docs/social-research.md",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-26T05:51:58.536Z"
     },
     {
       "id": "brand-facts-local",

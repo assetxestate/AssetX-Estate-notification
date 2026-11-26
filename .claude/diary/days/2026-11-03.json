@@ -39,12 +39,12 @@
     },
     {
       "id": "facebook-watcher-account",
-      "done": false,
+      "done": true,
       "text": "ทาง ก. ที่เลือกไว้สำหรับเฝ้าเพจเฟซบุ๊ก จะใช้บัญชีแบบไหน? — ตอบแล้วผ่านโปรไฟล์ในสกิล (บ่าย 3 พ.ย.): บัญชีสำรองชุดเดียวกับ DivisionX ใน Chrome profile Research → สร้างขั้น 7 แล้ว",
       "acted": true,
       "owner": "decide",
       "choice": "a",
-      "done_at": "2026-11-03T05:45:00.000Z",
+      "done_at": "2026-11-26T05:51:59.725Z",
       "options": [
         {
           "id": "a",
@@ -94,15 +94,17 @@
     },
     {
       "id": "verify-watch-pages",
-      "done": false,
+      "done": true,
       "text": "เปิดดูเพจ 18 เพจใน research/social_watch.json ด้วยตาว่าเป็นเพจจริง/ยังโพสต์อยู่ (ลิสต์มาจากการค้นเว็บ 2 พ.ย.) — เพจปลอม/ร้างให้ตั้ง enabled:false หรือบอก Claude สลับเพจอื่นจากลิสต์ 47 (อย่าเกิน 4 เพจ/วัน)",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-26T05:52:06.081Z"
     },
     {
       "id": "relay-daemon-note-to-dvx",
-      "done": false,
+      "done": true,
       "text": "บอก session ของ DVX 3 เรื่อง: (1) AssetX เปิดใช้ตัวเฝ้าเพจแล้ว (เช็กลิสต์ข้อ 8 ติ๊ก 5/6) และข้อตกลงข้อ 4.5 ยังไม่พูดถึง daemon restart ที่ DVX เพิ่มในโค้ด 3 พ.ย. 12:05 (2) Facebook เปลี่ยน DOM: ไม่มีบรรทัด \"All reactions:\" แล้ว ยอดอยู่ใน aria-label \"Like: N people\" — AssetX เพิ่ม fallback ใน FB_JS สำเนาแล้ว (server/research/facebook-page.dom.js ส่วน \"AssetX addition\") DVX ควรใส่ใน social_watch.py ให้ตรงกัน ไม่งั้นยอดเป็น null ทุกโพสต์ (3) โพสต์โหลดเพิ่มไม่สม่ำเสมอในหน้าต่างเบื้องหลัง — DVX เจอบ่อยแค่ไหน และจะเพิ่ม flag --disable-backgrounding-occluded-windows ในคำสั่งเปิด Chrome (ข้อ 4.5) พร้อมกันไหม",
-      "owner": "you"
+      "owner": "you",
+      "done_at": "2026-11-26T05:52:06.727Z"
     },
     {
       "id": "push-social-watch",
@@ -150,12 +152,12 @@
     },
     {
       "id": "marketing-page-fix-scope",
-      "done": false,
+      "done": true,
       "text": "รีเสิร์ชหน้า /marketing พบต้นเหตุความงง 4 เรื่อง (เรื่องที่ 5) — จะให้ Claude แก้ชุดไหนก่อน? — เจ้าของเลือก ก. ในแชต (\"เริ่มปรับเลย\") → ทำเสร็จและ push แล้ว (เรื่องที่ 6)",
       "acted": true,
       "owner": "decide",
       "choice": "a",
-      "done_at": "2026-11-03T15:05:00.000Z",
+      "done_at": "2026-11-26T05:52:00.368Z",
       "options": [
         {
           "id": "a",
